@@ -38,7 +38,7 @@ import math
 import random
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any
 
 import numpy as np
 import simpy
@@ -118,7 +118,7 @@ class SegmentResult:
 # Internal helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _validate_segment(segment: Mapping) -> tuple[str | None, float | None, float | None, int]:
+def _validate_segment(segment: Mapping[str, Any]) -> tuple[str | None, float | None, float | None, int]:
     """Extract and validate segment fields. Returns (error, lambda_, mu, c)."""
     lambda_ = segment.get("lambda")
     mu = segment.get("mu")
@@ -191,7 +191,7 @@ class _QueueMonitor:
         self._queue_area = 0.0   # ∫ Lq(t) dt  (post-warmup only)
         self._busy_area = 0.0    # ∫ busy_servers(t) dt  (post-warmup only)
 
-    def _snapshot(self, at: float = None):
+    def _snapshot(self, at: float | None = None) -> None:
         """Accumulate area since the last snapshot, optionally forcing a time.
 
         Only the portion of each interval that falls **after** *warmup_end* is
@@ -218,7 +218,7 @@ class _QueueMonitor:
 
         self._last_t = now
 
-    def record(self):
+    def record(self) -> None:
         """Call this at every state-change point."""
         self._snapshot()
 
@@ -303,7 +303,7 @@ def _arrival_process(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def simulate_segment(
-    segment: Mapping,
+    segment: Mapping[str, Any],
     sim_hours: float = SIM_HOURS_PER_SEGMENT,
     queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
     seed: int | None = RANDOM_SEED,
@@ -353,6 +353,8 @@ def simulate_segment(
         result.error = error
         result.status = "ERROR"
         return result
+
+    assert lambda_ is not None and mu is not None
 
     # Zero-arrival edge case: no queue, servers idle
     if lambda_ == 0:
@@ -422,12 +424,12 @@ def simulate_segment(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def simulate_segments(
-    time_segments: Iterable[Mapping],
+    time_segments: Iterable[Mapping[str, Any]] | None,
     sim_hours: float = SIM_HOURS_PER_SEGMENT,
     queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
     seed: int | None = RANDOM_SEED,
     carryover: bool = True,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Simulate a sequence of time segments and return a list of result dicts.
 
@@ -487,7 +489,7 @@ def simulate_segments(
 # Public API — summary KPIs across all segments
 # ──────────────────────────────────────────────────────────────────────────────
 
-def summarize_simulation(sim_rows: list[dict]) -> dict:
+def summarize_simulation(sim_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Compute dashboard-level KPIs from a list of simulate_segments() outputs.
 
@@ -576,11 +578,11 @@ MC_SERVICE_NOISE = 0.10
 
 
 def mc_simulate_segment(
-    segment: Mapping,
+    segment: Mapping[str, Any],
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
-) -> dict:
+) -> dict[str, Any]:
     """
     Run Monte Carlo simulation for one time segment.
 
@@ -617,9 +619,11 @@ def mc_simulate_segment(
             "ci_Wq_hw": None, "ci_Lq_hw": None, "adequate_samples": False,
         }
 
+    assert lambda_ is not None and mu is not None
+
     rng = np.random.default_rng(seed)
 
-    def _pick_model(lam, m, c_):
+    def _pick_model(lam: float, m: float, c_: int) -> dict[str, Any]:
         return mmc(lam, m, c_) if c_ > 1 else mm1(lam, m)
 
     rho_samples = np.empty(num_trials)
@@ -691,11 +695,11 @@ def mc_simulate_segment(
 
 
 def mc_simulate_segments(
-    time_segments: Iterable[Mapping],
+    time_segments: Iterable[Mapping[str, Any]] | None,
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Run Monte Carlo simulation across a sequence of time segments.
 
@@ -711,7 +715,7 @@ def mc_simulate_segments(
     return results
 
 
-def mc_summarize_simulation(mc_rows: list[dict]) -> dict:
+def mc_summarize_simulation(mc_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Compute dashboard-level KPIs from mc_simulate_segments() output.
 

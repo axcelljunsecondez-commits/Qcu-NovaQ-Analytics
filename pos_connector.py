@@ -243,13 +243,13 @@ def test_poisson_arrivals(
             f"Try a smaller *segment_minutes* value or provide more data."
         )
 
-    counts: list[int] = []
+    counts_raw: list[int] = []
     for bucket_start in buckets:
         bucket_end = bucket_start + pd.Timedelta(minutes=segment_minutes)
         mask = (ts >= bucket_start) & (ts < bucket_end)
-        counts.append(int(mask.sum()))
+        counts_raw.append(int(mask.sum()))
 
-    counts = np.array(counts, dtype=float)
+    counts = np.array(counts_raw, dtype=float)
     mean_arrivals = float(np.mean(counts))
     dispersion_index = float(np.var(counts, ddof=1) / mean_arrivals) if mean_arrivals > 0 else 0.0
 

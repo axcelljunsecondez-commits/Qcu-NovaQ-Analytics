@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from collections.abc import Iterable, Mapping
 
 import pandas as pd
@@ -144,6 +145,8 @@ def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
         capacity = segment.get("K")
         theta = segment.get("theta")
 
+        assert lambda_ is not None and mu is not None
+
         # Theta (Erlang-A) takes priority over all other model choices
         if theta is not None and pd.notna(theta) and float(theta) > 0:
             metrics = erlang_a(lambda_, mu, c, float(theta))
@@ -267,7 +270,7 @@ def validate_with_simulation(
     return result
 
 
-def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = None, customer_waiting_cost: float = None) -> dict:
+def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping[str, Any]] | None = None, customer_waiting_cost: float | None = None) -> dict[str, Any]:
     """Compute Page 1 KPI summary values including waiting costs.
     
     Waiting Cost calculation:
@@ -291,7 +294,7 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
 
     # Calculate waiting costs for ALL rows (stable + unstable)
     total_wait_cost = 0.0
-    avg_wait_time = 0.0
+    total_waits = 0.0
 
     for idx, row in results_df.iterrows():
         is_stable = row.get("stable", False)
@@ -304,7 +307,7 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
 
             wq = row.get("Wq")
             if wq is not None and not pd.isna(wq):
-                avg_wait_time += wq
+                total_waits += wq
         else:
             # Unstable system (ρ ≥ 1): apply penalty multiplier
             lambda_ = row.get("lambda")
@@ -315,7 +318,7 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
     count_stable = int(results_df["stable"].sum())
     count_unstable = count_total - count_stable
     avg_cost = total_wait_cost / count_total if count_total > 0 else 0.0
-    avg_wait_time = avg_wait_time / count_stable if count_stable > 0 else None
+    avg_wait_time: float | None = total_waits / count_stable if count_stable > 0 else None
 
     # Find worst utilization (from stable segments only)
     stable_df = results_df[results_df["stable"]].copy()

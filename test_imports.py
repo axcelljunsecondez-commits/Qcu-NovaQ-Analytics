@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import traceback
+from typing import Any
 
 os.environ.setdefault(
     "MPLCONFIGDIR",
@@ -34,7 +35,7 @@ CHECKS = [
 
 def main() -> int:
     errors = []
-    namespace = {}
+    namespace: dict[str, Any] = {}
 
     for label, statement in CHECKS:
         try:

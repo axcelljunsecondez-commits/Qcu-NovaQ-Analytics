@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 from numbers import Integral, Real
 
 
 def _result(
-    rho=None,
-    L=None,
-    Lq=None,
-    W=None,
-    Wq=None,
-    stable=False,
-    error=None,
-    **extra,
-):
+    rho: float | None = None,
+    L: float | None = None,
+    Lq: float | None = None,
+    W: float | None = None,
+    Wq: float | None = None,
+    stable: bool = False,
+    error: str | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
     """Return a consistent result structure for all queue model calculations."""
     result = {
         "rho": rho,
@@ -30,12 +31,12 @@ def _result(
     return result
 
 
-def _is_valid_rate(value) -> bool:
+def _is_valid_rate(value: object) -> bool:
     """Check that a rate input is numeric and finite."""
     return isinstance(value, Real) and math.isfinite(float(value))
 
 
-def mm1(lambda_, mu):
+def mm1(lambda_: float, mu: float) -> dict[str, Any]:
     """Compute steady-state metrics for an M/M/1 queue."""
     if not _is_valid_rate(lambda_) or not _is_valid_rate(mu):
         return _result(error="Invalid input: lambda and mu must be finite numbers.")
@@ -70,7 +71,7 @@ def mm1(lambda_, mu):
         )
 
 
-def mmc(lambda_, mu, c):
+def mmc(lambda_: float, mu: float, c: int) -> dict[str, Any]:
     """Compute steady-state metrics for an M/M/c queue."""
     if not _is_valid_rate(lambda_) or not _is_valid_rate(mu):
         return _result(error="Invalid input: lambda and mu must be finite numbers.")
@@ -123,7 +124,7 @@ def mmc(lambda_, mu, c):
         )
 
 
-def mgc(lambda_, mu, c, service_variance):
+def mgc(lambda_: float, mu: float, c: int, service_variance: float) -> dict[str, Any]:
     """Approximate steady-state metrics for an M/G/c queue.
 
     The approximation uses Allen-Cunneen scaling over the M/M/c waiting time:
@@ -182,12 +183,12 @@ def mgc(lambda_, mu, c, service_variance):
         )
 
 
-def _is_valid_capacity(value) -> bool:
+def _is_valid_capacity(value: object) -> bool:
     """Check that a capacity input is a positive integer."""
     return isinstance(value, Integral)
 
 
-def mmck(lambda_, mu, c, K):
+def mmck(lambda_: float, mu: float, c: int, K: int) -> dict[str, Any]:
     """Compute exact steady-state metrics for an M/M/c/K finite-capacity queue.
 
     K is total system capacity: customers in service plus customers waiting.
@@ -257,7 +258,7 @@ def mmck(lambda_, mu, c, K):
         )
 
 
-def mgck(lambda_, mu, c, service_variance, K):
+def mgck(lambda_: float, mu: float, c: int, service_variance: float, K: int) -> dict[str, Any]:
     """Approximate steady-state metrics for an M/G/c/K finite-capacity queue.
 
     The finite-capacity blocking probability comes from M/M/c/K. Waiting time
@@ -309,7 +310,7 @@ def mgck(lambda_, mu, c, service_variance, K):
 # Non-preemptive two-class M/M/c priority queue  —  Kleinrock (1975)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def mmc_priority(lambda1, lambda2, mu, c):
+def mmc_priority(lambda1: float, lambda2: float, mu: float, c: int) -> dict[str, Any]:
     """
     Compute steady-state metrics for a two-class non-preemptive priority
     M/M/c queue.
@@ -412,7 +413,7 @@ def mmc_priority(lambda1, lambda2, mu, c):
 # M/M/c+M (Erlang-A)  —  Garnett, Mandelbaum & Reiman (2002)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def erlang_a(lambda_, mu, c, theta):
+def erlang_a(lambda_: float, mu: float, c: int, theta: float) -> dict[str, Any]:
     """
     Compute steady-state metrics for an M/M/c+M queue (Erlang-A).
 
