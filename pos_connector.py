@@ -1,4 +1,6 @@
-"""POS transaction connector for NovaMart.
+"""POS transaction connector for QCU.
+
+
 
 Ingests transaction logs from a local CSV file, an S3 URI, or a raw DataFrame
 and produces the arrival-rate / service-rate inputs needed by the queueing
@@ -153,7 +155,9 @@ def compute_lambda_mu(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def to_novamart_csv(df: pd.DataFrame, output_path: str | None = None) -> str:
-    """Serialise a parameter DataFrame to NovaMart's expected CSV format.
+    """Serialise a parameter DataFrame to QCU's expected CSV format.
+
+
 
     Parameters
     ----------

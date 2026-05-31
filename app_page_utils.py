@@ -1,4 +1,4 @@
-"""Shared Streamlit page helpers for the NovaMart dashboard."""
+"""Shared Streamlit page helpers for the QCU dashboard."""
 
 from __future__ import annotations
 

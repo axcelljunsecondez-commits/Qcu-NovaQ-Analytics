@@ -8,7 +8,7 @@ Computes operational cost breakdown for queueing segments:
   Abandonment Cost = λ × abandonment_rate × cost_per_abandonment
   Total Cost      = Server + Waiting + Abandonment
 
-All cost parameters are user-configurable (defaults = NovaMart PHP rates).
+All cost parameters are user-configurable (defaults = QCU PHP rates).
 """
 
 from __future__ import annotations

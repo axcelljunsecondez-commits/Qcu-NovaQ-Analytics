@@ -1,4 +1,4 @@
-"""PDF and Excel report generation for the NovaMart Queueing Dashboard."""
+"""PDF and Excel report generation for the QCU Queueing Dashboard."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def generate_pdf_report(
     # ══════════════════════════════════════════════════════════════════════
     # PAGE 1 — Title
     # ══════════════════════════════════════════════════════════════════════
-    elements.append(Paragraph("NovaMart Queue Analysis Report", title_style))
+    elements.append(Paragraph("QCU Queue Analysis Report", title_style))
     elements.append(Paragraph(f"Generated: {date.today().isoformat()}", subtitle_style))
     elements.append(Spacer(1, 12))
     elements.append(Paragraph("<hr/>", ParagraphStyle("HR", fontSize=2)))

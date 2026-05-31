@@ -1,5 +1,5 @@
 """
-config.py — Centralized constants for the NovaMart Queueing Dashboard.
+config.py — Centralized constants for the QCU Queueing Dashboard.
 
 All default values live in exactly one place. Source files import from here
 rather than defining literals locally.

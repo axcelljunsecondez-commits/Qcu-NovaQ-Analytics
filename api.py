@@ -1,4 +1,4 @@
-"""FastAPI REST wrapper for NovaMart queue analytics.
+"""FastAPI REST wrapper for QCU queue analytics.
 
 Exposes M/M/1–M/G/c/K queueing models and staffing cost optimisation
 as clean REST endpoints.
@@ -82,7 +82,7 @@ class OptimizeResponse(BaseModel):
 # ── FastAPI app ───────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="NovaMart Queue Analytics API",
+    title="QCU Queue Analytics API",
     description=(
         "Exposes M/M/1–M/G/c/K queueing models and staffing cost "
         "optimizer as REST endpoints."

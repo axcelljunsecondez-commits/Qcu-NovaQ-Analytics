@@ -1,6 +1,8 @@
-# NovaMart Queueing Theory Dashboard
+# QCU Queueing Theory Dashboard
 
-Streamlit dashboard for analyzing NovaMart service queues with M/M/1, M/M/c, M/G/c, M/M/c/K, and M/G/c/K queueing models. The app helps compare current staffing, optimized staffing, Monte Carlo simulation results, and cost trade-offs.
+[![CI](https://github.com/axcelljunsecondez-commits/qcu-queueing-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/axcelljunsecondez-commits/qcu-queueing-dashboard/actions/workflows/ci.yml)
+
+Streamlit dashboard for analyzing QCU service queues with M/M/1, M/M/c, M/G/c, M/M/c/K, and M/G/c/K queueing models. The app helps compare current staffing, optimized staffing, Monte Carlo simulation results, and cost trade-offs.
 
 ## Features
 
@@ -13,7 +15,7 @@ Streamlit dashboard for analyzing NovaMart service queues with M/M/1, M/M/c, M/G
 
 ## Requirements
 
-- Python 3.11 or newer recommended
+- Python 3.10 or newer recommended
 - Streamlit and the packages listed in `requirements.txt`
 
 ## Installation
@@ -21,7 +23,7 @@ Streamlit dashboard for analyzing NovaMart service queues with M/M/1, M/M/c, M/G
 From PowerShell:
 
 ```powershell
-cd "C:\Users\krizel\Desktop\O.R AKSELS\QUEUING_THEORY_NOVAMART\QUEUING_THEORY_NOVAMART-main"
+cd path\to\project
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -127,10 +129,10 @@ Rows that violate the stability condition are marked unstable and should be adju
 
 ## Tests
 
-Run the lightweight formula tests with:
+Run the test suite with coverage:
 
 ```powershell
-python -m unittest discover -s tests
+python -m pytest tests --cov=queue_models --cov=optimization --cov=simulation --cov=costing --cov-report=term-missing
 ```
 
-These tests cover the shared queue formula module and are intended as a quick reliability check, not a full end-to-end dashboard test suite.
+Tests cover queue formulas, optimization logic, Monte Carlo simulation, and cost analysis.
