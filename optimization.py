@@ -6,19 +6,20 @@ import math
 from collections.abc import Iterable, Mapping
 from numbers import Integral, Real
 
+import pandas as pd
+
 from queue_models import mgc, mgck, mm1, mmc, mmck
 
-
-DEFAULT_TARGET_UTILIZATION = 0.70
-DEFAULT_SERVER_COST = 1.0
-DEFAULT_MAX_SERVERS = 24
-DEFAULT_CUSTOMER_WAITING_COST = 100.0  # ₱ per customer per hour (NovaMart Grocery)
-UNSTABLE_PENALTY_MULTIPLIER = 10.0     # Penalty for unstable systems (ρ ≥ 1) for comparison visibility
-UNSTABLE_FIXED_COST = 5000.0            # Fixed cost when system is unstable (ρ ≥ 1)
-
-# Labor rate constants
-REGULAR_RATE = 87.0   # cost per regular hour
-OT_RATE = 109.0       # cost per overtime hour
+from config import (
+    DEFAULT_TARGET_UTILIZATION,
+    DEFAULT_SERVER_COST,
+    DEFAULT_MAX_SERVERS,
+    DEFAULT_CUSTOMER_WAITING_COST,
+    UNSTABLE_PENALTY_MULTIPLIER,
+    UNSTABLE_FIXED_COST,
+    REGULAR_RATE,
+    OT_RATE,
+)
 
 
 def compute_blended_rate(regular_hours, ot_hours, total_hours):
@@ -42,10 +43,10 @@ def _is_number(value) -> bool:
     return isinstance(value, Real) and math.isfinite(float(value))
 
 
-def _compute_waiting_cost(lambda_, wq_value):
+def _compute_waiting_cost(lambda_, wq_value, customer_waiting_cost=DEFAULT_CUSTOMER_WAITING_COST):
     """Compute actual waiting cost from Wq, or return fixed cost for unstable systems.
     
-    - If Wq is available: cost = λ * Wq * DEFAULT_CUSTOMER_WAITING_COST
+    - If Wq is available: cost = λ * Wq * customer_waiting_cost
     - If Wq is None (unstable): cost = UNSTABLE_FIXED_COST (fixed value, not infinite)
     - For unstable systems (ρ ≥ 1), a fixed cost is assigned instead of penalties.
     """
@@ -53,28 +54,16 @@ def _compute_waiting_cost(lambda_, wq_value):
         return None
     
     if wq_value is not None:
-        # Calculate actual waiting cost from queue time
-        return lambda_ * wq_value * DEFAULT_CUSTOMER_WAITING_COST
+        return lambda_ * wq_value * customer_waiting_cost
     else:
-        # System is unstable: assign fixed cost (not infinite, just a fixed penalty value)
-        # This provides a reasonable cost estimate for unstable systems
         return UNSTABLE_FIXED_COST
 
 
-def _compute_waiting_cost_low(lambda_, wq_value, low_cost=50.0):
-    """Compute waiting cost using lower penalty (₱50 instead of ₱100) for WASTE REDUCTION optimization.
-    
-    Used by waste reduction optimization to prioritize staff efficiency over customer service.
-    - If Wq is available: cost = λ * Wq * low_cost
-    - If Wq is None (unstable): cost = UNSTABLE_FIXED_COST (fixed penalty)
-    """
-    if lambda_ is None:
-        return None
-    
-    if wq_value is not None:
-        return lambda_ * wq_value * low_cost
-    else:
-        return UNSTABLE_FIXED_COST
+def _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment):
+    """Compute abandonment cost. Returns 0 when either param is 0/None."""
+    if not lambda_ or not abandonment_rate or not cost_per_abandonment:
+        return 0.0
+    return lambda_ * abandonment_rate * cost_per_abandonment
 
 
 def _queue_metrics(lambda_, mu, c, variance=None, K=None):
@@ -129,6 +118,60 @@ def _search_limit(lambda_, mu, current_c, target_utilization, max_servers):
     return max(1, current_c, required_by_target + 2, max_servers)
 
 
+def _ternary_search_c(eval_fn, lo, hi):
+    """
+    Ternary search for the integer c ∈ [*lo*, *hi*] that minimises *eval_fn*(c).
+
+    *eval_fn*(c) must return a finite ``float`` for stable server counts and
+    ``float('inf')`` for unstable ones.  The function is assumed unimodal
+    (convex) in *c*.
+
+    Parameters
+    ----------
+    eval_fn : Callable[[int], float]
+        Total cost as a function of server count.
+    lo, hi : int
+        Inclusive search bounds (``lo <= hi``).
+
+    Returns
+    -------
+    int or None
+        The integer *c* with minimum *eval_fn*(c), or ``None`` if all
+        candidates are unstable (eval returns inf).
+    """
+    if lo > hi:
+        return None
+
+    # Shrink by thirds until the window is tiny
+    while hi - lo > 2:
+        m1 = lo + (hi - lo) // 3
+        m2 = hi - (hi - lo) // 3
+
+        f1 = eval_fn(m1)
+        f2 = eval_fn(m2)
+
+        # If both are inf, the whole region is unstable — keep shrinking
+        if f1 == float("inf") and f2 == float("inf"):
+            lo = m1
+            hi = m2
+        elif f1 < f2:
+            hi = m2
+        else:
+            lo = m1
+
+    # Brute-force the remaining window
+    best_c = None
+    best_val = float("inf")
+
+    for c in range(lo, hi + 1):
+        val = eval_fn(c)
+        if val < best_val:
+            best_val = val
+            best_c = c
+
+    return best_c if best_val != float("inf") else None
+
+
 def _format_recommendation(time_label, current_c, optimal_c):
     """Build a staffing recommendation message."""
     if current_c is None or optimal_c is None:
@@ -152,11 +195,14 @@ def optimize_segment(
     target_utilization: float = DEFAULT_TARGET_UTILIZATION,
     default_server_cost: float = DEFAULT_SERVER_COST,
     max_servers: int = DEFAULT_MAX_SERVERS,
+    customer_waiting_cost: float = DEFAULT_CUSTOMER_WAITING_COST,
+    cost_per_abandonment: float = 0.0,
+    abandonment_rate: float = 0.0,
 ) -> dict:
     """Compare current and optimized configuration for one time segment.
     
     Uses LEAN COST OPTIMIZATION:
-    - Minimizes total cost (server + waiting)
+    - Minimizes total cost (server + waiting + optional abandonment)
     - Detects waste hours (if ρ ≤ 30%, tries to remove servers)
     - Ensures ρ stays ≤ 70% for stability
     """
@@ -171,12 +217,14 @@ def optimize_segment(
         "Lq_current": None,
         "cost_current": None,
         "waiting_cost_current": None,
+        "abandonment_cost_current": None,
         "c_optimal": None,
         "rho_optimal": None,
         "Wq_optimal": None,
         "Lq_optimal": None,
         "cost_optimal": None,
         "waiting_cost_optimal": None,
+        "abandonment_cost_optimal": None,
         "delta_c": None,
         "delta_rho": None,
         "delta_Wq": None,
@@ -198,6 +246,8 @@ def optimize_segment(
     variance = segment.get("variance")
     capacity = segment.get("K")
     cost_per_server = _segment_server_cost(segment, default_server_cost)
+    abandonment_rate = float(abandonment_rate or 0.0)
+    cost_per_abandonment = float(cost_per_abandonment or 0.0)
 
     if (
         not isinstance(current_c, Integral)
@@ -228,39 +278,30 @@ def optimize_segment(
 
     current_metrics = _queue_metrics(lambda_, mu, current_c, variance, capacity)
     current_server_cost = current_c * cost_per_server
-    current_waiting_cost = _compute_waiting_cost(lambda_, current_metrics.get("Wq"))
-    current_total_cost = current_server_cost + (current_waiting_cost if current_waiting_cost is not None else 0)
+    current_waiting_cost = _compute_waiting_cost(lambda_, current_metrics.get("Wq"), customer_waiting_cost)
+    current_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
+    current_total_cost = current_server_cost + (current_waiting_cost if current_waiting_cost is not None else 0) + current_abandonment_cost
     current_rho = current_metrics.get("rho")
     
-    # LEAN OPTIMIZATION: Evaluate ALL server options to find minimum total cost
-    best_cost_scenario = None
-    best_cost_total = float('inf')
+    def _eval_cost(c):
+        m = _queue_metrics(lambda_, mu, c, variance, capacity)
+        if not m.get("stable"):
+            return float("inf")
+        sc = c * cost_per_server
+        wc = _compute_waiting_cost(lambda_, m.get("Wq"), customer_waiting_cost)
+        ac = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
+        return sc + (wc if wc is not None else 0) + ac
     
-    for candidate_c in range(1, max_servers + 1):
-        candidate_metrics = _queue_metrics(lambda_, mu, candidate_c, variance, capacity)
-        if not candidate_metrics.get("stable"):
-            continue
-            
-        server_cost = candidate_c * cost_per_server
-        waiting_cost = _compute_waiting_cost(lambda_, candidate_metrics.get("Wq"))
-        total_cost = server_cost + (waiting_cost if waiting_cost is not None else 0)
-        
-        if total_cost < best_cost_total:
-            best_cost_total = total_cost
-            best_cost_scenario = {
-                "c": candidate_c,
-                "rho": candidate_metrics.get("rho"),
-                "Wq": candidate_metrics.get("Wq"),
-                "Lq": candidate_metrics.get("Lq"),
-                "stable": True,
-                "total_cost": total_cost,
-                "waiting_cost": waiting_cost,
-                "server_cost": server_cost,
-            }
+    optimal_c = _ternary_search_c(_eval_cost, 1, max_servers)
     
-    if best_cost_scenario is None:
-        wq_cur = current_metrics.get("Wq")
-        waiting_cost_cur = _compute_waiting_cost(lambda_, wq_cur)
+    # Guard sweep: re-evaluate c-1, c, c+1 to protect against non-convexity near the stability boundary
+    if optimal_c is not None:
+        neighbours = [c for c in (optimal_c - 1, optimal_c, optimal_c + 1) if 1 <= c <= max_servers]
+        best_c, best_total = min(((c, _eval_cost(c)) for c in neighbours), key=lambda x: x[1])
+        optimal_c = best_c
+    
+    def _build_result(c_val, sv_cost, w_cost, a_cost, rec_override=None):
+        opt_metrics = _queue_metrics(lambda_, mu, c_val, variance, capacity) if c_val is not None else {}
         return {
             "time": time_label,
             "lambda": lambda_,
@@ -268,101 +309,85 @@ def optimize_segment(
             "cost_per_server": cost_per_server,
             "c_current": current_c,
             "rho_current": current_rho,
-            "Wq_current": wq_cur,
+            "Wq_current": current_metrics.get("Wq"),
             "Lq_current": current_metrics.get("Lq"),
             "cost_current": current_server_cost,
-            "waiting_cost_current": waiting_cost_cur,
-            "c_optimal": None,
-            "rho_optimal": None,
-            "Wq_optimal": None,
-            "Lq_optimal": None,
-            "cost_optimal": None,
-            "waiting_cost_optimal": None,
-            "delta_c": None,
-            "delta_rho": None,
-            "delta_Wq": None,
-            "delta_Lq": None,
-            "delta_cost": None,
+            "waiting_cost_current": current_waiting_cost,
+            "abandonment_cost_current": current_abandonment_cost,
+            "c_optimal": c_val,
+            "rho_optimal": opt_metrics.get("rho"),
+            "Wq_optimal": opt_metrics.get("Wq"),
+            "Lq_optimal": opt_metrics.get("Lq"),
+            "cost_optimal": sv_cost,
+            "waiting_cost_optimal": w_cost,
+            "abandonment_cost_optimal": a_cost,
+            "delta_c": None if c_val is None else c_val - current_c,
+            "delta_rho": None if c_val is None else _safe_diff(opt_metrics.get("rho"), current_rho),
+            "delta_Wq": None if c_val is None else _safe_diff(opt_metrics.get("Wq"), current_metrics.get("Wq")),
+            "delta_Lq": None if c_val is None else _safe_diff(opt_metrics.get("Lq"), current_metrics.get("Lq")),
+            "delta_cost": None if c_val is None else (sv_cost + (w_cost if w_cost is not None else 0) + a_cost) - current_total_cost,
             "current_stable": bool(current_metrics.get("stable")),
-            "optimized_stable": False,
-            "recommendation": f"Unable to find a stable staffing plan at {time_label}.",
-            "warning": "No server level maintained system stability within search range.",
+            "optimized_stable": c_val is not None,
+            "recommendation": rec_override or ("Unable to find a stable staffing plan." if c_val is None else _format_recommendation(time_label, current_c, c_val)),
+            "warning": current_metrics.get("error") or "",
         }
     
-    optimal_c = best_cost_scenario["c"]
-    optimal_rho = best_cost_scenario["rho"]
-    optimal_wq = best_cost_scenario["Wq"]
-    optimal_lq = best_cost_scenario["Lq"]
-    optimal_cost = best_cost_scenario["server_cost"]
-    optimal_waiting_cost = best_cost_scenario["waiting_cost"]
-    optimal_total_cost = best_cost_scenario["total_cost"]
+    if optimal_c is None:
+        return _build_result(None, None, None, None)
     
-    # Check WASTE HOURS condition: if current ρ ≤ 30% and current_c > 1, try removing a server
-    recommendation = _format_recommendation(time_label, current_c, optimal_c)
+    candidate_metrics = _queue_metrics(lambda_, mu, optimal_c, variance, capacity)
+    optimal_rho = candidate_metrics.get("rho")
+    optimal_wq = candidate_metrics.get("Wq")
+    optimal_lq = candidate_metrics.get("Lq")
+    optimal_server_cost = optimal_c * cost_per_server
+    optimal_waiting_cost = _compute_waiting_cost(lambda_, optimal_wq, customer_waiting_cost)
+    optimal_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
+    
     final_optimal_c = optimal_c
     final_optimal_rho = optimal_rho
     final_optimal_wq = optimal_wq
     final_optimal_lq = optimal_lq
-    final_optimal_cost = optimal_cost
+    final_optimal_server_cost = optimal_server_cost
     final_optimal_waiting_cost = optimal_waiting_cost
-    final_optimal_total_cost = optimal_total_cost
+    final_optimal_abandonment_cost = optimal_abandonment_cost
     
+    waste_recommendation = None
+    
+    # Check WASTE HOURS condition: if current ρ ≤ 30% and current_c > 1, try removing a server
     if current_rho is not None and current_rho <= 0.30 and current_c > 1:
-        # Check if we can remove a server while staying stable (ρ ≤ 70%)
         reduced_c = current_c - 1
         reduced_metrics = _queue_metrics(lambda_, mu, reduced_c, variance, capacity)
         reduced_rho = reduced_metrics.get("rho")
         
         if reduced_rho is not None and reduced_rho <= 0.70 and reduced_metrics.get("stable", False):
+            reduced_wq = reduced_metrics.get("Wq")
+            reduced_lq = reduced_metrics.get("Lq")
             reduced_server_cost = reduced_c * cost_per_server
-            reduced_waiting_cost = _compute_waiting_cost(lambda_, reduced_metrics.get("Wq"))
-            reduced_total_cost = reduced_server_cost + (reduced_waiting_cost if reduced_waiting_cost is not None else 0)
-            savings = current_total_cost - reduced_total_cost
+            reduced_waiting_cost = _compute_waiting_cost(lambda_, reduced_wq, customer_waiting_cost)
+            reduced_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
+            savings = current_total_cost - (reduced_server_cost + (reduced_waiting_cost if reduced_waiting_cost is not None else 0) + reduced_abandonment_cost)
             
             change = current_c - reduced_c
             label = "server" if change == 1 else "servers"
-            recommendation = (
+            waste_recommendation = (
                 f"Remove {change} {label} at {time_label} (waste hours: p={current_rho:.3f} <= 30%). "
-                f"p becomes {reduced_rho:.3f} (stable) and save P{savings:.2f} in total cost."
+                f"ρ becomes {reduced_rho:.3f} (stable) and save ₱{savings:,.2f} in total cost."
             )
-            
             final_optimal_c = reduced_c
             final_optimal_rho = reduced_rho
-            final_optimal_wq = reduced_metrics.get("Wq")
-            final_optimal_lq = reduced_metrics.get("Lq")
-            final_optimal_cost = reduced_server_cost
+            final_optimal_wq = reduced_wq
+            final_optimal_lq = reduced_lq
+            final_optimal_server_cost = reduced_server_cost
             final_optimal_waiting_cost = reduced_waiting_cost
-            final_optimal_total_cost = reduced_total_cost
+            final_optimal_abandonment_cost = reduced_abandonment_cost
     
-    warning = current_metrics.get("error") or best_cost_scenario.get("error")
-
-    return {
-        "time": time_label,
-        "lambda": lambda_,
-        "mu": mu,
-        "cost_per_server": cost_per_server,
-        "c_current": current_c,
-        "rho_current": current_rho,
-        "Wq_current": current_metrics.get("Wq"),
-        "Lq_current": current_metrics.get("Lq"),
-        "cost_current": current_server_cost,
-        "waiting_cost_current": current_waiting_cost,
-        "c_optimal": final_optimal_c,
-        "rho_optimal": final_optimal_rho,
-        "Wq_optimal": final_optimal_wq,
-        "Lq_optimal": final_optimal_lq,
-        "cost_optimal": final_optimal_cost,
-        "waiting_cost_optimal": final_optimal_waiting_cost,
-        "delta_c": final_optimal_c - current_c,
-        "delta_rho": _safe_diff(final_optimal_rho, current_rho),
-        "delta_Wq": _safe_diff(final_optimal_wq, current_metrics.get("Wq")),
-        "delta_Lq": _safe_diff(final_optimal_lq, current_metrics.get("Lq")),
-        "delta_cost": final_optimal_total_cost - current_total_cost,
-        "current_stable": bool(current_metrics.get("stable")),
-        "optimized_stable": bool(best_cost_scenario.get("stable")),
-        "recommendation": recommendation,
-        "warning": warning,
-    }
+    return _build_result(
+        final_optimal_c,
+        final_optimal_server_cost,
+        final_optimal_waiting_cost,
+        final_optimal_abandonment_cost,
+        rec_override=waste_recommendation,
+    )
 
 
 def optimize_segments(
@@ -370,6 +395,9 @@ def optimize_segments(
     target_utilization: float = DEFAULT_TARGET_UTILIZATION,
     default_server_cost: float = DEFAULT_SERVER_COST,
     max_servers: int = DEFAULT_MAX_SERVERS,
+    customer_waiting_cost: float = DEFAULT_CUSTOMER_WAITING_COST,
+    cost_per_abandonment: float = 0.0,
+    abandonment_rate: float = 0.0,
 ) -> list[dict]:
     """Optimize a sequence of time segments."""
     if time_segments is None:
@@ -381,6 +409,9 @@ def optimize_segments(
             target_utilization=target_utilization,
             default_server_cost=default_server_cost,
             max_servers=max_servers,
+            customer_waiting_cost=customer_waiting_cost,
+            cost_per_abandonment=cost_per_abandonment,
+            abandonment_rate=abandonment_rate,
         )
         for segment in time_segments
     ]
@@ -413,6 +444,12 @@ def summarize_optimization(comparison_rows: list[dict]) -> dict:
     )
     total_waiting_cost_optimal = sum(
         row["waiting_cost_optimal"] for row in comparison_rows if row.get("waiting_cost_optimal") is not None
+    )
+    total_abandonment_cost_current = sum(
+        row.get("abandonment_cost_current", 0) for row in comparison_rows if row.get("abandonment_cost_current") is not None
+    )
+    total_abandonment_cost_optimal = sum(
+        row.get("abandonment_cost_optimal", 0) for row in comparison_rows if row.get("abandonment_cost_optimal") is not None
     )
 
     utilization_pairs = [
@@ -459,6 +496,8 @@ def summarize_optimization(comparison_rows: list[dict]) -> dict:
         "total_savings": current_cost - optimized_cost,
         "total_waiting_cost_current": total_waiting_cost_current,
         "total_waiting_cost_optimal": total_waiting_cost_optimal,
+        "total_abandonment_cost_current": total_abandonment_cost_current,
+        "total_abandonment_cost_optimal": total_abandonment_cost_optimal,
         "avg_utilization_current": avg_util_current,
         "avg_utilization_optimized": avg_util_optimized,
         "avg_utilization_improvement": (
@@ -495,10 +534,10 @@ def build_recommendations(comparison_rows: list[dict]) -> list[str]:
     savings = summary["total_savings"]
     if savings is not None:
         if savings >= 0:
-            messages.append(f"Estimated total daily savings: {savings:.2f} cost units.")
+            messages.append(f"Estimated total daily savings: ₱{savings:,.2f}.")
         else:
             messages.append(
-                f"Estimated additional daily cost: {abs(savings):.2f} cost units."
+                f"Estimated additional daily cost: ₱{abs(savings):,.2f}."
             )
 
     if summary["waiting_time_improvement_pct"] is not None:
@@ -509,210 +548,117 @@ def build_recommendations(comparison_rows: list[dict]) -> list[str]:
     return messages
 
 
-def lean_optimize_segment(
-    segment: Mapping,
-    target_rho: float = 0.75,  # Target utilization (ρ) instead of utilization target
-    default_server_cost: float = DEFAULT_SERVER_COST,
-    max_servers: int = DEFAULT_MAX_SERVERS,
-    check_waste_hours: bool = True,  # If True, remove servers when ρ ≤ 30% and stays stable
-) -> dict:
-    """Lean cost optimization: minimize ρ while keeping total cost low.
-    
-    Returns a detailed analysis with multiple server scenarios showing:
-    - Current scenario (as-is)
-    - Minimum viable (reduces ρ to target with minimum servers)
-    - Optimal cost (minimizes total cost: server + waiting)
-    
-    Waste Hours Logic (when check_waste_hours=True):
-    - If current ρ ≤ 30% (underutilized), consider removing servers
-    - Only remove if resulting ρ stays ≤ 70% (system remains stable)
-    - This reduces idle server time and saves cost
+def compute_pareto_frontier(
+    segment_record: Mapping,
+    server_cost_per_hr: float,
+    wait_cost_per_min: float,
+    max_servers: int = 20,
+) -> pd.DataFrame:
+    """Compute Pareto-optimal frontier of (total_cost, Wq) pairs for a segment.
+
+    For each server count *c* in 1 .. *max_servers*, the function evaluates the
+    queueing model and keeps only stable solutions.  A point is Pareto-non-dominated
+    if no other stable point has both *total_cost* ≤ and *Wq* ≤ (with at least one
+    strict inequality).
+
+    Parameters
+    ----------
+    segment_record : Mapping
+        Segment dict with keys ``lambda``, ``mu``, ``variance``, ``K``, ``time``.
+    server_cost_per_hr : float
+        Cost per server per hour.
+    wait_cost_per_min : float
+        Cost per customer per minute of waiting.
+    max_servers : int
+        Maximum number of servers to consider (default 20).
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``[c, total_cost, server_cost, waiting_cost, Wq_min, Lq, rho]``
+        Sorted by *total_cost* ascending.  Empty DataFrame with the same columns
+        when no stable solution exists.
     """
-    empty_result = {
-        "time": "Unknown",
-        "lambda": None,
-        "mu": None,
-        "cost_per_server": None,
-        "scenarios": [],
-        "current_c": None,
-        "current_rho": None,
-        "current_total_cost": None,
-        "recommended_c": None,
-        "recommended_rho": None,
-        "recommended_total_cost": None,
-        "recommendation": "Unable to optimize invalid segment input.",
-        "warning": "Invalid segment format: each segment must be a dictionary.",
-    }
+    lambda_ = segment_record.get("lambda")
+    mu = segment_record.get("mu")
+    variance = segment_record.get("variance")
+    capacity = segment_record.get("K")
 
-    if not isinstance(segment, Mapping):
-        return empty_result
+    columns = ["c", "total_cost", "server_cost", "waiting_cost", "Wq_min", "Lq", "rho"]
 
-    time_label = str(segment.get("time", "Unknown"))
-    lambda_ = segment.get("lambda")
-    mu = segment.get("mu")
-    current_c = segment.get("c", 1)
-    variance = segment.get("variance")
-    capacity = segment.get("K")
-    cost_per_server = _segment_server_cost(segment, default_server_cost)
+    candidates: list[dict] = []
 
-    if (
-        not isinstance(current_c, Integral)
-        or int(current_c) <= 0
-        or cost_per_server is None
-        or not isinstance(max_servers, Integral)
-        or int(max_servers) <= 0
-    ):
-        invalid_result = empty_result.copy()
-        invalid_result.update(
+    for c in range(1, max_servers + 1):
+        metrics = _queue_metrics(lambda_, mu, c, variance, capacity)
+        if not metrics.get("stable"):
+            continue
+
+        wq_hr = metrics.get("Wq")
+        if wq_hr is None:
+            continue
+
+        server_cost = c * server_cost_per_hr
+        waiting_cost = lambda_ * (wq_hr * 60) * wait_cost_per_min
+        total_cost = server_cost + waiting_cost
+
+        candidates.append(
             {
-                "time": time_label,
-                "lambda": lambda_,
-                "mu": mu,
-                "cost_per_server": cost_per_server,
-                "current_c": current_c,
-                "recommendation": f"Unable to optimize {time_label}.",
-                "warning": "Invalid optimization settings or segment cost.",
+                "c": c,
+                "total_cost": total_cost,
+                "server_cost": server_cost,
+                "waiting_cost": waiting_cost,
+                "Wq_min": wq_hr * 60,
+                "Lq": metrics.get("Lq"),
+                "rho": metrics.get("rho"),
             }
         )
-        return invalid_result
 
-    current_c = int(current_c)
-    target_rho = float(target_rho) if 0 < target_rho < 1 else 0.75
-    max_servers = int(max_servers)
+    if not candidates:
+        return pd.DataFrame(columns=columns)
 
-    # Evaluate all scenarios from 1 to max_servers
-    scenarios = []
-    best_cost_scenario = None
-    best_rho_scenario = None
-    min_servers_for_target = None
-
-    for candidate_c in range(1, max_servers + 1):
-        candidate_metrics = _queue_metrics(lambda_, mu, candidate_c, variance, capacity)
-        server_cost = candidate_c * cost_per_server
-        waiting_cost = _compute_waiting_cost(lambda_, candidate_metrics.get("Wq"))
-        total_cost = server_cost + (waiting_cost if waiting_cost is not None else 0)
-        rho = candidate_metrics.get("rho")
-        
-        scenario = {
-            "servers": candidate_c,
-            "rho": rho,
-            "stable": candidate_metrics.get("stable", False),
-            "Wq": candidate_metrics.get("Wq"),
-            "Lq": candidate_metrics.get("Lq"),
-            "server_cost": server_cost,
-            "waiting_cost": waiting_cost,
-            "total_cost": total_cost,
-        }
-        scenarios.append(scenario)
-
-        # Find minimum viable (first scenario that meets target rho)
-        if (
-            min_servers_for_target is None
-            and rho is not None
-            and rho <= target_rho
-            and candidate_metrics.get("stable", False)
-        ):
-            min_servers_for_target = candidate_c
-            best_rho_scenario = scenario
-
-        # Find lowest total cost scenario
-        if (
-            total_cost is not None
-            and candidate_metrics.get("stable", False)
-            and (best_cost_scenario is None or total_cost < best_cost_scenario["total_cost"])
-        ):
-            best_cost_scenario = scenario
-
-    current_metrics = _queue_metrics(lambda_, mu, current_c, variance, capacity)
-    current_server_cost = current_c * cost_per_server
-    current_waiting_cost = _compute_waiting_cost(lambda_, current_metrics.get("Wq"))
-    current_total_cost = current_server_cost + (current_waiting_cost if current_waiting_cost is not None else 0)
-    current_rho = current_metrics.get("rho")
-
-    # Recommendation logic: prefer cost optimization over ρ reduction
-    # First check: waste hours condition (if ρ ≤ 30%, try to remove servers)
-    recommendation = f"Maintain {current_c} server(s) at {time_label}."
-    recommended = best_cost_scenario if best_cost_scenario else best_rho_scenario
-    
-    if check_waste_hours and current_rho is not None and current_rho <= 0.30 and current_c > 1:
-        # Check if we can remove a server while staying stable (ρ ≤ 70%)
-        reduced_c = current_c - 1
-        reduced_metrics = _queue_metrics(lambda_, mu, reduced_c, variance, capacity)
-        reduced_rho = reduced_metrics.get("rho")
-        
-        if reduced_rho is not None and reduced_rho <= 0.70 and reduced_metrics.get("stable", False):
-            reduced_server_cost = reduced_c * cost_per_server
-            reduced_waiting_cost = _compute_waiting_cost(lambda_, reduced_metrics.get("Wq"))
-            reduced_total_cost = reduced_server_cost + (reduced_waiting_cost if reduced_waiting_cost is not None else 0)
-            savings = current_total_cost - reduced_total_cost
-            
-            change = current_c - reduced_c
-            label = "server" if change == 1 else "servers"
-            recommendation = (
-                f"Remove {change} {label} at {time_label} (waste hours: ρ={current_rho:.3f} ≤ 30%). "
-                f"ρ becomes {reduced_rho:.3f} (≤ 70% safe) and save ₱{savings:.2f} in total cost."
-            )
-            recommended = {
-                "servers": reduced_c,
-                "rho": reduced_rho,
-                "total_cost": reduced_total_cost,
-            }
-    elif recommended and recommended["servers"] != current_c:
-        if best_cost_scenario and best_cost_scenario["total_cost"] < current_total_cost:
-            savings = current_total_cost - best_cost_scenario["total_cost"]
-            if best_cost_scenario["servers"] > current_c:
-                change = best_cost_scenario["servers"] - current_c
-                label = "server" if change == 1 else "servers"
-                recommendation = (
-                    f"Add {change} {label} at {time_label} to reduce ρ to {best_cost_scenario['rho']:.3f} "
-                    f"and save ₱{savings:.2f} in total cost."
+    # Pareto filter: keep only non-dominated points
+    non_dominated: list[dict] = []
+    for i, pi in enumerate(candidates):
+        dominated = False
+        for j, pj in enumerate(candidates):
+            if i == j:
+                continue
+            if (
+                pj["total_cost"] <= pi["total_cost"]
+                and pj["Wq_min"] <= pi["Wq_min"]
+                and (
+                    pj["total_cost"] < pi["total_cost"]
+                    or pj["Wq_min"] < pi["Wq_min"]
                 )
-            else:
-                change = current_c - best_cost_scenario["servers"]
-                label = "server" if change == 1 else "servers"
-                recommendation = (
-                    f"Remove {change} {label} at {time_label} to optimize cost. "
-                    f"ρ will be {best_cost_scenario['rho']:.3f}."
-                )
+            ):
+                dominated = True
+                break
+        if not dominated:
+            non_dominated.append(pi)
 
-    return {
-        "time": time_label,
-        "lambda": lambda_,
-        "mu": mu,
-        "cost_per_server": cost_per_server,
-        "scenarios": scenarios,
-        "current_c": current_c,
-        "current_rho": current_rho,
-        "current_stable": current_metrics.get("stable", False),
-        "current_server_cost": current_server_cost,
-        "current_waiting_cost": current_waiting_cost,
-        "current_total_cost": current_total_cost,
-        "min_servers_for_target_rho": min_servers_for_target,
-        "recommended_c": recommended["servers"] if recommended else current_c,
-        "recommended_rho": recommended["rho"] if recommended else current_rho,
-        "recommended_total_cost": recommended["total_cost"] if recommended else current_total_cost,
-        "recommendation": recommendation,
-    }
+    non_dominated.sort(key=lambda x: x["total_cost"])
+    return pd.DataFrame(non_dominated, columns=columns)
 
 
-def lean_optimize_segments(
-    time_segments: Iterable[Mapping],
-    target_rho: float = 0.75,
-    default_server_cost: float = DEFAULT_SERVER_COST,
-    max_servers: int = DEFAULT_MAX_SERVERS,
-    check_waste_hours: bool = True,
-) -> list[dict]:
-    """Lean optimize a sequence of time segments."""
-    if time_segments is None:
-        return []
+def compute_pareto_frontiers(
+    segment_records: Iterable[Mapping],
+    server_cost_per_hr: float,
+    wait_cost_per_min: float,
+    max_servers: int = 20,
+) -> dict[str, pd.DataFrame]:
+    """Batch wrapper around *compute_pareto_frontier*.
 
-    return [
-        lean_optimize_segment(
-            segment=segment,
-            target_rho=target_rho,
-            default_server_cost=default_server_cost,
+    Returns a dict keyed by each segment's ``time`` label, with the corresponding
+    Pareto frontier DataFrame as the value.
+    """
+    result: dict[str, pd.DataFrame] = {}
+    for record in segment_records:
+        label = str(record.get("time", "Unknown"))
+        result[label] = compute_pareto_frontier(
+            record,
+            server_cost_per_hr=server_cost_per_hr,
+            wait_cost_per_min=wait_cost_per_min,
             max_servers=max_servers,
-            check_waste_hours=check_waste_hours,
         )
-        for segment in time_segments
-    ]
+    return result
+

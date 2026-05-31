@@ -1,19 +1,35 @@
 """
-simulation.py — Discrete-event simulation engine using SimPy.
+simulation.py — Discrete-event (SimPy) and Monte Carlo simulation engines.
 
-Simulates M/M/1 and M/M/c queueing systems for time-segmented arrival/service
-patterns. Produces empirical metrics that complement the analytical formulas in
-queue_models.py.
+Provides two complementary simulation approaches for M/M/1 and M/M/c
+queueing systems:
 
-Metric glossary
-───────────────
+  DES (SimPy)        — Event-by-event simulation tracking every arrival,
+                       service, and queue state change. Produces empirical
+                       rho_sim, Lq_sim, Wq_sim, max_queue, served, dropped.
+
+  Monte Carlo        — Repeated analytical computations with perturbed
+                       arrival/service rates. Produces mean, std, percentiles,
+                       and failure rates per segment.
+
+DES metric glossary
+───────────────────
   rho_sim      : empirical server utilization (fraction of busy time)
-  Lq_sim       : time-average queue length  (Little's Law: Lq = λ · Wq)
+  Lq_sim       : time-average queue length  (Little's Law: Lq = λ * Wq)
   Wq_sim       : mean waiting time in queue  (hours)
   max_queue    : maximum observed queue depth during the interval
   status       : NORMAL / BUSY / OVERLOADED based on configurable thresholds
   served       : total customers served in the interval
   dropped      : customers who arrived during an overloaded stretch
+
+Monte Carlo metric glossary
+───────────────────────────
+  rho_mean     : mean utilization across trials
+  rho_std      : std deviation of utilization
+  rho_p95      : 95th percentile utilization
+  Lq_mean      : mean queue length across trials
+  Wq_mean      : mean wait time across trials
+  failure_rate : proportion of trials where rho > failure_threshold
 """
 
 from __future__ import annotations
@@ -24,7 +40,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Optional
 
+import numpy as np
 import simpy
+
+from queue_models import mm1, mmc
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Simulation constants
@@ -64,6 +83,10 @@ class SegmentResult:
     dropped: int = 0
     status: str = "Lean"
     error: Optional[str] = None
+    warmup_fraction: float = 0.0
+    warmup_end: float = 0.0
+    initial_queue_depth: int = 0
+    final_Lq: int = 0
 
     # Internal accumulators (not exposed to callers)
     _busy_area: float = field(default=0.0, repr=False)
@@ -84,6 +107,10 @@ class SegmentResult:
             "dropped": self.dropped,
             "status": self.status,
             "error": self.error,
+            "warmup_fraction": self.warmup_fraction,
+            "warmup_end": self.warmup_end,
+            "initial_queue_depth": self.initial_queue_depth,
+            "final_Lq": self.final_Lq,
         }
 
 
@@ -152,23 +179,39 @@ def _exponential(rate: float, rng: random.Random) -> float:
 class _QueueMonitor:
     """Tracks time-averaged queue length and server busyness via area-under-curve."""
 
-    def __init__(self, env: simpy.Environment, servers: simpy.Resource):
+    def __init__(self, env: simpy.Environment, servers: simpy.Resource, warmup_end: float = 0.0):
         self.env = env
         self.servers = servers
+        self._warmup_end = warmup_end
         self._last_t = 0.0
-        self._queue_area = 0.0   # ∫ Lq(t) dt
-        self._busy_area = 0.0    # ∫ busy_servers(t) dt
+        self._queue_area = 0.0   # ∫ Lq(t) dt  (post-warmup only)
+        self._busy_area = 0.0    # ∫ busy_servers(t) dt  (post-warmup only)
 
     def _snapshot(self, at: float = None):
-        """Accumulate area since the last snapshot, optionally forcing a time."""
+        """Accumulate area since the last snapshot, optionally forcing a time.
+
+        Only the portion of each interval that falls **after** *warmup_end* is
+        counted — warm-up periods are discarded from the area integrals.
+        """
         now = at if at is not None else self.env.now
         dt = now - self._last_t
         if dt <= 0:
             return
+
         q = len(self.servers.queue)           # number waiting
         b = self.servers.count                # number in service
-        self._queue_area += q * dt
-        self._busy_area  += b * dt
+
+        # Split the interval at warmup_end if it falls in the middle
+        if self._warmup_end > self._last_t and self._warmup_end < now:
+            post_dt = now - self._warmup_end
+            self._queue_area += q * post_dt
+            self._busy_area  += b * post_dt
+        elif self._last_t >= self._warmup_end:
+            # Entirely within the post-warmup region
+            self._queue_area += q * dt
+            self._busy_area  += b * dt
+        # else: entirely within warmup — discard
+
         self._last_t = now
 
     def record(self):
@@ -178,15 +221,14 @@ class _QueueMonitor:
     def finalize(self, end_time: float) -> tuple[float, float]:
         """Flush remaining area exactly up to end_time and return (Lq, busy_fraction).
 
-        Forces the snapshot to end_time so the idle tail after the last event
-        is correctly included — otherwise rho_sim is understated.
+        Uses the *post-warmup* period as the averaging denominator.
         """
         self._snapshot(at=end_time)
-        duration = end_time  # simulation starts at t=0
+        effective_start = max(0.0, self._warmup_end)
+        duration = end_time - effective_start
         if duration <= 0:
             return 0.0, 0.0
         lq = self._queue_area / duration
-        # busy_fraction averages busy_servers / total_servers → utilization per server
         busy_fraction = self._busy_area / (duration * max(self.servers.capacity, 1))
         return lq, busy_fraction
 
@@ -198,6 +240,7 @@ def _customer_process(
     result: SegmentResult,
     monitor: _QueueMonitor,
     rng: random.Random,
+    warmup_end: float = 0.0,
 ):
     """SimPy generator: one customer enters queue, waits for a server, gets served."""
     arrival = env.now
@@ -212,14 +255,19 @@ def _customer_process(
         yield req
         monitor.record()
 
-        wait = env.now - arrival
-        result._wait_sum += wait
+        service_start = env.now
+        wait = service_start - arrival
+
+        # Only record post-warmup customers (service start >= warmup_end)
+        if service_start >= warmup_end:
+            result._wait_sum += wait
+            result.served += 1
 
         service_time = _exponential(mu, rng)
         yield env.timeout(service_time)
         monitor.record()
 
-    result.served += 1
+        # result.served used to be incremented unconditionally here; moved above
 
 
 def _arrival_process(
@@ -231,6 +279,7 @@ def _arrival_process(
     result: SegmentResult,
     monitor: _QueueMonitor,
     rng: random.Random,
+    warmup_end: float = 0.0,
 ):
     """SimPy generator: generates arrivals for the duration of one segment."""
     while True:
@@ -241,7 +290,7 @@ def _arrival_process(
         yield env.timeout(iat)
 
         env.process(
-            _customer_process(env, servers, mu, result, monitor, rng)
+            _customer_process(env, servers, mu, result, monitor, rng, warmup_end)
         )
 
 
@@ -254,6 +303,8 @@ def simulate_segment(
     sim_hours: float = SIM_HOURS_PER_SEGMENT,
     queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
     seed: Optional[int] = RANDOM_SEED,
+    warmup_fraction: float = 0.2,
+    initial_queue_depth: int = 0,
 ) -> SegmentResult:
     """
     Run a discrete-event simulation for one time segment.
@@ -268,11 +319,19 @@ def simulate_segment(
         Queue depth that triggers OVERLOADED status regardless of utilization.
     seed : int or None
         Random seed for reproducibility.  Pass None for true stochasticity.
+    warmup_fraction : float
+        Fraction of *sim_hours* to discard as warm-up (default 0.2, range 0.0–0.5).
+        Set to 0.0 to disable warm-up deletion (identical to legacy behaviour).
+    initial_queue_depth : int
+        Number of customers already in queue when simulation starts (default 0).
+        These customers have *arrival_time* = 0 and are subject to warm-up filtering.
 
     Returns
     -------
     SegmentResult
-        Empirical metrics for the interval.
+        Empirical metrics for the interval.  When *warmup_fraction* > 0,
+        time-averaged metrics (Lq, rho) and waiting-time statistics only
+        reflect the post-warmup portion of the simulation.
     """
     time_label = str(segment.get("time", "Unknown"))
     result = SegmentResult(time=time_label, lambda_=0.0, mu=0.0, c=1)
@@ -281,6 +340,10 @@ def simulate_segment(
     result.lambda_ = lambda_ or 0.0
     result.mu = mu or 0.0
     result.c = c
+
+    # Clamp and record warm-up parameters
+    warmup_fraction = max(0.0, min(0.5, warmup_fraction))
+    result.warmup_fraction = warmup_fraction
 
     if error:
         result.error = error
@@ -306,15 +369,29 @@ def simulate_segment(
 
     rng = random.Random(seed)
     sim_duration = effective_sim_hours  # environment time unit = hours
+    warmup_end = sim_duration * warmup_fraction
+    result.warmup_end = warmup_end
 
     env = simpy.Environment()
     servers = simpy.Resource(env, capacity=c)
-    monitor = _QueueMonitor(env, servers)
+    monitor = _QueueMonitor(env, servers, warmup_end=warmup_end)
+
+    # Inject initial queue depth (customers already waiting at t=0)
+    initial_queue_depth = max(0, int(initial_queue_depth))
+    result.initial_queue_depth = initial_queue_depth
+    if initial_queue_depth > 0:
+        for _ in range(initial_queue_depth):
+            env.process(
+                _customer_process(env, servers, mu, result, monitor, rng, warmup_end)
+            )
 
     env.process(
-        _arrival_process(env, servers, lambda_, mu, sim_duration, result, monitor, rng)
+        _arrival_process(env, servers, lambda_, mu, sim_duration, result, monitor, rng, warmup_end)
     )
     env.run(until=sim_duration)
+
+    # Record final queue depth (for carryover to next segment)
+    result.final_Lq = len(servers.queue)
 
     # Finalize time-averaged metrics at the true segment boundary
     lq_avg, rho_emp = monitor.finalize(sim_duration)
@@ -345,12 +422,18 @@ def simulate_segments(
     sim_hours: float = SIM_HOURS_PER_SEGMENT,
     queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
     seed: Optional[int] = RANDOM_SEED,
+    carryover: bool = True,
 ) -> list[dict]:
     """
     Simulate a sequence of time segments and return a list of result dicts.
 
-    Each segment is simulated independently (no carry-over customers between
-    segments).  The seed is incremented per segment so results are reproducible
+    By default (*carryover* = True) the final queue depth of segment *i* is
+    passed as the initial queue depth of segment *i* + 1, giving a more
+    realistic picture across consecutive time windows.  Set *carryover* =
+    False to simulate each segment independently (empty queue at start of
+    every segment — legacy behaviour).
+
+    The seed is incremented per segment so results are reproducible
     but statistically independent.
 
     Parameters
@@ -363,6 +446,9 @@ def simulate_segments(
         Queue depth that forces OVERLOADED status.
     seed : int or None
         Base random seed.  Segments use seed, seed+1, seed+2, … when not None.
+    carryover : bool
+        If True (default), carry final queue depth from segment *i* to segment
+        *i* + 1.  If False, each segment starts with an empty queue.
 
     Returns
     -------
@@ -373,6 +459,7 @@ def simulate_segments(
         return []
 
     results = []
+    carry = 0  # initial queue depth for the first segment
     for i, seg in enumerate(time_segments):
         seg_seed = (seed + i) if seed is not None else None
         res = simulate_segment(
@@ -380,8 +467,14 @@ def simulate_segments(
             sim_hours=sim_hours,
             queue_overload_threshold=queue_overload_threshold,
             seed=seg_seed,
+            initial_queue_depth=carry,
         )
         results.append(res.to_dict())
+
+        if carryover:
+            carry = int(round(results[-1].get("final_Lq", 0)))
+        else:
+            carry = 0
 
     return results
 
@@ -466,3 +559,208 @@ def summarize_simulation(sim_rows: list[dict]) -> dict:
         "lean_count": sum(1 for r in sim_rows if r.get("status") == "Lean"),
         "avg_max_queue": sum(mq_vals) / len(mq_vals) if mq_vals else None,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Public API — Monte Carlo simulation
+# ──────────────────────────────────────────────────────────────────────────────
+
+MC_DEFAULT_TRIALS = 500
+MC_DEFAULT_FAILURE_THRESHOLD = 0.75
+MC_ARRIVAL_NOISE = 0.20
+MC_SERVICE_NOISE = 0.10
+
+
+def mc_simulate_segment(
+    segment: Mapping,
+    num_trials: int = MC_DEFAULT_TRIALS,
+    failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
+    seed: Optional[int] = 42,
+) -> dict:
+    """
+    Run Monte Carlo simulation for one time segment.
+
+    Perturbs arrival rate by ±20% and service rate by ±10% across *num_trials*
+    independent analytical evaluations.  Returns distributional statistics.
+
+    Parameters
+    ----------
+    segment : Mapping
+        Must contain 'lambda', 'mu', and optionally 'c' (default 1) and 'time'.
+    num_trials : int
+        Number of Monte Carlo replications.
+    failure_threshold : float
+        Utilization above this counts as a "failure".
+    seed : int or None
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    dict
+        time, lambda, mu, c, rho_mean, rho_std, rho_p95, Lq_mean, Wq_mean,
+        failure_rate, status
+    """
+    time_label = str(segment.get("time", "Unknown"))
+    error, lambda_, mu, c = _validate_segment(segment)
+
+    if error:
+        return {
+            "time": time_label, "lambda": lambda_, "mu": mu, "c": c,
+            "rho_mean": None, "rho_std": None, "rho_p95": None,
+            "Lq_mean": None, "Wq_mean": None,
+            "failure_rate": None, "status": "ERROR",
+            "error": error,
+            "ci_Wq_hw": None, "ci_Lq_hw": None, "adequate_samples": False,
+        }
+
+    rng = np.random.default_rng(seed)
+
+    def _pick_model(l, m, c_):
+        return mmc(l, m, c_) if c_ > 1 else mm1(l, m)
+
+    rho_samples = np.empty(num_trials)
+    lq_samples = np.empty(num_trials)
+    wq_samples = np.empty(num_trials)
+    failures = 0
+
+    for i in range(num_trials):
+        arrival_factor = 1.0 + rng.uniform(-MC_ARRIVAL_NOISE, MC_ARRIVAL_NOISE)
+        service_factor = 1.0 + rng.uniform(-MC_SERVICE_NOISE, MC_SERVICE_NOISE)
+        lam = lambda_ * arrival_factor
+        m = mu * service_factor
+        result = _pick_model(lam, m, c)
+
+        if result.get("stable"):
+            rho = result["rho"]
+            lq_samples[i] = result["Lq"]
+            wq_samples[i] = result["Wq"]
+        else:
+            rho = lam / (c * m) if (c * m) > 0 else float("inf")
+            lq_samples[i] = float("inf")
+            wq_samples[i] = float("inf")
+
+        rho_samples[i] = rho
+        if rho > failure_threshold:
+            failures += 1
+
+    finite = np.isfinite(rho_samples)
+    finite_lq = np.isfinite(lq_samples)
+    finite_wq = np.isfinite(wq_samples)
+    n_finite_wq = int(np.sum(finite_wq))
+    n_finite_lq = int(np.sum(finite_lq))
+    failure_rate = failures / num_trials
+
+    # 95 % CI half-widths (using normal approximation)
+    if n_finite_wq > 1:
+        std_wq = float(np.std(wq_samples[finite_wq], ddof=1))
+        mean_wq = float(np.mean(wq_samples[finite_wq]))
+        ci_Wq_hw = round(1.96 * std_wq / math.sqrt(n_finite_wq), 6)
+        adequate_samples = bool(mean_wq > 0 and (ci_Wq_hw / mean_wq) < 0.10)
+    else:
+        ci_Wq_hw = None
+        adequate_samples = False
+
+    if n_finite_lq > 1:
+        std_lq = float(np.std(lq_samples[finite_lq], ddof=1))
+        ci_Lq_hw = round(1.96 * std_lq / math.sqrt(n_finite_lq), 6)
+    else:
+        ci_Lq_hw = None
+
+    return {
+        "time": time_label,
+        "lambda": lambda_,
+        "mu": mu,
+        "c": c,
+        "rho_mean": round(float(np.mean(rho_samples[finite])), 6) if finite.any() else None,
+        "rho_std": round(float(np.std(rho_samples[finite])), 6) if finite.any() else None,
+        "rho_p95": round(float(np.percentile(rho_samples[finite], 95)), 6) if finite.any() else None,
+        "Lq_mean": round(float(np.mean(lq_samples[finite_lq])), 6) if finite_lq.any() else None,
+        "Wq_mean": round(float(np.mean(wq_samples[finite_wq])), 6) if finite_wq.any() else None,
+        "failure_rate": round(failure_rate, 4),
+        "failure_count": int(failures),
+        "status": "PASS" if failure_rate <= 0.10 else "FAIL",
+        "error": None,
+        "ci_Wq_hw": ci_Wq_hw,
+        "ci_Lq_hw": ci_Lq_hw,
+        "adequate_samples": adequate_samples,
+    }
+
+
+def mc_simulate_segments(
+    time_segments: Iterable[Mapping],
+    num_trials: int = MC_DEFAULT_TRIALS,
+    failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
+    seed: Optional[int] = 42,
+) -> list[dict]:
+    """
+    Run Monte Carlo simulation across a sequence of time segments.
+
+    The seed is incremented per segment for reproducible but independent trials.
+    """
+    if time_segments is None:
+        return []
+
+    results = []
+    for i, seg in enumerate(time_segments):
+        seg_seed = (seed + i) if seed is not None else None
+        results.append(mc_simulate_segment(seg, num_trials, failure_threshold, seg_seed))
+    return results
+
+
+def mc_summarize_simulation(mc_rows: list[dict]) -> dict:
+    """
+    Compute dashboard-level KPIs from mc_simulate_segments() output.
+
+    Returns
+    -------
+    dict
+        avg_rho, avg_rho_std, max_rho_mean, max_rho_time,
+        avg_failure_rate, total_failures, segments_failed, segments_total,
+        avg_Lq, avg_Wq
+    """
+    if not mc_rows:
+        return {
+            "avg_rho": None, "avg_rho_std": None,
+            "max_rho_mean": None, "max_rho_time": None,
+            "avg_failure_rate": None, "total_failures": 0,
+            "segments_failed": 0, "segments_total": 0,
+            "avg_Lq": None, "avg_Wq": None,
+            "n_adequate": 0, "n_inadequate": 0,
+        }
+
+    valid = [r for r in mc_rows if r.get("rho_mean") is not None]
+    if not valid:
+        return {
+            "avg_rho": None, "avg_rho_std": None,
+            "max_rho_mean": None, "max_rho_time": None,
+            "avg_failure_rate": None,
+            "total_failures": sum(r.get("failure_count", 0) for r in mc_rows),
+            "segments_failed": sum(1 for r in mc_rows if r.get("status") == "FAIL"),
+            "segments_total": len(mc_rows),
+            "avg_Lq": None, "avg_Wq": None,
+            "n_adequate": 0, "n_inadequate": len(mc_rows),
+        }
+
+    rho_vals = np.array([r["rho_mean"] for r in valid])
+    max_row = max(valid, key=lambda r: r["rho_mean"])
+
+    n_adequate = sum(1 for r in mc_rows if r.get("adequate_samples"))
+    n_inadequate = len(mc_rows) - n_adequate
+
+    return {
+        "avg_rho": round(float(np.mean(rho_vals)), 6),
+        "avg_rho_std": round(float(np.mean([r["rho_std"] for r in valid if r.get("rho_std") is not None])), 6),
+        "max_rho_mean": round(float(np.max(rho_vals)), 6),
+        "max_rho_time": max_row["time"],
+        "avg_failure_rate": round(float(np.mean([r["failure_rate"] for r in valid if r.get("failure_rate") is not None])), 4),
+        "total_failures": sum(r.get("failure_count", 0) for r in mc_rows),
+        "segments_failed": sum(1 for r in mc_rows if r.get("status") == "FAIL"),
+        "segments_total": len(mc_rows),
+        "avg_Lq": round(float(np.nanmean([r["Lq_mean"] for r in valid if r.get("Lq_mean") is not None])), 6),
+        "avg_Wq": round(float(np.nanmean([r["Wq_mean"] for r in valid if r.get("Wq_mean") is not None])), 6),
+        "n_adequate": n_adequate,
+        "n_inadequate": n_inadequate,
+    }
+
+
+

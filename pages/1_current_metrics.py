@@ -1,408 +1,280 @@
-"""
-Page 1 — Current Data Upload & Validation
-✅ Upload CSV/Excel
-✅ Validate schema for M/M/1, M/M/c, M/G/c, M/M/c/K, or M/G/c/K
-✅ Convert numeric columns
-✅ Compute metrics
-✅ Store in st.session_state["current_data"]
+"""Current queue metrics page."""
 
-Supported Models:
-- M/M/1: Single server (c=1, no variance needed)
-- M/M/c: Multiple servers (c>1, no variance needed)
-- M/G/c: General service time (any c, variance column optional)
-- M/M/c/K: Finite-capacity queue (K column provided)
-- M/G/c/K: Finite-capacity general service queue (variance and K provided)
-"""
+from __future__ import annotations
 
-import streamlit as st
+import io
+
 import pandas as pd
-import numpy as np
-from pathlib import Path
-from queue_models import mgc, mgck, mmc, mmck
+import streamlit as st
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: Format numbers with trailing zeros removed
-# ─────────────────────────────────────────────────────────────────────────────
-
-def format_number(val, decimals=2):
-    """Format a number, removing trailing zeros."""
-    if pd.isna(val):
-        return ""
-    formatted = f"{val:.{decimals}f}"
-    # Remove trailing zeros but keep at least one decimal place
-    formatted = formatted.rstrip('0')
-    if formatted.endswith('.'):
-        formatted += '0'
-    return formatted
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────────────────
-
-REQUIRED_COLUMNS = [
-    "time",
-    "lambda",
-    "mu",
-    "c"
-]
-
-OPTIONAL_COLUMNS = [
-    "variance",  # For M/G/c and M/G/c/K model support
-    "K",  # Total finite system capacity for M/M/c/K and M/G/c/K
-]
-
-NUMERIC_COLUMNS = [
-    "lambda",
-    "mu",
-    "c"
-]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: Validate numeric conversion
-# ─────────────────────────────────────────────────────────────────────────────
-
-def validate_and_convert_numeric(df: pd.DataFrame) -> tuple[bool, str, pd.DataFrame]:
-    """
-    Validate that numeric columns exist and convert to proper types.
-    Return: (success: bool, message: str, converted_df: DataFrame)
-    """
-    df_copy = df.copy()
-    
-    for col in NUMERIC_COLUMNS:
-        if col not in df_copy.columns:
-            return False, f"❌ Missing column: {col}", df_copy
-        
-        try:
-            df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
-            
-            # Check for NaN after conversion
-            nan_count = df_copy[col].isna().sum()
-            if nan_count > 0:
-                return False, f"❌ Column '{col}' has {nan_count} invalid numeric values", df_copy
-                
-        except Exception as e:
-            return False, f"❌ Error converting '{col}': {str(e)}", df_copy
-    for col in OPTIONAL_COLUMNS:
-        if col in df_copy.columns:
-            df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
-
-    return True, "All numeric columns validated", df_copy
+from app_page_utils import (
+    dataframe_download,
+    init_session_state,
+    inject_or_css,
+    pretty_metric,
+    read_uploaded_table,
+    sample_segments,
+    to_segment_records,
+    validate_and_normalize,
+)
+from costing import compute_all_costs, compute_cost_summary, DEFAULT_SERVER_COST_HR, DEFAULT_WAIT_COST_HR, DEFAULT_ABANDONMENT_COST
+from data_processing import compute_kpis, get_unstable_messages, process_segments
+from pos_connector import (
+    compute_lambda_mu,
+    fit_service_distribution,
+    load_transactions,
+    test_poisson_arrivals,
+    to_novamart_csv,
+)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: Validate schema
-# ─────────────────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Current Metrics", layout="wide")
+init_session_state()
+inject_or_css()
 
-def validate_schema(df: pd.DataFrame) -> tuple[bool, str]:
-    """
-    Check that all REQUIRED_COLUMNS exist.
-    Return: (success: bool, message: str)
-    """
-    missing = set(REQUIRED_COLUMNS) - set(df.columns)
-    if missing:
-        return False, f"❌ Missing columns: {', '.join(missing)}"
-    
-    return True, "✅ Schema valid"
+# ── Alert thresholds (sidebar) ───────────────────────────────────────────
+st.sidebar.subheader("🔔 Alert Thresholds")
+max_wq = st.sidebar.number_input(
+    "Max wait time (min)", value=5.0, min_value=0.1, step=0.5
+)
+max_rho = st.sidebar.number_input(
+    "Max utilization (ρ)", value=0.85, min_value=0.1, max_value=1.0, step=0.05
+)
+st.session_state["alert_thresholds"] = {"max_wq": max_wq, "max_rho": max_rho}
 
+st.title("Current Metrics")
+st.caption("Upload queue data, validate the schema, and compute current queue performance.")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: Compute metrics (M/M/c model)
-# ─────────────────────────────────────────────────────────────────────────────
+data_source = st.radio(
+    "Data Source",
+    ["Upload CSV manually", "Import from POS transaction log"],
+    horizontal=True,
+)
 
-def compute_mmc_metrics(row: pd.Series) -> dict:
-    """
-    Compute M/M/c or M/G/c queue metrics for a single row.
+source_df = None
 
-    Rows with K use finite-capacity models. Rows with variance use
-    general-service approximations.
-    """
-    lambda_ = row["arrival_rate"]
-    mu = row["service_rate"]
-    c = int(row["servers"])
+# ── POS Import Path ───────────────────────────────────────────────────────
 
-    # Validation
-    if lambda_ < 0 or mu <= 0 or c <= 0:
-        return {
-            "utilization": np.nan,
-            "Lq": np.nan,
-            "Wq": np.nan,
-            "Ls": np.nan,
-            "Ws": np.nan,
-            "model": "Invalid",
-        }
+if data_source == "Import from POS transaction log":
+    # Clear stale manual-upload state
+    if "pos_csv" not in st.session_state:
+        st.session_state["pos_csv"] = None
 
-    variance = row.get("variance")
-    capacity = row.get("K")
-    has_variance = variance is not None and not pd.isna(variance)
-    has_capacity = capacity is not None and not pd.isna(capacity)
-
-    if has_capacity and has_variance:
-        result = mgck(lambda_, mu, c, variance, int(capacity))
-        model_name = "M/G/c/K"
-    elif has_capacity:
-        result = mmck(lambda_, mu, c, int(capacity))
-        model_name = "M/M/c/K"
-    elif has_variance:
-        result = mgc(lambda_, mu, c, variance)
-        model_name = "M/G/c"
-    else:
-        result = mmc(lambda_, mu, c)
-        model_name = "M/M/c"
-
-    if not result.get("stable", False):
-        return {
-            "utilization": result.get("rho", np.nan),
-            "Lq": np.inf,
-            "Wq": np.inf,
-            "Ls": np.inf,
-            "Ws": np.inf,
-            "model": model_name,
-        }
-
-    return {
-        "utilization": round(result["rho"], 4),
-        "Lq": round(result["Lq"], 4),
-        "Wq": round(result["Wq"], 4),
-        "Ls": round(result["L"], 4),
-        "Ws": round(result["W"], 4),
-        "model": model_name,
-    }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Main UI
-# ─────────────────────────────────────────────────────────────────────────────
-
-st.title("📥 Page 1: Current Metrics")
-st.markdown("**Upload CSV/Excel → Validate → Compute metrics → View & Export**")
-st.info("💡 **Optional:** You can stop here and just view/download data. Pages 2-5 are for optimization analysis only.")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Upload File")
-    uploaded_file = st.file_uploader(
-        "Choose CSV or Excel file",
-        type=["csv", "xlsx", "xls"],
-        help="Required: time, lambda, mu, c. Optional: variance, K."
+    pos_file = st.file_uploader(
+        "Upload raw POS transaction CSV",
+        type=["csv"],
+        key="pos_upload",
     )
 
-with col2:
-    st.subheader("Actions")
-    if st.button("🔄 Reset All Data", key="reset_data_btn"):
-        # Clear ALL session state
-        st.session_state["current_data"] = None
-        st.session_state["recommended_data"] = None
-        st.session_state["comparison_data"] = None
-        st.session_state["simulation_results"] = None
-        st.session_state["waste_reduction_data"] = None
-        st.session_state.pop("_sample_df", None)
-        st.success("✅ All data cleared - upload fresh data on this page")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Process uploaded or sample file
-# ─────────────────────────────────────────────────────────────────────────────
-
-df_to_process = None
-
-if uploaded_file is not None:
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df_to_process = pd.read_csv(uploaded_file)
-        else:
-            df_to_process = pd.read_excel(uploaded_file)
-        st.success(f"✅ Loaded {len(df_to_process)} rows")
-        
-        # CRITICAL: Clear all downstream data when new upload happens
-        st.session_state["recommended_data"] = None
-        st.session_state["comparison_data"] = None
-        st.session_state["simulation_results"] = None
-        st.session_state["waste_reduction_data"] = None
-        st.info("⚠️ Downstream data cleared - re-run Pages 2-5 with fresh data")
-        
-    except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
-        df_to_process = None
-else:
-    st.info("👉 **Start here:** Upload a CSV or Excel file with required columns: time, lambda, mu, c. Optional columns: variance, K.")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Validation Stage
-# ─────────────────────────────────────────────────────────────────────────────
-
-if df_to_process is not None:
-    st.markdown("---")
-    st.subheader("🔍 Validation")
-    
-    # Schema check
-    schema_ok, schema_msg = validate_schema(df_to_process)
-    st.info(schema_msg)
-    
-    if not schema_ok:
-        st.stop()
-    
-    # Numeric check
-    numeric_ok, numeric_msg, df_converted = validate_and_convert_numeric(df_to_process)
-    st.info(numeric_msg)
-    
-    if not numeric_ok:
-        st.stop()
-    
-    # ─────────────────────────────────────────────────────────────────────────────
-    # Transform columns to internal format
-    # ─────────────────────────────────────────────────────────────────────────────
-    
-    st.markdown("---")
-    st.subheader("🔄 Transforming Data")
-    
-    df_transformed = df_converted.copy()
-    
-    # Rename columns to internal format
-    df_transformed = df_transformed.rename(columns={
-        'time': 'time_interval',
-        'lambda': 'arrival_rate',
-        'mu': 'service_rate',
-        'c': 'servers'
-    })
-    
-    # Add placeholder columns for metrics (will be calculated next)
-    df_transformed['utilization'] = 0.0
-    df_transformed['Lq'] = 0.0
-    df_transformed['Wq'] = 0.0
-    df_transformed['Ls'] = 0.0
-    df_transformed['Ws'] = 0.0
-    
-    st.success(f"✅ Columns renamed - Ready to compute metrics")
-    
-    # ─────────────────────────────────────────────────────────────────────────────
-    # Compute Metrics
-    # ─────────────────────────────────────────────────────────────────────────────
-    
-    st.markdown("---")
-    st.subheader("⚙️ Computing Metrics")
-    
-    df_result = df_transformed.copy()
-    
-    progress_bar = st.progress(0)
-    for idx, row in df_result.iterrows():
-        metrics = compute_mmc_metrics(row)
-        for key, value in metrics.items():
-            df_result.at[idx, key] = value
-        progress_bar.progress((idx + 1) / len(df_result))
-    
-    st.success(f"✅ Metrics computed for {len(df_result)} intervals")
-    
-    # ─────────────────────────────────────────────────────────────────────────────
-    # AUTO-SAVE to Session State (NO BUTTON CLICK NEEDED!)
-    # ─────────────────────────────────────────────────────────────────────────────
-    
-    st.session_state["current_data"] = df_result.copy()
-    st.info(f"✅ **Auto-saved to session state** - Ready for Page 2")
-    
-    # ─────────────────────────────────────────────────────────────────────────────
-    # Display Results
-    # ─────────────────────────────────────────────────────────────────────────────
-    
-    st.markdown("---")
-    st.subheader("📊 Current Data")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Rows", len(df_result))
-    with col2:
-        avg_util = df_result["utilization"].mean()
-        st.metric("Avg Utilization", f"{avg_util:.1%}")
-    with col3:
-        max_util = df_result["utilization"].max()
-        st.metric("Max Utilization", f"{max_util:.1%}")
-    
-    # Show data table
-    df_result_styled = df_result.style.format({
-        "arrival_rate": lambda x: format_number(x, 2),
-        "service_rate": lambda x: format_number(x, 2),
-        "utilization": lambda x: format_number(x, 4),
-        "Lq": lambda x: format_number(x, 4),
-        "Wq": lambda x: format_number(x, 4),
-        "Ls": lambda x: format_number(x, 4),
-        "Ws": lambda x: format_number(x, 4),
-    })
-    
-    st.dataframe(df_result_styled, use_container_width=True)
-    
-    # ─────────────────────────────────────────────────────────────────────────────
-    # DEBUG: Show what was saved
-    # ─────────────────────────────────────────────────────────────────────────────
-    
-    with st.expander("🔧 Debug: Verify Saved Data", expanded=False):
-        st.caption("Check that YOUR data was uploaded correctly")
-        debug_col1, debug_col2 = st.columns(2)
-        
-        with debug_col1:
-            st.write("**First 2 Rows:**")
-            debug_styled = df_result.head(2).style.format({
-                "arrival_rate": lambda x: format_number(x, 2),
-                "service_rate": lambda x: format_number(x, 2),
-                "utilization": lambda x: format_number(x, 4),
-                "Lq": lambda x: format_number(x, 4),
-                "Wq": lambda x: format_number(x, 4),
-                "Ls": lambda x: format_number(x, 4),
-                "Ws": lambda x: format_number(x, 4),
-            })
-            st.dataframe(debug_styled, use_container_width=True)
-        
-        with debug_col2:
-            st.write("**Data Summary:**")
-            st.json({
-                "Total Rows": len(df_result),
-                "Avg Arrival Rate": round(df_result["arrival_rate"].mean(), 2),
-                "Avg Service Rate": round(df_result["service_rate"].mean(), 2),
-                "Avg Utilization": f"{df_result['utilization'].mean():.2%}",
-                "Max Utilization": f"{df_result['utilization'].max():.2%}",
-                "Total Current Servers": int(df_result["servers"].sum()),
-            })
-    
-    # ─────────────────────────────────────────────────────────────────────────────
-    # Save to Session State & Export
-    # ─────────────────────────────────────────────────────────────────────────────
-
-    st.markdown("---")
-    st.info("✅ **Data auto-saved to session state!** Use buttons below to export or reset.")
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col1:
-        if st.button("🔄 Reset All Data", key="reset_manual"):
-            st.session_state["current_data"] = None
-            st.session_state["recommended_data"] = None
-            st.session_state["comparison_data"] = None
-            st.session_state["simulation_results"] = None
-            st.session_state["waste_reduction_data"] = None
-            st.success("✅ All data cleared - upload new file")
-    
-    with col2:
-        csv_bytes = df_result.to_csv(index=False).encode()
-        st.download_button(
-            "📥 Download CSV",
-            csv_bytes,
-            f"current_data.csv",
-            "text/csv",
-        )
-    
-    with col3:
+    if pos_file is not None:
         try:
-            import io
-            excel_buffer = io.BytesIO()
-            excel_writer = pd.ExcelWriter(excel_buffer, engine='openpyxl')
-            df_result.to_excel(excel_writer, index=False, sheet_name="Current Data")
-            excel_writer.close()
-            excel_buffer.seek(0)
-            
-            st.download_button(
-                "📊 Download Excel",
-                excel_buffer.getvalue(),
-                "current_data.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            raw_df = load_transactions(pos_file)
+            param_df = compute_lambda_mu(raw_df)
+            csv_str = to_novamart_csv(param_df)
+
+            st.success(f"Computed {len(param_df)} time segments from POS data.")
+            st.subheader("Computed Queueing Parameters")
+            st.dataframe(param_df, use_container_width=True)
+
+            # Distribution tests
+            poisson_result = test_poisson_arrivals(raw_df)
+            service_result = fit_service_distribution(raw_df)
+
+            if poisson_result["is_poisson"]:
+                st.success("✅ Arrivals follow Poisson distribution")
+            elif poisson_result.get("warning"):
+                st.warning(poisson_result["warning"])
+
+            st.info(
+                f"Estimated service rate: μ = {service_result['mu_mle']:.1f}/hr "
+                f"| CV = {service_result['cv']:.2f}"
             )
-        except Exception as e:
-            st.warning(f"Excel export: {e}")
+
+            if not service_result["is_exponential"]:
+                st.warning(
+                    "Service times deviate from exponential — "
+                    "consider using variance column + M/G/c model."
+                )
+
+            if st.button("Use this data", type="primary", use_container_width=True):
+                st.session_state["pos_csv"] = csv_str
+                st.rerun()
+        except Exception as exc:
+            st.error(f"Error processing POS file: {exc}")
+
+    if st.session_state.get("pos_csv"):
+        source_df = pd.read_csv(io.StringIO(st.session_state["pos_csv"]))
+    else:
+        st.info("Upload a POS transaction CSV to generate queueing parameters.")
+        st.stop()
+
+# ── Manual Upload Path (existing behaviour) ───────────────────────────────
+
+else:
+    # Clear any previously stored POS data when switching modes
+    st.session_state["pos_csv"] = None
+
+    uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx", "xls"], key="manual_upload")
+    use_sample = st.button("Load Sample Data", use_container_width=True)
+
+    if uploaded_file is not None:
+        try:
+            source_df = read_uploaded_table(uploaded_file)
+        except ValueError as exc:
+            st.error(str(exc))
+    elif use_sample:
+        source_df = sample_segments()
+
+    if source_df is None:
+        st.info("Upload a file or load sample data to begin.")
+        st.stop()
+
+valid, message, normalized_df = validate_and_normalize(source_df)
+if not valid:
+    st.error(message)
+    st.dataframe(normalized_df, use_container_width=True)
+    st.stop()
+
+st.success(message)
+st.subheader("Input Data")
+st.dataframe(normalized_df, use_container_width=True)
+
+segments = to_segment_records(normalized_df)
+results_df = process_segments(segments)
+kpis = compute_kpis(results_df)
+
+# ── Threshold alerts ─────────────────────────────────────────────────────
+thresholds = st.session_state.get("alert_thresholds", {"max_wq": 5.0, "max_rho": 0.85})
+max_wq_min = thresholds["max_wq"]
+max_rho_val = thresholds["max_rho"]
+
+violations: list[tuple[str, list[str]]] = []
+for _, row in results_df.iterrows():
+    t = str(row.get("time", "Unknown"))
+    issues: list[str] = []
+
+    wq = row.get("Wq")
+    if wq is not None and (wq * 60) > max_wq_min:
+        issues.append(f"Wq = {wq * 60:.2f} min exceeds threshold {max_wq_min:.2f} min")
+
+    rho = row.get("rho")
+    if rho is not None and rho > max_rho_val:
+        issues.append(f"ρ = {rho:.2%} exceeds threshold {max_rho_val:.0%}")
+
+    if row.get("stable") is False:
+        issues.append("System is unstable (ρ ≥ 1)")
+
+    if issues:
+        violations.append((t, issues))
+
+if violations:
+    for t, issues in violations:
+        msg = " | ".join(issues)
+        st.error(f"🚨 Segment {t}: {msg}")
+else:
+    st.success("✅ All segments are within thresholds.")
+
+# ── Health score gauge ────────────────────────────────────────────────
+unstable = kpis.get("unstable_count", 0)
+avg_util = kpis.get("avg_utilization", 0) or 0
+avg_wq = kpis.get("avg_waiting_time", 0) or 0
+util_score = max(0, 100 - abs(avg_util - 0.7) * 200)
+wq_score = max(0, 100 - avg_wq * 60)
+stable_score = 100 if unstable == 0 else max(0, 100 - unstable * 20)
+health = int(round((util_score * 0.3 + wq_score * 0.4 + stable_score * 0.3)))
+health_color = "#27AE60" if health >= 70 else "#E8A838" if health >= 40 else "#C0392B"
+st.markdown(
+    f'<div style="display:flex;align-items:center;gap:1rem;background:#1B2A4A;padding:1rem 2rem;border-radius:16px;margin-bottom:1.5rem;">'
+    f'<div style="font-size:2.5rem;font-weight:900;color:{health_color};">{health}</div>'
+    f'<div style="flex:1;"><div style="height:8px;background:#2C4A72;border-radius:4px;overflow:hidden;">'
+    f'<div style="height:100%;width:{health}%;background:{health_color};border-radius:4px;transition:width 0.6s;"></div></div></div>'
+    f'<div style="color:#E8A838;font-weight:700;font-size:0.9rem;">SYSTEM HEALTH</div>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+
+metric_cols = st.columns(4)
+metric_cols[0].metric("Average Utilization", pretty_metric(kpis["avg_utilization"], percent=True), help="Mean server utilization across all segments")
+metric_cols[1].metric("Max Utilization", pretty_metric(kpis["max_utilization"], percent=True), help="Highest server utilization among all stable segments")
+metric_cols[2].metric("Average Wq", pretty_metric(kpis["avg_waiting_time"]), help="Mean waiting time in queue (hours) across stable segments")
+metric_cols[3].metric("Unstable Rows", str(kpis["unstable_count"]), help="Segments where ρ ≥ 1 — system cannot keep up with arrivals")
+
+def _model_badge_html(name):
+    cls_map = {
+        "M/M/1": "badge-mm1",
+        "M/M/c": "badge-mmc",
+        "M/G/c": "badge-mgc",
+        "M/M/c/K": "badge-mmc-k",
+        "M/G/c/K": "badge-mgc-k",
+        "M/M/c+M (Erlang-A)": "badge-erlang-a",
+    }
+    cls = cls_map.get(name, "")
+    return f'<span class="{cls}">{name}</span>' if cls else name
+
+st.subheader("Computed Metrics")
+_display = results_df.copy()
+if "model" in _display.columns:
+    unique_models = _display["model"].unique()
+    legend = "".join(_model_badge_html(m) for m in sorted(unique_models))
+    st.markdown(f'<div class="model-legend">{legend}</div>', unsafe_allow_html=True)
+if "rho" in _display.columns:
+    _display["rho"] = _display["rho"] * 100
+st.dataframe(_display, column_config={
+    "rho": st.column_config.ProgressColumn("ρ (%)", format="%.1f%%", min_value=0, max_value=100),
+}, use_container_width=True)
+
+for warning in get_unstable_messages(results_df):
+    st.warning(warning)
+
+st.subheader("Cost Analysis")
+
+cost_per_server_hr = st.session_state.get("sb_server_cost", DEFAULT_SERVER_COST_HR)
+cost_per_wait_hr = st.session_state.get("sb_wait_cost", DEFAULT_WAIT_COST_HR)
+cost_per_abandonment = st.session_state.get("sb_abandon_cost", DEFAULT_ABANDONMENT_COST)
+abandonment_rate = st.session_state.get("sb_abandon_rate", 0.10)
+st.caption(f"Cost parameters from sidebar — Server: ₱{cost_per_server_hr:.0f}/hr · Wait: ₱{cost_per_wait_hr:.0f}/hr · Abandon: ₱{cost_per_abandonment:.0f}")
+
+cost_summary = compute_cost_summary(
+    results_df,
+    cost_per_server_hr=cost_per_server_hr,
+    cost_per_wait_hr=cost_per_wait_hr,
+    cost_per_abandonment=cost_per_abandonment,
+    abandonment_rate=abandonment_rate,
+)
+cost_df = compute_all_costs(
+    results_df,
+    cost_per_server_hr=cost_per_server_hr,
+    cost_per_wait_hr=cost_per_wait_hr,
+    cost_per_abandonment=cost_per_abandonment,
+    abandonment_rate=abandonment_rate,
+)
+
+cost_metrics = st.columns(4)
+cost_metrics[0].metric("Server Cost", pretty_metric(cost_summary["total_server_cost"], money=True), help="Total cost of staffing servers across all segments")
+cost_metrics[1].metric("Waiting Cost", pretty_metric(cost_summary["total_wait_cost"], money=True), help="Cost incurred from customer waiting time")
+cost_metrics[2].metric("Abandonment Cost", pretty_metric(cost_summary["total_abandonment_cost"], money=True), help="Cost of customers who left without service (Erlang-A only)")
+cost_metrics[3].metric("Total Cost", pretty_metric(cost_summary["total_cost"], money=True), help="Sum of server, waiting, and abandonment costs")
+
+cost_display_cols = ["time", "c", "lambda", "Wq", "server_cost", "wait_cost", "abandonment_cost", "total_cost"]
+st.dataframe(cost_df[[c for c in cost_display_cols if c in cost_df.columns]], use_container_width=True)
+
+# Show Erlang-A abandonment info when applicable
+erlang_rows = results_df[results_df["model"] == "M/M/c+M (Erlang-A)"]
+if not erlang_rows.empty:
+    avg_abandon = erlang_rows["abandonment_rate"].mean()
+    avg_lambda_eff = erlang_rows["lambda_eff"].mean()
+    avg_lambda = erlang_rows["lambda"].mean()
+    
+    st.info(
+        f"**Erlang-A (Abandonment) Summary**  —  "
+        f"Avg abandonment rate: {avg_abandon:.2%}  |  "
+        f"Avg effective λ: {avg_lambda_eff:.1f} / {avg_lambda:.1f} "
+        f"({erlang_rows['theta'].iloc[0]} reneging rate θ)"
+    )
+
+if st.button("Save as Current Data", type="primary", use_container_width=True):
+    st.session_state["df"] = normalized_df.copy()
+    st.session_state["current_data"] = results_df.copy()
+    st.success("Current metrics saved.")
+
+dataframe_download(results_df, "novamart_current_metrics.csv", "Download Current Metrics CSV")

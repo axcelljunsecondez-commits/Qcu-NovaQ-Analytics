@@ -5,19 +5,15 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 import pandas as pd
+import streamlit as st
 
 from optimization import (
-    DEFAULT_MAX_SERVERS,
     DEFAULT_SERVER_COST,
-    DEFAULT_TARGET_UTILIZATION,
     DEFAULT_CUSTOMER_WAITING_COST,
     UNSTABLE_PENALTY_MULTIPLIER,
-    build_recommendations,
     compute_blended_rate,
-    optimize_segments,
-    summarize_optimization,
 )
-from queue_models import mgc, mgck, mm1, mmc, mmck
+from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
 
 CURRENT_COLUMNS = [
@@ -26,44 +22,18 @@ CURRENT_COLUMNS = [
     "mu",
     "c",
     "model",
+    "theta",
     "rho",
     "L",
     "Lq",
     "W",
     "Wq",
+    "lambda_eff",
+    "abandonment_rate",
     "stable",
     "status",
     "warning",
 ]
-
-COMPARISON_COLUMNS = [
-    "time",
-    "lambda",
-    "mu",
-    "cost_per_server",
-    "c_current",
-    "rho_current",
-    "Wq_current",
-    "Lq_current",
-    "cost_current",
-    "waiting_cost_current",
-    "c_optimal",
-    "rho_optimal",
-    "Wq_optimal",
-    "Lq_optimal",
-    "cost_optimal",
-    "waiting_cost_optimal",
-    "delta_c",
-    "delta_rho",
-    "delta_Wq",
-    "delta_Lq",
-    "delta_cost",
-    "current_stable",
-    "optimized_stable",
-    "recommendation",
-    "warning",
-]
-
 
 def _empty_frame(columns: list[str]) -> pd.DataFrame:
     """Return an empty DataFrame with the requested columns."""
@@ -89,14 +59,6 @@ def _get_segment_cost(segment: Mapping, default_cost: float = DEFAULT_SERVER_COS
     return default_cost
 
 
-def _sanitize_records(dataframe: pd.DataFrame) -> list[dict]:
-    """Convert a DataFrame to JSON-like records with None instead of NaN."""
-    if dataframe is None or dataframe.empty:
-        return []
-    normalized = dataframe.astype(object).where(pd.notna(dataframe), None)
-    return normalized.to_dict("records")
-
-
 def _classify_utilization_status(rho) -> str:
     """Classify queue utilization status based on rho value.
     
@@ -120,7 +82,7 @@ def _classify_utilization_status(rho) -> str:
     return "Lean"
 
 
-def _current_row(time_label, lambda_, mu, c, model_name, metrics) -> dict:
+def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None) -> dict:
     """Build one normalized current-system result row."""
     stable = bool(metrics.get("stable"))
     rho = metrics.get("rho")
@@ -132,17 +94,21 @@ def _current_row(time_label, lambda_, mu, c, model_name, metrics) -> dict:
         "mu": mu,
         "c": c,
         "model": model_name,
+        "theta": theta,
         "rho": rho,
         "L": metrics.get("L"),
         "Lq": metrics.get("Lq"),
         "W": metrics.get("W"),
         "Wq": metrics.get("Wq"),
+        "lambda_eff": metrics.get("lambda_eff"),
+        "abandonment_rate": metrics.get("abandonment_rate"),
         "stable": stable,
         "status": status,
         "warning": metrics.get("error"),
     }
 
 
+@st.cache_data
 def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
     """Process Page 1 current-system segments into a DataFrame."""
     if time_segments is None:
@@ -177,47 +143,129 @@ def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
         c = segment.get("c", 1)
         variance = segment.get("variance")
         capacity = segment.get("K")
+        theta = segment.get("theta")
 
-        if capacity is not None and pd.notna(capacity) and variance is not None and pd.notna(variance):
+        # Theta (Erlang-A) takes priority over all other model choices
+        if theta is not None and pd.notna(theta) and float(theta) > 0:
+            metrics = erlang_a(lambda_, mu, c, float(theta))
+            model_name = "M/M/c+M (Erlang-A)"
+            servers = c
+            theta_val = float(theta)
+        elif capacity is not None and pd.notna(capacity) and variance is not None and pd.notna(variance):
             metrics = mgck(lambda_, mu, c, variance, int(capacity))
             model_name = "M/G/c/K"
             servers = c
+            theta_val = None
         elif capacity is not None and pd.notna(capacity):
             metrics = mmck(lambda_, mu, c, int(capacity))
             model_name = "M/M/c/K"
             servers = c
+            theta_val = None
         elif variance is not None and pd.notna(variance):
             metrics = mgc(lambda_, mu, c, variance)
             model_name = "M/G/c"
             servers = c
+            theta_val = None
         elif c == 1:
             metrics = mm1(lambda_, mu)
             model_name = "M/M/1"
             servers = 1
+            theta_val = None
         else:
             metrics = mmc(lambda_, mu, c)
             model_name = "M/M/c"
             servers = c
+            theta_val = None
 
-        rows.append(_current_row(time_label, lambda_, mu, servers, model_name, metrics))
+        rows.append(_current_row(time_label, lambda_, mu, servers, model_name, metrics, theta=theta_val))
 
     return pd.DataFrame(rows, columns=CURRENT_COLUMNS) if rows else _empty_frame(CURRENT_COLUMNS)
 
 
-def process_comparison_segments(
-    time_segments: Iterable[Mapping],
-    target_utilization: float = DEFAULT_TARGET_UTILIZATION,
-    default_server_cost: float = DEFAULT_SERVER_COST,
-    max_servers: int = DEFAULT_MAX_SERVERS,
+@st.cache_data
+def validate_with_simulation(
+    comparison_df: pd.DataFrame,
+    mc_trials: int = 10000,
+    mc_failure_threshold: float = 0.85,
+    seed: int = 42,
 ) -> pd.DataFrame:
-    """Process Page 2 optimization comparison segments into a DataFrame."""
-    rows = optimize_segments(
-        time_segments=time_segments,
-        target_utilization=target_utilization,
-        default_server_cost=default_server_cost,
-        max_servers=max_servers,
+    """Run DES + Monte Carlo on the optimized plan and merge validation columns.
+
+    For each segment in *comparison_df* with a valid ``c_optimal``, a DES
+    simulation and a 10 000‑trial Monte Carlo are executed.  The following
+    columns are appended (NaN for segments where the optimizer found no
+    stable plan):
+
+    - sim_status, sim_max_queue, sim_Wq, sim_rho        (DES)
+    - mc_failure_rate, mc_adequate, mc_rho_mean,        (MC)
+      mc_rho_p95, mc_Wq_ci
+    """
+    from simulation import mc_simulate_segments, simulate_segments
+
+    if comparison_df is None or comparison_df.empty:
+        return comparison_df
+
+    sim_records = []
+    for _, row in comparison_df.iterrows():
+        c_opt = row.get("c_optimal")
+        if c_opt is None or pd.isna(c_opt):
+            continue
+        sim_records.append({
+            "time": row["time"],
+            "lambda": row["lambda"],
+            "mu": row["mu"],
+            "c": int(c_opt),
+        })
+
+    if not sim_records:
+        result = comparison_df.copy()
+        for col in ["sim_status", "sim_max_queue", "sim_Wq", "sim_rho",
+                     "mc_failure_rate", "mc_adequate", "mc_rho_mean",
+                     "mc_rho_p95", "mc_Wq_ci"]:
+            result[col] = None
+        return result
+
+    des_results = simulate_segments(sim_records, seed=seed)
+    des_df = pd.DataFrame(des_results)[
+        ["time", "rho_sim", "Wq_sim", "max_queue", "status"]
+    ].rename(
+        columns={
+            "rho_sim": "sim_rho",
+            "Wq_sim": "sim_Wq",
+            "max_queue": "sim_max_queue",
+            "status": "sim_status",
+        }
     )
-    return pd.DataFrame(rows, columns=COMPARISON_COLUMNS) if rows else _empty_frame(COMPARISON_COLUMNS)
+
+    mc_results = mc_simulate_segments(
+        sim_records, num_trials=mc_trials,
+        failure_threshold=mc_failure_threshold, seed=seed,
+    )
+    mc_raw = pd.DataFrame(mc_results)[
+        ["time", "failure_rate", "adequate_samples",
+         "rho_mean", "rho_p95", "Wq_mean", "ci_Wq_hw"]
+    ].rename(
+        columns={
+            "failure_rate": "mc_failure_rate",
+            "adequate_samples": "mc_adequate",
+            "rho_mean": "mc_rho_mean",
+            "rho_p95": "mc_rho_p95",
+        }
+    )
+    mc_raw["mc_Wq_ci"] = mc_raw.apply(
+        lambda r: (
+            f"{r['Wq_mean'] * 60:.2f} ± {r['ci_Wq_hw'] * 60:.2f} min (95% CI)"
+            if pd.notna(r.get("Wq_mean")) and pd.notna(r.get("ci_Wq_hw"))
+            else "N/A"
+        ),
+        axis=1,
+    )
+    mc_raw.drop(columns=["Wq_mean", "ci_Wq_hw"], inplace=True)
+
+    result = comparison_df.copy()
+    result = result.merge(des_df, on="time", how="left")
+    result = result.merge(mc_raw, on="time", how="left")
+    return result
 
 
 def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = None, customer_waiting_cost: float = None) -> dict:
@@ -299,11 +347,6 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
     }
 
 
-def compute_comparison_kpis(comparison_df: pd.DataFrame) -> dict:
-    """Compute Page 2 optimization summary values."""
-    return summarize_optimization(_sanitize_records(comparison_df))
-
-
 def get_unstable_messages(results_df: pd.DataFrame) -> list[str]:
     """Collect validation messages for unstable current-system segments."""
     if results_df is None or results_df.empty:
@@ -317,6 +360,4 @@ def get_unstable_messages(results_df: pd.DataFrame) -> list[str]:
     return messages
 
 
-def get_recommendation_messages(comparison_df: pd.DataFrame) -> list[str]:
-    """Collect optimization recommendation messages for Page 2."""
-    return build_recommendations(_sanitize_records(comparison_df))
+

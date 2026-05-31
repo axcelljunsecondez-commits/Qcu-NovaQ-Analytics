@@ -23,6 +23,12 @@ from pathlib import Path
 import os
 from PIL import Image
 
+from config import (
+    DEFAULT_SERVER_COST_HR,
+    DEFAULT_WAIT_COST_HR,
+    DEFAULT_ABANDONMENT_COST,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # REQUIRED_COLUMNS — Data Contract (STRICT)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -45,6 +51,8 @@ OPTIONAL_COLUMNS = [
 
 def get_base64_image(image_path):
     """Convert image file to base64 string."""
+    if not os.path.exists(image_path):
+        return None
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
@@ -69,12 +77,11 @@ def init_session_state():
     
     # Costing parameters (NOVAMART defaults)
     if "cost_per_server_hr" not in st.session_state:
-        st.session_state["cost_per_server_hr"] = 87.0  # ₱87/hr
+        st.session_state["cost_per_server_hr"] = DEFAULT_SERVER_COST_HR
     if "cost_per_wait_hr" not in st.session_state:
-        st.session_state["cost_per_wait_hr"] = 100.0  # ₱100/hr customer time
+        st.session_state["cost_per_wait_hr"] = DEFAULT_WAIT_COST_HR
     if "cost_per_abandonment" not in st.session_state:
-        # Abandonment cost: 10% of ₱600 daily = ₱60 per abandonment
-        st.session_state["cost_per_abandonment"] = 60.0  # ₱60/customer (10% × 600)
+        st.session_state["cost_per_abandonment"] = DEFAULT_ABANDONMENT_COST
 
 
 def main():
@@ -105,14 +112,14 @@ def main():
        HERO SECTION - Premium Gradient with Depth
     ───────────────────────────────────────────────────────────────────────────────*/
     .hero-section {
-        background: linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #8B5CF6 100%);
+        background: linear-gradient(135deg, #1B2A4A 0%, #243B5E 50%, #2C4A72 100%);
         color: #FFFFFF;
         padding: 5rem 3rem;
         border-radius: 20px;
         text-align: center;
         margin-bottom: 3.5rem;
-        box-shadow: 0 24px 48px rgba(79, 70, 229, 0.18), 
-                    0 0 1px rgba(79, 70, 229, 0.3);
+        box-shadow: 0 24px 48px rgba(27, 42, 74, 0.25),
+                    0 0 1px rgba(27, 42, 74, 0.3);
         position: relative;
         overflow: hidden;
     }
@@ -199,22 +206,22 @@ def main():
         text-decoration: none;
         cursor: pointer;
         border: none;
-        background: linear-gradient(135deg, #22D3EE 0%, #06B6D4 100%);
-        color: #0F172A;
+        background: linear-gradient(135deg, #E8A838 0%, #D4912F 100%);
+        color: #1B2A4A;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 8px 20px rgba(34, 211, 238, 0.25);
+        box-shadow: 0 8px 20px rgba(232, 168, 56, 0.25);
         font-family: 'Inter', sans-serif;
     }
     
     .btn-primary:hover {
-        background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
-        box-shadow: 0 12px 32px rgba(34, 211, 238, 0.35);
+        background: linear-gradient(135deg, #D4912F 0%, #C07D20 100%);
+        box-shadow: 0 12px 32px rgba(232, 168, 56, 0.35);
         transform: translateY(-2px);
     }
     
     .btn-primary:active {
         transform: translateY(0);
-        box-shadow: 0 4px 12px rgba(34, 211, 238, 0.2);
+        box-shadow: 0 4px 12px rgba(232, 168, 56, 0.2);
     }
     
     /* Secondary Button - Outline */
@@ -225,18 +232,18 @@ def main():
         font-size: 1rem;
         text-decoration: none;
         cursor: pointer;
-        border: 2px solid #22D3EE;
+        border: 2px solid #E8A838;
         background: transparent;
-        color: #22D3EE;
+        color: #E8A838;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         font-family: 'Inter', sans-serif;
     }
     
     .btn-secondary:hover {
-        background: rgba(34, 211, 238, 0.1);
-        border-color: #06B6D4;
-        color: #06B6D4;
-        box-shadow: 0 8px 20px rgba(34, 211, 238, 0.15);
+        background: rgba(232, 168, 56, 0.1);
+        border-color: #D4912F;
+        color: #D4912F;
+        box-shadow: 0 8px 20px rgba(232, 168, 56, 0.15);
     }
     
     .tags-group {
@@ -248,13 +255,13 @@ def main():
     }
     
     .tag {
-        background: #4F46E5;
-        color: #FFFFFF;
+        background: #2C4A72;
+        color: #E8A838;
         padding: 0.65rem 1.4rem;
         border-radius: 24px;
         font-size: 0.9rem;
-        border: 1px solid #4F46E5;
-        font-weight: 600;
+        border: 1px solid #2C4A72;
+        font-weight: 700;
         font-family: 'Inter', sans-serif;
     }
     
@@ -277,8 +284,8 @@ def main():
     }
     
     .info-section:hover {
-        border-color: #22D3EE;
-        box-shadow: 0 12px 32px rgba(34, 211, 238, 0.12);
+        border-color: #E8A838;
+        box-shadow: 0 12px 32px rgba(232, 168, 56, 0.12);
     }
     
     .info-icon {
@@ -341,15 +348,15 @@ def main():
     }
     
     .workflow-card:hover {
-        border-color: #22D3EE;
-        box-shadow: 0 16px 40px rgba(34, 211, 238, 0.15);
+        border-color: #E8A838;
+        box-shadow: 0 16px 40px rgba(232, 168, 56, 0.15);
         transform: translateY(-6px);
     }
     
     .workflow-card .step-number {
         display: inline-block;
-        background: linear-gradient(135deg, #CFFAFE 0%, #A5F3FC 100%);
-        color: #0891B2;
+        background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+        color: #92400E;
         width: 56px;
         height: 56px;
         border-radius: 50%;
@@ -378,7 +385,7 @@ def main():
     }
     
     .workflow-card .action-btn {
-        color: #22D3EE;
+        color: #E8A838;
         font-weight: 700;
         text-decoration: none;
         cursor: pointer;
@@ -388,7 +395,7 @@ def main():
     }
     
     .workflow-card .action-btn:hover {
-        color: #06B6D4;
+        color: #D4912F;
     }
     
     /* ─────────────────────────────────────────────────────────────────────────────
@@ -418,8 +425,8 @@ def main():
     }
     
     .schema-item:hover {
-        border-color: #22D3EE;
-        box-shadow: 0 12px 32px rgba(34, 211, 238, 0.12);
+        border-color: #E8A838;
+        box-shadow: 0 12px 32px rgba(232, 168, 56, 0.12);
         transform: translateY(-4px);
     }
     
@@ -447,100 +454,6 @@ def main():
     }
     
     /* ─────────────────────────────────────────────────────────────────────────────
-       TESTIMONIALS - Premium Cards
-    ───────────────────────────────────────────────────────────────────────────────*/
-    
-    .testimonials-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 2rem;
-        margin-bottom: 3.5rem;
-    }
-    
-    @media (max-width: 768px) {
-        .testimonials-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-    
-    .testimonial-card {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 16px;
-        padding: 2.25rem;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    
-    .testimonial-card:hover {
-        border-color: #22D3EE;
-        box-shadow: 0 12px 32px rgba(34, 211, 238, 0.12);
-        transform: translateY(-4px);
-    }
-    
-    .testimonial-card p {
-        font-style: italic;
-        color: #475569;
-        margin-bottom: 1.5rem;
-        line-height: 1.8;
-        font-size: 0.95rem;
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .testimonial-card .author {
-        font-size: 0.8rem;
-        color: #94A3B8;
-        font-weight: 700;
-        font-family: 'Inter', sans-serif;
-    }
-    
-    /* ─────────────────────────────────────────────────────────────────────────────
-       CTA SECTION - Premium Call-to-Action
-    ───────────────────────────────────────────────────────────────────────────────*/
-    
-    .cta-section {
-        background: linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #8B5CF6 100%);
-        color: #FFFFFF;
-        padding: 4rem 3rem;
-        border-radius: 20px;
-        text-align: center;
-        margin-top: 3.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 24px 48px rgba(79, 70, 229, 0.18);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .cta-section::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -10%;
-        width: 400px;
-        height: 400px;
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 50%;
-        filter: blur(60px);
-    }
-    
-    .cta-section h2 {
-        margin: 0 0 1rem 0;
-        font-size: 2.25rem;
-        font-weight: 900;
-        color: #FFFFFF;
-        font-family: 'Poppins', sans-serif;
-        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-    }
-    
-    .cta-section p {
-        margin: 0 0 2.25rem 0;
-        color: #FFFFFF;
-        font-size: 1.125rem;
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-    }
-    
-    /* ─────────────────────────────────────────────────────────────────────────────
        METRICS & DATA - Premium Display
     ───────────────────────────────────────────────────────────────────────────────*/
     
@@ -554,8 +467,8 @@ def main():
     }
     
     [data-testid="stMetric"]:hover {
-        border-color: #22D3EE;
-        box-shadow: 0 12px 32px rgba(34, 211, 238, 0.12);
+        border-color: #E8A838;
+        box-shadow: 0 12px 32px rgba(232, 168, 56, 0.12);
     }
     
     /* ─────────────────────────────────────────────────────────────────────────────
@@ -571,8 +484,86 @@ def main():
     }
     
     input:focus {
-        border-color: #22D3EE !important;
-        box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1) !important;
+        border-color: #E8A838 !important;
+        box-shadow: 0 0 0 3px rgba(232, 168, 56, 0.1) !important;
+    }
+    
+    /* ─────────────────────────────────────────────────────────────────────────────
+       MODEL BADGES - OR-Style
+    ───────────────────────────────────────────────────────────────────────────────*/
+    
+    .badge-mm1 {
+        display: inline-block;
+        background: #1B2A4A;
+        color: #E8A838;
+        padding: 0.2rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        font-family: 'Inter', sans-serif;
+        border: 1px solid #E8A838;
+    }
+    .badge-mmc {
+        display: inline-block;
+        background: #1B2A4A;
+        color: #5DADE2;
+        padding: 0.2rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        font-family: 'Inter', sans-serif;
+        border: 1px solid #5DADE2;
+    }
+    .badge-mgc {
+        display: inline-block;
+        background: #1B2A4A;
+        color: #A569BD;
+        padding: 0.2rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        font-family: 'Inter', sans-serif;
+        border: 1px solid #A569BD;
+    }
+    .badge-mmc-k {
+        display: inline-block;
+        background: #1B2A4A;
+        color: #58D68D;
+        padding: 0.2rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        font-family: 'Inter', sans-serif;
+        border: 1px solid #58D68D;
+    }
+    .badge-mgc-k {
+        display: inline-block;
+        background: #1B2A4A;
+        color: #EC7063;
+        padding: 0.2rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        font-family: 'Inter', sans-serif;
+        border: 1px solid #EC7063;
+    }
+    .badge-erlang-a {
+        display: inline-block;
+        background: #1B2A4A;
+        color: #F39C12;
+        padding: 0.2rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        font-family: 'Inter', sans-serif;
+        border: 1px solid #F39C12;
+    }
+
+    .model-legend {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
     }
     
     /* ─────────────────────────────────────────────────────────────────────────────
@@ -595,8 +586,8 @@ def main():
     }
     
     [data-testid="stSidebar"] > div:first-child > div > div:nth-child(2) > div > div:nth-child(1) > div > button {
-        background: rgba(34, 211, 238, 0.1) !important;
-        border: 1px solid #22D3EE !important;
+        background: rgba(232, 168, 56, 0.1) !important;
+        border: 1px solid #E8A838 !important;
         color: #22D3EE !important;
     }
     
@@ -617,6 +608,42 @@ def main():
     [data-testid="stSidebar"] button[kind="header"] svg {
         font-size: 1.25rem !important;
         display: block !important;
+    }
+    
+    /* Sidebar code block — dark background + amber text */
+    [data-testid="stSidebar"] pre {
+        background-color: #1B2A4A !important;
+        border: 1px solid #2C4A72 !important;
+        border-radius: 8px !important;
+        padding: 0.75rem 1rem !important;
+    }
+    [data-testid="stSidebar"] pre code {
+        background-color: transparent !important;
+        color: #E8A838 !important;
+        font-size: 0.75rem !important;
+    }
+    
+    /* Sidebar number inputs — dark background + light text */
+    [data-testid="stSidebar"] div[data-testid="stNumberInput"] input {
+        background-color: #1B2A4A !important;
+        color: #E2E8F0 !important;
+        border: 1px solid #2C4A72 !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stNumberInput"] input:focus {
+        border-color: #E8A838 !important;
+        box-shadow: 0 0 0 2px rgba(232, 168, 56, 0.2) !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stNumberInput"] label {
+        color: #94A3B8 !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stNumberInput"] button {
+        background-color: #2C4A72 !important;
+        color: #E2E8F0 !important;
+        border: none !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stNumberInput"] button:hover {
+        background-color: #3B5A8A !important;
     }
     
     /* ─────────────────────────────────────────────────────────────────────────────
@@ -688,26 +715,12 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # Logo strip - perfectly centered
-    col_left, col_mid, col_right = st.columns([1, 3, 1], gap="small")
-    
-    with col_mid:
-        # Load and encode logos
-        logo1_b64 = get_base64_image("logo/logo1.png")
-        logo2_b64 = get_base64_image("logo/logo2.png")
-        logo3_b64 = get_base64_image("logo/logo3.png")
-        
+    # Logo strip - show only if logos exist
+    logo_b64 = get_base64_image("logo/logo1.png")
+    if logo_b64:
         st.markdown(f"""
-        <div style='display: flex; justify-content: center; align-items: center; gap: 24px; margin: 16px 0;'>
-            <div style='display: flex; justify-content: center; width: 80px; height: 80px;'>
-                <img src='data:image/png;base64,{logo1_b64}' style='max-width: 60px; height: auto; object-fit: contain;'>
-            </div>
-            <div style='display: flex; justify-content: center; width: 80px; height: 80px;'>
-                <img src='data:image/png;base64,{logo2_b64}' style='max-width: 60px; height: auto; object-fit: contain;'>
-            </div>
-            <div style='display: flex; justify-content: center; width: 80px; height: 80px;'>
-                <img src='data:image/png;base64,{logo3_b64}' style='max-width: 60px; height: auto; object-fit: contain;'>
-            </div>
+        <div style='display: flex; justify-content: center; margin: 16px 0;'>
+            <img src='data:image/png;base64,{logo_b64}' style='max-width: 80px; height: auto; object-fit: contain;'>
         </div>
         """, unsafe_allow_html=True)
     
@@ -721,15 +734,20 @@ def main():
     with col3:
         pass
     
-    st.markdown("""
-    <div style="text-align: center; margin-top: 1.5rem;">
-        <div class="tags-group">
-            <span class="tag">M/M/1, M/M/c, M/G/c, M/M/c/K, M/G/c/K</span>
-            <span class="tag">Monte Carlo simulation</span>
-            <span class="tag">Only 4 columns needed</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.expander("📐 Technical Details — Supported Models"):
+        st.markdown("""
+        **Queueing Models:**
+        - **M/M/1** — Single server, Poisson arrivals, exponential service
+        - **M/M/c** — Multi-server, Poisson arrivals, exponential service
+        - **M/G/c** — Multi-server, general service time distribution
+        - **M/M/c/K** — Multi-server, finite system capacity
+        - **M/G/c/K** — Multi-server, general service, finite capacity
+        - **M/M/c+M (Erlang-A)** — Multi-server with customer abandonment
+        - **Two-class priority** — Express lane + regular lane
+
+        **Simulation:** Discrete-event (SimPy) · Monte Carlo (10K trials)
+        **Input:** 4 required columns (time, λ, μ, c) + 2 optional (variance, K)
+        """)
     
     # ═════════════════════════════════════════════════════════════════════════
     # INFO SECTION
@@ -756,7 +774,7 @@ def main():
         <div class="workflow-card">
             <div class="step-number">1</div>
             <h3>Current metrics</h3>
-            <p>Upload your CSV and see your queue's true state            <img src="your-logo-url-here" alt="Logo Name" class="logo-item"> utilization, average wait, queue length, and where things are quietly breaking down.</p>
+            <p>Upload your CSV and see your queue's true state: utilization, average wait, queue length, and where things are quietly breaking down.</p>
         </div>
         """, unsafe_allow_html=True)
         if st.button("Explore →", key="workflow_1", use_container_width=True):
@@ -810,87 +828,50 @@ def main():
         <div class="schema-item">
             <div class="field-name">time</div>
             <div class="field-type">Text — interval label</div>
-            <div class="field-example">e.g. 08:00–09:00</div>
+            <div class="field-example">e.g., 08:00–09:00</div>
         </div>
         <div class="schema-item">
             <div class="field-name">lambda</div>
             <div class="field-type">Float — arrival rate</div>
-            <div class="field-example">e.g. 12.5 /min</div>
+            <div class="field-example">e.g., 12.5 /min</div>
         </div>
         <div class="schema-item">
             <div class="field-name">mu</div>
             <div class="field-type">Float — service rate</div>
-            <div class="field-example">e.g. 5.0 /min</div>
+            <div class="field-example">e.g., 5.0 /min</div>
         </div>
         <div class="schema-item">
             <div class="field-name">c</div>
             <div class="field-type">Integer — servers</div>
-            <div class="field-example">e.g. 3</div>
+            <div class="field-example">e.g., 3</div>
         </div>
         <div class="schema-item">
             <div class="field-name">variance</div>
             <div class="field-type">Float — optional (M/G/c)</div>
-            <div class="field-example">e.g. 0.04</div>
+            <div class="field-example">e.g., 0.04</div>
         </div>
         <div class="schema-item">
             <div class="field-name">K</div>
             <div class="field-type">Integer — optional capacity</div>
-            <div class="field-example">e.g. 12</div>
+            <div class="field-example">e.g., 12</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
     st.markdown("**Required:** time, lambda, mu, c | **Optional:** variance (general service), K (finite total capacity)")
 
-    
-    st.markdown("---")
-    
     # ═════════════════════════════════════════════════════════════════════════
-    # TESTIMONIALS SECTION
+    # FORMULA REFERENCE
     # ═════════════════════════════════════════════════════════════════════════
-    st.markdown('<p class="section-title">WHAT USERS SAY AFTER THEIR FIRST RUN</p>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div class="testimonials-grid">
-        <div class="testimonial-card">
-            <p>"Optimizing our checkout queues didn't just reduce wait times—it completely transformed how we operate. We cut unnecessary labor costs, improved customer satisfaction, and freed up resources to invest back into the business."</p>
-            <div class="author">Operations Director, Grocery Retail Group</div>
-        </div>
-        <div class="testimonial-card">
-            <p>"The simulation page alone was worth it. We stress-tested our peak-hour setup and caught a failure mode we never would have predicted."</p>
-            <div class="author">Service design analyst</div>
-        </div>
-        <div class="testimonial-card">
-            <p>"Four columns. The compare view told us exactly what to bring to management — with numbers, not opinions."</p>
-            <div class="author">Queue manager, logistics firm</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # ═════════════════════════════════════════════════════════════════════════
-    # CTA SECTION
-    # ═════════════════════════════════════════════════════════════════════════
-    st.markdown("""
-    <div class="cta-section">
-        <h2>You just need to upload your data to see them</h2>
-        <p>Turn your raw data into actionable queue insights upload to begin.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # CTA section buttons
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    with col1:
-        pass
-    with col2:
-        if st.button("📥 Upload CSV", key="cta_upload", use_container_width=True):
-            st.switch_page("pages/1_current_metrics.py")
-    with col3:
-        pass
-    with col4:
-        pass
-    
+    with st.expander("📐 Queueing Theory Formulas", expanded=False):
+        st.markdown("**Kendall Notation:** `A/B/c/K` where A = arrival dist., B = service dist., c = servers, K = system capacity")
+        st.latex(r"\text{M/M/1:} \quad L = \frac{\lambda}{\mu - \lambda} \quad W_q = \frac{\lambda}{\mu(\mu - \lambda)}")
+        st.latex(r"\text{M/M/c:} \quad P_0 = \left[ \sum_{n=0}^{c-1} \frac{(c\rho)^n}{n!} + \frac{(c\rho)^c}{c!(1-\rho)} \right]^{-1} \quad W_q = \frac{P_0 (c\rho)^c}{c! c\mu (1-\rho)^2}")
+        st.latex(r"\text{Little's Law:} \quad L = \lambda W \quad L_q = \lambda W_q \quad W = W_q + \frac{1}{\mu}")
+        st.latex(r"\text{Pollaczek-Khinchine (M/G/1):} \quad W_q = \frac{\lambda (\sigma^2 + 1/\mu^2)}{2(1-\rho)}")
+        st.latex(r"\text{Erlang-C:} \quad C(c, a) = \frac{a^c / c!}{(1-\rho) \sum_{n=0}^{c-1} a^n / n! + a^c / c!}")
+        st.caption("Where: ρ = λ/(cμ)  |  a = λ/μ  |  λ = arrival rate  |  μ = service rate")
+
     # ═════════════════════════════════════════════════════════════════════════
     # SIDEBAR
     # ═════════════════════════════════════════════════════════════════════════
@@ -918,25 +899,30 @@ def main():
     ```
     """)
     
-    # Status indicator
+    # Cost parameters
     st.sidebar.markdown("---")
-    col1, col2, col3, col4 = st.sidebar.columns(4)
-    
-    with col1:
-        status = "✅" if st.session_state.get("current_data") is not None else "⭕"
-        st.metric("Page 1", status)
-    
-    with col2:
-        status = "✅" if st.session_state.get("recommended_data") is not None else "⭕"
-        st.metric("Page 2", status)
-    
-    with col3:
-        status = "✅" if st.session_state.get("comparison_data") is not None else "⭕"
-        st.metric("Page 3", status)
-    
-    with col4:
-        status = "✅" if st.session_state.get("simulation_results") is not None else "⭕"
-        st.metric("Page 4", status)
+    st.sidebar.markdown("### 💰 Cost Parameters")
+    st.sidebar.number_input("Server Cost (₱/hr)", min_value=0.0, value=DEFAULT_SERVER_COST_HR, step=1.0, key="sb_server_cost")
+    st.sidebar.number_input("Waiting Cost (₱/hr)", min_value=0.0, value=DEFAULT_WAIT_COST_HR, step=1.0, key="sb_wait_cost")
+    st.sidebar.number_input("Abandonment Cost (₱)", min_value=0.0, value=DEFAULT_ABANDONMENT_COST, step=1.0, key="sb_abandon_cost")
+    st.sidebar.number_input("Abandonment Rate", min_value=0.0, max_value=1.0, value=0.10, step=0.05, key="sb_abandon_rate")
+
+    # Progress timeline
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📋 Progress")
+    steps = [
+        ("1️⃣ Upload Data", st.session_state.get("current_data") is not None),
+        ("2️⃣ Optimize", st.session_state.get("recommended_data") is not None),
+        ("3️⃣ Simulate", st.session_state.get("simulation_results") is not None),
+        ("4️⃣ Compare", st.session_state.get("comparison_data") is not None),
+    ]
+    for i, (label, done) in enumerate(steps):
+        icon = "✅" if done else "➖"
+        weight = "bold" if done else "normal"
+        st.sidebar.markdown(
+            f"<span style='font-weight: {weight};'>{icon} {label}</span>",
+            unsafe_allow_html=True,
+        )
 
 
 if __name__ == "__main__":

@@ -1,577 +1,260 @@
-"""Page 4 — Comparison (Error-Safe Merge)
-✅ Pre-check: current_data exists
-✅ Pre-check: recommended_data exists  
-✅ Safe merge with suffixes
-✅ Calculate delta metrics for all models
-✅ Cost analysis and comparison
-✅ Visualize improvements
+"""Current vs optimized comparison page."""
 
-Supported Comparisons:
-- M/M/1 vs M/M/1: Single server improvements
-- M/M/c vs M/M/c: Multi-server optimization results
-- M/G/c vs M/G/c: General service time comparison (with variance)
-- M/M/c/K and M/G/c/K: Finite-capacity comparisons when K is provided
-"""
+from __future__ import annotations
 
-import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import sys
+import streamlit as st
 
-# Import utils safely
-sys.path.insert(0, ".")
-from utils import compute_costs
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: Format numbers with trailing zeros removed
-# ─────────────────────────────────────────────────────────────────────────────
-
-def format_number(val, decimals=2):
-    """Format a number, removing trailing zeros."""
-    if pd.isna(val):
-        return ""
-    formatted = f"{val:.{decimals}f}"
-    # Remove trailing zeros but keep at least one decimal place
-    formatted = formatted.rstrip('0')
-    if formatted.endswith('.'):
-        formatted += '0'
-    return formatted
+from app_page_utils import dataframe_download, init_session_state, inject_or_css, pretty_metric, to_segment_records
+from costing import compute_all_costs, compute_cost_summary, DEFAULT_SERVER_COST_HR, DEFAULT_WAIT_COST_HR, DEFAULT_ABANDONMENT_COST
+from optimization import build_recommendations, summarize_optimization
+from report_export import generate_excel_report, generate_pdf_report
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main UI
-# ─────────────────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Comparison", layout="wide")
+init_session_state()
+inject_or_css()
 
-st.title("📈 Page 3: Comparison")
-st.markdown("""
-**Safe merge of Current vs Recommended data with delta metrics**
-- 🔀 Inner merge on time_interval
-- 📊 Compare utilization, servers, and queue metrics
-- 📉 Visualize improvements
-""")
+# Initialise saved-scenarios list if missing
+if "saved_scenarios" not in st.session_state:
+    st.session_state["saved_scenarios"] = []
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PRE-CHECK (MANDATORY)
-# ─────────────────────────────────────────────────────────────────────────────
+st.title("Comparison")
+st.caption("Review the current and optimized staffing scenario side by side.")
 
-st.markdown("---")
-st.subheader("✅ Dependency Check")
-
-col1, col2 = st.columns(2)
-
-# Check 1: current_data exists
-with col1:
-    if st.session_state.get("current_data") is None:
-        st.error("❌ current_data NOT found")
-        current_exists = False
-    else:
-        st.success("✅ current_data exists")
-        current_exists = True
-
-# Check 2: recommended_data exists
-with col2:
-    if st.session_state.get("recommended_data") is None:
-        st.error("❌ recommended_data NOT found")
-        recommended_exists = False
-    else:
-        st.success("✅ recommended_data exists")
-        recommended_exists = True
-
-# STOP if dependencies not met
-if not (current_exists and recommended_exists):
-    st.error("❌ Cannot proceed — missing upstream data!")
-    st.info("""
-    👉 **Required:**
-    - **Page 1:** Upload and save current data
-    - **Page 2:** Run optimization and generate recommendations
-    """)
+comparison_df = st.session_state.get("validated_comparison")
+if comparison_df is None:
+    comparison_df = st.session_state.get("recommended_data")
+if comparison_df is None or comparison_df.empty:
+    st.error("Recommended data was not found. Complete Page 2 first.")
     st.stop()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SAFE MERGE (with suffixes)
-# ─────────────────────────────────────────────────────────────────────────────
+st.session_state["comparison_data"] = comparison_df.copy()
+kpis = summarize_optimization(to_segment_records(comparison_df))
 
-current_data = st.session_state["current_data"].copy()
-recommended_data = st.session_state["recommended_data"].copy()
+# ── Prepare PDF / Excel export bytes (built once, behind the scenes) ─────
+current_data = st.session_state.get("current_data")
+segment_df_for_export = current_data if current_data is not None and not current_data.empty else comparison_df
 
-try:
-    # Inner merge on time_interval
-    comparison_df = pd.merge(
-        current_data,
-        recommended_data,
-        on="time_interval",
-        how="inner",
-        suffixes=("_current", "_recommended")
-    )
-    
-    st.success(f"✅ Merged {len(comparison_df)} rows")
-    
-    # Store in session state
-    st.session_state["comparison_data"] = comparison_df
-    
-except Exception as e:
-    st.error(f"❌ Merge failed: {e}")
-    st.stop()
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CALCULATE DELTA METRICS
-# ─────────────────────────────────────────────────────────────────────────────
-
-st.markdown("---")
-st.subheader("📊 Delta Metrics")
-
-# Create summary stats
-deltas = pd.DataFrame({
-    "Metric": [
-        "Servers",
-        "Utilization (ρ)",
-        "Queue Length (Lq)",
-        "Wait Time (Wq)",
-        "System Length (Ls)",
-        "System Time (Ws)",
-    ],
-    "Current": [
-        comparison_df["servers_current"].mean(),
-        comparison_df["utilization_current"].mean(),
-        comparison_df["Lq_current"].mean(),
-        comparison_df["Wq_current"].mean(),
-        comparison_df["Ls_current"].mean(),
-        comparison_df["Ws_current"].mean(),
-    ],
-    "Recommended": [
-        comparison_df["servers_recommended"].mean(),
-        comparison_df["utilization_recommended"].mean(),
-        comparison_df["Lq_recommended"].mean(),
-        comparison_df["Wq_recommended"].mean(),
-        comparison_df["Ls_recommended"].mean(),
-        comparison_df["Ws_recommended"].mean(),
-    ]
-})
-
-deltas["Δ (Rec - Current)"] = deltas["Recommended"] - deltas["Current"]
-deltas["% Change"] = (deltas["Δ (Rec - Current)"] / deltas["Current"] * 100).round(2)
-
-st.dataframe(deltas, use_container_width=True)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# KEY INSIGHTS
-# ─────────────────────────────────────────────────────────────────────────────
-
-st.markdown("---")
-st.subheader("🎯 Key Insights")
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    total_servers_current = comparison_df["servers_current"].sum()
-    total_servers_recommended = comparison_df["servers_recommended"].sum()
-    server_delta = total_servers_recommended - total_servers_current
-    st.metric(
-        "Server Count (Δ)",
-        f"{total_servers_recommended}",
-        f"{server_delta:+d}",
-        delta_color="inverse"  # Green if negative (cost reduction)
-    )
-
-with col2:
-    util_current = comparison_df["utilization_current"].mean()
-    util_recommended = comparison_df["utilization_recommended"].mean()
-    util_delta = util_recommended - util_current
-    st.metric(
-        "Avg Utilization (Δ)",
-        f"{util_recommended:.1%}",
-        f"{util_delta:+.1%}",
-        delta_color="inverse"  # Green if negative (better)
-    )
-
-with col3:
-    wq_current = comparison_df["Wq_current"].mean()
-    wq_recommended = comparison_df["Wq_recommended"].mean()
-    wq_delta = wq_recommended - wq_current
-    st.metric(
-        "Avg Wait Time (Δ)",
-        f"{wq_recommended:.3f}",
-        f"{wq_delta:+.3f}",
-        delta_color="inverse"  # Green if negative (faster)
-    )
-
-with col4:
-    rows_improved = (comparison_df["utilization_recommended"] < comparison_df["utilization_current"]).sum()
-    pct_improved = (rows_improved / len(comparison_df) * 100)
-    st.metric(
-        "Intervals Improved",
-        f"{rows_improved}/{len(comparison_df)}",
-        f"{pct_improved:.0f}%"
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.subheader("Presentation Dashboard")
-
-comparison_verdict = "✅ Improves Queue" if rows_improved > 0 else "ℹ️ No Improvement"
-comparison_message = (
-    f"Recommended staffing changes {total_servers_current} total server-slots to "
-    f"{total_servers_recommended}. Average utilization moves from {util_current:.1%} "
-    f"to {util_recommended:.1%}, and average wait time moves from {wq_current:.4f}h "
-    f"to {wq_recommended:.4f}h."
+recs = build_recommendations(comparison_df.to_dict("records"))
+pdf_bytes = generate_pdf_report(
+    current_kpis=kpis if current_data is not None else {},
+    recommended_kpis=kpis,
+    comparison_df=comparison_df,
+    segment_df=segment_df_for_export,
+    recommendations=recs,
+)
+xl_bytes = generate_excel_report(
+    comparison_df=comparison_df,
+    segment_df=segment_df_for_export,
+    recommended_kpis=kpis,
 )
 
-pres_col1, pres_col2 = st.columns([1, 2])
-with pres_col1:
-    st.metric("Comparison Verdict", comparison_verdict)
-    st.metric("Intervals Improved", f"{rows_improved}/{len(comparison_df)}")
-    st.metric("Server Change", f"{server_delta:+d}")
-with pres_col2:
-    if rows_improved > 0:
-        st.success(comparison_message)
-    else:
-        st.info(comparison_message)
-    st.caption("Use this dashboard to explain current vs recommended staffing in one slide.")
-# COST ANALYSIS (NEW)
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# COMPARISON VIEW
+# ═══════════════════════════════════════════════════════════════════════════
+metric_cols = st.columns(4)
+metric_cols[0].metric("Current Cost", pretty_metric(kpis["total_current_cost"], money=True), help="Total cost under current staffing plan")
+metric_cols[1].metric("Optimized Cost", pretty_metric(kpis["total_optimized_cost"], money=True), help="Total cost under optimized staffing plan")
+metric_cols[2].metric("Savings", pretty_metric(kpis["total_savings"], money=True), help="Cost difference between current and optimized plan")
+metric_cols[3].metric("Avg Utilization Change", pretty_metric(kpis["avg_utilization_improvement"], percent=True), help="Change in average utilization after optimization")
 
-st.markdown("---")
-st.subheader("💰 Cost Analysis & Savings")
-st.markdown("""
-**Costing Model (NOVAMART):**
-- **Cₛ = ₱87/hr** — Cashier salary
-- **Cw = ₱100/hr** — Customer wait opportunity cost  
-- **Ca = ₱60/customer** — Abandonment cost (10% × ₱600 basket)
-""")
-
-# Get costing parameters from session state
-cost_per_server_hr = st.session_state.get("cost_per_server_hr", 87.0)
-cost_per_wait_hr = st.session_state.get("cost_per_wait_hr", 100.0)
-cost_per_abandonment = st.session_state.get("cost_per_abandonment", 60.0)
-
-# Rebuild current_data and recommended_data from comparison_df for cost calculation
-current_data_for_cost = current_data.copy()
-recommended_data_for_cost = recommended_data.copy()
-
-# Compute costs
-current_costs = []
-recommended_costs = []
-
-for idx, row in current_data_for_cost.iterrows():
-    cost_row = compute_costs(
-        row,
-        cost_per_server_hr=cost_per_server_hr,
-        cost_per_wait_hr=cost_per_wait_hr,
-        cost_per_abandonment=cost_per_abandonment
-    )
-    current_costs.append(cost_row)
-
-for idx, row in recommended_data_for_cost.iterrows():
-    cost_row = compute_costs(
-        row,
-        cost_per_server_hr=cost_per_server_hr,
-        cost_per_wait_hr=cost_per_wait_hr,
-        cost_per_abandonment=cost_per_abandonment
-    )
-    recommended_costs.append(cost_row)
-
-current_df = pd.DataFrame(current_costs)
-recommended_df = pd.DataFrame(recommended_costs)
-
-# Cost summary metrics
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-    current_total = current_df["total_cost"].sum()
-    st.metric("Current Total Cost (24h)", f"₱{current_total:,.2f}")
-
-with col2:
-    recommended_total = recommended_df["total_cost"].sum()
-    st.metric("Recommended Total Cost (24h)", f"₱{recommended_total:,.2f}")
-
-with col3:
-    savings_daily = current_total - recommended_total
-    savings_pct = (savings_daily / current_total * 100) if current_total > 0 else 0
-    delta_color = "🟢" if savings_daily > 0 else "🔴"
-    st.metric("Period Savings", f"{delta_color} ₱{savings_daily:,.2f}", f"{savings_pct:.1f}%")
-
-with col4:
-    savings_monthly = savings_daily * 30
-    st.metric("Monthly Savings (30d)", f"₱{savings_monthly:,.2f}")
-
-with col5:
-    savings_annual = savings_daily * 347
-    st.metric("Annual Savings (347d)", f"₱{savings_annual:,.2f}")
-
-# Cost breakdown component analysis
-st.markdown("#### Cost Component Breakdown")
-
-component_current = {
-    "Server Cost": current_df["server_cost"].sum(),
-    "Wait Cost": current_df["wait_cost"].sum(),
-    "Abandonment Cost": current_df["abandonment_cost"].sum(),
+st.subheader("Scenario Comparison")
+_comp_display = comparison_df.copy()
+for _col in ("rho_current", "rho_optimal", "sim_rho", "mc_rho_mean"):
+    if _col in _comp_display.columns:
+        _comp_display[_col] = _comp_display[_col] * 100
+_cc = {
+    "rho_current": st.column_config.ProgressColumn("ρ Current (%)", format="%.1f%%", min_value=0, max_value=100),
+    "rho_optimal": st.column_config.ProgressColumn("ρ Optimal (%)", format="%.1f%%", min_value=0, max_value=100),
 }
+if "sim_rho" in _comp_display.columns:
+    _cc["sim_rho"] = st.column_config.ProgressColumn("ρ DES (%)", format="%.1f%%", min_value=0, max_value=100)
+if "sim_status" in _comp_display.columns:
+    _cc["sim_status"] = st.column_config.Column("DES Status")
+if "sim_max_queue" in _comp_display.columns:
+    _cc["sim_max_queue"] = st.column_config.NumberColumn("Max Queue")
+if "mc_failure_rate" in _comp_display.columns:
+    _comp_display["mc_failure_rate"] = _comp_display["mc_failure_rate"] * 100
+    _cc["mc_failure_rate"] = st.column_config.ProgressColumn("MC Fail %", format="%.1f%%", min_value=0, max_value=100)
+if "mc_Wq_ci" in _comp_display.columns:
+    _cc["mc_Wq_ci"] = st.column_config.Column("Wq (95% CI)")
+st.dataframe(_comp_display, column_config=_cc, use_container_width=True)
 
-component_recommended = {
-    "Server Cost": recommended_df["server_cost"].sum(),
-    "Wait Cost": recommended_df["wait_cost"].sum(),
-    "Abandonment Cost": recommended_df["abandonment_cost"].sum(),
-}
+chart_cols = st.columns(2)
+with chart_cols[0]:
+    utilization_df = comparison_df.set_index("time")[["rho_current", "rho_optimal"]]
+    st.bar_chart(utilization_df)
+with chart_cols[1]:
+    server_df = comparison_df.set_index("time")[["c_current", "c_optimal"]]
+    st.bar_chart(server_df)
 
-component_df = pd.DataFrame({
-    "Component": list(component_current.keys()),
-    "Current (₱)": list(component_current.values()),
-    "Recommended (₱)": list(component_recommended.values()),
-    "Savings (₱)": [component_current[k] - component_recommended[k] for k in component_current.keys()],
+st.subheader("Waiting-Time Comparison")
+st.line_chart(comparison_df.set_index("time")[["Wq_current", "Wq_optimal"]])
+
+st.subheader("Cost Breakdown")
+cost_per_server_hr = st.session_state.get("sb_server_cost", DEFAULT_SERVER_COST_HR)
+cost_per_wait_hr = st.session_state.get("sb_wait_cost", DEFAULT_WAIT_COST_HR)
+cost_per_abandonment = st.session_state.get("sb_abandon_cost", DEFAULT_ABANDONMENT_COST)
+abandonment_rate = st.session_state.get("sb_abandon_rate", 0.10)
+
+df_current = comparison_df.rename(columns={"c_current": "c", "rho_current": "rho", "Wq_current": "Wq", "Lq_current": "Lq"})
+df_optimal = comparison_df.rename(columns={"c_optimal": "c", "rho_optimal": "rho", "Wq_optimal": "Wq", "Lq_optimal": "Lq"})
+
+current_cost_summary = compute_cost_summary(
+    df_current,
+    cost_per_server_hr=cost_per_server_hr,
+    cost_per_wait_hr=cost_per_wait_hr,
+    cost_per_abandonment=cost_per_abandonment,
+    abandonment_rate=abandonment_rate,
+)
+optimal_cost_summary = compute_cost_summary(
+    df_optimal,
+    cost_per_server_hr=cost_per_server_hr,
+    cost_per_wait_hr=cost_per_wait_hr,
+    cost_per_abandonment=cost_per_abandonment,
+    abandonment_rate=abandonment_rate,
+)
+
+cost_metrics = st.columns(4)
+cost_metrics[0].metric("Current Total", pretty_metric(current_cost_summary["total_cost"], money=True), help="Total cost under current staffing")
+cost_metrics[1].metric("Optimized Total", pretty_metric(optimal_cost_summary["total_cost"], money=True), help="Total cost under optimized staffing")
+savings = (current_cost_summary["total_cost"] or 0) - (optimal_cost_summary["total_cost"] or 0)
+cost_metrics[2].metric("Savings", pretty_metric(savings, money=True), help="Cost reduction from optimization")
+cost_metrics[3].metric("Avg Cost/Segment (Opt)", pretty_metric(optimal_cost_summary["avg_cost_per_segment"], money=True), help="Average optimized cost per time segment")
+
+cost_current_df = compute_all_costs(df_current, cost_per_server_hr, cost_per_wait_hr, cost_per_abandonment, abandonment_rate)
+cost_optimal_df = compute_all_costs(df_optimal, cost_per_server_hr, cost_per_wait_hr, cost_per_abandonment, abandonment_rate)
+cost_compare = pd.DataFrame({
+    "time": comparison_df["time"],
+    "Current Server": cost_current_df["server_cost"],
+    "Optimal Server": cost_optimal_df["server_cost"],
+    "Current Wait": cost_current_df["wait_cost"],
+    "Optimal Wait": cost_optimal_df["wait_cost"],
+    "Current Total": cost_current_df["total_cost"],
+    "Optimal Total": cost_optimal_df["total_cost"],
 })
+st.dataframe(cost_compare, use_container_width=True)
 
-st.dataframe(component_df, use_container_width=True)
+# ── Simulation-validation overview ────────────────────────────────────
+if "sim_status" in comparison_df.columns:
+    st.subheader("Simulation Validation (DES + MC 10K)")
+    sim_cols = st.columns(4)
 
-# Cost breakdown chart
-fig_cost = go.Figure()
+    des_fail = int(comparison_df["sim_status"].isin(["Critical", "Unstable"]).sum())
+    mc_fail = int(comparison_df["mc_failure_rate"].fillna(0).gt(0.05).sum())
+    max_queue = int(comparison_df["sim_max_queue"].fillna(0).max())
+    avg_mc_fail = float(comparison_df["mc_failure_rate"].fillna(0).mean())
 
-fig_cost.add_trace(go.Bar(
-    name="Current",
-    x=component_df["Component"],
-    y=component_df["Current (₱)"],
-    marker_color="rgba(248, 113, 113, 0.7)",
-))
+    sim_cols[0].metric("DES Critical", str(des_fail), help="Segments where DES status was Critical or Unstable")
+    sim_cols[1].metric("MC Flags (>5%)", str(mc_fail), help="Segments where >5% of MC trials exceeded ρ threshold")
+    sim_cols[2].metric("Max Queue (DES)", str(max_queue), help="Highest queue depth observed in DES simulation")
+    sim_cols[3].metric("Avg MC Failure Rate", pretty_metric(avg_mc_fail, percent=True), help="Mean failure rate across all segments")
 
-fig_cost.add_trace(go.Bar(
-    name="Recommended",
-    x=component_df["Component"],
-    y=component_df["Recommended (₱)"],
-    marker_color="rgba(52, 211, 153, 0.7)",
-))
+# ── ROI Projection ────────────────────────────────────────────────────
+st.subheader("📈 ROI Projection")
+roi_cols = st.columns(4)
+legal_holidays = roi_cols[0].number_input("Legal holidays per year", min_value=0, max_value=30, value=12, key="roi_holidays")
 
-fig_cost.update_layout(
-    title="Cost Breakdown: Current vs Recommended",
-    xaxis_title="Cost Component",
-    yaxis_title="Cost (₱)",
-    barmode="group",
-    height=400,
+daily_savings = savings or 0
+thirty_day = daily_savings * 30
+operating_days = 365 - legal_holidays
+annual_savings = daily_savings * operating_days
+
+roi_cols[1].metric("Daily Savings", pretty_metric(daily_savings, money=True), help="Daily cost savings from optimized plan")
+roi_cols[2].metric("30-Day Savings", pretty_metric(thirty_day, money=True), help="Projected savings over 30 days")
+roi_cols[3].metric("Annual Savings", pretty_metric(annual_savings, money=True), help=f"Projected savings over {operating_days} operating days (365 − {legal_holidays} holidays)")
+
+dataframe_download(comparison_df, "novamart_comparison.csv", "Download Comparison CSV")
+
+# ── Report export buttons ────────────────────────────────────────────
+export_col1, export_col2 = st.columns(2)
+export_col1.download_button(
+    "📥 Download PDF",
+    pdf_bytes,
+    "novamart_report.pdf",
+    "application/pdf",
+    use_container_width=True,
+)
+export_col2.download_button(
+    "📊 Download Excel",
+    xl_bytes,
+    "novamart_report.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True,
 )
 
-st.plotly_chart(fig_cost, use_container_width=True)
+# ═══════════════════════════════════════════════════════════════════════════
+# SCENARIO COMPARISON — Conditional expander
+# ═══════════════════════════════════════════════════════════════════════════
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VISUALIZATIONS
-# ─────────────────────────────────────────────────────────────────────────────
-
-st.markdown("---")
-st.subheader("📉 Visualizations")
-
-# Chart 1: Utilization Comparison
-fig1 = go.Figure()
-
-fig1.add_trace(go.Bar(
-    x=comparison_df["time_interval"],
-    y=comparison_df["utilization_current"],
-    name="Current ρ",
-    marker_color="rgba(248, 113, 113, 0.7)",
-))
-
-fig1.add_trace(go.Bar(
-    x=comparison_df["time_interval"],
-    y=comparison_df["utilization_recommended"],
-    name="Recommended ρ",
-    marker_color="rgba(52, 211, 153, 0.7)",
-))
-
-fig1.add_hline(y=0.70, line_dash="dash", line_color="yellow", annotation_text="Target (0.70)")
-fig1.add_hline(y=0.80, line_dash="dash", line_color="red", annotation_text="Peak (0.80)")
-
-fig1.update_layout(
-    title="Utilization: Current vs Recommended",
-    xaxis_title="Time Interval",
-    yaxis_title="Utilization (ρ)",
-    barmode="group",
-    height=400,
-)
-
-st.plotly_chart(fig1, use_container_width=True)
-
-# Chart 2: Server Allocation
-fig2 = go.Figure()
-
-fig2.add_trace(go.Bar(
-    x=comparison_df["time_interval"],
-    y=comparison_df["servers_current"],
-    name="Current Servers",
-    marker_color="rgba(248, 113, 113, 0.7)",
-))
-
-fig2.add_trace(go.Bar(
-    x=comparison_df["time_interval"],
-    y=comparison_df["servers_recommended"],
-    name="Recommended Servers",
-    marker_color="rgba(52, 211, 153, 0.7)",
-))
-
-fig2.update_layout(
-    title="Server Allocation: Current vs Recommended",
-    xaxis_title="Time Interval",
-    yaxis_title="Number of Servers",
-    barmode="group",
-    height=400,
-)
-
-st.plotly_chart(fig2, use_container_width=True)
-
-# Chart 3: Queue Metrics
-fig3 = make_subplots(
-    rows=1, cols=2,
-    subplot_titles=("Avg Queue Length (Lq)", "Avg Wait Time (Wq)")
-)
-
-fig3.add_trace(
-    go.Bar(x=comparison_df["time_interval"], y=comparison_df["Lq_current"], 
-           name="Current Lq", marker_color="rgba(248, 113, 113, 0.7)"),
-    row=1, col=1
-)
-
-fig3.add_trace(
-    go.Bar(x=comparison_df["time_interval"], y=comparison_df["Lq_recommended"], 
-           name="Recommended Lq", marker_color="rgba(52, 211, 153, 0.7)"),
-    row=1, col=1
-)
-
-fig3.add_trace(
-    go.Bar(x=comparison_df["time_interval"], y=comparison_df["Wq_current"], 
-           name="Current Wq", marker_color="rgba(248, 113, 113, 0.7)", showlegend=False),
-    row=1, col=2
-)
-
-fig3.add_trace(
-    go.Bar(x=comparison_df["time_interval"], y=comparison_df["Wq_recommended"], 
-           name="Recommended Wq", marker_color="rgba(52, 211, 153, 0.7)", showlegend=False),
-    row=1, col=2
-)
-
-fig3.update_yaxes(title_text="Lq (customers)", row=1, col=1)
-fig3.update_yaxes(title_text="Wq (hours)", row=1, col=2)
-fig3.update_xaxes(title_text="Time Interval", row=1, col=1)
-fig3.update_xaxes(title_text="Time Interval", row=1, col=2)
-
-fig3.update_layout(height=400)
-
-st.plotly_chart(fig3, use_container_width=True)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DETAILED COMPARISON TABLE
-# ─────────────────────────────────────────────────────────────────────────────
-
-st.markdown("---")
-st.subheader("📋 Detailed Comparison Table")
-
-detailed = pd.DataFrame({
-    "Time": comparison_df["time_interval"],
-    "Servers Δ": comparison_df["servers_recommended"] - comparison_df["servers_current"],
-    "ρ Current": comparison_df["utilization_current"].round(3),
-    "ρ Recommended": comparison_df["utilization_recommended"].round(3),
-    "ρ Δ": (comparison_df["utilization_recommended"] - comparison_df["utilization_current"]).round(3),
-    "Lq Current": comparison_df["Lq_current"].round(2),
-    "Lq Recommended": comparison_df["Lq_recommended"].round(2),
-    "Wq Current": comparison_df["Wq_current"].round(3),
-    "Wq Recommended": comparison_df["Wq_recommended"].round(3),
-})
-
-# Format numeric columns to remove trailing zeros
-detailed_styled = detailed.style.format({
-    "ρ Current": lambda x: format_number(x, 3),
-    "ρ Recommended": lambda x: format_number(x, 3),
-    "ρ Δ": lambda x: format_number(x, 3),
-    "Lq Current": lambda x: format_number(x, 2),
-    "Lq Recommended": lambda x: format_number(x, 2),
-    "Wq Current": lambda x: format_number(x, 3),
-    "Wq Recommended": lambda x: format_number(x, 3),
-})
-
-st.dataframe(detailed_styled, use_container_width=True)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# EXPORT
-# ─────────────────────────────────────────────────────────────────────────────
-
-st.markdown("---")
-st.subheader("💾 Export Comparison")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    csv_bytes = comparison_df.to_csv(index=False).encode()
-    st.download_button(
-        "📥 Download CSV",
-        csv_bytes,
-        "comparison_data.csv",
-        "text/csv",
-    )
-
-with col2:
-    try:
-        import io
-        excel_buffer = io.BytesIO()
-        excel_writer = pd.ExcelWriter(excel_buffer, engine='openpyxl')
-        comparison_df.to_excel(excel_writer, index=False, sheet_name="Comparison")
-        excel_writer.close()
-        excel_buffer.seek(0)
-        
-        st.download_button(
-            "📊 Download Excel (Comparison)",
-            excel_buffer.getvalue(),
-            "comparison_data.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+scenarios = st.session_state.get("saved_scenarios", [])
+if scenarios:
+    with st.expander("📁 Compare Saved Scenarios", expanded=False):
+        names = [s["name"] for s in scenarios]
+        selected = st.multiselect(
+            "Select scenarios to compare (minimum 2)",
+            options=names,
+            default=names[: min(2, len(names))],
         )
-    except Exception as e:
-        st.warning(f"Excel export: {e}")
 
-with col3:
-    # Create Excel file for costing comparison
-    try:
-        import io
-        
-        # Prepare costing comparison DataFrame
-        costing_cmp_df = pd.DataFrame({
-            "time_interval": comparison_df["time_interval"],
-            "arrival_rate": comparison_df["arrival_rate"],
-            "service_rate": comparison_df["service_rate"],
-            "current_servers": comparison_df.get("c_current", 0),
-            "recommended_servers": comparison_df.get("c_optimal", 0),
-            "current_cost_₱": comparison_df.get("c_current", 0) * 87.0 + comparison_df.get("Wq_current", 0) * comparison_df.get("arrival_rate", 0) * 100.0 + comparison_df.get("arrival_rate", 0) * 0.10 * 60.0,
-            "recommended_cost_₱": comparison_df.get("c_optimal", 0) * 87.0 + comparison_df.get("Wq_optimal", 0) * comparison_df.get("arrival_rate", 0) * 100.0 + comparison_df.get("arrival_rate", 0) * 0.10 * 60.0,
-        })
-        costing_cmp_df["saving_₱"] = costing_cmp_df["current_cost_₱"] - costing_cmp_df["recommended_cost_₱"]
-        
-        costing_cmp_buffer = io.BytesIO()
-        costing_cmp_writer = pd.ExcelWriter(costing_cmp_buffer, engine='openpyxl')
-        
-        # Sheet 1: Detailed costing comparison
-        costing_cmp_df.to_excel(costing_cmp_writer, index=False, sheet_name="Costing Comparison")
-        
-        # Sheet 2: Costing summary
-        summary_cmp_data = {
-            "Metric": [
-                "Total Current Cost",
-                "Total Recommended Cost",
-                "TOTAL SAVINGS",
-                "Savings %"
-            ],
-            "Amount (₱)": [
-                costing_cmp_df["current_cost_₱"].sum(),
-                costing_cmp_df["recommended_cost_₱"].sum(),
-                costing_cmp_df["saving_₱"].sum(),
-                f"{(costing_cmp_df['saving_₱'].sum() / costing_cmp_df['current_cost_₱'].sum() * 100):.1f}%" if costing_cmp_df["current_cost_₱"].sum() > 0 else "0%"
-            ]
-        }
-        summary_cmp_df = pd.DataFrame(summary_cmp_data)
-        summary_cmp_df.to_excel(costing_cmp_writer, index=False, sheet_name="Summary")
-        
-        costing_cmp_writer.close()
-        costing_cmp_buffer.seek(0)
-        
-        st.download_button(
-            "💰 Download Excel (Costing)",
-            costing_cmp_buffer.getvalue(),
-            "comparison_costing_analysis.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-    except Exception as e:
-        st.warning(f"⚠️ Costing export: {e}")
+        if len(selected) < 2:
+            st.info("Select at least two scenarios to display the comparison.")
+        else:
+            chosen = [s for s in scenarios if s["name"] in selected]
 
-st.success("✅ Ready for Page 4: Simulation")
+            fig = go.Figure()
+            colors_seq = ["#2E86AB", "#A23B72", "#F18F01", "#C73E1D", "#3B1F2B"]
+
+            for idx, sc in enumerate(chosen):
+                sc_df = sc["data"]
+                if "time" in sc_df.columns and "Wq_optimal" in sc_df.columns:
+                    wq_min = sc_df["Wq_optimal"] * 60
+                    fig.add_trace(
+                        go.Bar(
+                            name=sc["name"],
+                            x=sc_df["time"],
+                            y=wq_min,
+                            marker_color=colors_seq[idx % len(colors_seq)],
+                        )
+                    )
+
+            fig.update_layout(
+                barmode="group",
+                xaxis_title="Time Segment",
+                yaxis_title="Avg Wait (min)",
+                height=400,
+                legend_title="Scenario",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            summary_rows = []
+            for sc in chosen:
+                sk = sc.get("kpis", {})
+                summary_rows.append(
+                    {
+                        "Scenario": sc["name"],
+                        "Avg Wq (min)": (
+                            f"{sk.get('avg_waiting_optimized', 0) * 60:.2f}"
+                            if sk.get("avg_waiting_optimized") is not None
+                            else "N/A"
+                        ),
+                        "Avg ρ": (
+                            f"{sk.get('avg_utilization_optimized', 0):.1%}"
+                            if sk.get("avg_utilization_optimized") is not None
+                            else "N/A"
+                        ),
+                        "Total Cost": (
+                            f"₱{sk.get('total_optimized_cost', 0):,.0f}"
+                            if sk.get("total_optimized_cost") is not None
+                            else "N/A"
+                        ),
+                        "Savings": (
+                            f"₱{sk.get('total_savings', 0):,.0f}"
+                            if sk.get("total_savings") is not None
+                            else "N/A"
+                        ),
+                    }
+                )
+            st.dataframe(pd.DataFrame(summary_rows), use_container_width=True)
