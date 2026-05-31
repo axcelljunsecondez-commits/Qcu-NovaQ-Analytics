@@ -36,8 +36,12 @@ jobs:
           pip install pytest httpx hypothesis scipy pytest-cov
       - name: Clean hypothesis cache
         run: rm -rf .hypothesis
-      - name: Run tests with coverage
-        run: pytest tests/ --tb=short -v --cov=queue_models --cov=optimization --cov=simulation --cov=costing --cov-report=term-missing
+      - name: Run tests (no coverage)
+        run: pytest tests/ -p no:cov
+      - name: Run coverage measurement
+        run: |
+          coverage run -m pytest tests/ -p no:cov
+          coverage report --fail-under=60 --skip-covered
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
