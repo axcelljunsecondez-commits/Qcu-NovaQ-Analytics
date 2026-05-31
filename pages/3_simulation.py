@@ -7,14 +7,13 @@ import streamlit as st
 
 from app_page_utils import dataframe_download, init_session_state, inject_or_css, pretty_metric, to_segment_records
 from simulation import (
-    SIM_HOURS_PER_SEGMENT,
     MC_DEFAULT_TRIALS,
+    SIM_HOURS_PER_SEGMENT,
     mc_simulate_segments,
     mc_summarize_simulation,
     simulate_segments,
     summarize_simulation,
 )
-
 
 st.set_page_config(page_title="Simulation", layout="wide")
 init_session_state()

@@ -4,7 +4,7 @@ With strict data pipeline integrity and mandatory error-checking.
 
 🎯 Architecture:
   Page 1 (pages/1_current_metrics.py) — Upload & validate
-  Page 2 (pages/2_optimization.py) — Generate recommendations  
+  Page 2 (pages/2_optimization.py) — Generate recommendations
   Page 3 (pages/3_comparison.py) — Compare with error-safe merge
   Page 4 (pages/4_simulation.py) — Monte Carlo using ONLY recommended data
 
@@ -16,17 +16,18 @@ With strict data pipeline integrity and mandatory error-checking.
   - No mutations of original data — always .copy()
 """
 
-import streamlit as st
-import pandas as pd
 import base64
-from pathlib import Path
 import os
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
 from PIL import Image
 
 from config import (
+    DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
-    DEFAULT_ABANDONMENT_COST,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ def init_session_state():
         st.session_state["simulation_results"] = None
     if "waste_reduction_data" not in st.session_state:
         st.session_state["waste_reduction_data"] = None
-    
+
     # Costing parameters (NOVAMART defaults)
     if "cost_per_server_hr" not in st.session_state:
         st.session_state["cost_per_server_hr"] = DEFAULT_SERVER_COST_HR
@@ -92,7 +93,7 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    
+
     # Apply modern SaaS design system
     st.markdown("""
     <style>
@@ -697,10 +698,10 @@ def main():
     }
     </style>
     """, unsafe_allow_html=True)
-    
+
     # Initialize session state
     init_session_state()
-    
+
     # ═════════════════════════════════════════════════════════════════════════
     # HERO SECTION
     # ═════════════════════════════════════════════════════════════════════════
@@ -714,7 +715,7 @@ def main():
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # Logo strip - show only if logos exist
     logo_b64 = get_base64_image("logo/logo1.png")
     if logo_b64:
@@ -723,7 +724,7 @@ def main():
             <img src='data:image/png;base64,{logo_b64}' style='max-width: 80px; height: auto; object-fit: contain;'>
         </div>
         """, unsafe_allow_html=True)
-    
+
     # Hero section buttons
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
@@ -733,7 +734,7 @@ def main():
             st.switch_page("pages/1_current_metrics.py")
     with col3:
         pass
-    
+
     with st.expander("📐 Technical Details — Supported Models"):
         st.markdown("""
         **Queueing Models:**
@@ -748,7 +749,7 @@ def main():
         **Simulation:** Discrete-event (SimPy) · Monte Carlo (10K trials)
         **Input:** 4 required columns (time, λ, μ, c) + 2 optional (variance, K)
         """)
-    
+
     # ═════════════════════════════════════════════════════════════════════════
     # INFO SECTION
     # ═════════════════════════════════════════════════════════════════════════
@@ -761,14 +762,14 @@ def main():
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # ═════════════════════════════════════════════════════════════════════════
     # WORKFLOW SECTION
     # ═════════════════════════════════════════════════════════════════════════
     st.markdown('<p class="section-title">THE 4-PAGE WORKFLOW</p>', unsafe_allow_html=True)
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("""
         <div class="workflow-card">
@@ -779,7 +780,7 @@ def main():
         """, unsafe_allow_html=True)
         if st.button("Explore →", key="workflow_1", use_container_width=True):
             st.switch_page("pages/1_current_metrics.py")
-    
+
     with col2:
         st.markdown("""
         <div class="workflow-card">
@@ -790,9 +791,9 @@ def main():
         """, unsafe_allow_html=True)
         if st.button("Optimize →", key="workflow_2", use_container_width=True):
             st.switch_page("pages/2_optimization.py")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("""
         <div class="workflow-card">
@@ -803,7 +804,7 @@ def main():
         """, unsafe_allow_html=True)
         if st.button("Simulate here →", key="workflow_3", use_container_width=True):
             st.switch_page("pages/3_simulation.py")
-    
+
     with col2:
         st.markdown("""
         <div class="workflow-card">
@@ -814,15 +815,15 @@ def main():
         """, unsafe_allow_html=True)
         if st.button("Review →", key="workflow_4", use_container_width=True):
             st.switch_page("pages/4_comparison.py")
-    
+
     st.markdown("---")
-    
+
     # ═════════════════════════════════════════════════════════════════════════
     # SCHEMA SECTION
     # ═════════════════════════════════════════════════════════════════════════
     st.markdown('<p class="section-title">WHAT TO PREPARE — YOUR CSV SCHEMA</p>', unsafe_allow_html=True)
     st.markdown('<p style="color: #999; margin-bottom: 1.5rem;"><strong>4 required columns</strong> + 2 optional | <span style="color: #28a745;">Supports M/M/1, M/M/c, M/G/c, M/M/c/K, and M/G/c/K</span></p>', unsafe_allow_html=True)
-    
+
     st.markdown("""
     <div class="schema-grid">
         <div class="schema-item">
@@ -857,7 +858,7 @@ def main():
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     st.markdown("**Required:** time, lambda, mu, c | **Optional:** variance (general service), K (finite total capacity)")
 
     # ═════════════════════════════════════════════════════════════════════════
@@ -891,14 +892,14 @@ def main():
     
     **Schema** (4 required + 2 optional)
     """)
-    
+
     st.sidebar.markdown(f"""
     ```
     {', '.join(REQUIRED_COLUMNS)}
     variance, K (optional)
     ```
     """)
-    
+
     # Cost parameters
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 💰 Cost Parameters")

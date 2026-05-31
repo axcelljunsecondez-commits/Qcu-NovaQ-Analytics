@@ -8,13 +8,12 @@ import pandas as pd
 import streamlit as st
 
 from optimization import (
-    DEFAULT_SERVER_COST,
     DEFAULT_CUSTOMER_WAITING_COST,
+    DEFAULT_SERVER_COST,
     UNSTABLE_PENALTY_MULTIPLIER,
     compute_blended_rate,
 )
 from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
-
 
 CURRENT_COLUMNS = [
     "time",
@@ -48,14 +47,14 @@ def _get_segment_cost(segment: Mapping, default_cost: float = DEFAULT_SERVER_COS
     reg = segment.get("regular_hours")
     ot = segment.get("ot_hours")
     tot = segment.get("total_hours")
-    
+
     if reg is not None and ot is not None and tot is not None:
         return compute_blended_rate(reg, ot, tot)
-    
+
     explicit_cost = segment.get("server_cost", default_cost)
     if explicit_cost is not None:
         return float(explicit_cost)
-    
+
     return default_cost
 
 
@@ -87,7 +86,7 @@ def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None) ->
     stable = bool(metrics.get("stable"))
     rho = metrics.get("rho")
     status = _classify_utilization_status(rho)
-    
+
     return {
         "time": str(time_label),
         "lambda": lambda_,
@@ -277,7 +276,7 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
     """
     if customer_waiting_cost is None:
         customer_waiting_cost = DEFAULT_CUSTOMER_WAITING_COST
-    
+
     if results_df is None or results_df.empty:
         return {
             "avg_utilization": None,
@@ -293,17 +292,16 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
     # Calculate waiting costs for ALL rows (stable + unstable)
     total_wait_cost = 0.0
     avg_wait_time = 0.0
-    
+
     for idx, row in results_df.iterrows():
         is_stable = row.get("stable", False)
-        rho = row.get("rho")
-        
+
         if is_stable:
             # Stable system: use actual Lq
             lq = row.get("Lq")
             if lq is not None and not pd.isna(lq):
                 total_wait_cost += lq * customer_waiting_cost
-            
+
             wq = row.get("Wq")
             if wq is not None and not pd.isna(wq):
                 avg_wait_time += wq
@@ -312,13 +310,13 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
             lambda_ = row.get("lambda")
             if lambda_ is not None and not pd.isna(lambda_):
                 total_wait_cost += lambda_ * UNSTABLE_PENALTY_MULTIPLIER * customer_waiting_cost
-    
+
     count_total = len(results_df)
     count_stable = int(results_df["stable"].sum())
     count_unstable = count_total - count_stable
     avg_cost = total_wait_cost / count_total if count_total > 0 else 0.0
     avg_wait_time = avg_wait_time / count_stable if count_stable > 0 else None
-    
+
     # Find worst utilization (from stable segments only)
     stable_df = results_df[results_df["stable"]].copy()
     if stable_df.empty:
@@ -334,7 +332,7 @@ def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping] = No
         }
 
     worst_index = stable_df["rho"].idxmax()
-    
+
     return {
         "avg_utilization": results_df["rho"].mean(),
         "max_utilization": stable_df["rho"].max(),

@@ -16,13 +16,12 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Data ingestion
 # ──────────────────────────────────────────────────────────────────────────────
 
 def load_transactions(
-    source: Union[str, pd.DataFrame],
+    source: str | pd.DataFrame,
 ) -> pd.DataFrame:
     """Load a transaction log from *source* and return a cleaned DataFrame.
 
@@ -153,7 +152,7 @@ def compute_lambda_mu(
 # Export
 # ──────────────────────────────────────────────────────────────────────────────
 
-def to_novamart_csv(df: pd.DataFrame, output_path: Optional[str] = None) -> str:
+def to_novamart_csv(df: pd.DataFrame, output_path: str | None = None) -> str:
     """Serialise a parameter DataFrame to NovaMart's expected CSV format.
 
     Parameters
@@ -290,7 +289,7 @@ def test_poisson_arrivals(
     p_value = float(p_value)
     is_poisson = p_value >= alpha
 
-    warning: Optional[str] = None
+    warning: str | None = None
     if not is_poisson:
         warning = (
             f"Arrivals deviate significantly from Poisson (p = {p_value:.4f}). "
@@ -370,7 +369,7 @@ def fit_service_distribution(
     ks_pvalue = float(ks_pvalue)
     is_exponential = ks_pvalue >= 0.05
 
-    warning: Optional[str] = None
+    warning: str | None = None
     if not is_exponential:
         warning = (
             f"Service times deviate significantly from exponential (KS p = {ks_pvalue:.4f}). "

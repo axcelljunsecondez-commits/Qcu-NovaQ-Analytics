@@ -7,10 +7,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app_page_utils import dataframe_download, init_session_state, inject_or_css, pretty_metric, to_segment_records
-from costing import compute_all_costs, compute_cost_summary, DEFAULT_SERVER_COST_HR, DEFAULT_WAIT_COST_HR, DEFAULT_ABANDONMENT_COST
+from costing import (
+    DEFAULT_ABANDONMENT_COST,
+    DEFAULT_SERVER_COST_HR,
+    DEFAULT_WAIT_COST_HR,
+    compute_all_costs,
+    compute_cost_summary,
+)
 from optimization import build_recommendations, summarize_optimization
 from report_export import generate_excel_report, generate_pdf_report
-
 
 st.set_page_config(page_title="Comparison", layout="wide")
 init_session_state()

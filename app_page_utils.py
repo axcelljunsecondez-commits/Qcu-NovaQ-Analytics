@@ -7,11 +7,10 @@ from io import StringIO
 import pandas as pd
 
 from config import (
+    DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
-    DEFAULT_ABANDONMENT_COST,
 )
-
 
 REQUIRED_COLUMNS = ["time", "lambda", "mu", "c"]
 OPTIONAL_COLUMNS = ["variance", "K", "theta", "server_cost", "regular_hours", "ot_hours", "total_hours"]

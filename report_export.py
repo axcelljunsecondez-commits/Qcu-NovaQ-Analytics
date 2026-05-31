@@ -12,7 +12,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     PageBreak,
@@ -23,7 +23,6 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # PDF Report
 # ──────────────────────────────────────────────────────────────────────────────
@@ -32,9 +31,9 @@ from reportlab.platypus import (
 def generate_pdf_report(
     current_kpis: dict,
     recommended_kpis: dict,
-    comparison_df: "pd.DataFrame",
-    segment_df: "pd.DataFrame",
-    recommendations: Optional[list[str]] = None,
+    comparison_df: pd.DataFrame,
+    segment_df: pd.DataFrame,
+    recommendations: list[str] | None = None,
 ) -> io.BytesIO:
     """Generate a multi-page PDF report.
 
@@ -210,9 +209,9 @@ def generate_pdf_report(
 
 
 def generate_excel_report(
-    comparison_df: "pd.DataFrame",
-    segment_df: "pd.DataFrame",
-    recommended_kpis: Optional[dict] = None,
+    comparison_df: pd.DataFrame,
+    segment_df: pd.DataFrame,
+    recommended_kpis: dict | None = None,
 ) -> io.BytesIO:
     """Generate a two-sheet Excel workbook.
 

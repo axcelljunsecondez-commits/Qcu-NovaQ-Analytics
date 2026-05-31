@@ -16,16 +16,15 @@ from data_processing import _classify_utilization_status
 from optimization import optimize_segment
 from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
-
 # ── Pydantic schemas ──────────────────────────────────────────────────────
 
 class SegmentInput(BaseModel):
     lambda_: float = Field(..., alias="lambda")
     mu: float = Field(...)
     c: int = Field(default=1, ge=1)
-    variance: Optional[float] = None
-    K: Optional[int] = None
-    theta: Optional[float] = None
+    variance: float | None = None
+    K: int | None = None
+    theta: float | None = None
 
     class Config:
         populate_by_name = True
@@ -44,40 +43,40 @@ class BatchInput(BaseModel):
 
 class MetricsResponse(BaseModel):
     time: str = ""
-    lambda_: Optional[float] = Field(None, alias="lambda")
-    mu: Optional[float] = None
-    c: Optional[int] = None
-    model: Optional[str] = None
-    rho: Optional[float] = None
-    L: Optional[float] = None
-    Lq: Optional[float] = None
-    W: Optional[float] = None
-    Wq: Optional[float] = None
-    lambda_eff: Optional[float] = None
-    abandonment_rate: Optional[float] = None
+    lambda_: float | None = Field(None, alias="lambda")
+    mu: float | None = None
+    c: int | None = None
+    model: str | None = None
+    rho: float | None = None
+    L: float | None = None
+    Lq: float | None = None
+    W: float | None = None
+    Wq: float | None = None
+    lambda_eff: float | None = None
+    abandonment_rate: float | None = None
     stable: bool = False
-    status: Optional[str] = None
-    warning: Optional[str] = None
-    theta: Optional[float] = None
+    status: str | None = None
+    warning: str | None = None
+    theta: float | None = None
 
     class Config:
         populate_by_name = True
 
 
 class OptimizeResponse(BaseModel):
-    optimal_c: Optional[int] = None
-    current_c: Optional[int] = None
-    total_cost_optimal: Optional[float] = None
-    server_cost_optimal: Optional[float] = None
-    waiting_cost_optimal: Optional[float] = None
-    total_cost_current: Optional[float] = None
-    savings: Optional[float] = None
-    rho_improvement: Optional[float] = None
-    rho_optimal: Optional[float] = None
-    rho_current: Optional[float] = None
-    Wq_optimal: Optional[float] = None
-    Wq_current: Optional[float] = None
-    warning: Optional[str] = None
+    optimal_c: int | None = None
+    current_c: int | None = None
+    total_cost_optimal: float | None = None
+    server_cost_optimal: float | None = None
+    waiting_cost_optimal: float | None = None
+    total_cost_current: float | None = None
+    savings: float | None = None
+    rho_improvement: float | None = None
+    rho_optimal: float | None = None
+    rho_current: float | None = None
+    Wq_optimal: float | None = None
+    Wq_current: float | None = None
+    warning: str | None = None
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────

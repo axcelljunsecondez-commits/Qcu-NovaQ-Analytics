@@ -75,14 +75,14 @@ class SegmentResult:
     c: int
 
     # Empirical metrics
-    rho_sim: Optional[float] = None
-    Lq_sim: Optional[float] = None
-    Wq_sim: Optional[float] = None
+    rho_sim: float | None = None
+    Lq_sim: float | None = None
+    Wq_sim: float | None = None
     max_queue: int = 0
     served: int = 0
     dropped: int = 0
     status: str = "Lean"
-    error: Optional[str] = None
+    error: str | None = None
     warmup_fraction: float = 0.0
     warmup_end: float = 0.0
     initial_queue_depth: int = 0
@@ -118,7 +118,7 @@ class SegmentResult:
 # Internal helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _validate_segment(segment: Mapping) -> tuple[Optional[str], Optional[float], Optional[float], int]:
+def _validate_segment(segment: Mapping) -> tuple[str | None, float | None, float | None, int]:
     """Extract and validate segment fields. Returns (error, lambda_, mu, c)."""
     lambda_ = segment.get("lambda")
     mu = segment.get("mu")
@@ -302,7 +302,7 @@ def simulate_segment(
     segment: Mapping,
     sim_hours: float = SIM_HOURS_PER_SEGMENT,
     queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
-    seed: Optional[int] = RANDOM_SEED,
+    seed: int | None = RANDOM_SEED,
     warmup_fraction: float = 0.2,
     initial_queue_depth: int = 0,
 ) -> SegmentResult:
@@ -421,7 +421,7 @@ def simulate_segments(
     time_segments: Iterable[Mapping],
     sim_hours: float = SIM_HOURS_PER_SEGMENT,
     queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
-    seed: Optional[int] = RANDOM_SEED,
+    seed: int | None = RANDOM_SEED,
     carryover: bool = True,
 ) -> list[dict]:
     """
@@ -575,7 +575,7 @@ def mc_simulate_segment(
     segment: Mapping,
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
-    seed: Optional[int] = 42,
+    seed: int | None = 42,
 ) -> dict:
     """
     Run Monte Carlo simulation for one time segment.
@@ -615,8 +615,8 @@ def mc_simulate_segment(
 
     rng = np.random.default_rng(seed)
 
-    def _pick_model(l, m, c_):
-        return mmc(l, m, c_) if c_ > 1 else mm1(l, m)
+    def _pick_model(lam, m, c_):
+        return mmc(lam, m, c_) if c_ > 1 else mm1(lam, m)
 
     rho_samples = np.empty(num_trials)
     lq_samples = np.empty(num_trials)
@@ -690,7 +690,7 @@ def mc_simulate_segments(
     time_segments: Iterable[Mapping],
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
-    seed: Optional[int] = 42,
+    seed: int | None = 42,
 ) -> list[dict]:
     """
     Run Monte Carlo simulation across a sequence of time segments.

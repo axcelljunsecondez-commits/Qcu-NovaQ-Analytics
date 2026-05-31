@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+streamlit_stderr.log
+streamlit_stdout.log
+
+# Screenshots
+Screenshot*.png
+Screenshot*.jpg
+
+# Test cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Streamlit secrets (if any)
+.streamlit/secrets.toml
+
+# Docker
+.env

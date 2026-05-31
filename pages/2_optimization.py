@@ -13,14 +13,14 @@ from app_page_utils import (
     pretty_metric,
     to_segment_records,
 )
-from data_processing import (
-    validate_with_simulation,
-)
 from config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_ABANDONMENT_RATE,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
+)
+from data_processing import (
+    validate_with_simulation,
 )
 from optimization import (
     DEFAULT_MAX_SERVERS,
@@ -30,7 +30,6 @@ from optimization import (
     optimize_segments,
     summarize_optimization,
 )
-
 
 st.set_page_config(page_title="Optimization", layout="wide")
 init_session_state()

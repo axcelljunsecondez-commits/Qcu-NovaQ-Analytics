@@ -8,7 +8,6 @@ import sys
 import tempfile
 import traceback
 
-
 os.environ.setdefault(
     "MPLCONFIGDIR",
     os.path.join(tempfile.gettempdir(), "matplotlib-cache"),

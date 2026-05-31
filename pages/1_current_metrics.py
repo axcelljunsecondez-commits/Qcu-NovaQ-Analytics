@@ -17,7 +17,13 @@ from app_page_utils import (
     to_segment_records,
     validate_and_normalize,
 )
-from costing import compute_all_costs, compute_cost_summary, DEFAULT_SERVER_COST_HR, DEFAULT_WAIT_COST_HR, DEFAULT_ABANDONMENT_COST
+from costing import (
+    DEFAULT_ABANDONMENT_COST,
+    DEFAULT_SERVER_COST_HR,
+    DEFAULT_WAIT_COST_HR,
+    compute_all_costs,
+    compute_cost_summary,
+)
 from data_processing import compute_kpis, get_unstable_messages, process_segments
 from pos_connector import (
     compute_lambda_mu,
@@ -26,7 +32,6 @@ from pos_connector import (
     test_poisson_arrivals,
     to_novamart_csv,
 )
-
 
 st.set_page_config(page_title="Current Metrics", layout="wide")
 init_session_state()
@@ -181,7 +186,7 @@ avg_wq = kpis.get("avg_waiting_time", 0) or 0
 util_score = max(0, 100 - abs(avg_util - 0.7) * 200)
 wq_score = max(0, 100 - avg_wq * 60)
 stable_score = 100 if unstable == 0 else max(0, 100 - unstable * 20)
-health = int(round((util_score * 0.3 + wq_score * 0.4 + stable_score * 0.3)))
+health = int(round(util_score * 0.3 + wq_score * 0.4 + stable_score * 0.3))
 health_color = "#27AE60" if health >= 70 else "#E8A838" if health >= 40 else "#C0392B"
 st.markdown(
     f'<div style="display:flex;align-items:center;gap:1rem;background:#1B2A4A;padding:1rem 2rem;border-radius:16px;margin-bottom:1.5rem;">'
@@ -264,7 +269,7 @@ if not erlang_rows.empty:
     avg_abandon = erlang_rows["abandonment_rate"].mean()
     avg_lambda_eff = erlang_rows["lambda_eff"].mean()
     avg_lambda = erlang_rows["lambda"].mean()
-    
+
     st.info(
         f"**Erlang-A (Abandonment) Summary**  —  "
         f"Avg abandonment rate: {avg_abandon:.2%}  |  "

@@ -8,7 +8,7 @@ import unittest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck, mmc_priority
+from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmc_priority, mmck
 
 
 class QueueModelTests(unittest.TestCase):
@@ -151,6 +151,7 @@ class QueueModelTests(unittest.TestCase):
         result_mmck = mmck(lambda_, mu, c, K=K)
         result_mmc = mmc(lambda_, mu, c)
         assume(result_mmck.get("stable"))
+        assume(result_mmc.get("stable"))
         self.assertLessEqual(result_mmck["Lq"], result_mmc["Lq"] + 0.01)
 
     # ── Erlang-A tests ──────────────────────────────────────────────────────

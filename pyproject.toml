@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [".venv", "__pycache__", ".git"]
+
+[tool.ruff.lint]
+ignore = [
+    "E501",     # line too long (codebase has long docstrings/latex)
+    "F401",     # unused import (some imports are for re-export)
+    "E402",     # module import not at top (streamlit pages need late imports)
+    "E731",     # lambda assignment (used deliberately in this codebase)
+    "W293",     # blank line contains whitespace (cosmetic, inside CSS/docstrings)
+]
+select = ["E", "F", "I", "UP", "W"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -v"
+
+[tool.coverage.report]
+fail_under = 60
+skip_covered = true

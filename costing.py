@@ -17,11 +17,11 @@ import numpy as np
 import pandas as pd
 
 from config import (
-    DEFAULT_SERVER_COST_HR,
-    DEFAULT_WAIT_COST_HR,
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_ABANDONMENT_RATE,
     DEFAULT_HOURS_PER_INTERVAL,
+    DEFAULT_SERVER_COST_HR,
+    DEFAULT_WAIT_COST_HR,
 )
 
 
