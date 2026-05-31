@@ -35,5 +35,8 @@ Bare `pytest` command in CI resolved to system-installed `pytest` 4.6 (from `apt
 - Added `ci` section with `autofix_prs: false` and `autoupdate_schedule: monthly`
 
 ## Files Changed
-- `.github/workflows/ci.yml` — pytest invocation, coverage threshold, dep pins
-- `.pre-commit-config.yaml` — hook versions, ci section
+- `.github/workflows/ci.yml` — pytest invocation, coverage threshold, dep pins, pip caching, mypy step
+- `.pre-commit-config.yaml` — hook versions, ci section, mypy hook
+- `.github/dependabot.yml` — automated dep update PRs (pip + actions, weekly)
+- `pyproject.toml` — mypy config added
+- `queue_models.py`, `simulation.py`, `data_processing.py`, `pos_connector.py`, `test_imports.py` — type annotation fixes
