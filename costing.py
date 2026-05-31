@@ -117,9 +117,19 @@ def compute_all_costs(
     cost_rows = []
 
     for _, row in df.iterrows():
-        servers = row.get("c") or row.get("servers") or row.get("c_optimal")
-        arrival_rate = row.get("lambda") or row.get("arrival_rate")
-        wq = row.get("Wq") or row.get("Wq_current") or row.get("Wq_optimal")
+        servers = row.get("c")
+        if servers is None:
+            servers = row.get("servers")
+        if servers is None:
+            servers = row.get("c_optimal")
+        arrival_rate = row.get("lambda")
+        if arrival_rate is None:
+            arrival_rate = row.get("arrival_rate")
+        wq = row.get("Wq")
+        if wq is None:
+            wq = row.get("Wq_current")
+        if wq is None:
+            wq = row.get("Wq_optimal")
 
         costs = compute_segment_costs(
             servers=servers,

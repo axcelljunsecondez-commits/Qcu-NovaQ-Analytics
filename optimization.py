@@ -20,7 +20,6 @@ from config import (
     OT_RATE,
     REGULAR_RATE,
     UNSTABLE_FIXED_COST,
-    UNSTABLE_PENALTY_MULTIPLIER,
 )
 from queue_models import mgc, mgck, mm1, mmc, mmck
 

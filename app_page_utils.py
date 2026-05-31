@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from io import StringIO
-
 import pandas as pd
 
 from config import (

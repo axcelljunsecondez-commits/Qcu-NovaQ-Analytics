@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 from datetime import date
-from typing import Optional
 
 import openpyxl
 import pandas as pd
@@ -233,8 +232,6 @@ def generate_excel_report(
     io.BytesIO
         In-memory ``.xlsx`` file.
     """
-    import pandas as pd  # noqa: F811
-
     wb = openpyxl.Workbook()
 
     # ── Sheet 1: Summary ─────────────────────────────────────────────────

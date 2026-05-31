@@ -7,7 +7,6 @@ as clean REST endpoints.
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 from log import get_logger
 
@@ -15,7 +14,7 @@ logger = get_logger(__name__)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from data_processing import _classify_utilization_status
 from optimization import optimize_segment
@@ -31,8 +30,7 @@ class SegmentInput(BaseModel):
     K: int | None = None
     theta: float | None = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class OptimizeInput(SegmentInput):
@@ -64,8 +62,7 @@ class MetricsResponse(BaseModel):
     warning: str | None = None
     theta: float | None = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class OptimizeResponse(BaseModel):

@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import io
 import warnings
-from collections.abc import Mapping
-from typing import Optional, Union
 
 from log import get_logger
 

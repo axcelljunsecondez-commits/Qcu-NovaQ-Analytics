@@ -18,11 +18,8 @@ With strict data pipeline integrity and mandatory error-checking.
 
 import base64
 import os
-from pathlib import Path
 
-import pandas as pd
 import streamlit as st
-from PIL import Image
 
 from config import (
     DEFAULT_ABANDONMENT_COST,

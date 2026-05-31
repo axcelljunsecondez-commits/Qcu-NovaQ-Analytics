@@ -9,11 +9,6 @@ import tempfile
 import traceback
 from typing import Any
 
-os.environ.setdefault(
-    "MPLCONFIGDIR",
-    os.path.join(tempfile.gettempdir(), "matplotlib-cache"),
-)
-
 CHECKS = [
     ("streamlit", "import streamlit"),
     ("pandas", "import pandas"),
@@ -22,7 +17,6 @@ CHECKS = [
     ("PIL", "from PIL import Image"),
     ("openpyxl", "import openpyxl"),
     ("simpy", "import simpy"),
-    ("matplotlib", "import matplotlib"),
     (
         "app_page_utils",
         "from app_page_utils import validate_and_normalize, read_uploaded_table",

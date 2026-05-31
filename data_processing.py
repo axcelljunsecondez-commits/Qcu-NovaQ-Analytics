@@ -12,10 +12,10 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
+from config import UNSTABLE_PENALTY_MULTIPLIER
 from optimization import (
     DEFAULT_CUSTOMER_WAITING_COST,
     DEFAULT_SERVER_COST,
-    UNSTABLE_PENALTY_MULTIPLIER,
     compute_blended_rate,
 )
 from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
@@ -153,7 +153,8 @@ def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
         capacity = segment.get("K")
         theta = segment.get("theta")
 
-        assert lambda_ is not None and mu is not None
+        if lambda_ is None or mu is None:
+            continue
 
         # Theta (Erlang-A) takes priority over all other model choices
         if theta is not None and pd.notna(theta) and float(theta) > 0:

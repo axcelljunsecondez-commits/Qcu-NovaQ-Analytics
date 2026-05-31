@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from app_page_utils import (
@@ -27,7 +26,6 @@ from optimization import (
     DEFAULT_MAX_SERVERS,
     DEFAULT_TARGET_UTILIZATION,
     build_recommendations,
-    compute_pareto_frontiers,
     optimize_segments,
     summarize_optimization,
 )
