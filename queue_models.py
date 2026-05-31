@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 from numbers import Integral, Real
+from typing import Any
 
 from log import get_logger
 
