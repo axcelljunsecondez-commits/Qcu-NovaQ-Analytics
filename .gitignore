@@ -27,6 +27,10 @@ streamlit_stdout.log
 Screenshot*.png
 Screenshot*.jpg
 
+# Coverage
+.coverage
+.coverage.*
+
 # Test cache
 .pytest_cache/
 .mypy_cache/
