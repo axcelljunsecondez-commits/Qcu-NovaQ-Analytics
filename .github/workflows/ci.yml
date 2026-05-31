@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest httpx hypothesis scipy pytest-cov
+          pip install "pytest~=9.0" "httpx~=0.28" "hypothesis~=6.155" "scipy~=1.17" "pytest-cov~=7.1"
       - name: Run tests
         run: python -m pytest tests/ -x --tb=short
       - name: Run coverage measurement

@@ -25,5 +25,5 @@ testpaths = ["tests"]
 addopts = "--tb=short -v"
 
 [tool.coverage.report]
-fail_under = 60
+fail_under = 75
 skip_covered = true
