@@ -14,6 +14,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-lint-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
       - name: Install lint tools
         run: pip install ruff mypy
       - name: Lint with ruff
@@ -32,6 +37,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-test-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            pip-test-${{ runner.os }}-${{ matrix.python-version }}-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
