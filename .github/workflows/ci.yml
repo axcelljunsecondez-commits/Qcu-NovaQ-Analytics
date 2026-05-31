@@ -57,7 +57,7 @@ jobs:
       - name: Run coverage measurement
         run: |
           coverage run -m pytest tests/ -x --tb=short
-          coverage report --fail-under=60 --skip-covered
+          coverage report --fail-under=75 --skip-covered
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
