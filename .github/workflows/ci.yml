@@ -20,9 +20,11 @@ jobs:
           path: ~/.cache/pip
           key: pip-lint-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
       - name: Install lint tools
-        run: pip install ruff mypy
+        run: pip install ruff mypy pip-audit
       - name: Lint with ruff
         run: ruff check .
+      - name: Audit dependencies
+        run: pip-audit -r requirements.txt --strict
       - name: Type check with mypy
         run: mypy . --config-file=pyproject.toml
 
