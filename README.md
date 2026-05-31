@@ -13,6 +13,12 @@ Streamlit dashboard for analyzing QCU service queues with M/M/1, M/M/c, M/G/c, M
 - Run simulation and comparison pages for scenario review.
 - Export tables for reporting.
 
+## Quick Start
+
+```bash
+pip install -r requirements.txt && streamlit run streamlit_app.py
+```
+
 ## Requirements
 
 - Python 3.10 or newer recommended
@@ -27,6 +33,15 @@ cd path\to\project
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+```
+
+Or on Linux/macOS:
+
+```bash
+cd path/to/project
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 ```
 
 If the virtual environment already exists, activate it and install/update dependencies:

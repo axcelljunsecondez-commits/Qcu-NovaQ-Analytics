@@ -19,6 +19,8 @@ jobs:
         with:
           path: ~/.cache/pip
           key: pip-lint-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            pip-lint-${{ runner.os }}-
       - name: Install lint tools
         run: pip install ruff mypy pip-audit
       - name: Lint with ruff
