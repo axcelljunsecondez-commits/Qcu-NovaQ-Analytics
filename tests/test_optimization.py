@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import unittest
 
 from optimization import (
@@ -115,6 +116,77 @@ class OptimizationTests(unittest.TestCase):
         ]
         recs = build_recommendations(rows)
         self.assertTrue(any("No staffing changes" in r for r in recs))
+
+    def test_optimize_segment_nan_lambda(self):
+        result = optimize_segment(
+            {"time": "test", "lambda": math.nan, "mu": 5, "c": 1},
+        )
+        self.assertIn("Invalid", result.get("warning", ""))
+
+    def test_optimize_segment_inf_lambda(self):
+        result = optimize_segment(
+            {"time": "test", "lambda": math.inf, "mu": 5, "c": 1},
+        )
+        self.assertIn("Invalid", result.get("warning", ""))
+
+    def test_optimize_segment_nan_mu(self):
+        result = optimize_segment(
+            {"time": "test", "lambda": 10, "mu": math.nan, "c": 2},
+        )
+        self.assertIn("Invalid", result.get("warning", ""))
+
+    def test_optimize_segment_inf_mu(self):
+        result = optimize_segment(
+            {"time": "test", "lambda": 10, "mu": math.inf, "c": 2},
+        )
+        self.assertIn("Invalid", result.get("warning", ""))
+
+    def test_optimize_segment_negative_mu(self):
+        result = optimize_segment(
+            {"time": "test", "lambda": 10, "mu": -5, "c": 2},
+        )
+        self.assertIn("Invalid", result.get("warning", ""))
+
+    def test_optimize_segment_nan_c(self):
+        result = optimize_segment(
+            {"time": "test", "lambda": 10, "mu": 5, "c": math.nan},
+        )
+        self.assertIn("Invalid", result.get("warning", ""))
+
+    def test_compute_blended_rate_nan_hours(self):
+        rate = compute_blended_rate(math.nan, 0, 0)
+        self.assertIsNotNone(rate)
+
+    def test_compute_blended_rate_negative_hours(self):
+        rate = compute_blended_rate(-5, 2, -3)
+        self.assertEqual(rate, 1.0)
+
+    def test_compute_waiting_cost_nan_lambda(self):
+        cost = _compute_waiting_cost(math.nan, 0.5, 100)
+        self.assertTrue(math.isnan(cost))
+
+    def test_compute_waiting_cost_inf_wq(self):
+        cost = _compute_waiting_cost(10, math.inf, 100)
+        self.assertTrue(math.isinf(cost))
+
+    def test_summarize_optimization_nan_in_rows(self):
+        rows = [
+            {
+                "cost_current": None,
+                "cost_optimal": None,
+                "rho_current": None,
+                "rho_optimal": None,
+                "Wq_current": None,
+                "Wq_optimal": None,
+                "waiting_cost_current": None,
+                "waiting_cost_optimal": None,
+                "abandonment_cost_current": None,
+                "abandonment_cost_optimal": None,
+                "delta_c": None,
+            }
+        ]
+        summary = summarize_optimization(rows)
+        self.assertEqual(summary["total_current_cost"], 0.0)
 
 
 if __name__ == "__main__":

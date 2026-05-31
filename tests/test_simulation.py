@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import unittest
 
 from simulation import (
@@ -15,7 +16,7 @@ from simulation import (
 )
 
 
-class SimulationTests(unittest.TestCase):
+class ClassificationTests(unittest.TestCase):
     def test_classify_status_lean(self):
         self.assertEqual(_classify_status(0.3, 0, 20), "Lean")
 
@@ -33,6 +34,18 @@ class SimulationTests(unittest.TestCase):
 
     def test_classify_status_unstable(self):
         self.assertEqual(_classify_status(1.5, 0, 20), "Unstable")
+
+    def test_classify_status_nan_rho(self):
+        self.assertEqual(_classify_status(math.nan, 0, 20), "Lean")
+
+    def test_classify_status_negative_rho(self):
+        self.assertEqual(_classify_status(-1.0, 0, 20), "Lean")
+
+    def test_classify_status_huge_rho(self):
+        self.assertEqual(_classify_status(1e10, 0, 20), "Unstable")
+
+
+class SimulationTests(unittest.TestCase):
 
     def test_simulate_segment_mm1_stable(self):
         result = simulate_segment(
@@ -97,6 +110,62 @@ class SimulationTests(unittest.TestCase):
     def test_mc_summarize_simulation_empty(self):
         summary = mc_summarize_simulation([])
         self.assertIsNone(summary["avg_rho"])
+
+    def test_simulate_segment_nan_lambda(self):
+        result = simulate_segment(
+            {"time": "test", "lambda": math.nan, "mu": 3, "c": 1},
+            sim_hours=1.0, seed=42,
+        )
+        self.assertEqual(result.status, "ERROR")
+
+    def test_simulate_segment_inf_lambda(self):
+        result = simulate_segment(
+            {"time": "test", "lambda": math.inf, "mu": 3, "c": 1},
+            sim_hours=1.0, seed=42,
+        )
+        self.assertEqual(result.status, "ERROR")
+
+    def test_simulate_segment_nan_mu(self):
+        result = simulate_segment(
+            {"time": "test", "lambda": 2, "mu": math.nan, "c": 1},
+            sim_hours=1.0, seed=42,
+        )
+        self.assertEqual(result.status, "ERROR")
+
+    def test_simulate_segment_inf_mu(self):
+        result = simulate_segment(
+            {"time": "test", "lambda": 2, "mu": math.inf, "c": 1},
+            sim_hours=1.0, seed=42,
+        )
+        self.assertEqual(result.status, "ERROR")
+
+    def test_simulate_segment_negative_mu(self):
+        result = simulate_segment(
+            {"time": "test", "lambda": 2, "mu": -1, "c": 1},
+            sim_hours=1.0, seed=42,
+        )
+        self.assertEqual(result.status, "ERROR")
+
+    def test_mc_simulate_segment_nan_lambda(self):
+        result = mc_simulate_segment(
+            {"time": "test", "lambda": math.nan, "mu": 3, "c": 1},
+            num_trials=10, seed=42,
+        )
+        self.assertEqual(result["status"], "ERROR")
+
+    def test_mc_simulate_segment_inf_mu(self):
+        result = mc_simulate_segment(
+            {"time": "test", "lambda": 2, "mu": math.inf, "c": 1},
+            num_trials=10, seed=42,
+        )
+        self.assertEqual(result["status"], "ERROR")
+
+    def test_mc_simulate_segment_negative_mu(self):
+        result = mc_simulate_segment(
+            {"time": "test", "lambda": 2, "mu": -1, "c": 1},
+            num_trials=10, seed=42,
+        )
+        self.assertEqual(result["status"], "ERROR")
 
 
 if __name__ == "__main__":

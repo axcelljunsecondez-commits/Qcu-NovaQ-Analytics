@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import unittest
 
 import pandas as pd
@@ -86,6 +87,45 @@ class CostingTests(unittest.TestCase):
         summary = compute_cost_summary(df)
         self.assertGreater(summary["total_cost"], 0)
         self.assertGreater(summary["total_server_cost"], 0)
+
+    def test_compute_segment_costs_nan_servers(self):
+        costs = compute_segment_costs(
+            servers=float("nan"),
+            arrival_rate=10,
+            wq=0.5,
+        )
+        self.assertIsNone(costs["server_cost"])
+
+    def test_compute_segment_costs_negative_arrival_rate(self):
+        costs = compute_segment_costs(
+            servers=2,
+            arrival_rate=-10,
+            wq=0.5,
+            cost_per_server_hr=87,
+            cost_per_wait_hr=100,
+            hours_per_interval=1,
+        )
+        self.assertIsNotNone(costs["server_cost"])
+
+    def test_compute_all_costs_with_nan(self):
+        df = pd.DataFrame({
+            "time": ["08:00"],
+            "c": [3],
+            "lambda": [float("nan")],
+            "Wq": [0.5],
+        })
+        result = compute_all_costs(df)
+        self.assertFalse(result.empty)
+
+    def test_compute_cost_summary_all_none(self):
+        df = pd.DataFrame({
+            "time": ["08:00"],
+            "c": [None],
+            "lambda": [None],
+            "Wq": [None],
+        })
+        summary = compute_cost_summary(df)
+        self.assertEqual(summary["total_cost"], 0.0)
 
 
 if __name__ == "__main__":

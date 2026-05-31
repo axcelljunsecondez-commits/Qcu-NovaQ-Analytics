@@ -134,6 +134,10 @@ def _validate_segment(segment: Mapping) -> tuple[str | None, float | None, float
     except (TypeError, ValueError):
         return "lambda, mu, and c must be numeric.", None, None, 1
 
+    if not math.isfinite(lambda_):
+        return "lambda must be a finite number.", None, None, c
+    if not math.isfinite(mu):
+        return "mu must be a finite number.", None, None, c
     if lambda_ < 0:
         return "lambda must be >= 0.", None, None, c
     if mu <= 0:

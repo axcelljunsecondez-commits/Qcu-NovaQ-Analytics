@@ -13,6 +13,8 @@ All cost parameters are user-configurable (defaults = QCU PHP rates).
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -62,8 +64,8 @@ def compute_segment_costs(
     dict
         server_cost, wait_cost, abandonment_cost, total_cost
     """
-    # Handle invalid / missing inputs
-    if any(v is None for v in [servers, arrival_rate, wq]):
+    # Handle invalid / missing / NaN inputs
+    if any(v is None or (isinstance(v, float) and math.isnan(v)) for v in [servers, arrival_rate, wq]):
         return {
             "server_cost": None,
             "wait_cost": None,
