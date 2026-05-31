@@ -14,8 +14,11 @@ from costing import (
     compute_all_costs,
     compute_cost_summary,
 )
+from log import get_logger
 from optimization import build_recommendations, summarize_optimization
 from report_export import generate_excel_report, generate_pdf_report
+
+logger = get_logger(__name__)
 
 st.set_page_config(page_title="Comparison", layout="wide")
 init_session_state()

@@ -43,7 +43,10 @@ from typing import Any
 import numpy as np
 import simpy
 
+from log import get_logger
 from queue_models import mm1, mmc
+
+logger = get_logger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Simulation constants
@@ -345,6 +348,11 @@ def simulate_segment(
     result.mu = mu or 0.0
     result.c = c
 
+    logger.info(
+        "simulate_segment(time=%s, lambda_=%.4g, mu=%.4g, c=%d, sim_hours=%.4g, warmup=%.2f)",
+        time_label, lambda_ or 0, mu or 0, c, sim_hours, warmup_fraction,
+    )
+
     # Clamp and record warm-up parameters
     warmup_fraction = max(0.0, min(0.5, warmup_fraction))
     result.warmup_fraction = warmup_fraction
@@ -416,6 +424,11 @@ def simulate_segment(
         result.Wq_sim = 0.0
 
     result.status = _classify_status(rho_emp, result.max_queue, queue_overload_threshold)
+
+    logger.info(
+        "simulate_segment done: status=%s rho_sim=%.4g Lq_sim=%.4g Wq_sim=%.4g served=%d",
+        result.status, result.rho_sim, result.Lq_sim, result.Wq_sim, result.served,
+    )
     return result
 
 
@@ -610,6 +623,7 @@ def mc_simulate_segment(
     error, lambda_, mu, c = _validate_segment(segment)
 
     if error:
+        logger.warning("mc_simulate_segment(time=%s) validation error: %s", time_label, error)
         return {
             "time": time_label, "lambda": lambda_, "mu": mu, "c": c,
             "rho_mean": None, "rho_std": None, "rho_p95": None,
@@ -621,6 +635,7 @@ def mc_simulate_segment(
 
     assert lambda_ is not None and mu is not None
 
+    logger.info("mc_simulate_segment(time=%s, lambda_=%.4g, mu=%.4g, c=%d, trials=%d)", time_label, lambda_, mu, c, num_trials)
     rng = np.random.default_rng(seed)
 
     def _pick_model(lam: float, m: float, c_: int) -> dict[str, Any]:

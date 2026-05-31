@@ -22,6 +22,7 @@ from config import (
 from data_processing import (
     validate_with_simulation,
 )
+from log import get_logger
 from optimization import (
     DEFAULT_MAX_SERVERS,
     DEFAULT_TARGET_UTILIZATION,
@@ -30,6 +31,8 @@ from optimization import (
     optimize_segments,
     summarize_optimization,
 )
+
+logger = get_logger(__name__)
 
 st.set_page_config(page_title="Optimization", layout="wide")
 init_session_state()

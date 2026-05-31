@@ -6,6 +6,10 @@ import math
 from typing import Any
 from numbers import Integral, Real
 
+from log import get_logger
+
+logger = get_logger(__name__)
+
 
 def _result(
     rho: float | None = None,
@@ -18,6 +22,8 @@ def _result(
     **extra: Any,
 ) -> dict[str, Any]:
     """Return a consistent result structure for all queue model calculations."""
+    import inspect
+
     result = {
         "rho": rho,
         "L": L,
@@ -28,6 +34,12 @@ def _result(
         "error": error,
     }
     result.update(extra)
+    frame = inspect.currentframe()
+    caller = frame.f_back.f_code.co_name if (frame and frame.f_back) else "?"
+    if error:
+        logger.warning("%s: %s", caller, error)
+    elif stable:
+        logger.debug("%s: rho=%.4g Lq=%.4g Wq=%.4g", caller, rho, Lq, Wq)
     return result
 
 

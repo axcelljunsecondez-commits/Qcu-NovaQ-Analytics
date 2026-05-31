@@ -8,6 +8,10 @@ from typing import Optional
 
 import openpyxl
 import pandas as pd
+
+from log import get_logger
+
+logger = get_logger(__name__)
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors

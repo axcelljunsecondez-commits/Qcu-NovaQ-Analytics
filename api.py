@@ -6,7 +6,12 @@ as clean REST endpoints.
 
 from __future__ import annotations
 
+import time
 from typing import Optional
+
+from log import get_logger
+
+logger = get_logger(__name__)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -89,6 +94,18 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    elapsed = time.time() - start
+    logger.info(
+        "%s %s -> %d (%.2fms)",
+        request.method, request.url.path, response.status_code, elapsed * 1000,
+    )
+    return response
 
 app.add_middleware(
     CORSMiddleware,

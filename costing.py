@@ -18,6 +18,10 @@ import math
 import numpy as np
 import pandas as pd
 
+from log import get_logger
+
+logger = get_logger(__name__)
+
 from config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_ABANDONMENT_RATE,

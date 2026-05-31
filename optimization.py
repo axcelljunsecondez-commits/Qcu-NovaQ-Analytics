@@ -8,6 +8,10 @@ from numbers import Integral, Real
 
 import pandas as pd
 
+from log import get_logger
+
+logger = get_logger(__name__)
+
 from config import (
     DEFAULT_CUSTOMER_WAITING_COST,
     DEFAULT_MAX_SERVERS,

@@ -29,6 +29,10 @@ from config import (
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
 )
+from log import configure_logging, get_logger
+
+logger = get_logger(__name__)
+configure_logging()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # REQUIRED_COLUMNS — Data Contract (STRICT)

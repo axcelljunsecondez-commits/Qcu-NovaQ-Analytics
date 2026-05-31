@@ -34,12 +34,12 @@ def test_page_loads_without_exception(script: str, check: tuple[str, ...] | int)
     else:
         # Sub-pages: check for expected heading text
         visible_texts = []
-        for el in at.title:
-            visible_texts.append(el.value)
-        for el in at.header:
-            visible_texts.append(el.value)
-        for el in at.subheader:
-            visible_texts.append(el.value)
+        for t in at.title:
+            visible_texts.append(t.value)
+        for h in at.header:
+            visible_texts.append(h.value)
+        for sh in at.subheader:
+            visible_texts.append(sh.value)
 
         combined = " ".join(visible_texts).lower()
         for expected in check:

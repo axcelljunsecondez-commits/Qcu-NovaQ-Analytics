@@ -25,6 +25,7 @@ from costing import (
     compute_cost_summary,
 )
 from data_processing import compute_kpis, get_unstable_messages, process_segments
+from log import get_logger
 from pos_connector import (
     compute_lambda_mu,
     fit_service_distribution,
@@ -32,6 +33,8 @@ from pos_connector import (
     test_poisson_arrivals,
     to_novamart_csv,
 )
+
+logger = get_logger(__name__)
 
 st.set_page_config(page_title="Current Metrics", layout="wide")
 init_session_state()

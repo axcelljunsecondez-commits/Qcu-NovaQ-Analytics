@@ -14,6 +14,10 @@ import warnings
 from collections.abc import Mapping
 from typing import Optional, Union
 
+from log import get_logger
+
+logger = get_logger(__name__)
+
 import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats

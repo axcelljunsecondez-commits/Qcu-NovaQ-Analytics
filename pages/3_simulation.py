@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from app_page_utils import dataframe_download, init_session_state, inject_or_css, pretty_metric, to_segment_records
+from log import get_logger
 from simulation import (
     MC_DEFAULT_TRIALS,
     SIM_HOURS_PER_SEGMENT,
@@ -14,6 +15,8 @@ from simulation import (
     simulate_segments,
     summarize_simulation,
 )
+
+logger = get_logger(__name__)
 
 st.set_page_config(page_title="Simulation", layout="wide")
 init_session_state()

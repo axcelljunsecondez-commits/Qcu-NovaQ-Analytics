@@ -8,6 +8,10 @@ from collections.abc import Iterable, Mapping
 import pandas as pd
 import streamlit as st
 
+from log import get_logger
+
+logger = get_logger(__name__)
+
 from optimization import (
     DEFAULT_CUSTOMER_WAITING_COST,
     DEFAULT_SERVER_COST,
@@ -112,10 +116,14 @@ def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None) ->
 def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
     """Process Page 1 current-system segments into a DataFrame."""
     if time_segments is None:
+        logger.info("process_segments: no input (None)")
         return _empty_frame(CURRENT_COLUMNS)
 
+    seg_list = list(time_segments)
+    logger.info("process_segments: %d segments", len(seg_list))
+
     rows = []
-    for index, segment in enumerate(time_segments, start=1):
+    for index, segment in enumerate(seg_list, start=1):
         if not isinstance(segment, Mapping):
             rows.append(
                 _current_row(
