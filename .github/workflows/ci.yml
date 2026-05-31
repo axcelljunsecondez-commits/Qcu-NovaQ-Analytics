@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest httpx scipy pytest-cov
+          pip install pytest httpx hypothesis scipy pytest-cov
       - name: Debug - check Python and imports
         run: |
           echo "=== Python version ==="
