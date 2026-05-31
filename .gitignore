@@ -31,6 +31,7 @@ Screenshot*.jpg
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
 
 # Streamlit secrets (if any)
 .streamlit/secrets.toml
