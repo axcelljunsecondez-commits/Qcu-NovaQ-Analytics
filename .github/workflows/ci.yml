@@ -34,42 +34,13 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pytest httpx hypothesis scipy pytest-cov
-      - name: Debug - check Python and imports
-        run: |
-          echo "=== Python version ==="
-          python --version
-          echo "=== Trying basic import ==="
-          python -c "
-          print('starting imports...')
-          import math
-          import numpy
-          import pandas
-          import simpy
-          from queue_models import mm1, mmc
-          from simulation import simulate_segment
-          from optimization import optimize_segment
-          from costing import compute_segment_costs
-          print('ALL IMPORTS OK')
-          "
-      - name: Debug - run single test file
-        run: |
-          echo "=== Running queue_models tests ==="
-          python -m pytest tests/test_queue_models.py -xvs --tb=long 2>&1
-          echo "=== Exit code: $? ==="
-      - name: Run all tests
-        run: |
-          echo "=== Running ALL tests ==="
-          python -m pytest tests/ -xvs --tb=long 2>&1
-          echo "=== Exit code: $? ==="
+      - name: Run tests
+        run: python -m pytest tests/ -x --tb=short
       - name: Run coverage measurement
-        if: success()
         run: |
-          echo "=== Running with coverage ==="
-          coverage run -m pytest tests/ -x --tb=short 2>&1
-          echo "=== Coverage report ==="
-          coverage report --fail-under=60 --skip-covered 2>&1
+          coverage run -m pytest tests/ -x --tb=short
+          coverage report --fail-under=60 --skip-covered
       - name: Upload coverage artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.python-version }}
