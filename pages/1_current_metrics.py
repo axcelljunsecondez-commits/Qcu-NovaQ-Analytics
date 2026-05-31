@@ -202,9 +202,9 @@ st.markdown(
 )
 
 metric_cols = st.columns(4)
-metric_cols[0].metric("Average Utilization", pretty_metric(kpis["avg_utilization"], percent=True), help="Mean server utilization across all segments")
-metric_cols[1].metric("Max Utilization", pretty_metric(kpis["max_utilization"], percent=True), help="Highest server utilization among all stable segments")
-metric_cols[2].metric("Average Wq", pretty_metric(kpis["avg_waiting_time"]), help="Mean waiting time in queue (hours) across stable segments")
+metric_cols[0].metric("Average Utilization", pretty_metric(kpis["avg_utilization"], percent=True), help="Fraction of time servers are busy. Above 85% → queues grow fast.")
+metric_cols[1].metric("Max Utilization", pretty_metric(kpis["max_utilization"], percent=True), help="Fraction of time servers are busy. Above 85% → queues grow fast.")
+metric_cols[2].metric("Average Wq", pretty_metric(kpis["avg_waiting_time"]), help="Average time a customer waits before being served. Excludes service time.")
 metric_cols[3].metric("Unstable Rows", str(kpis["unstable_count"]), help="Segments where ρ ≥ 1 — system cannot keep up with arrivals")
 
 def _model_badge_html(name):

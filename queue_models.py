@@ -545,6 +545,7 @@ def erlang_a(lambda_: float, mu: float, c: int, theta: float) -> dict[str, Any]:
 
     return _result(
         rho=rho,
+        rho_effective=round(lambda_eff / (c * mu), 6),
         L=L,
         Lq=Lq,
         W=W,

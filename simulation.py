@@ -380,7 +380,15 @@ def simulate_segment(
 
     rng = random.Random(seed)
     sim_duration = effective_sim_hours  # environment time unit = hours
-    warmup_end = sim_duration * warmup_fraction
+    # Adaptive warm-up: ensure at least 30 expected arrivals before measurement begins
+    if lambda_ and lambda_ > 0:
+        arrivals_based_warmup = 30.0 / lambda_
+        warmup_end = min(
+            max(sim_duration * warmup_fraction, arrivals_based_warmup),
+            sim_duration * 0.5,
+        )
+    else:
+        warmup_end = sim_duration * warmup_fraction
     result.warmup_end = warmup_end
 
     env = simpy.Environment()

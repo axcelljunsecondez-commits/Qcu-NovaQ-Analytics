@@ -24,7 +24,7 @@ from config import (
 from queue_models import mgc, mgck, mm1, mmc, mmck
 
 
-def compute_blended_rate(regular_hours, ot_hours, total_hours):
+def compute_blended_rate(regular_hours, ot_hours, total_hours) -> float:
     """Compute blended server cost rate: (reg_hrs*87 + OT_hrs*109) / total_hrs.
 
     Falls back to DEFAULT_SERVER_COST when any value is missing or invalid.
@@ -551,7 +551,7 @@ def compute_pareto_frontier(
 
     For each server count *c* in 1 .. *max_servers*, the function evaluates the
     queueing model and keeps only stable solutions.  A point is Pareto-non-dominated
-    if no other stable point has both *total_cost* ≤ and *Wq* ≤ (with at least one
+    if no other stable point has both *total_cost* <= and *Wq* <= (with at least one
     strict inequality).
 
     Parameters

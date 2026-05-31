@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -64,15 +66,28 @@ customer_waiting_cost = st.session_state.get("sb_wait_cost", DEFAULT_WAIT_COST_H
 cost_per_abandonment = st.session_state.get("sb_abandon_cost", DEFAULT_ABANDONMENT_COST)
 abandonment_rate = st.session_state.get("sb_abandon_rate", DEFAULT_ABANDONMENT_RATE)
 
+@st.cache_data
+def _cached_optimize_segments(segments_json, target_util, max_servers,
+                               server_cost, wait_cost, abandon_cost, abandon_rate):
+    return optimize_segments(
+        json.loads(segments_json),
+        target_utilization=target_util,
+        max_servers=max_servers,
+        default_server_cost=server_cost,
+        customer_waiting_cost=wait_cost,
+        cost_per_abandonment=abandon_cost,
+        abandonment_rate=abandon_rate,
+    )
+
 segments = to_segment_records(source_df)
-comparison_rows = optimize_segments(
-    segments,
-    target_utilization=target_utilization,
-    default_server_cost=default_server_cost,
-    max_servers=int(max_servers),
-    customer_waiting_cost=customer_waiting_cost,
-    cost_per_abandonment=cost_per_abandonment,
-    abandonment_rate=abandonment_rate,
+comparison_rows = _cached_optimize_segments(
+    json.dumps(segments, default=str),
+    target_utilization,
+    int(max_servers),
+    default_server_cost,
+    customer_waiting_cost,
+    cost_per_abandonment,
+    abandonment_rate,
 )
 comparison_df = pd.DataFrame(comparison_rows)
 kpis = summarize_optimization(to_segment_records(comparison_df))
@@ -173,6 +188,6 @@ with st.expander("🔮 What-If Analysis", expanded=False):
         wi_cols2[1].metric("What-If Savings", pretty_metric(wi_kpis["total_savings"], money=True),
                            delta=pretty_metric(wi_kpis["total_savings"] - kpis["total_savings"], money=True))
         wi_cols2[2].metric("What-If Servers", str(wi_kpis["total_server_change"]))
-        wi_cols2[3].metric("What-If Utilization", pretty_metric(wi_kpis["avg_utilization_optimized"], percent=True))
+        wi_cols2[3].metric("What-If Utilization", pretty_metric(wi_kpis["avg_utilization_optimized"], percent=True), help="Fraction of time servers are busy. Above 85% → queues grow fast.")
     else:
         st.info("Adjust parameters to see what-if results.")

@@ -95,7 +95,6 @@ def compute_segment_costs(
         "total_cost": round(total_cost, 2),
     }
 
-
 def compute_all_costs(
     df: pd.DataFrame,
     cost_per_server_hr: float = DEFAULT_SERVER_COST_HR,

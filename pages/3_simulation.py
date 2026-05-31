@@ -62,12 +62,13 @@ tab_des, tab_mc = st.tabs(["DES (SimPy)", "Monte Carlo"])
 
 with tab_des:
     if st.button("Run DES Simulation", type="primary", use_container_width=True, key="des_run"):
-        results = simulate_segments(
-            to_segment_records(simulation_input),
-            sim_hours=sim_hours,
-            queue_overload_threshold=int(queue_threshold),
-            seed=seed,
-        )
+        with st.spinner("Running DES simulation…"):
+            results = simulate_segments(
+                to_segment_records(simulation_input),
+                sim_hours=sim_hours,
+                queue_overload_threshold=int(queue_threshold),
+                seed=seed,
+            )
         st.session_state["simulation_results"] = pd.DataFrame(results)
 
     results_df = st.session_state.get("simulation_results")
@@ -169,12 +170,13 @@ with tab_mc:
     )
 
     if st.button("Run Monte Carlo", type="primary", use_container_width=True, key="mc_run"):
-        mc_results = mc_simulate_segments(
-            to_segment_records(simulation_input),
-            num_trials=int(mc_trials),
-            failure_threshold=mc_threshold,
-            seed=seed,
-        )
+        with st.spinner("Running Monte Carlo (500 trials)…"):
+            mc_results = mc_simulate_segments(
+                to_segment_records(simulation_input),
+                num_trials=int(mc_trials),
+                failure_threshold=mc_threshold,
+                seed=seed,
+            )
         st.session_state["mc_results"] = pd.DataFrame(mc_results)
 
     mc_df = st.session_state.get("mc_results")
