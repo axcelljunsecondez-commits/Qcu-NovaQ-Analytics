@@ -10,7 +10,6 @@ import streamlit as st
 from app_page_utils import (
     dataframe_download,
     init_session_state,
-    inject_or_css,
     pretty_metric,
     read_uploaded_table,
     sample_segments,
@@ -25,37 +24,46 @@ from costing import (
     compute_cost_summary,
 )
 from data_processing import compute_kpis, get_unstable_messages, process_segments
+from i18n import t
 from log import get_logger
-from pos_connector import (
-    compute_lambda_mu,
-    fit_service_distribution,
-    load_transactions,
-    test_poisson_arrivals,
-    to_novamart_csv,
+from theme import (
+    apply_dark_overrides,
+    apply_theme,
+    breadcrumb,
+    skeleton_metric,
+    toast,
 )
 
 logger = get_logger(__name__)
 
 st.set_page_config(page_title="Current Metrics", layout="wide")
 init_session_state()
-inject_or_css()
+apply_theme()
+apply_dark_overrides()
 
-# ── Alert thresholds (sidebar) ───────────────────────────────────────────
+# ── Alert thresholds (sidebar, form-wrapped to avoid re-render cascade) ───
+if "alert_thresholds" not in st.session_state:
+    st.session_state["alert_thresholds"] = {"max_wq": 5.0, "max_rho": 0.85}
+
 st.sidebar.subheader("🔔 Alert Thresholds")
-max_wq = st.sidebar.number_input(
-    "Max wait time (min)", value=5.0, min_value=0.1, step=0.5
-)
-max_rho = st.sidebar.number_input(
-    "Max utilization (ρ)", value=0.85, min_value=0.1, max_value=1.0, step=0.05
-)
-st.session_state["alert_thresholds"] = {"max_wq": max_wq, "max_rho": max_rho}
+with st.sidebar.form("alert_thresholds_form"):
+    st.caption("Adjust thresholds then press Apply:")
+    max_wq = st.number_input(
+        "Max wait time (min)", value=st.session_state["alert_thresholds"]["max_wq"], min_value=0.1, step=0.5
+    )
+    max_rho = st.number_input(
+        "Max utilization (ρ)", value=st.session_state["alert_thresholds"]["max_rho"], min_value=0.1, max_value=1.0, step=0.05
+    )
+    if st.form_submit_button("Apply", use_container_width=True):
+        st.session_state["alert_thresholds"] = {"max_wq": max_wq, "max_rho": max_rho}
 
-st.title("Current Metrics")
-st.caption("Upload queue data, validate the schema, and compute current queue performance.")
+breadcrumb(current_page=1)
+st.title(t("page1.title"))
+st.caption(t("page1.caption"))
 
 data_source = st.radio(
-    "Data Source",
-    ["Upload CSV manually", "Import from POS transaction log"],
+    t("page1.data_source"),
+    [t("page1.upload_csv"), t("page1.import_pos")],
     horizontal=True,
 )
 
@@ -64,6 +72,14 @@ source_df = None
 # ── POS Import Path ───────────────────────────────────────────────────────
 
 if data_source == "Import from POS transaction log":
+    from pos_connector import (  # noqa: E402 — lazy import (saves ~1–2s on page load)
+        compute_lambda_mu,
+        fit_service_distribution,
+        load_transactions,
+        test_poisson_arrivals,
+        to_novamart_csv,
+    )
+
     # Clear stale manual-upload state
     if "pos_csv" not in st.session_state:
         st.session_state["pos_csv"] = None
@@ -137,48 +153,67 @@ else:
         st.info("Upload a file or load sample data to begin.")
         st.stop()
 
-valid, message, normalized_df = validate_and_normalize(source_df)
+# ── Data Preview with inline editing ──────────────────────────────
+with st.expander("📝 Preview & Edit Data Before Validation", expanded=False):
+    st.caption("Edit values directly in the table. Click outside a cell to commit changes.")
+    edited_df = st.data_editor(
+        source_df,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="data_preview_editor",
+    )
+    use_edited = st.checkbox("Use edited data for validation", value=False)
+    source_for_validation = edited_df if use_edited else source_df
+    if st.button("Re-validate", use_container_width=True):
+        st.rerun()
+
+valid, message, normalized_df = validate_and_normalize(source_for_validation)
 if not valid:
     st.error(message)
     st.dataframe(normalized_df, use_container_width=True)
     st.stop()
 
-st.success(message)
+toast(message, "success")
 st.subheader("Input Data")
-st.dataframe(normalized_df, use_container_width=True)
+
+# ── Filter bar for data table ──────────────────────────────────
+filter_col, search_col = st.columns([2, 1])
+filter_text = filter_col.text_input("🔍 Filter rows", placeholder="Type to filter...", label_visibility="collapsed")
+col_filter = search_col.selectbox("Column", ["time", "lambda", "mu", "c"], label_visibility="collapsed")
+
+_display_df = normalized_df.copy()
+if filter_text:
+    _display_df = _display_df[_display_df[col_filter].astype(str).str.contains(filter_text, case=False, na=False)]
+st.dataframe(_display_df, use_container_width=True)
 
 segments = to_segment_records(normalized_df)
 results_df = process_segments(segments)
 kpis = compute_kpis(results_df)
 
-# ── Threshold alerts ─────────────────────────────────────────────────────
+# ── Threshold alerts (vectorized) ───────────────────────────────────────
 thresholds = st.session_state.get("alert_thresholds", {"max_wq": 5.0, "max_rho": 0.85})
 max_wq_min = thresholds["max_wq"]
 max_rho_val = thresholds["max_rho"]
 
-violations: list[tuple[str, list[str]]] = []
-for _, row in results_df.iterrows():
-    t = str(row.get("time", "Unknown"))
-    issues: list[str] = []
+df_violations = results_df.copy()
+wq_exceed = df_violations["Wq"].notna() & (df_violations["Wq"] * 60 > max_wq_min)
+rho_exceed = df_violations["rho"].notna() & (df_violations["rho"] > max_rho_val)
+unstable = ~df_violations["stable"]
 
-    wq = row.get("Wq")
-    if wq is not None and (wq * 60) > max_wq_min:
-        issues.append(f"Wq = {wq * 60:.2f} min exceeds threshold {max_wq_min:.2f} min")
+has_any = wq_exceed | rho_exceed | unstable
 
-    rho = row.get("rho")
-    if rho is not None and rho > max_rho_val:
-        issues.append(f"ρ = {rho:.2%} exceeds threshold {max_rho_val:.0%}")
-
-    if row.get("stable") is False:
-        issues.append("System is unstable (ρ ≥ 1)")
-
-    if issues:
-        violations.append((t, issues))
-
-if violations:
-    for t, issues in violations:
-        msg = " | ".join(issues)
-        st.error(f"🚨 Segment {t}: {msg}")
+if has_any.any():
+    for idx in df_violations[has_any].index:
+        row = df_violations.loc[idx]
+        seg_time = str(row.get("time", "Unknown"))
+        issues = []
+        if wq_exceed.loc[idx]:
+            issues.append(f"Wq = {row['Wq'] * 60:.2f} min exceeds threshold {max_wq_min:.2f} min")
+        if rho_exceed.loc[idx]:
+            issues.append(f"ρ = {row['rho']:.2%} exceeds threshold {max_rho_val:.0%}")
+        if unstable.loc[idx]:
+            issues.append("System is unstable (ρ ≥ 1)")
+        st.error(f"🚨 Segment {seg_time}: {' | '.join(issues)}")
 else:
     st.success("✅ All segments are within thresholds.")
 
@@ -283,6 +318,6 @@ if not erlang_rows.empty:
 if st.button("Save as Current Data", type="primary", use_container_width=True):
     st.session_state["df"] = normalized_df.copy()
     st.session_state["current_data"] = results_df.copy()
-    st.success("Current metrics saved.")
+    toast("Current metrics saved! Proceed to Optimization page.", "success")
 
 dataframe_download(results_df, "novamart_current_metrics.csv", "Download Current Metrics CSV")

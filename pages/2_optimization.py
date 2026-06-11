@@ -10,7 +10,6 @@ import streamlit as st
 from app_page_utils import (
     dataframe_download,
     init_session_state,
-    inject_or_css,
     pretty_metric,
     to_segment_records,
 )
@@ -23,6 +22,7 @@ from config import (
 from data_processing import (
     validate_with_simulation,
 )
+from i18n import t
 from log import get_logger
 from optimization import (
     DEFAULT_MAX_SERVERS,
@@ -31,15 +31,24 @@ from optimization import (
     optimize_segments,
     summarize_optimization,
 )
+from theme import (
+    apply_dark_overrides,
+    apply_theme,
+    breadcrumb,
+    skeleton_metric,
+    toast,
+)
 
 logger = get_logger(__name__)
 
 st.set_page_config(page_title="Optimization", layout="wide")
 init_session_state()
-inject_or_css()
+apply_theme()
+apply_dark_overrides()
+breadcrumb(current_page=2)
 
-st.title("Optimization")
-st.caption("Compare current staffing against a cost-aware optimized staffing plan.")
+st.title(t("page2.title"))
+st.caption(t("page2.caption"))
 
 source_df = st.session_state.get("df")
 if source_df is None or source_df.empty:
@@ -109,7 +118,7 @@ metric_cols[3].metric("Server Change", str(kpis["total_server_change"]), help="N
 if des_failures > 0 or mc_flags > 0:
     st.warning(f"⚠️ DES flagged {des_failures} segment(s) Critical · MC flagged {mc_flags} segment(s) >5% failure rate")
 else:
-    st.success("✅ Plan passed DES + MC validation (all segments stable)")
+    toast("✅ Plan passed DES + MC validation (all segments stable)", "success")
 
 st.subheader("Recommended Staffing")
 _display = comparison_df.copy()
@@ -126,7 +135,7 @@ for message in build_recommendations(to_segment_records(comparison_df)):
 
 if st.button("Save Recommended Data", type="primary", use_container_width=True):
     st.session_state["recommended_data"] = comparison_df.copy()
-    st.success("Recommended staffing saved.")
+    toast("Recommended staffing saved! Proceed to Simulation.", "success")
 
 dataframe_download(comparison_df, "novamart_optimization.csv", "Download Optimization CSV")
 

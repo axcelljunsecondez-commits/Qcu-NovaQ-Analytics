@@ -17,6 +17,7 @@ import math
 
 import numpy as np
 import pandas as pd
+import streamlit as st
 
 from log import get_logger
 
@@ -95,6 +96,7 @@ def compute_segment_costs(
         "total_cost": round(total_cost, 2),
     }
 
+@st.cache_data
 def compute_all_costs(
     df: pd.DataFrame,
     cost_per_server_hr: float = DEFAULT_SERVER_COST_HR,
@@ -113,39 +115,41 @@ def compute_all_costs(
         return pd.DataFrame()
 
     result = df.copy()
-    cost_rows = []
 
-    for _, row in df.iterrows():
-        servers = row.get("c")
-        if servers is None:
-            servers = row.get("servers")
-        if servers is None:
-            servers = row.get("c_optimal")
-        arrival_rate = row.get("lambda")
-        if arrival_rate is None:
-            arrival_rate = row.get("arrival_rate")
-        wq = row.get("Wq")
-        if wq is None:
-            wq = row.get("Wq_current")
-        if wq is None:
-            wq = row.get("Wq_optimal")
+    # Resolve column aliases
+    server_col = next(c for c in ["c", "servers", "c_optimal"] if c in result.columns)
+    arrival_col = next(c for c in ["lambda", "arrival_rate"] if c in result.columns)
+    wq_col = next(c for c in ["Wq", "Wq_current", "Wq_optimal"] if c in result.columns)
 
-        costs = compute_segment_costs(
-            servers=servers,
-            arrival_rate=arrival_rate,
-            wq=wq,
-            cost_per_server_hr=cost_per_server_hr,
-            cost_per_wait_hr=cost_per_wait_hr,
-            cost_per_abandonment=cost_per_abandonment,
-            abandonment_rate=abandonment_rate,
-            hours_per_interval=hours_per_interval,
-        )
-        cost_rows.append(costs)
+    servers = pd.to_numeric(result[server_col], errors="coerce")
+    arrival_rate = pd.to_numeric(result[arrival_col], errors="coerce")
+    wq = pd.to_numeric(result[wq_col], errors="coerce")
 
-    cost_df = pd.DataFrame(cost_rows)
-    return pd.concat([result, cost_df], axis=1)
+    # Valid rows have all three inputs
+    valid = servers.notna() & arrival_rate.notna() & wq.notna()
+
+    # Initialize cost columns as NaN
+    result["server_cost"] = np.nan
+    result["wait_cost"] = np.nan
+    result["abandonment_cost"] = np.nan
+    result["total_cost"] = np.nan
+
+    if valid.any():
+        wq_clipped = wq[valid].mask(np.isinf(wq[valid]) | (wq[valid] < 0), 999999)
+
+        result.loc[valid, "server_cost"] = (servers[valid] * cost_per_server_hr * hours_per_interval).round(2)
+        result.loc[valid, "wait_cost"] = (wq_clipped * arrival_rate[valid] * cost_per_wait_hr).round(2)
+        result.loc[valid, "abandonment_cost"] = (arrival_rate[valid] * abandonment_rate * cost_per_abandonment).round(2)
+        result.loc[valid, "total_cost"] = (
+            result.loc[valid, "server_cost"]
+            + result.loc[valid, "wait_cost"]
+            + result.loc[valid, "abandonment_cost"]
+        ).round(2)
+
+    return result
 
 
+@st.cache_data
 def compute_cost_summary(
     df: pd.DataFrame,
     cost_per_server_hr: float = DEFAULT_SERVER_COST_HR,

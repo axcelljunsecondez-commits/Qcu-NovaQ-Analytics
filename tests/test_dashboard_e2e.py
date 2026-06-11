@@ -10,7 +10,7 @@ from streamlit.testing.v1 import AppTest
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 PAGE_CHECKS: dict[str, tuple[str, ...] | int] = {
-    "streamlit_app.py": 5,  # number of navigation buttons expected
+    "streamlit_app.py": 7,  # 4 workflow + 1 upload + 1 onboarding + 1 theme toggle
     "pages/1_current_metrics.py": ("Current Metrics",),
     "pages/2_optimization.py": ("Optimization",),
     "pages/3_simulation.py": ("Simulation",),

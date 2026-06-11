@@ -1,4 +1,8 @@
-"""Shared Streamlit page helpers for the QCU dashboard."""
+"""
+app_page_utils.py — Shared page helpers for the Queueing Theory Dashboard.
+
+Data pipeline helpers live here. UI/theme helpers now live in theme.py.
+"""
 
 from __future__ import annotations
 
@@ -128,22 +132,6 @@ def dataframe_download(df: pd.DataFrame, filename: str, label: str) -> None:
         use_container_width=True,
     )
 
-
-def inject_or_css():
-    import streamlit as st
-    st.markdown("""
-    <style>
-    .badge-mm1 { display: inline-block; background: #1B2A4A; color: #E8A838; padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; font-family: 'Inter', sans-serif; border: 1px solid #E8A838; }
-    .badge-mmc { display: inline-block; background: #1B2A4A; color: #5DADE2; padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; font-family: 'Inter', sans-serif; border: 1px solid #5DADE2; }
-    .badge-mgc { display: inline-block; background: #1B2A4A; color: #A569BD; padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; font-family: 'Inter', sans-serif; border: 1px solid #A569BD; }
-    .badge-mmc-k { display: inline-block; background: #1B2A4A; color: #58D68D; padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; font-family: 'Inter', sans-serif; border: 1px solid #58D68D; }
-    .badge-mgc-k { display: inline-block; background: #1B2A4A; color: #EC7063; padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; font-family: 'Inter', sans-serif; border: 1px solid #EC7063; }
-    .badge-erlang-a { display: inline-block; background: #1B2A4A; color: #F39C12; padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; font-family: 'Inter', sans-serif; border: 1px solid #F39C12; }
-    .model-legend { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-    [data-testid="stMetric"] { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06); padding: 1.75rem; }
-    [data-testid="stMetric"]:hover { border-color: #E8A838; box-shadow: 0 12px 32px rgba(232, 168, 56, 0.12); }
-    </style>
-    """, unsafe_allow_html=True)
 
 def pretty_metric(value, percent: bool = False, money: bool = False) -> str:
     """Format optional numeric values for Streamlit metric cards."""

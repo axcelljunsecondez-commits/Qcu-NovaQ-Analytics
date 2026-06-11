@@ -13,11 +13,7 @@ from log import get_logger
 logger = get_logger(__name__)
 
 from config import UNSTABLE_PENALTY_MULTIPLIER
-from optimization import (
-    DEFAULT_CUSTOMER_WAITING_COST,
-    DEFAULT_SERVER_COST,
-    compute_blended_rate,
-)
+from optimization import DEFAULT_CUSTOMER_WAITING_COST
 from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
 CURRENT_COLUMNS = [
@@ -42,25 +38,6 @@ CURRENT_COLUMNS = [
 def _empty_frame(columns: list[str]) -> pd.DataFrame:
     """Return an empty DataFrame with the requested columns."""
     return pd.DataFrame(columns=columns)
-
-
-def _get_segment_cost(segment: Mapping, default_cost: float = DEFAULT_SERVER_COST) -> float:
-    """Extract or compute cost per server from a segment.
-    
-    Uses blended rate formula if labor hours are provided, otherwise falls back to default.
-    """
-    reg = segment.get("regular_hours")
-    ot = segment.get("ot_hours")
-    tot = segment.get("total_hours")
-
-    if reg is not None and ot is not None and tot is not None:
-        return compute_blended_rate(reg, ot, tot)
-
-    explicit_cost = segment.get("server_cost", default_cost)
-    if explicit_cost is not None:
-        return float(explicit_cost)
-
-    return default_cost
 
 
 def _classify_utilization_status(rho) -> str:
@@ -279,6 +256,7 @@ def validate_with_simulation(
     return result
 
 
+@st.cache_data
 def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping[str, Any]] | None = None, customer_waiting_cost: float | None = None) -> dict[str, Any]:
     """Compute Page 1 KPI summary values including waiting costs.
     

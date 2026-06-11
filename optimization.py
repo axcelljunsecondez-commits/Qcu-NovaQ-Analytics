@@ -6,8 +6,6 @@ import math
 from collections.abc import Iterable, Mapping
 from numbers import Integral, Real
 
-import pandas as pd
-
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -109,15 +107,6 @@ def _segment_server_cost(segment, default_server_cost):
     if not _is_number(segment_cost) or float(segment_cost) < 0:
         return None
     return float(segment_cost)
-
-
-def _search_limit(lambda_, mu, current_c, target_utilization, max_servers):
-    """Estimate a safe upper bound for the server search loop."""
-    if not _is_number(lambda_) or not _is_number(mu) or float(mu) <= 0:
-        return max(current_c, max_servers)
-
-    required_by_target = math.ceil(float(lambda_) / (float(mu) * target_utilization))
-    return max(1, current_c, required_by_target + 2, max_servers)
 
 
 def _ternary_search_c(eval_fn, lo, hi):
@@ -541,117 +530,5 @@ def build_recommendations(comparison_rows: list[dict]) -> list[str]:
     return messages
 
 
-def compute_pareto_frontier(
-    segment_record: Mapping,
-    server_cost_per_hr: float,
-    wait_cost_per_min: float,
-    max_servers: int = 20,
-) -> pd.DataFrame:
-    """Compute Pareto-optimal frontier of (total_cost, Wq) pairs for a segment.
 
-    For each server count *c* in 1 .. *max_servers*, the function evaluates the
-    queueing model and keeps only stable solutions.  A point is Pareto-non-dominated
-    if no other stable point has both *total_cost* <= and *Wq* <= (with at least one
-    strict inequality).
-
-    Parameters
-    ----------
-    segment_record : Mapping
-        Segment dict with keys ``lambda``, ``mu``, ``variance``, ``K``, ``time``.
-    server_cost_per_hr : float
-        Cost per server per hour.
-    wait_cost_per_min : float
-        Cost per customer per minute of waiting.
-    max_servers : int
-        Maximum number of servers to consider (default 20).
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: ``[c, total_cost, server_cost, waiting_cost, Wq_min, Lq, rho]``
-        Sorted by *total_cost* ascending.  Empty DataFrame with the same columns
-        when no stable solution exists.
-    """
-    lambda_ = segment_record.get("lambda")
-    mu = segment_record.get("mu")
-    variance = segment_record.get("variance")
-    capacity = segment_record.get("K")
-
-    columns = ["c", "total_cost", "server_cost", "waiting_cost", "Wq_min", "Lq", "rho"]
-
-    candidates: list[dict] = []
-
-    for c in range(1, max_servers + 1):
-        metrics = _queue_metrics(lambda_, mu, c, variance, capacity)
-        if not metrics.get("stable"):
-            continue
-
-        wq_hr = metrics.get("Wq")
-        if wq_hr is None:
-            continue
-
-        server_cost = c * server_cost_per_hr
-        waiting_cost = lambda_ * (wq_hr * 60) * wait_cost_per_min
-        total_cost = server_cost + waiting_cost
-
-        candidates.append(
-            {
-                "c": c,
-                "total_cost": total_cost,
-                "server_cost": server_cost,
-                "waiting_cost": waiting_cost,
-                "Wq_min": wq_hr * 60,
-                "Lq": metrics.get("Lq"),
-                "rho": metrics.get("rho"),
-            }
-        )
-
-    if not candidates:
-        return pd.DataFrame(columns=columns)
-
-    # Pareto filter: keep only non-dominated points
-    non_dominated: list[dict] = []
-    for i, pi in enumerate(candidates):
-        dominated = False
-        for j, pj in enumerate(candidates):
-            if i == j:
-                continue
-            if (
-                pj["total_cost"] <= pi["total_cost"]
-                and pj["Wq_min"] <= pi["Wq_min"]
-                and (
-                    pj["total_cost"] < pi["total_cost"]
-                    or pj["Wq_min"] < pi["Wq_min"]
-                )
-            ):
-                dominated = True
-                break
-        if not dominated:
-            non_dominated.append(pi)
-
-    non_dominated.sort(key=lambda x: x["total_cost"])
-    return pd.DataFrame(non_dominated, columns=columns)
-
-
-def compute_pareto_frontiers(
-    segment_records: Iterable[Mapping],
-    server_cost_per_hr: float,
-    wait_cost_per_min: float,
-    max_servers: int = 20,
-) -> dict[str, pd.DataFrame]:
-    """Batch wrapper around *compute_pareto_frontier*.
-
-    Returns a dict keyed by each segment's ``time`` label, with the corresponding
-    Pareto frontier DataFrame as the value.
-    """
-    result: dict[str, pd.DataFrame] = {}
-    for record in segment_records:
-        label = str(record.get("time", "Unknown"))
-        result[label] = compute_pareto_frontier(
-            record,
-            server_cost_per_hr=server_cost_per_hr,
-            wait_cost_per_min=wait_cost_per_min,
-            max_servers=max_servers,
-        )
-    return result
 

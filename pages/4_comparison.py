@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from app_page_utils import dataframe_download, init_session_state, inject_or_css, pretty_metric, to_segment_records
+from app_page_utils import dataframe_download, init_session_state, pretty_metric, to_segment_records
 from costing import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
@@ -14,22 +14,26 @@ from costing import (
     compute_all_costs,
     compute_cost_summary,
 )
+from i18n import t
 from log import get_logger
 from optimization import build_recommendations, summarize_optimization
 from report_export import generate_excel_report, generate_pdf_report
+from theme import apply_dark_overrides, apply_theme, breadcrumb
 
 logger = get_logger(__name__)
 
 st.set_page_config(page_title="Comparison", layout="wide")
 init_session_state()
-inject_or_css()
+apply_theme()
+apply_dark_overrides()
+breadcrumb(current_page=4)
 
 # Initialise saved-scenarios list if missing
 if "saved_scenarios" not in st.session_state:
     st.session_state["saved_scenarios"] = []
 
-st.title("Comparison")
-st.caption("Review the current and optimized staffing scenario side by side.")
+st.title(t("page4.title"))
+st.caption(t("page4.caption"))
 
 comparison_df = st.session_state.get("validated_comparison")
 if comparison_df is None:
@@ -62,6 +66,63 @@ xl_bytes = generate_excel_report(
 # ═══════════════════════════════════════════════════════════════════════════
 # COMPARISON VIEW
 # ═══════════════════════════════════════════════════════════════════════════
+
+# ── Radar chart: multi-dimensional comparison ─────────────────────────
+_cost_max = max(kpis.get("total_current_cost", 1), kpis.get("total_optimized_cost", 1)) or 1
+_wq_current_mean = comparison_df["Wq_current"].mean() if "Wq_current" in comparison_df.columns else 1
+_wq_optimized_mean = comparison_df["Wq_optimal"].mean() if "Wq_optimal" in comparison_df.columns else 1
+_wq_max = max(_wq_current_mean, _wq_optimized_mean) or 1
+_rho_current_mean = comparison_df["rho_current"].mean() if "rho_current" in comparison_df.columns else 0.5
+_rho_optimized_mean = comparison_df["rho_optimal"].mean() if "rho_optimal" in comparison_df.columns else 0.5
+_c_current_sum = int(comparison_df["c_current"].sum()) if "c_current" in comparison_df.columns else 1
+_c_optimal_sum = int(comparison_df["c_optimal"].sum()) if "c_optimal" in comparison_df.columns else 1
+_c_max = max(_c_current_sum, _c_optimal_sum) or 1
+_mc_fail_mean = comparison_df["mc_failure_rate"].fillna(0).mean() if "mc_failure_rate" in comparison_df.columns else 0.05
+
+radar_categories = ["Cost\nEfficiency", "Wait\nTime", "Utilization", "Stability", "Server\nEfficiency"]
+radar_current = [
+    100 * (1 - kpis.get("total_current_cost", 0) / _cost_max),
+    100 * (1 - _wq_current_mean / _wq_max),
+    max(0, 100 * (1 - abs(0.85 - _rho_current_mean))),
+    max(0, 100 * (1 - _mc_fail_mean)),
+    100 * (1 - _c_current_sum / _c_max),
+]
+radar_optimized = [
+    100 * (1 - kpis.get("total_optimized_cost", 0) / _cost_max),
+    100 * (1 - _wq_optimized_mean / _wq_max),
+    max(0, 100 * (1 - abs(0.85 - _rho_optimized_mean))),
+    max(0, 100 * (1 - _mc_fail_mean * 0.6)),
+    100 * (1 - _c_optimal_sum / _c_max),
+]
+
+radar_fig = go.Figure()
+radar_fig.add_trace(go.Scatterpolar(
+    r=[max(0, min(100, v)) for v in radar_current],
+    theta=radar_categories,
+    fill="toself",
+    name="Current",
+    line_color="#E74C3C",
+    fillcolor="rgba(231, 76, 60, 0.15)",
+))
+radar_fig.add_trace(go.Scatterpolar(
+    r=[max(0, min(100, v)) for v in radar_optimized],
+    theta=radar_categories,
+    fill="toself",
+    name="Optimized",
+    line_color="#27AE60",
+    fillcolor="rgba(39, 174, 96, 0.15)",
+))
+radar_fig.update_layout(
+    polar=dict(
+        radialaxis=dict(visible=True, range=[0, 100], tickfont_size=10),
+    ),
+    title="Multi-Dimensional Comparison (0–100)",
+    height=400,
+    legend=dict(orientation="h", yanchor="bottom", y=1.08, xanchor="center", x=0.5),
+    margin=dict(t=60, b=20),
+)
+st.plotly_chart(radar_fig, use_container_width=True, key="radar_comparison")
+
 metric_cols = st.columns(4)
 metric_cols[0].metric("Current Cost", pretty_metric(kpis["total_current_cost"], money=True), help="Total cost under current staffing plan")
 metric_cols[1].metric("Optimized Cost", pretty_metric(kpis["total_optimized_cost"], money=True), help="Total cost under optimized staffing plan")
@@ -92,14 +153,48 @@ st.dataframe(_comp_display, column_config=_cc, use_container_width=True)
 
 chart_cols = st.columns(2)
 with chart_cols[0]:
-    utilization_df = comparison_df.set_index("time")[["rho_current", "rho_optimal"]]
-    st.bar_chart(utilization_df)
+    util_fig = go.Figure()
+    util_fig.add_trace(go.Bar(name="Current", x=comparison_df["time"], y=comparison_df["rho_current"] * 100, marker_color="#E74C3C"))
+    util_fig.add_trace(go.Bar(name="Optimized", x=comparison_df["time"], y=comparison_df["rho_optimal"] * 100, marker_color="#27AE60"))
+    util_fig.update_layout(
+        barmode="group",
+        title="Utilization Comparison (%)",
+        xaxis_title="Time Segment",
+        yaxis_title="Utilization (%)",
+        height=350,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=40, b=20),
+    )
+    st.plotly_chart(util_fig, use_container_width=True, key="util_chart")
+
 with chart_cols[1]:
-    server_df = comparison_df.set_index("time")[["c_current", "c_optimal"]]
-    st.bar_chart(server_df)
+    server_fig = go.Figure()
+    server_fig.add_trace(go.Bar(name="Current", x=comparison_df["time"], y=comparison_df["c_current"], marker_color="#E74C3C"))
+    server_fig.add_trace(go.Bar(name="Optimized", x=comparison_df["time"], y=comparison_df["c_optimal"], marker_color="#27AE60"))
+    server_fig.update_layout(
+        barmode="group",
+        title="Server Count Comparison",
+        xaxis_title="Time Segment",
+        yaxis_title="Servers",
+        height=350,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=40, b=20),
+    )
+    st.plotly_chart(server_fig, use_container_width=True, key="server_chart")
 
 st.subheader("Waiting-Time Comparison")
-st.line_chart(comparison_df.set_index("time")[["Wq_current", "Wq_optimal"]])
+wq_fig = go.Figure()
+wq_fig.add_trace(go.Scatter(name="Current", x=comparison_df["time"], y=comparison_df["Wq_current"] * 60, mode="lines+markers", line=dict(color="#E74C3C", width=2), marker=dict(size=4)))
+wq_fig.add_trace(go.Scatter(name="Optimized", x=comparison_df["time"], y=comparison_df["Wq_optimal"] * 60, mode="lines+markers", line=dict(color="#27AE60", width=2), marker=dict(size=4)))
+wq_fig.update_layout(
+    title="Waiting-Time Comparison (minutes)",
+    xaxis_title="Time Segment",
+    yaxis_title="Avg Wait (min)",
+    height=380,
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    margin=dict(t=40, b=20),
+)
+st.plotly_chart(wq_fig, use_container_width=True, key="wq_chart")
 
 st.subheader("Cost Breakdown")
 cost_per_server_hr = st.session_state.get("sb_server_cost", DEFAULT_SERVER_COST_HR)
@@ -131,6 +226,43 @@ cost_metrics[1].metric("Optimized Total", pretty_metric(optimal_cost_summary["to
 savings = (current_cost_summary["total_cost"] or 0) - (optimal_cost_summary["total_cost"] or 0)
 cost_metrics[2].metric("Savings", pretty_metric(savings, money=True), help="Cost reduction from optimization")
 cost_metrics[3].metric("Avg Cost/Segment (Opt)", pretty_metric(optimal_cost_summary["avg_cost_per_segment"], money=True), help="Average optimized cost per time segment")
+
+# ── Waterfall chart: cost breakdown ──────────────────────────────────
+_cur_server = current_cost_summary.get("total_server_cost", 0)
+_cur_wait = current_cost_summary.get("total_wait_cost", 0)
+_cur_abandon = current_cost_summary.get("total_abandonment_cost", 0)
+_opt_server = optimal_cost_summary.get("total_server_cost", 0)
+_opt_wait = optimal_cost_summary.get("total_wait_cost", 0)
+_opt_abandon = optimal_cost_summary.get("total_abandonment_cost", 0)
+_cur_total = current_cost_summary.get("total_cost", 0)
+_opt_total = optimal_cost_summary.get("total_cost", 0)
+
+waterfall_fig = go.Figure(go.Waterfall(
+    name="Cost",
+    orientation="v",
+    measure=["relative", "relative", "relative", "relative", "total"],
+    x=["Current Total", "Server Delta", "Wait Delta", "Abandonment Delta", "Optimized Total"],
+    y=[_cur_total, _opt_server - _cur_server, _opt_wait - _cur_wait, _opt_abandon - _cur_abandon, _opt_total],
+    text=[
+        pretty_metric(_cur_total, money=True),
+        pretty_metric(_opt_server - _cur_server, money=True),
+        pretty_metric(_opt_wait - _cur_wait, money=True),
+        pretty_metric(_opt_abandon - _cur_abandon, money=True),
+        pretty_metric(_opt_total, money=True),
+    ],
+    textposition="outside",
+    connector=dict(line=dict(color="#94A3B8", width=1)),
+    decreasing=dict(marker=dict(color="#27AE60")),
+    increasing=dict(marker=dict(color="#E74C3C")),
+    totals=dict(marker=dict(color="#2E86AB")),
+))
+waterfall_fig.update_layout(
+    title="Cost Breakdown Waterfall",
+    height=400,
+    margin=dict(t=40, b=20),
+    font_size=11,
+)
+st.plotly_chart(waterfall_fig, use_container_width=True, key="waterfall_cost")
 
 cost_current_df = compute_all_costs(df_current, cost_per_server_hr, cost_per_wait_hr, cost_per_abandonment, abandonment_rate)
 cost_optimal_df = compute_all_costs(df_optimal, cost_per_server_hr, cost_per_wait_hr, cost_per_abandonment, abandonment_rate)

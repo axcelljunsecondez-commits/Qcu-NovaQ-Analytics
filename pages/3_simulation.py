@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
-from app_page_utils import dataframe_download, init_session_state, inject_or_css, pretty_metric, to_segment_records
+from app_page_utils import dataframe_download, init_session_state, pretty_metric, to_segment_records
+from i18n import t
 from log import get_logger
 from simulation import (
     MC_DEFAULT_TRIALS,
@@ -15,15 +17,18 @@ from simulation import (
     simulate_segments,
     summarize_simulation,
 )
+from theme import apply_dark_overrides, apply_theme, breadcrumb, skeleton_card, skeleton_metric, toast
 
 logger = get_logger(__name__)
 
 st.set_page_config(page_title="Simulation", layout="wide")
 init_session_state()
-inject_or_css()
+apply_theme()
+apply_dark_overrides()
+breadcrumb(current_page=3)
 
-st.title("Simulation")
-st.caption("Run SimPy discrete-event or Monte Carlo simulation to validate staffing decisions.")
+st.title(t("page3.title"))
+st.caption(t("page3.caption"))
 
 source_option = st.radio(
     "Simulation source",
@@ -56,13 +61,14 @@ queue_threshold = settings[1].number_input("Queue overload threshold", min_value
 seed_text = settings[2].text_input("Random seed", value="42")
 seed = None if seed_text.strip() == "" else int(seed_text)
 
-tab_des, tab_mc = st.tabs(["DES (SimPy)", "Monte Carlo"])
+tab_des, tab_mc = st.tabs([t("page3.des"), t("page3.mc")])
 
 # ── DES Tab ──────────────────────────────────────────────────────────────────
 
 with tab_des:
     if st.button("Run DES Simulation", type="primary", use_container_width=True, key="des_run"):
         with st.spinner("Running DES simulation…"):
+            skeleton_metric()
             results = simulate_segments(
                 to_segment_records(simulation_input),
                 sim_hours=sim_hours,
@@ -118,7 +124,6 @@ with tab_des:
 
         # ── Heatmap: λ × c × Wq ──────────────────────────────────────────────
         try:
-            import plotly.graph_objects as go
             heat_data = results_df.copy()
             if not heat_data.empty and "lambda" in heat_data.columns and "c" in heat_data.columns and "rho_sim" in heat_data.columns:
                 heat_pivot = heat_data.pivot_table(index="c", columns="lambda", values="rho_sim", aggfunc="mean")
@@ -143,13 +148,60 @@ with tab_des:
 
         chart_cols = st.columns(2)
         with chart_cols[0]:
-            st.line_chart(results_df.set_index("time")[["rho_sim", "Lq_sim"]])
+            fig_line = go.Figure()
+            fig_line.add_trace(go.Scatter(
+                x=results_df["time"], y=results_df["rho_sim"],
+                mode="lines+markers", name="ρ sim",
+                line=dict(color="#E8A838", width=2),
+            ))
+            fig_line.add_trace(go.Scatter(
+                x=results_df["time"], y=results_df["Lq_sim"],
+                mode="lines+markers", name="Lq sim",
+                line=dict(color="#2E86AB", width=2),
+                yaxis="y2",
+            ))
+            fig_line.update_layout(
+                title="Utilization & Queue Length over Time",
+                xaxis_title="Time Segment",
+                yaxis=dict(title="ρ sim", color="#E8A838"),
+                yaxis2=dict(title="Lq sim", color="#2E86AB", overlaying="y", side="right"),
+                legend=dict(orientation="h", y=1.12),
+                height=350, margin=dict(l=40, r=40, t=50, b=40),
+            )
+            st.plotly_chart(fig_line, use_container_width=True)
         with chart_cols[1]:
-            st.bar_chart(results_df.set_index("time")[["max_queue"]])
+            fig_bar = go.Figure()
+            fig_bar.add_trace(go.Bar(
+                x=results_df["time"], y=results_df["max_queue"],
+                marker_color="#C0392B", name="Max Queue",
+            ))
+            fig_bar.update_layout(
+                title="Maximum Queue Length per Segment",
+                xaxis_title="Time Segment",
+                yaxis_title="Max Queue",
+                height=350, margin=dict(l=40, r=40, t=50, b=40),
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        if "Lq_sim" in results_df.columns:
+            fig_hist = go.Figure()
+            fig_hist.add_trace(go.Histogram(
+                x=results_df["Lq_sim"],
+                nbinsx=20,
+                marker_color="#5DADE2",
+                name="Lq sim",
+            ))
+            fig_hist.update_layout(
+                title="Distribution of Queue Lengths (Lq)",
+                xaxis_title="Queue Length",
+                yaxis_title="Frequency",
+                height=300, margin=dict(l=40, r=40, t=40, b=40),
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
 
         dataframe_download(results_df, "novamart_des_simulation.csv", "Download DES Simulation CSV")
     else:
-        st.info("Run the DES simulation to generate results.")
+        skeleton_metric()
 
 # ── Monte Carlo Tab ──────────────────────────────────────────────────────────
 
@@ -193,12 +245,13 @@ with tab_mc:
         # Show sample-size adequacy status
         if "adequate_samples" in mc_df.columns and mc_df["adequate_samples"].notna().any():
             if mc_df["adequate_samples"].all():
-                st.success("✅ Sample size is sufficient for all segments (CI within 10%).")
+                toast("Sample size is sufficient for all segments (CI within 10%).", type="success")
             else:
                 n_bad = int(mc_df["adequate_samples"].value_counts().get(False, 0))
-                st.warning(
-                    f"⚠️ Some segments ({n_bad}) may need more trials for reliable estimates. "
-                    "Try increasing N above 500."
+                toast(
+                    f"Some segments ({n_bad}) may need more trials for reliable estimates. "
+                    "Try increasing N above 500.",
+                    type="warning",
                 )
 
         # Build display table with CI-formatted Wq column
@@ -224,10 +277,38 @@ with tab_mc:
 
         chart_cols = st.columns(2)
         with chart_cols[0]:
-            chart_df = mc_df.set_index("time")[["rho_mean", "rho_p95"]]
-            st.line_chart(chart_df)
+            fig_mc_line = go.Figure()
+            fig_mc_line.add_trace(go.Scatter(
+                x=mc_df["time"], y=mc_df["rho_mean"],
+                mode="lines+markers", name="ρ mean",
+                line=dict(color="#E8A838", width=2),
+            ))
+            fig_mc_line.add_trace(go.Scatter(
+                x=mc_df["time"], y=mc_df["rho_p95"],
+                mode="lines+markers", name="ρ p95",
+                line=dict(color="#C0392B", width=2, dash="dash"),
+            ))
+            fig_mc_line.update_layout(
+                title="Mean & P95 Utilization by Segment",
+                xaxis_title="Time Segment",
+                yaxis_title="Utilization (ρ)",
+                legend=dict(orientation="h", y=1.12),
+                height=350, margin=dict(l=40, r=40, t=50, b=40),
+            )
+            st.plotly_chart(fig_mc_line, use_container_width=True)
         with chart_cols[1]:
-            st.bar_chart(mc_df.set_index("time")[["failure_rate"]])
+            fig_mc_bar = go.Figure()
+            fig_mc_bar.add_trace(go.Bar(
+                x=mc_df["time"], y=mc_df["failure_rate"],
+                marker_color="#C0392B", name="Failure Rate",
+            ))
+            fig_mc_bar.update_layout(
+                title="Failure Rate by Segment",
+                xaxis_title="Time Segment",
+                yaxis_title="Failure Rate",
+                height=350, margin=dict(l=40, r=40, t=50, b=40),
+            )
+            st.plotly_chart(fig_mc_bar, use_container_width=True)
 
         dataframe_download(mc_df, "novamart_mc_simulation.csv", "Download Monte Carlo CSV")
     else:

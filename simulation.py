@@ -54,7 +54,6 @@ logger = get_logger(__name__)
 
 LEAN_THRESHOLD = 0.60        # ρ < this → Lean
 NORMAL_THRESHOLD = 0.80      # 0.60 ≤ ρ < this → Normal
-PEAK_THRESHOLD = 0.90        # 0.80 < ρ < this → Peak
 CRITICAL_THRESHOLD = 0.90    # ρ ≥ this → Critical
 UNSTABLE_THRESHOLD = 1.0     # ρ > this → Unstable
 DEFAULT_QUEUE_OVERLOAD = 20  # queue depth that triggers Critical regardless of ρ
