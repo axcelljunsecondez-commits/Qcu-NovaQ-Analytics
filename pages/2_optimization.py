@@ -20,17 +20,17 @@ from backend.queueing_engine.config import (
     DEFAULT_WAIT_COST_HR,
 )
 from backend.queueing_engine.log import get_logger
-from data_processing import (
-    validate_with_simulation,
-)
-from i18n import t
-from optimization import (
+from backend.queueing_engine.services.optimization import (
     DEFAULT_MAX_SERVERS,
     DEFAULT_TARGET_UTILIZATION,
     build_recommendations,
     optimize_segments,
     summarize_optimization,
 )
+from data_processing import (
+    validate_with_simulation,
+)
+from i18n import t
 from theme import (
     apply_dark_overrides,
     apply_theme,

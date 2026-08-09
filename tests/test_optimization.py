@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from optimization import (
+from backend.queueing_engine.services.optimization import (
     _compute_abandonment_cost,
     _compute_waiting_cost,
     _format_recommendation,
@@ -213,7 +213,7 @@ class OptimizationTests(unittest.TestCase):
         self.assertEqual(result["Wq_current"], result_no_theta["Wq_current"])
 
     def test_queue_metrics_theta_dispatches_to_erlang_a(self):
-        from optimization import _queue_metrics
+        from backend.queueing_engine.services.optimization import _queue_metrics
 
         with_theta = _queue_metrics(9, 10, 1, theta=0.5)
         without_theta = _queue_metrics(9, 10, 1)

@@ -17,7 +17,7 @@ from app_page_utils import (
     validate_and_normalize,
 )
 from backend.queueing_engine.log import get_logger
-from costing import (
+from backend.queueing_engine.services.costing import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,

@@ -8,8 +8,8 @@ from importlib.util import find_spec
 import pandas as pd
 
 from app_page_utils import sample_segments, to_segment_records, validate_and_normalize
-from data_processing import compute_kpis, process_segments
-from optimization import optimize_segments
+from backend.queueing_engine.services.data_processing import compute_kpis, process_segments
+from backend.queueing_engine.services.optimization import optimize_segments
 
 
 class DashboardFlowTests(unittest.TestCase):

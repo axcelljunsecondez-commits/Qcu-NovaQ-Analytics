@@ -8,7 +8,7 @@ import unittest
 import pandas as pd
 
 from backend.queueing_engine.config import UNSTABLE_FIXED_COST
-from costing import (
+from backend.queueing_engine.services.costing import (
     compute_all_costs,
     compute_cost_summary,
     compute_segment_costs,
@@ -171,7 +171,7 @@ class CostingTests(unittest.TestCase):
         self.assertAlmostEqual(result.loc[0, "total_cost"], 174.0 + UNSTABLE_FIXED_COST + 60.0)
 
     def test_costing_matches_optimization_for_unstable_segment(self):
-        from optimization import optimize_segment
+        from backend.queueing_engine.services.optimization import optimize_segment
 
         opt = optimize_segment({"time": "t", "lambda": 30, "mu": 10, "c": 1})
         costs = compute_segment_costs(
@@ -187,7 +187,7 @@ class CostingTests(unittest.TestCase):
         self.assertAlmostEqual(opt["cost_current"], costs["total_cost"], places=2)
 
     def test_costing_matches_optimization_for_stable_segment(self):
-        from optimization import optimize_segment
+        from backend.queueing_engine.services.optimization import optimize_segment
 
         opt = optimize_segment({"time": "t", "lambda": 2, "mu": 5, "c": 1})
         costs = compute_segment_costs(
