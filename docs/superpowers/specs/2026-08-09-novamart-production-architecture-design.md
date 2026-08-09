@@ -1,7 +1,7 @@
 # NovaMart Production Architecture — Design Spec
 
 - **Date:** 2026-08-09
-- **Status:** Approved for planning (user review gate passed)
+- **Status:** Approved (user review gate passed; Phase 0 verified 2026-08-09, Phase 1 executing)
 - **Scope:** Evolve NovaMart from the current Streamlit prototype into a production-quality internal web application (SaaS-ready foundations)
 - **Branch:** `feature/production-saas`
 
@@ -98,7 +98,7 @@ Rules:
 ### 6.1 API modules (`backend/api/`)
 - `main.py` — app factory, routers, locked-down CORS (explicit origins, no credentials wildcard), middleware (logging, request ID)
 - `deps.py` — current-user dependency, role checks (`require_role("admin")`)
-- `auth.py` — `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`; argon2-hashed passwords; signed HTTP-only cookie sessions
+- `auth.py` — `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`; argon2-hashed passwords; opaque-token sessions backed by the `sessions` table (SHA-256 token hashes)
 - `datasets.py` — `POST /datasets` (upload CSV/Excel, run validation), `GET /datasets`, `GET /datasets/{id}`, `DELETE /datasets/{id}`; upload size limits
 - `analysis.py` — `POST /analysis/mm1`, `/analysis/mmc`, `/analysis/mgc`, `/analysis/mmck`, `/analysis/mgck`, `/analysis/erlang_a` (stateless engine calls, Pydantic contracts)
 - `optimization.py` — `POST /optimize` (exists), `POST /optimize/batch` (existing surface preserved)
@@ -108,17 +108,26 @@ Rules:
 - `users.py` — admin-only user management (create, list, roles, deactivate)
 
 ### 6.2 Auth (internal-tool grade)
-- Email + password, argon2 (`passlib`/`argon2-cffi`), signed HTTP-only cookie sessions (itsdangerous or JWT in cookie)
-- Roles: `admin` (user management) vs `analyst` (tool use); all dataset/scenario rows scoped by `user_id`
+- Email + password, argon2 (`passlib`/`argon2-cffi`)
+- **Sessions (DB-backed):** login issues an opaque random token (`secrets.token_urlsafe(32)`) stored in an HTTP-only `Secure` `SameSite=Lax` cookie; the server persists only `SHA-256(token)` in the `sessions` table (raw token never stored, lookups by hash); logout, password change, and admin deactivation set `revoked_at`; inactive users cannot authenticate (rejected at login, existing sessions invalidated)
+- **CSRF:** double-submit token on state-changing endpoints (required because auth is cookie-based)
+- No JWT in v1 (documented alternative only if server-to-server claims are ever needed)
+- Roles: `admin` (user management) vs `analyst` (tool use)
+- **Authorization model:**
+  - Row-level ownership: `datasets`, `scenarios`, `jobs` each scoped by `user_id`; every access filters `WHERE user_id = <current user>` at the data-access layer (owner-scoped repository), not only in route handlers
+  - User A cannot read or modify User B's datasets/scenarios/jobs; non-owned resources return **404** (not 403 — no existence leaks)
+  - Analysts cannot access admin endpoints (`require_role("admin")` → **403**); unauthenticated requests to protected endpoints → **401** (only `POST /auth/login` and `POST /auth/register` are public)
+  - All `tenant_id` columns are nullable and unused in v1 with **no authorization semantics** (see §6.3)
 - Password reset: admin-initiated reset code (no email infra in v1)
 
 ### 6.3 PostgreSQL schema (v1)
 - `users` (id, email unique, password_hash, role, active, created_at)
-- `sessions` (id, user_id FK, token_hash, expires_at)
+- `sessions` (id, user_id FK, token_hash BYTEA UNIQUE indexed, created_at, last_seen_at, expires_at, revoked_at NULL)
 - `datasets` (id, user_id FK, name, source_filename, source_format, row_count, normalized_jsonb, validation_report_jsonb, created_at)
 - `scenarios` (id, user_id FK, dataset_id FK, name, settings_jsonb, results_jsonb, created_at)
 - `jobs` (id, user_id FK, kind, status, params_jsonb, result_jsonb, error, created_at, finished_at) — v1 runs synchronously; the table reserves the async path
-- Reserved now: `tenant_id` columns on `users`/`datasets`/`scenarios` (nullable, unused in v1)
+- **`tenant_id` semantics (v1):** columns reserved now on `users`/`datasets`/`scenarios` (nullable, unused in v1) to avoid migration churn later — but they carry **no authorization semantics**. All v1 authorization is `user_id`-scoped. No endpoint, service, or query may infer tenant access from `tenant_id`; it must never appear in access-control paths or filters. Any future use requires a spec update defining its semantics before the column is read anywhere.
+- **Result-size boundary:** `normalized_jsonb`/`results_jsonb` are used for payloads ≤ `RESULT_JSONB_MAX_BYTES` (default 512 KB serialized JSON, configurable). Larger simulation outputs (DES/MC traces) are written to an artifact store through a storage abstraction (`ArtifactStore`: `put`/`get`/`delete` — local filesystem outside the repo in v1, S3-compatible object storage is a later config-only swap); the row stores `{"artifact": "<uri>", "summary": {...}}` with summary metrics always inline in JSONB. No code path may write unbounded payloads into a single PostgreSQL row.
 - Alembic migrations from day 1
 
 ### 6.4 Jobs
@@ -158,14 +167,40 @@ Rules:
 
 | Phase | Deliverable | Exit criteria |
 |---|---|---|
-| 0 | Baseline commit + feature branch (done) | `bdff4374`, branch `feature/production-saas`, 122 tests green |
+| 0 | Baseline commit + feature branch + recorded verification | See Phase 0 verification record (§9.1) |
 | 1 | Analytical benchmark tests: λ, μ, ρ, P0, Lq, Wq for M/M/1 and M/M/c against known values; edge cases (ρ→1, λ=0, c=1≡M/M/1) | New benchmark suite green; no formula changes unless a test proves an error (documented if so); all 122 tests still green |
 | 2 | Extract `queueing_engine/` packages + `data/` + `reports/`; de-Streamlit `data_processing`/`i18n`; repoint legacy imports; land the 2 XSS fixes | All 122 tests green; `queueing_engine` imports no Streamlit/FastAPI/DB; ruff+mypy clean |
-| 2.5 | Correctness workstream (separate sign-off per item): ternary-search feasible-region fix; waste-hours savings>0 guard; unify cost engines; unify dispatch precedence; unify MC thresholds; `summarize_simulation` key consistency | Each fix has a failing test first; behavior changes documented |
-| 3 | Backend: auth, datasets, scenarios, reports routers; Postgres schema + Alembic; Docker Compose; Pydantic contracts | API integration tests green; `docker compose up` serves api+db |
+| 2.5 | Correctness workstream (separate sign-off per item): ternary-search feasible-region fix; waste-hours savings>0 guard; unify cost engines; unify dispatch precedence; unify MC thresholds; `summarize_simulation` key consistency | Each fix has a failing test first; behavior changes documented; **no item left unclassified** — every item resolved in the sign-off register (§9.2) as `Fixed` or `Deferred` with rationale |
+| 3 | Backend: auth, datasets, scenarios, reports routers; Postgres schema + Alembic; Docker Compose; Pydantic contracts | **Blocked until every Phase 2.5 item is `Fixed` or explicitly `Deferred` in §9.2**; API integration tests green; `docker compose up` serves api+db |
 | 4 | React SPA: scaffold → dashboard → upload → M/M/1 → M/M/c → simulate → compare → reports → account/admin; chart parity; i18n | SPA e2e tests green; feature parity checklist vs legacy |
 | 5 | Hardening: CORS lockdown, rate limits, upload limits, CSV/Excel injection sanitization, coverage ≥ gate (reconcile 75 vs 65), async DES jobs, logging/observability | Security tests green; coverage threshold met; `pip-audit` clean |
 | 6 | Streamlit retirement: delete `legacy_streamlit/` + its e2e tests | No Streamlit references remain; full suite green |
+
+### 9.1 Phase 0 verification record (2026-08-09)
+
+- **git status:** clean — no uncommitted changes (verified before Phase 1 began)
+- **Baseline commit:** `bdff4374db05088077e29fcd93fa0efc45280d37` ("Harden cross-page consistency and CI gates"); current HEAD `13806bc9` (design spec commit)
+- **Branch:** `feature/production-saas`
+- **Test command:** `python -m pytest tests/ -x --tb=short` (identical to ci.yml invocation)
+- **Test result:** 122 passed, 0 failed, 1 warning (StarletteDeprecationWarning re: httpx2) in 17.72s — re-run and recorded at Phase 1 start
+- **Lint:** `ruff check .` → "All checks passed"
+- **Type check:** `mypy . --config-file=pyproject.toml` → "Success: no issues found in 26 source files"
+- **Runtime:** Python 3.13.13 (local dev — NOT in CI matrix 3.10/3.11/3.12, lint job 3.11; pyproject mypy `python_version = 3.11`, ruff target py311) — local-vs-CI parity watch item
+- **Key dependencies** (pip freeze, 2026-08-09): streamlit 1.58.0, plotly 6.7.0, pandas 3.0.3, numpy 2.4.6, openpyxl 3.1.5, simpy 4.1.2, reportlab 4.5.1, fastapi 0.136.3, uvicorn 0.48.0, scipy 1.17.1, pytest 9.0.3, pytest-cov 7.1.0, httpx 0.28.1, hypothesis 6.155.1, ruff 0.15.15, mypy 2.1.0, itsdangerous 2.2.0
+- **Known watch item:** one flaky AppTest timeout observed once under `coverage run` instrumentation; not reproducible on re-run
+
+### 9.2 Phase 2.5 sign-off register
+
+**Rule:** Phase 3 may not begin until every item below is `Fixed` (test-first) or explicitly `Deferred` (product-owner sign-off + rationale recorded here). No item may be left unclassified.
+
+| # | Item | Evidence | Status | Sign-off |
+|---|---|---|---|---|
+| 1 | Ternary-search feasible-region fix | `optimization.py` search can discard the feasible region → false "no stable plan" at peak load | *pending* | — |
+| 2 | Waste-hours removal savings>0 guard | can recommend cost-increasing removals ("save ₱-X") | *pending* | — |
+| 3 | Unify cost engines | `compute_kpis` used `λ×10×cost`, others `UNSTABLE_FIXED_COST`; unstable-Wq rows treated inconsistently — **largely fixed in `bdff4374`** (both now use `UNSTABLE_FIXED_COST`, Wq optional); verify + lock with tests | *pending* | — |
+| 4 | Unify model-dispatch precedence | theta ignored by some dispatch paths — **fixed in `bdff4374`** (theta → `erlang_a()` threaded through `optimize_segment` + `api._segment_to_record`); verify + lock with tests | *pending* | — |
+| 5 | Unify MC failure thresholds | three divergent constants (0.75/0.85/0.05) + PASS 0.10 | *pending* | — |
+| 6 | `summarize_simulation` empty-branch key consistency | empty branch returns keys consumers crash/NaN on | *pending* | — |
 
 ## 10. Risks & mitigations
 
