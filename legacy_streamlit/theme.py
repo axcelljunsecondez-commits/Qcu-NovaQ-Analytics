@@ -7,6 +7,7 @@ live here. Each page calls apply_theme() once at startup.
 
 from __future__ import annotations
 
+import html
 import json
 import os
 from typing import Any
@@ -736,7 +737,7 @@ def toast(message: str, type: str = "success") -> None:
     icon = icons.get(type, "ℹ️")
     st.markdown(
         f'<div class="toast-container">'
-        f'<div class="toast toast-{type}"><span class="toast-icon">{icon}</span>{message}</div>'
+        f'<div class="toast toast-{type}"><span class="toast-icon">{icon}</span>{html.escape(message)}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )

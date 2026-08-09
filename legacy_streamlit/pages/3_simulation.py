@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import math
 
 import pandas as pd
@@ -127,7 +128,7 @@ with tab_des:
         """, unsafe_allow_html=True)
         bar_rows = "".join(
             f'<div class="queue-bar-row">'
-            f'<span class="queue-bar-label">{r.get("time", "")}</span>'
+            f'<span class="queue-bar-label">{html.escape(str(r.get("time", "")))}</span>'
             f'<div class="queue-bar-track">'
             f'<div class="queue-bar-fill" style="width:{min(_safe_rho(r.get("rho_sim")) * 100, 100):.0f}%;'
             f'background:{"#C0392B" if _safe_rho(r.get("rho_sim")) >= 1 else "#E8A838" if _safe_rho(r.get("rho_sim")) >= 0.85 else "#27AE60"};'
