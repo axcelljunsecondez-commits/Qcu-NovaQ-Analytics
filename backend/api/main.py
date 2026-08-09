@@ -16,8 +16,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api import auth
+from backend.api.analysis import router as analysis_router
+from backend.api.datasets import router as datasets_router
 from backend.api.deps import get_current_user
+from backend.api.optimization import router as optimization_router
+from backend.api.reports import router as reports_router
+from backend.api.scenarios import router as scenarios_router
 from backend.api.settings import Settings
+from backend.api.simulation import router as simulation_router
+from backend.api.users import router as users_router
 from backend.db.models import User
 from backend.db.session import DATABASE_URL, create_engine_for
 from backend.db.session import get_db as global_get_db
@@ -42,9 +49,14 @@ class UserOut(BaseModel):
 
 class CsrfDoubleSubmitMiddleware:
     """Double-submit CSRF protection: mutations carrying a session cookie must
-    echo the CSRF cookie in the X-CSRF-Token header."""
+    echo the CSRF cookie in the X-CSRF-Token header.
+
+    Stateless compute endpoints (analysis/simulation/optimization) are exempt:
+    they never mutate server state, so cross-site requests cannot cause harm.
+    """
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+    EXEMPT_PREFIXES = ("/analysis", "/simulation", "/optimize")
 
     def __init__(self, app):
         self.app = app
@@ -57,7 +69,8 @@ class CsrfDoubleSubmitMiddleware:
         method = scope["method"]
         cookies = _cookies_from_scope(scope)
         session_cookie = cookies.get(settings.session_cookie_name)
-        if method not in self.SAFE_METHODS and session_cookie:
+        exempt = scope["path"].startswith(self.EXEMPT_PREFIXES)
+        if method not in self.SAFE_METHODS and session_cookie and not exempt:
             header = _header_from_scope(scope, "x-csrf-token")
             cookie = cookies.get(settings.csrf_cookie_name)
             if not header or not cookie or header != cookie:
@@ -223,6 +236,14 @@ def create_app(
     @app.get("/auth/me")
     def me(user: User = Depends(get_current_user)) -> dict[str, UserOut]:
         return {"user": UserOut.model_validate(user)}
+
+    app.include_router(users_router)
+    app.include_router(datasets_router)
+    app.include_router(analysis_router)
+    app.include_router(optimization_router)
+    app.include_router(simulation_router)
+    app.include_router(scenarios_router)
+    app.include_router(reports_router)
 
     return app
 

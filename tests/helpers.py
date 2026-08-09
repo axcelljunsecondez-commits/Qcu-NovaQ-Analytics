@@ -53,6 +53,11 @@ def csrf_header(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": token}
 
 
+def clear_cookies(client: TestClient) -> None:
+    """Drop all stored cookies (fresh-session boundary in tests)."""
+    client.cookies.clear()
+
+
 def add_session_row(
     engine,
     user_id: int,
