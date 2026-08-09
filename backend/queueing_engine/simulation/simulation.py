@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import simpy
 
 from backend.queueing_engine.log import get_logger
@@ -788,6 +789,89 @@ def mc_summarize_simulation(mc_rows: list[dict[str, Any]]) -> dict[str, Any]:
         "n_adequate": n_adequate,
         "n_inadequate": n_inadequate,
     }
+
+
+def validate_with_simulation(
+    comparison_df: pd.DataFrame,
+    mc_trials: int = 10000,
+    mc_failure_threshold: float = 0.85,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Run DES + Monte Carlo on the optimized plan and merge validation columns.
+
+    For each segment in *comparison_df* with a valid ``c_optimal``, a DES
+    simulation and a 10 000‑trial Monte Carlo are executed.  The following
+    columns are appended (NaN for segments where the optimizer found no
+    stable plan):
+
+    - sim_status, sim_max_queue, sim_Wq, sim_rho        (DES)
+    - mc_failure_rate, mc_adequate, mc_rho_mean,        (MC)
+      mc_rho_p95, mc_Wq_ci
+    """
+    if comparison_df is None or comparison_df.empty:
+        return comparison_df
+
+    sim_records = []
+    for _, row in comparison_df.iterrows():
+        c_opt = row.get("c_optimal")
+        if c_opt is None or pd.isna(c_opt):
+            continue
+        sim_records.append({
+            "time": row["time"],
+            "lambda": row["lambda"],
+            "mu": row["mu"],
+            "c": int(c_opt),
+        })
+
+    if not sim_records:
+        result = comparison_df.copy()
+        for col in ["sim_status", "sim_max_queue", "sim_Wq", "sim_rho",
+                     "mc_failure_rate", "mc_adequate", "mc_rho_mean",
+                     "mc_rho_p95", "mc_Wq_ci"]:
+            result[col] = None
+        return result
+
+    des_results = simulate_segments(sim_records, seed=seed)
+    des_df = pd.DataFrame(des_results)[
+        ["time", "rho_sim", "Wq_sim", "max_queue", "status"]
+    ].rename(
+        columns={
+            "rho_sim": "sim_rho",
+            "Wq_sim": "sim_Wq",
+            "max_queue": "sim_max_queue",
+            "status": "sim_status",
+        }
+    )
+
+    mc_results = mc_simulate_segments(
+        sim_records, num_trials=mc_trials,
+        failure_threshold=mc_failure_threshold, seed=seed,
+    )
+    mc_raw = pd.DataFrame(mc_results)[
+        ["time", "failure_rate", "adequate_samples",
+         "rho_mean", "rho_p95", "Wq_mean", "ci_Wq_hw"]
+    ].rename(
+        columns={
+            "failure_rate": "mc_failure_rate",
+            "adequate_samples": "mc_adequate",
+            "rho_mean": "mc_rho_mean",
+            "rho_p95": "mc_rho_p95",
+        }
+    )
+    mc_raw["mc_Wq_ci"] = mc_raw.apply(
+        lambda r: (
+            f"{r['Wq_mean'] * 60:.2f} ± {r['ci_Wq_hw'] * 60:.2f} min (95% CI)"
+            if pd.notna(r.get("Wq_mean")) and pd.notna(r.get("ci_Wq_hw"))
+            else "N/A"
+        ),
+        axis=1,
+    )
+    mc_raw.drop(columns=["Wq_mean", "ci_Wq_hw"], inplace=True)
+
+    result = comparison_df.copy()
+    result = result.merge(des_df, on="time", how="left")
+    result = result.merge(mc_raw, on="time", how="left")
+    return result
 
 
 

@@ -51,7 +51,7 @@ class DashboardFlowTests(unittest.TestCase):
         if find_spec("simpy") is None:
             self.skipTest("simpy is not installed in this Python environment")
 
-        from simulation import simulate_segments, summarize_simulation
+        from backend.queueing_engine.simulation import simulate_segments, summarize_simulation
 
         rows = [{"time": "08:00-09:00", "lambda": 2.0, "mu": 3.0, "c": 1}]
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from simulation import (
+from backend.queueing_engine.simulation.simulation import (
     SegmentResult,
     _classify_status,
     mc_simulate_segment,
