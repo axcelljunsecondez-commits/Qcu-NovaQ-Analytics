@@ -56,6 +56,24 @@ export interface OptimizationOut {
   warning: string
 }
 
+export interface AnalysisOut {
+  rho: number
+  L: number | null
+  Lq: number | null
+  W: number | null
+  Wq: number | null
+  stable: boolean
+  error: string | null
+  blocking_probability?: number
+  effective_lambda?: number
+  K?: number
+  approximation?: string
+  rho_effective?: number
+  theta?: number
+  lambda_eff?: number
+  abandonment_rate?: number
+}
+
 export interface DatasetValidation {
   ok: boolean
   message: string
