@@ -8,7 +8,7 @@
 
 2. **Syntax Validation**
    - All Python files pass syntax validation
-   - Main app: `streamlit_app.py` ✅
+   - Main app: `legacy_streamlit/streamlit_app.py` ✅
    - Page 1: `pages/1_current_metrics.py` ✅
    - Page 2: `pages/2_optimization.py` ✅
    - Page 3: `pages/3_simulation.py` ✅
@@ -31,7 +31,7 @@
 ### Option 1: Using PowerShell
 ```powershell
 cd "c:\Users\Administrator\OneDrive\Desktop\QUEUING_THEORY_NOVAMART\QUEUING_THEORY_NOVAMART-main"
-.\.venv\Scripts\streamlit.exe run streamlit_app.py
+.\.venv\Scripts\streamlit.exe run legacy_streamlit\streamlit_app.py
 ```
 
 ### Option 2: Using the provided script

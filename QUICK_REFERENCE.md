@@ -24,7 +24,7 @@ Browser:
 📋 FILE MANIFEST
 ────────────────────────────────────────────────────────────────────────────────
 APPLICATION FILES:
-  ✅ streamlit_app.py              Main entry point (session init)
+  ✅ legacy_streamlit/streamlit_app.py              Main entry point (session init)
   ✅ pages/1_current_metrics.py    Upload & compute
   ✅ pages/2_optimization.py       Server optimization
   ✅ pages/3_comparison.py         Merge & compare

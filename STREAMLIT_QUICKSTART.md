@@ -17,7 +17,7 @@ PowerShell:
 2. RUN THE APP
 ───────────────────────────────────────────────────────────────────────────────
 
-    streamlit run streamlit_app.py
+    streamlit run legacy_streamlit/streamlit_app.py
 
 The dashboard will open in your browser at:
     http://localhost:8501

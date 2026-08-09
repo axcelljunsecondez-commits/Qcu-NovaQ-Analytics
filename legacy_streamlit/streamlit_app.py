@@ -18,18 +18,26 @@ With strict data pipeline integrity and mandatory error-checking.
 
 import base64
 import os
+import sys
+from pathlib import Path
 
 import streamlit as st
 
+_APP_ROOT = Path(__file__).resolve().parent
+_REPO_ROOT = _APP_ROOT.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from app_page_utils import init_session_state
+from i18n import language_selector, t
+from theme import apply_dark_overrides, apply_theme, onboarding_tour, theme_toggle_button
+
 from backend.queueing_engine.config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
 )
 from backend.queueing_engine.log import configure_logging, get_logger
-from i18n import language_selector, t
-from theme import apply_dark_overrides, apply_theme, onboarding_tour, theme_toggle_button
 
 logger = get_logger(__name__)
 configure_logging()

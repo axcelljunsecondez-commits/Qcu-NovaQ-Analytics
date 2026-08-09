@@ -13,11 +13,11 @@ from backend.data.ingestion import sample_segments
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 PAGE_CHECKS: dict[str, tuple[str, ...] | int] = {
-    "streamlit_app.py": 7,  # 4 workflow + 1 upload + 1 onboarding + 1 theme toggle
-    "pages/1_current_metrics.py": ("Current Metrics",),
-    "pages/2_optimization.py": ("Optimization",),
-    "pages/3_simulation.py": ("Simulation",),
-    "pages/4_comparison.py": ("Comparison",),
+    "legacy_streamlit/streamlit_app.py": 7,  # 4 workflow + 1 upload + 1 onboarding + 1 theme toggle
+    "legacy_streamlit/pages/1_current_metrics.py": ("Current Metrics",),
+    "legacy_streamlit/pages/2_optimization.py": ("Optimization",),
+    "legacy_streamlit/pages/3_simulation.py": ("Simulation",),
+    "legacy_streamlit/pages/4_comparison.py": ("Comparison",),
 }
 
 
@@ -53,7 +53,7 @@ def test_page_loads_without_exception(script: str, check: tuple[str, ...] | int)
 
 def test_page1_sample_data_loads_metrics() -> None:
     """Clicking 'Load Sample Data' on the Current Metrics page renders KPI metrics."""
-    at = AppTest(str(BASE_DIR / "pages/1_current_metrics.py"), default_timeout=15)
+    at = AppTest(str(BASE_DIR / "legacy_streamlit/pages/1_current_metrics.py"), default_timeout=15)
     at.run()
 
     assert at.button, "Expected at least one button"
@@ -73,9 +73,9 @@ def test_page1_sample_data_loads_metrics() -> None:
 
 
 @pytest.mark.parametrize("script,expected_heading", [
-    ("pages/2_optimization.py", "Optimization"),
-    ("pages/3_simulation.py", "Simulation"),
-    ("pages/4_comparison.py", "Comparison"),
+    ("legacy_streamlit/pages/2_optimization.py", "Optimization"),
+    ("legacy_streamlit/pages/3_simulation.py", "Simulation"),
+    ("legacy_streamlit/pages/4_comparison.py", "Comparison"),
 ])
 def test_upstream_pages_show_blocked_message(script: str, expected_heading: str) -> None:
     """Pages 2-4 should show a user-facing error when upstream data is missing."""
@@ -93,7 +93,7 @@ def test_upstream_pages_show_blocked_message(script: str, expected_heading: str)
 
 def test_page1_pos_radio_uses_stable_values_in_english() -> None:
     """Selecting the POS radio option must reach the POS-import path."""
-    at = AppTest(str(BASE_DIR / "pages/1_current_metrics.py"), default_timeout=15)
+    at = AppTest(str(BASE_DIR / "legacy_streamlit/pages/1_current_metrics.py"), default_timeout=15)
     at.run()
 
     assert not at.exception, f"Page 1 raised: {at.exception}"
@@ -109,7 +109,7 @@ def test_page1_pos_radio_uses_stable_values_in_english() -> None:
 
 def test_page1_pos_radio_works_in_filipino() -> None:
     """The POS radio must work in the tl locale (translated label, stable value)."""
-    at = AppTest(str(BASE_DIR / "pages/1_current_metrics.py"), default_timeout=15)
+    at = AppTest(str(BASE_DIR / "legacy_streamlit/pages/1_current_metrics.py"), default_timeout=15)
     at.session_state["locale"] = "tl"
     at.run()
 
@@ -128,7 +128,7 @@ def test_page1_pos_radio_works_in_filipino() -> None:
 
 def test_page2_no_false_validation_success_before_running() -> None:
     """Page 2 must not claim validation passed before the user runs it."""
-    at = AppTest(str(BASE_DIR / "pages/2_optimization.py"), default_timeout=15)
+    at = AppTest(str(BASE_DIR / "legacy_streamlit/pages/2_optimization.py"), default_timeout=15)
     at.session_state["df"] = sample_segments()
     at.run()
 
@@ -142,7 +142,7 @@ def test_page2_no_false_validation_success_before_running() -> None:
 
 def test_page2_stale_validation_is_invalidated_when_settings_change() -> None:
     """Validation results computed for old settings must be dropped."""
-    at = AppTest(str(BASE_DIR / "pages/2_optimization.py"), default_timeout=15)
+    at = AppTest(str(BASE_DIR / "legacy_streamlit/pages/2_optimization.py"), default_timeout=15)
     at.session_state["df"] = sample_segments()
     at.session_state["validated_comparison"] = pd.DataFrame(
         {"sim_status": ["NORMAL"], "mc_failure_rate": [0.0]}
@@ -158,7 +158,7 @@ def test_page2_stale_validation_is_invalidated_when_settings_change() -> None:
 
 def test_page3_invalid_seed_does_not_crash() -> None:
     """A non-numeric random seed must not crash the simulation page."""
-    at = AppTest(str(BASE_DIR / "pages/3_simulation.py"), default_timeout=15)
+    at = AppTest(str(BASE_DIR / "legacy_streamlit/pages/3_simulation.py"), default_timeout=15)
     at.session_state["df"] = sample_segments()
     at.run()
     at.radio[0].set_value("Current input").run()
@@ -171,7 +171,7 @@ def test_page3_invalid_seed_does_not_crash() -> None:
 
 def test_page3_error_rows_do_not_break_queue_bars() -> None:
     """Segments without a simulated rho must be skipped, not rendered as NaN bars."""
-    at = AppTest(str(BASE_DIR / "pages/3_simulation.py"), default_timeout=15)
+    at = AppTest(str(BASE_DIR / "legacy_streamlit/pages/3_simulation.py"), default_timeout=15)
     at.session_state["df"] = sample_segments()
     at.session_state["simulation_results"] = pd.DataFrame(
         [

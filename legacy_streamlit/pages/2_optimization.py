@@ -6,13 +6,24 @@ import json
 
 import pandas as pd
 import streamlit as st
-
 from app_page_utils import (
     dataframe_download,
     init_session_state,
     pretty_metric,
     to_segment_records,
 )
+from data_processing import (
+    validate_with_simulation,
+)
+from i18n import t
+from theme import (
+    apply_dark_overrides,
+    apply_theme,
+    breadcrumb,
+    skeleton_metric,
+    toast,
+)
+
 from backend.queueing_engine.config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_ABANDONMENT_RATE,
@@ -26,17 +37,6 @@ from backend.queueing_engine.services.optimization import (
     build_recommendations,
     optimize_segments,
     summarize_optimization,
-)
-from data_processing import (
-    validate_with_simulation,
-)
-from i18n import t
-from theme import (
-    apply_dark_overrides,
-    apply_theme,
-    breadcrumb,
-    skeleton_metric,
-    toast,
 )
 
 logger = get_logger(__name__)

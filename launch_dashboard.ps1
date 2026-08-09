@@ -66,7 +66,7 @@ if (Test-Path "requirements.txt") {
 Write-Host ""
 Write-Host "Step 4: Verifying application files..." -ForegroundColor Cyan
 
-if (Test-Path "streamlit_app.py") {
+if (Test-Path "legacy_streamlit\streamlit_app.py") {
     Write-Host "  ✅ streamlit_app.py found" -ForegroundColor Green
 } else {
     Write-Host "  ❌ streamlit_app.py not found" -ForegroundColor Red
@@ -87,4 +87,4 @@ Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
 Write-Host ""
 
 # Launch streamlit
-streamlit run streamlit_app.py
+streamlit run legacy_streamlit\streamlit_app.py

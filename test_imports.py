@@ -17,11 +17,14 @@ CHECKS = [
     ("simpy", "import simpy"),
     (
         "app_page_utils",
-        "from app_page_utils import validate_and_normalize, read_uploaded_table",
+        "from legacy_streamlit.app_page_utils import init_session_state",
     ),
-    ("data_processing", "from data_processing import compute_kpis"),
-    ("queue_models", "from queue_models import mgc, mgck, mm1, mmc, mmck"),
-    ("optimization", "from optimization import DEFAULT_MAX_SERVERS"),
+    (
+        "data_processing",
+        "from legacy_streamlit.data_processing import compute_kpis",
+    ),
+    ("queue_models", "from backend.queueing_engine.models import mgc, mgck, mm1, mmc, mmck"),
+    ("optimization", "from backend.queueing_engine.services.optimization import DEFAULT_MAX_SERVERS"),
 ]
 
 

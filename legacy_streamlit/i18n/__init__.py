@@ -17,14 +17,19 @@ import streamlit as st
 _SUPPORTED_LANGUAGES = ["en", "tl"]
 _DEFAULT_LANG = "en"
 
-_locale_dir = os.path.dirname(os.path.abspath(__file__))
+_locale_dir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "frontend",
+    "public",
+    "locales",
+)
 
 _translations: dict[str, dict[str, str]] = {}
 
 
 def _load_translations(lang: str) -> dict[str, str]:
     """Load translations for a given language code."""
-    path = os.path.join(_locale_dir, f"{lang}.json")
+    path = os.path.join(_locale_dir, lang, "translation.json")
     if not os.path.exists(path):
         return {}
     with open(path, encoding="utf-8") as f:

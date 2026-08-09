@@ -97,13 +97,13 @@ This activates the Python environment with all required packages:
 Run this command:
 
 ```powershell
-.\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
+.\.venv\Scripts\python.exe -m streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 **Or if venv is activated:**
 
 ```powershell
-python -m streamlit run streamlit_app.py
+python -m streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 ---
@@ -565,7 +565,7 @@ Result: BALANCED optimization
 pip install -r requirements.txt
 
 # Try again
-python -m streamlit run streamlit_app.py
+python -m streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 ---
@@ -577,7 +577,7 @@ python -m streamlit run streamlit_app.py
 **Solution:**
 ```powershell
 # Use different port
-streamlit run streamlit_app.py --server.port 8503
+streamlit run legacy_streamlit/streamlit_app.py --server.port 8503
 
 # Open: http://localhost:8503
 ```
@@ -650,7 +650,7 @@ This means demand > capacity for that time slot
 streamlit cache clear
 
 # Restart
-python -m streamlit run streamlit_app.py
+python -m streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 ---
@@ -776,7 +776,7 @@ Conclusion: Budget customers don't justify high staffing
 
 ### **Command to Start:**
 ```powershell
-cd "c:\Users\krizel\Desktop\O.R AKSELS\QUEUING_THEORY_NOVAMART-main\QUEUING_THEORY_NOVAMART-main"; .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
+cd "c:\Users\krizel\Desktop\O.R AKSELS\QUEUING_THEORY_NOVAMART-main\QUEUING_THEORY_NOVAMART-main"; .\.venv\Scripts\python.exe -m streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 ### **Open Dashboard:**
@@ -799,7 +799,7 @@ Ctrl + C (in PowerShell)
 
 ### **Key Files:**
 ```
-streamlit_app.py        ← Main entry point
+legacy_streamlit/streamlit_app.py        ← Main entry point
 pages/1_current_metrics.py    ← Upload page
 pages/2_optimization.py       ← Optimization + costs
 pages/3_comparison.py         ← Comparison + savings
@@ -827,7 +827,7 @@ merged_daily_data.csv   ← Your data
 **Next step:** Start the dashboard and upload your data!
 
 ```powershell
-.\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
+.\.venv\Scripts\python.exe -m streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 Then open: **http://localhost:8502**

@@ -16,7 +16,7 @@ Streamlit dashboard for analyzing QCU service queues with M/M/1, M/M/c, M/G/c, M
 ## Quick Start
 
 ```bash
-pip install -r requirements.txt && streamlit run streamlit_app.py
+pip install -r requirements.txt && streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 ## Requirements
@@ -54,7 +54,7 @@ python -m pip install -r requirements.txt
 ## Run The App
 
 ```powershell
-streamlit run streamlit_app.py
+streamlit run legacy_streamlit/streamlit_app.py
 ```
 
 The dashboard opens at:

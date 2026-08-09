@@ -7,8 +7,10 @@ import math
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-
 from app_page_utils import dataframe_download, init_session_state, pretty_metric, to_segment_records
+from i18n import t
+from theme import apply_dark_overrides, apply_theme, breadcrumb, skeleton_card, skeleton_metric, toast
+
 from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.simulation import (
     MC_DEFAULT_TRIALS,
@@ -18,8 +20,6 @@ from backend.queueing_engine.simulation import (
     simulate_segments,
     summarize_simulation,
 )
-from i18n import t
-from theme import apply_dark_overrides, apply_theme, breadcrumb, skeleton_card, skeleton_metric, toast
 
 logger = get_logger(__name__)
 

@@ -5,8 +5,10 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-
 from app_page_utils import dataframe_download, init_session_state, pretty_metric, to_segment_records
+from i18n import t
+from theme import apply_dark_overrides, apply_theme, breadcrumb
+
 from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.services.costing import (
     DEFAULT_ABANDONMENT_COST,
@@ -17,8 +19,6 @@ from backend.queueing_engine.services.costing import (
 )
 from backend.queueing_engine.services.optimization import build_recommendations, summarize_optimization
 from backend.reports.report_export import generate_excel_report, generate_pdf_report
-from i18n import t
-from theme import apply_dark_overrides, apply_theme, breadcrumb
 
 logger = get_logger(__name__)
 
