@@ -135,6 +135,21 @@ def _ternary_search_c(eval_fn, lo, hi):
     if lo > hi:
         return None
 
+    # No feasible (stable) candidate in range
+    if eval_fn(hi) == float("inf"):
+        return None
+
+    # Binary search the leftmost feasible c. Stability is monotone in c, so
+    # the feasible set is the suffix [first_feasible, hi].
+    left, right = lo, hi
+    while left < right:
+        mid = (left + right) // 2
+        if eval_fn(mid) == float("inf"):
+            left = mid + 1
+        else:
+            right = mid
+    lo = left
+
     # Shrink by thirds until the window is tiny
     while hi - lo > 2:
         m1 = lo + (hi - lo) // 3
@@ -143,11 +158,7 @@ def _ternary_search_c(eval_fn, lo, hi):
         f1 = eval_fn(m1)
         f2 = eval_fn(m2)
 
-        # If both are inf, the whole region is unstable — keep shrinking
-        if f1 == float("inf") and f2 == float("inf"):
-            lo = m1
-            hi = m2
-        elif f1 < f2:
+        if f1 < f2:
             hi = m2
         else:
             lo = m1

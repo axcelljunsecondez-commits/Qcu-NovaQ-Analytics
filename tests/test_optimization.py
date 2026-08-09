@@ -78,6 +78,22 @@ class OptimizationTests(unittest.TestCase):
         result = _ternary_search_c(fn, 1, 10)
         self.assertIsNone(result)
 
+    def test_ternary_search_feasible_region_beyond_inf_band(self):
+        def fn(c):
+            return float("inf") if c < 31 else float(c)
+
+        result = _ternary_search_c(fn, 1, 40)
+        self.assertEqual(result, 31)
+
+    def test_optimize_segment_finds_stable_plan_above_inf_band(self):
+        result = optimize_segment(
+            {"time": "t", "lambda": 30, "mu": 1, "c": 1},
+            max_servers=40,
+        )
+        self.assertIsNotNone(result["c_optimal"])
+        self.assertGreaterEqual(result["c_optimal"], 31)
+        self.assertNotIn("Unable to find a stable staffing plan", result["recommendation"])
+
     def test_optimize_segment_stable_mm1(self):
         result = optimize_segment(
             {"time": "test", "lambda": 2, "mu": 5, "c": 1},
