@@ -16,8 +16,8 @@ from backend.queueing_engine.services.costing import (
     compute_cost_summary,
 )
 from backend.queueing_engine.services.optimization import build_recommendations, summarize_optimization
+from backend.reports.report_export import generate_excel_report, generate_pdf_report
 from i18n import t
-from report_export import generate_excel_report, generate_pdf_report
 from theme import apply_dark_overrides, apply_theme, breadcrumb
 
 logger = get_logger(__name__)

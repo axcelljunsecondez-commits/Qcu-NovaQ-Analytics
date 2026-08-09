@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from app_page_utils import sample_segments
+from backend.data.ingestion import sample_segments
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
