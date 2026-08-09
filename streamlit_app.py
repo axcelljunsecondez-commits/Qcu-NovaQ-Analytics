@@ -22,13 +22,13 @@ import os
 import streamlit as st
 
 from app_page_utils import init_session_state
-from config import (
+from backend.queueing_engine.config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
 )
+from backend.queueing_engine.log import configure_logging, get_logger
 from i18n import language_selector, t
-from log import configure_logging, get_logger
 from theme import apply_dark_overrides, apply_theme, onboarding_tour, theme_toggle_button
 
 logger = get_logger(__name__)

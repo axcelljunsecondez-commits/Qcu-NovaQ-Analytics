@@ -6,7 +6,7 @@ import math
 from numbers import Integral, Real
 from typing import Any
 
-from log import get_logger
+from backend.queueing_engine.log import get_logger
 
 logger = get_logger(__name__)
 

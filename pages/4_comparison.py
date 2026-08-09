@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app_page_utils import dataframe_download, init_session_state, pretty_metric, to_segment_records
+from backend.queueing_engine.log import get_logger
 from costing import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
@@ -15,7 +16,6 @@ from costing import (
     compute_cost_summary,
 )
 from i18n import t
-from log import get_logger
 from optimization import build_recommendations, summarize_optimization
 from report_export import generate_excel_report, generate_pdf_report
 from theme import apply_dark_overrides, apply_theme, breadcrumb

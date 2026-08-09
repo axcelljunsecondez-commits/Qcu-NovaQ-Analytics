@@ -18,11 +18,11 @@ import math
 import numpy as np
 import pandas as pd
 
-from log import get_logger
+from backend.queueing_engine.log import get_logger
 
 logger = get_logger(__name__)
 
-from config import (
+from backend.queueing_engine.config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_ABANDONMENT_RATE,
     DEFAULT_HOURS_PER_INTERVAL,

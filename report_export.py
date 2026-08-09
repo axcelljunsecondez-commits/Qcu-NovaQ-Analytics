@@ -8,7 +8,7 @@ from datetime import date
 import openpyxl
 import pandas as pd
 
-from log import get_logger
+from backend.queueing_engine.log import get_logger
 
 logger = get_logger(__name__)
 from openpyxl.styles import Font

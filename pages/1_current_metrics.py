@@ -16,6 +16,7 @@ from app_page_utils import (
     to_segment_records,
     validate_and_normalize,
 )
+from backend.queueing_engine.log import get_logger
 from costing import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
@@ -25,7 +26,6 @@ from costing import (
 )
 from data_processing import compute_kpis, get_unstable_messages, process_segments
 from i18n import t
-from log import get_logger
 from theme import (
     apply_dark_overrides,
     apply_theme,

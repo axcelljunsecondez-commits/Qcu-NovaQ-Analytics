@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from config import (
+from backend.queueing_engine.config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,

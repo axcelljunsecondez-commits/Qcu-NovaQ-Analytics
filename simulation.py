@@ -43,7 +43,7 @@ from typing import Any
 import numpy as np
 import simpy
 
-from log import get_logger
+from backend.queueing_engine.log import get_logger
 from queue_models import mm1, mmc
 
 logger = get_logger(__name__)

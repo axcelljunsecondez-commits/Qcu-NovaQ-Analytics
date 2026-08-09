@@ -9,8 +9,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app_page_utils import dataframe_download, init_session_state, pretty_metric, to_segment_records
+from backend.queueing_engine.log import get_logger
 from i18n import t
-from log import get_logger
 from simulation import (
     MC_DEFAULT_TRIALS,
     SIM_HOURS_PER_SEGMENT,

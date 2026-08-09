@@ -6,11 +6,11 @@ import math
 from collections.abc import Iterable, Mapping
 from numbers import Integral, Real
 
-from log import get_logger
+from backend.queueing_engine.log import get_logger
 
 logger = get_logger(__name__)
 
-from config import (
+from backend.queueing_engine.config import (
     DEFAULT_CUSTOMER_WAITING_COST,
     DEFAULT_MAX_SERVERS,
     DEFAULT_SERVER_COST,

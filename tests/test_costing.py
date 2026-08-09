@@ -7,7 +7,7 @@ import unittest
 
 import pandas as pd
 
-from config import UNSTABLE_FIXED_COST
+from backend.queueing_engine.config import UNSTABLE_FIXED_COST
 from costing import (
     compute_all_costs,
     compute_cost_summary,

@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import warnings
 
-from log import get_logger
+from backend.queueing_engine.log import get_logger
 
 logger = get_logger(__name__)
 
