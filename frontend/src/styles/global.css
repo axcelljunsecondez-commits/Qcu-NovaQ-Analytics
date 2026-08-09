@@ -434,6 +434,47 @@ button.btn-ghost {
   }
 }
 
+.quick-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.quick-action-link {
+  display: inline-block;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1.25rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.quick-action-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.progress-track {
+  height: 10px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--info);
+  border-radius: 999px;
+}
+
+.theme-toggle {
+  width: 100%;
+  font-size: 0.8rem;
+}
+
 @media (max-width: 900px) {
   .sidebar {
     position: static;
