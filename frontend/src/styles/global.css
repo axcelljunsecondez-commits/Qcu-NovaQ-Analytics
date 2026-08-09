@@ -402,6 +402,38 @@ button.btn-ghost {
   color: var(--text-secondary);
 }
 
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1b2a4a 0%, #243b5e 50%, #2c4a72 100%);
+}
+
+.login-card {
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.login-title {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+@media (max-width: 900px) {
+  .login-card {
+    width: 90%;
+  }
+}
+
 @media (max-width: 900px) {
   .sidebar {
     position: static;

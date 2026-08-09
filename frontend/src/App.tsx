@@ -1,8 +1,1 @@
-import { createBrowserRouter } from 'react-router-dom'
-
-export const router = createBrowserRouter([
-  {
-    path: '*',
-    element: <div className="empty-state">NovaMart</div>,
-  },
-])
+export { router } from './router'

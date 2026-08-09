@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { I18nextProvider } from 'react-i18next'
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { AuthProvider } from '../auth/AuthProvider'
 import en from '../../public/locales/en/translation.json'
 import tl from '../../public/locales/tl/translation.json'
 
@@ -46,7 +47,9 @@ export function renderWithProviders(
     return (
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[route]}>
-          <I18nextProvider i18n={i18nInstance}>{children}</I18nextProvider>
+          <I18nextProvider i18n={i18nInstance}>
+            <AuthProvider>{children}</AuthProvider>
+          </I18nextProvider>
         </MemoryRouter>
       </QueryClientProvider>
     )
