@@ -236,6 +236,24 @@ class OptimizationTests(unittest.TestCase):
         self.assertLess(with_theta["Wq"], without_theta["Wq"])
         self.assertIn("theta", with_theta)
 
+    def test_queue_metrics_theta_precedes_variance(self):
+        from backend.queueing_engine.services.optimization import _queue_metrics
+
+        result = _queue_metrics(9, 10, 1, variance=0.1, theta=0.5)
+        self.assertIn("theta", result)
+
+    def test_queue_metrics_theta_precedes_capacity(self):
+        from backend.queueing_engine.services.optimization import _queue_metrics
+
+        result = _queue_metrics(9, 10, 1, K=5, theta=0.5)
+        self.assertIn("theta", result)
+
+    def test_queue_metrics_theta_zero_falls_through(self):
+        from backend.queueing_engine.services.optimization import _queue_metrics
+
+        result = _queue_metrics(2, 5, 1, variance=0.1, theta=0)
+        self.assertNotIn("theta", result)
+
     def test_waste_reduction_skipped_when_savings_negative(self):
         result = optimize_segment(
             {"time": "t", "lambda": 2, "mu": 5, "c": 2},

@@ -67,15 +67,19 @@ def _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment):
 
 
 def _queue_metrics(lambda_, mu, c, variance=None, K=None, theta=None):
-    """Evaluate a segment using the appropriate infinite or finite-capacity model."""
+    """Evaluate a segment using the appropriate infinite or finite-capacity model.
+
+    Theta (Erlang-A) takes priority over all other model choices, matching
+    ``process_segments`` and the API dispatch chain.
+    """
+    if theta is not None and _is_number(theta) and float(theta) > 0:
+        return erlang_a(lambda_, mu, c, float(theta))
     if _is_number(K) and _is_number(variance):
         return mgck(lambda_, mu, c, variance, int(K))
     if _is_number(K):
         return mmck(lambda_, mu, c, int(K))
     if _is_number(variance):
         return mgc(lambda_, mu, c, variance)
-    if _is_number(theta):
-        return erlang_a(lambda_, mu, c, theta)
     if c == 1:
         return mm1(lambda_, mu)
     return mmc(lambda_, mu, c)
