@@ -152,5 +152,22 @@
   "common.cancel": "Cancel",
   "common.back": "Back",
   "common.current": "Current",
-  "common.optimized": "Optimized"
+  "common.optimized": "Optimized",
+  "optimize.title": "Optimize staffing",
+  "optimize.source_dataset": "Source dataset",
+  "optimize.target_utilization": "Target utilization",
+  "optimize.server_cost": "Server cost / hr",
+  "optimize.waiting_cost": "Waiting cost / hr",
+  "optimize.max_servers": "Max servers",
+  "optimize.run": "Optimize",
+  "optimize.total_cost": "Total cost",
+  "optimize.optimal_cost": "Optimal cost",
+  "optimize.delta_cost": "Cost savings",
+  "optimize.scenario_name": "Scenario name",
+  "optimize.saved": "Scenario saved.",
+  "optimize.what_if": "Run what-if",
+  "optimize.lambda_multiplier": "λ multiplier",
+  "optimize.recommendation": "Recommendation",
+  "optimize.segment": "Segment",
+  "optimize.staffing_table": "Staffing plan"
 }

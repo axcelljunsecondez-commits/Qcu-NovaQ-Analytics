@@ -152,5 +152,22 @@
   "common.cancel": "Kanselahin",
   "common.back": "Bumalik",
   "common.current": "Kasalukuyan",
-  "common.optimized": "Na-optimize"
+  "common.optimized": "Na-optimize",
+  "optimize.title": "I-optimize ang staffing",
+  "optimize.source_dataset": "Pinagmulan ng dataset",
+  "optimize.target_utilization": "Target na utilization",
+  "optimize.server_cost": "Gastos ng server / oras",
+  "optimize.waiting_cost": "Gastos sa paghihintay / oras",
+  "optimize.max_servers": "Max na server",
+  "optimize.run": "I-optimize",
+  "optimize.total_cost": "Kabuuang gastos",
+  "optimize.optimal_cost": "Pinakamainam na gastos",
+  "optimize.delta_cost": "Natipid na gastos",
+  "optimize.scenario_name": "Pangalan ng scenario",
+  "optimize.saved": "Na-save ang scenario.",
+  "optimize.what_if": "Patakbuhin ang what-if",
+  "optimize.lambda_multiplier": "λ multiplier",
+  "optimize.recommendation": "Rekomendasyon",
+  "optimize.segment": "Segment",
+  "optimize.staffing_table": "Plano ng staffing"
 }
