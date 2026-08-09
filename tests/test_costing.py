@@ -138,7 +138,7 @@ class CostingTests(unittest.TestCase):
             hours_per_interval=1,
         )
         self.assertEqual(costs["wait_cost"], UNSTABLE_FIXED_COST)
-        self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST)
+        self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST + 60.0)
 
     def test_compute_segment_costs_nan_wq_uses_fixed_penalty(self):
         costs = compute_segment_costs(
@@ -150,7 +150,22 @@ class CostingTests(unittest.TestCase):
             hours_per_interval=1,
         )
         self.assertEqual(costs["wait_cost"], UNSTABLE_FIXED_COST)
-        self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST)
+        self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST + 60.0)
+
+    def test_compute_segment_costs_unstable_row_charges_abandonment_like_all_costs(self):
+        costs = compute_segment_costs(
+            servers=2,
+            arrival_rate=10,
+            wq=float("nan"),
+            cost_per_server_hr=87,
+            cost_per_wait_hr=100,
+            cost_per_abandonment=60,
+            abandonment_rate=0.1,
+            hours_per_interval=1,
+        )
+        self.assertEqual(costs["wait_cost"], UNSTABLE_FIXED_COST)
+        self.assertAlmostEqual(costs["abandonment_cost"], 60.0)
+        self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST + 60.0)
 
     def test_compute_all_costs_unstable_row_gets_penalty(self):
         df = pd.DataFrame({

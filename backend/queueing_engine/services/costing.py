@@ -84,14 +84,14 @@ def compute_segment_costs(
 
     # Unstable system (Wq = inf / NaN / negative / missing) → fixed penalty,
     # matching the optimization engine (UNSTABLE_FIXED_COST) instead of 999999.
-    # Abandonment is skipped for unstable systems (no steady-state abandonment
-    # rate exists; the fixed penalty already covers customer impact).
     if wq is None or (isinstance(wq, float) and math.isnan(wq)) or np.isinf(wq) or wq < 0:
         wait_cost = UNSTABLE_FIXED_COST
-        abandonment_cost = 0.0
     else:
         wait_cost = wq * arrival_rate * cost_per_wait_hr
-        abandonment_cost = arrival_rate * abandonment_rate * cost_per_abandonment
+
+    # Abandonment applies to stable and unstable rows alike, matching
+    # compute_all_costs and the optimization engine.
+    abandonment_cost = arrival_rate * abandonment_rate * cost_per_abandonment
 
     total_cost = server_cost + wait_cost + abandonment_cost
 
