@@ -71,15 +71,15 @@ Package `__init__.py` files re-export the public API of each module so consumers
 
 ## Implementation steps
 
-- [ ] Unit A: config+log extraction, import repoints, conftest → battery
-- [ ] Unit B: models extraction → battery
-- [ ] Unit C: statistics extraction → battery
-- [ ] Unit D: simulation extraction + validate_with_simulation relocation → battery
-- [ ] Unit E: services extraction + cached bridge + decorator removal → battery
-- [ ] Unit F: data ingestion + app_page_utils bridge → battery
-- [ ] Unit G: legacy_streamlit move, i18n relocation, bootstrap, e2e paths → battery
-- [ ] Unit H: XSS + toast escaping → battery
-- [ ] Final audit + report; STOP before Phase 3
+- [x] Unit A: config+log extraction, import repoints, conftest → battery
+- [x] Unit B: models extraction → battery
+- [x] Unit C: statistics extraction → battery
+- [x] Unit D: simulation extraction + validate_with_simulation relocation → battery
+- [x] Unit E: services extraction + cached bridge + decorator removal → battery
+- [x] Unit F: data ingestion + app_page_utils bridge → battery
+- [x] Unit G: legacy_streamlit move, i18n relocation, bootstrap, e2e paths → battery
+- [x] Unit H: XSS + toast escaping → battery
+- [x] Final audit + report; STOP before Phase 3
 
 ## Risk register
 
