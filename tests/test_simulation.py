@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 import unittest
 
+import pandas as pd
+
 from backend.queueing_engine.simulation.simulation import (
     SegmentResult,
     _classify_status,
@@ -13,6 +15,7 @@ from backend.queueing_engine.simulation.simulation import (
     simulate_segment,
     simulate_segments,
     summarize_simulation,
+    validate_with_simulation,
 )
 
 
@@ -166,6 +169,13 @@ class SimulationTests(unittest.TestCase):
             num_trials=10, seed=42,
         )
         self.assertEqual(result["status"], "ERROR")
+
+    def test_validate_with_simulation_defaults_to_engine_failure_threshold(self):
+        df = pd.DataFrame([
+            {"time": "08:00", "lambda": 8.2, "mu": 10.0, "c_optimal": 1},
+        ])
+        result = validate_with_simulation(df, mc_trials=3000, seed=42)
+        self.assertGreater(result.loc[0, "mc_failure_rate"], 0.5)
 
 
 if __name__ == "__main__":

@@ -794,7 +794,7 @@ def mc_summarize_simulation(mc_rows: list[dict[str, Any]]) -> dict[str, Any]:
 def validate_with_simulation(
     comparison_df: pd.DataFrame,
     mc_trials: int = 10000,
-    mc_failure_threshold: float = 0.85,
+    mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int = 42,
 ) -> pd.DataFrame:
     """Run DES + Monte Carlo on the optimized plan and merge validation columns.
