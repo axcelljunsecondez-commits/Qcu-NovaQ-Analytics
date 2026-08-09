@@ -74,7 +74,7 @@ source_df = None
 # ── POS Import Path ───────────────────────────────────────────────────────
 
 if data_source == "pos":
-    from pos_connector import (  # noqa: E402 — lazy import (saves ~1–2s on page load)
+    from backend.queueing_engine.statistics import (  # noqa: E402 — lazy import (saves ~1–2s on page load)
         compute_lambda_mu,
         fit_service_distribution,
         load_transactions,
