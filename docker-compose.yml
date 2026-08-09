@@ -1,7 +1,52 @@
 services:
-  novamart:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: novamart
+      POSTGRES_PASSWORD: novamart
+      POSTGRES_DB: novamart
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novamart -d novamart"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      DATABASE_URL: postgresql+psycopg://novamart:novamart@db:5432/novamart
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      SECURE_COOKIES: "0"
+      ALLOWED_ORIGINS: '["http://localhost"]'
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: nginx
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+  legacy:
     build: .
+    depends_on:
+      - api
     ports:
       - "8501:8501"
     environment:
       STREAMLIT_SERVER_HEADLESS: "true"
+
+volumes:
+  pgdata:
