@@ -38,7 +38,7 @@
 - Modify: `backend/queueing_engine/services/optimization.py:114-165` (`_ternary_search_c`)
 - Test: `tests/test_optimization.py`
 
-- [ ] **Step 1: Write the failing regression tests**
+- [x] **Step 1: Write the failing regression tests**
 
 In `tests/test_optimization.py`, after `test_ternary_search_all_inf`:
 
@@ -59,11 +59,11 @@ def test_optimize_segment_finds_stable_plan_above_inf_band(self):
     self.assertEqual(result["c_optimal"], 31)
 ```
 
-- [ ] **Step 2: Run and confirm both FAIL** (current code returns None)
+- [x] **Step 2: Run and confirm both FAIL** (current code returns None)
 
 Run: `python -m pytest tests/test_optimization.py -x --tb=short`
 
-- [ ] **Step 3: Fix `_ternary_search_c`** — two-phase: binary search the leftmost feasible c, then ternary over the feasible window (stability is monotone in c, so feasible c form a suffix [c_min, hi]):
+- [x] **Step 3: Fix `_ternary_search_c`** — two-phase: binary search the leftmost feasible c, then ternary over the feasible window (stability is monotone in c, so feasible c form a suffix [c_min, hi]):
 
 ```python
 def _ternary_search_c(eval_fn, lo, hi):
@@ -132,9 +132,9 @@ def _ternary_search_c(eval_fn, lo, hi):
     return best_c if best_val != float("inf") else None
 ```
 
-- [ ] **Step 4: Run new tests + optimization suite** — `python -m pytest tests/test_optimization.py -x --tb=short`
-- [ ] **Step 5: Full battery + E2E + ruff + mypy** — `python -m pytest tests/ -x --tb=short`, `python -m pytest tests/test_dashboard_e2e.py -x --tb=short`, `python -m ruff check .`, `python -m mypy .`
-- [ ] **Step 6: Commit** — `git add -A; git commit -m "fix: ternary search finds feasible region beyond unstable band (Phase 2.5 item 1)"`
+- [x] **Step 4: Run new tests + optimization suite** — `python -m pytest tests/test_optimization.py -x --tb=short`
+- [x] **Step 5: Full battery + E2E + ruff + mypy** — `python -m pytest tests/ -x --tb=short`, `python -m pytest tests/test_dashboard_e2e.py -x --tb=short`, `python -m ruff check .`, `python -m mypy .`
+- [x] **Step 6: Commit** — `git add -A; git commit -m "fix: ternary search finds feasible region beyond unstable band (Phase 2.5 item 1)"`
 
 ---
 
@@ -144,7 +144,7 @@ def _ternary_search_c(eval_fn, lo, hi):
 - Modify: `backend/queueing_engine/services/optimization.py:343-375` (waste branch in `optimize_segment`)
 - Test: `tests/test_optimization.py`
 
-- [ ] **Step 1: Write the failing regression tests**
+- [x] **Step 1: Write the failing regression tests**
 
 ```python
 def test_waste_reduction_skipped_when_savings_negative(self):
@@ -169,10 +169,10 @@ def test_waste_reduction_applies_when_savings_positive(self):
     self.assertIn("save", result["recommendation"])
 ```
 
-- [ ] **Step 2: Run and confirm the first FAILS, second PASSES** (current code always adopts the removal and reports negative "savings")
-- [ ] **Step 3: Fix** — in the waste branch (optimization.py:343-367), compute `savings` first and only adopt `waste_recommendation` when `savings > 0`; keep the rest of the branch (including final_optimal_* overrides) inside the guard.
-- [ ] **Step 4-5: Run relevant + full battery + E2E + ruff + mypy**
-- [ ] **Step 6: Commit** — `git commit -m "fix: waste-hours removal only when savings positive (Phase 2.5 item 2)"`
+- [x] **Step 2: Run and confirm the first FAILS, second PASSES** (current code always adopts the removal and reports negative "savings")
+- [x] **Step 3: Fix** — in the waste branch (optimization.py:343-367), compute `savings` first and only adopt `waste_recommendation` when `savings > 0`; keep the rest of the branch (including final_optimal_* overrides) inside the guard.
+- [x] **Step 4-5: Run relevant + full battery + E2E + ruff + mypy**
+- [x] **Step 6: Commit** — `git commit -m "fix: waste-hours removal only when savings positive (Phase 2.5 item 2)"`
 
 ---
 
@@ -182,7 +182,7 @@ def test_waste_reduction_applies_when_savings_positive(self):
 - Modify: `backend/queueing_engine/services/costing.py:89-94` (`compute_segment_costs`)
 - Test: `tests/test_costing.py` (update 2 assertions at lines 131-153; add regression test)
 
-- [ ] **Step 1: Add failing regression test (divergence proof)**
+- [x] **Step 1: Add failing regression test (divergence proof)**
 
 ```python
 def test_segment_costs_unstable_row_charges_abandonment_like_all_costs(self):
@@ -201,10 +201,10 @@ def test_segment_costs_unstable_row_charges_abandonment_like_all_costs(self):
     self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST + 60.0)
 ```
 
-- [ ] **Step 2: Run and confirm FAILS** (`abandonment_cost` is 0.0 today) — also update the two existing assertions at `test_costing.py:141` and `:153` to `174.0 + UNSTABLE_FIXED_COST + 60.0` (they pin the divergent behavior; default abandonment_rate=0.1 × λ=10 × cost=60 = 60).
-- [ ] **Step 3: Fix `compute_segment_costs`** — move `abandonment_cost` out of the else branch so unstable rows charge `arrival_rate * abandonment_rate * cost_per_abandonment` (matching `compute_all_costs` and the optimization engine).
-- [ ] **Step 4-5: Relevant + full battery + E2E + ruff + mypy**
-- [ ] **Step 6: Commit** — `git commit -m "fix: unify unstable-segment abandonment cost across cost engines (Phase 2.5 item 3)"`
+- [x] **Step 2: Run and confirm FAILS** (`abandonment_cost` is 0.0 today) — also update the two existing assertions at `test_costing.py:141` and `:153` to `174.0 + UNSTABLE_FIXED_COST + 60.0` (they pin the divergent behavior; default abandonment_rate=0.1 × λ=10 × cost=60 = 60).
+- [x] **Step 3: Fix `compute_segment_costs`** — move `abandonment_cost` out of the else branch so unstable rows charge `arrival_rate * abandonment_rate * cost_per_abandonment` (matching `compute_all_costs` and the optimization engine).
+- [x] **Step 4-5: Relevant + full battery + E2E + ruff + mypy**
+- [x] **Step 6: Commit** — `git commit -m "fix: unify unstable-segment abandonment cost across cost engines (Phase 2.5 item 3)"`
 
 ---
 
@@ -214,7 +214,7 @@ def test_segment_costs_unstable_row_charges_abandonment_like_all_costs(self):
 - Modify: `backend/queueing_engine/services/optimization.py:69-81` (`_queue_metrics`)
 - Test: `tests/test_optimization.py`
 
-- [ ] **Step 1: Add failing regression tests**
+- [x] **Step 1: Add failing regression tests**
 
 ```python
 def test_queue_metrics_theta_precedes_variance(self):
@@ -236,10 +236,10 @@ def test_queue_metrics_theta_zero_falls_through(self):
     self.assertNotIn("theta", result)
 ```
 
-- [ ] **Step 2: Run and confirm FAIL** (today theta is checked last / `_is_number(0)` is True)
-- [ ] **Step 3: Fix `_queue_metrics`** — theta first with gate `theta is not None and _is_number(theta) and float(theta) > 0` (matching `process_segments`/`_auto_select_model`); keep K+variance → mgck, K → mmck, variance → mgc, c==1 → mm1, else mmc.
-- [ ] **Step 4-5: Relevant + full battery + E2E + ruff + mypy** (existing `test_optimize_segment_theta_uses_erlang_a` / `test_optimize_segment_theta_zero_falls_back_to_mm1` must stay green)
-- [ ] **Step 6: Commit** — `git commit -m "fix: unify theta precedence across dispatch chains (Phase 2.5 item 4)"`
+- [x] **Step 2: Run and confirm FAIL** (today theta is checked last / `_is_number(0)` is True)
+- [x] **Step 3: Fix `_queue_metrics`** — theta first with gate `theta is not None and _is_number(theta) and float(theta) > 0` (matching `process_segments`/`_auto_select_model`); keep K+variance → mgck, K → mmck, variance → mgc, c==1 → mm1, else mmc.
+- [x] **Step 4-5: Relevant + full battery + E2E + ruff + mypy** (existing `test_optimize_segment_theta_uses_erlang_a` / `test_optimize_segment_theta_zero_falls_back_to_mm1` must stay green)
+- [x] **Step 6: Commit** — `git commit -m "fix: unify theta precedence across dispatch chains (Phase 2.5 item 4)"`
 
 ---
 
@@ -249,7 +249,7 @@ def test_queue_metrics_theta_zero_falls_through(self):
 - Modify: `backend/queueing_engine/simulation/simulation.py:797` (`validate_with_simulation` default)
 - Test: `tests/test_simulation.py`
 
-- [ ] **Step 1: Add failing regression test**
+- [x] **Step 1: Add failing regression test**
 
 ```python
 def test_validate_with_simulation_defaults_to_engine_failure_threshold(self):
@@ -262,10 +262,10 @@ def test_validate_with_simulation_defaults_to_engine_failure_threshold(self):
 
 (ρ=0.82 with ±20% arrival / ±10% service noise: >75% of trials exceed 0.75; only ~40% exceed 0.85. Verify actual rates when running; if the gap is marginal, adjust λ to 8.4 and/or assert `> 0.4` after confirming old=~0.35 new=~0.6.)
 
-- [ ] **Step 2: Run and confirm FAILS** (default 0.85 → rate < 0.5)
-- [ ] **Step 3: Fix** — `mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD` (the 0.75 constant already used by `mc_simulate_segment(s)` and Page 3's UI default).
-- [ ] **Step 4-5: Relevant + full battery + E2E + ruff + mypy**
-- [ ] **Step 6: Commit** — `git commit -m "fix: validate_with_simulation uses engine MC failure threshold (Phase 2.5 item 5)"`
+- [x] **Step 2: Run and confirm FAILS** (default 0.85 → rate < 0.5)
+- [x] **Step 3: Fix** — `mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD` (the 0.75 constant already used by `mc_simulate_segment(s)` and Page 3's UI default).
+- [x] **Step 4-5: Relevant + full battery + E2E + ruff + mypy**
+- [x] **Step 6: Commit** — `git commit -m "fix: validate_with_simulation uses engine MC failure threshold (Phase 2.5 item 5)"`
 
 ---
 
@@ -275,7 +275,7 @@ def test_validate_with_simulation_defaults_to_engine_failure_threshold(self):
 - Modify: `backend/queueing_engine/services/optimization.py:407-419` (empty branch of `summarize_optimization`)
 - Test: `tests/test_optimization.py`
 
-- [ ] **Step 1: Add failing regression test**
+- [x] **Step 1: Add failing regression test**
 
 ```python
 def test_summarize_optimization_empty_branch_has_full_key_set(self):
@@ -290,18 +290,18 @@ def test_summarize_optimization_empty_branch_has_full_key_set(self):
         self.assertEqual(summary[key], 0.0)
 ```
 
-- [ ] **Step 2: Run and confirm FAILS**
-- [ ] **Step 3: Fix** — add the 4 missing keys (0.0) to the empty-branch dict.
-- [ ] **Step 4-5: Relevant + full battery + E2E + ruff + mypy**
-- [ ] **Step 6: Commit** — `git commit -m "fix: summarize_optimization empty branch returns full key set (Phase 2.5 item 6)"`
+- [x] **Step 2: Run and confirm FAILS**
+- [x] **Step 3: Fix** — add the 4 missing keys (0.0) to the empty-branch dict.
+- [x] **Step 4-5: Relevant + full battery + E2E + ruff + mypy**
+- [x] **Step 6: Commit** — `git commit -m "fix: summarize_optimization empty branch returns full key set (Phase 2.5 item 6)"`
 
 ---
 
 ### Task 7: Final report
 
-- [ ] Re-run full battery: `python -m pytest tests/ -x --tb=short`, E2E, `python -m ruff check .`, `python -m mypy .`, `python test_imports.py`
-- [ ] Per-item report: defect / failing test / expected behavior / correction / tests added / final result / behavior-changed flag
-- [ ] Phase 2.5 exit assessment; STOP (no Phase 3)
+- [x] Re-run full battery: `python -m pytest tests/ -x --tb=short`, E2E, `python -m ruff check .`, `python -m mypy .`, `python test_imports.py`
+- [x] Per-item report: defect / failing test / expected behavior / correction / tests added / final result / behavior-changed flag
+- [x] Phase 2.5 exit assessment; STOP (no Phase 3)
 
 ## Risk register
 
