@@ -236,6 +236,28 @@ class OptimizationTests(unittest.TestCase):
         self.assertLess(with_theta["Wq"], without_theta["Wq"])
         self.assertIn("theta", with_theta)
 
+    def test_waste_reduction_skipped_when_savings_negative(self):
+        result = optimize_segment(
+            {"time": "t", "lambda": 2, "mu": 5, "c": 2},
+            max_servers=5,
+            default_server_cost=87.0,
+            customer_waiting_cost=2000.0,
+        )
+        self.assertEqual(result["c_optimal"], 2)
+        self.assertNotIn("Remove 1 server", result["recommendation"])
+        self.assertNotIn("save", result["recommendation"])
+
+    def test_waste_reduction_applies_when_savings_positive(self):
+        result = optimize_segment(
+            {"time": "t", "lambda": 2, "mu": 5, "c": 2},
+            max_servers=5,
+            default_server_cost=87.0,
+            customer_waiting_cost=100.0,
+        )
+        self.assertEqual(result["c_optimal"], 1)
+        self.assertIn("Remove 1 server", result["recommendation"])
+        self.assertIn("save", result["recommendation"])
+
 
 if __name__ == "__main__":
     unittest.main()

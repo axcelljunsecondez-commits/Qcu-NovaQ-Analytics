@@ -366,16 +366,17 @@ def optimize_segment(
             reduced_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
             savings = current_total_cost - (reduced_server_cost + (reduced_waiting_cost if reduced_waiting_cost is not None else 0) + reduced_abandonment_cost)
 
-            change = current_c - reduced_c
-            label = "server" if change == 1 else "servers"
-            waste_recommendation = (
-                f"Remove {change} {label} at {time_label} (waste hours: p={current_rho:.3f} <= 30%). "
-                f"ρ becomes {reduced_rho:.3f} (stable) and save ₱{savings:,.2f} in total cost."
-            )
-            final_optimal_c = reduced_c
-            final_optimal_server_cost = reduced_server_cost
-            final_optimal_waiting_cost = reduced_waiting_cost
-            final_optimal_abandonment_cost = reduced_abandonment_cost
+            if savings > 0:
+                change = current_c - reduced_c
+                label = "server" if change == 1 else "servers"
+                waste_recommendation = (
+                    f"Remove {change} {label} at {time_label} (waste hours: p={current_rho:.3f} <= 30%). "
+                    f"ρ becomes {reduced_rho:.3f} (stable) and save ₱{savings:,.2f} in total cost."
+                )
+                final_optimal_c = reduced_c
+                final_optimal_server_cost = reduced_server_cost
+                final_optimal_waiting_cost = reduced_waiting_cost
+                final_optimal_abandonment_cost = reduced_abandonment_cost
 
     return _build_result(
         final_optimal_c,
