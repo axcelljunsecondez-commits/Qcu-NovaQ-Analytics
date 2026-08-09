@@ -114,6 +114,17 @@ class OptimizationTests(unittest.TestCase):
         summary = summarize_optimization([])
         self.assertEqual(summary["total_current_cost"], 0.0)
 
+    def test_summarize_optimization_empty_branch_has_full_key_set(self):
+        summary = summarize_optimization([])
+        for key in [
+            "total_waiting_cost_current",
+            "total_waiting_cost_optimal",
+            "total_abandonment_cost_current",
+            "total_abandonment_cost_optimal",
+        ]:
+            self.assertIn(key, summary)
+            self.assertEqual(summary[key], 0.0)
+
     def test_build_recommendations_no_changes(self):
         rows = [
             {
