@@ -16,9 +16,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.queueing_engine.models import erlang_a, mgc, mgck, mm1, mmc, mmck
 from data_processing import _classify_utilization_status
 from optimization import optimize_segment
-from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────
 

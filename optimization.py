@@ -19,7 +19,7 @@ from backend.queueing_engine.config import (
     REGULAR_RATE,
     UNSTABLE_FIXED_COST,
 )
-from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
+from backend.queueing_engine.models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
 
 def compute_blended_rate(regular_hours, ot_hours, total_hours) -> float:

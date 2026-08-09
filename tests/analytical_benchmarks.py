@@ -13,7 +13,7 @@ import math
 
 import pytest
 
-from queue_models import mm1, mmc
+from backend.queueing_engine.models import mm1, mmc
 
 
 def _expect_unstable(result: dict, *, message: str, rho: float) -> None:
