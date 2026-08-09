@@ -57,7 +57,7 @@ NORMAL_THRESHOLD = 0.80      # 0.60 ≤ ρ < this → Normal
 CRITICAL_THRESHOLD = 0.90    # ρ ≥ this → Critical
 UNSTABLE_THRESHOLD = 1.0     # ρ > this → Unstable
 DEFAULT_QUEUE_OVERLOAD = 20  # queue depth that triggers Critical regardless of ρ
-SIM_HOURS_PER_SEGMENT = 24.0  # each segment represents 1 simulated hour
+SIM_HOURS_PER_SEGMENT = 24.0  # simulated hours per segment
 RANDOM_SEED = 42             # reproducible runs; override per call for stochastic analysis
 
 

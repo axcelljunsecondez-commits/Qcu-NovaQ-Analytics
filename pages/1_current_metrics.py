@@ -61,9 +61,11 @@ breadcrumb(current_page=1)
 st.title(t("page1.title"))
 st.caption(t("page1.caption"))
 
+data_source_options = {"csv": t("page1.upload_csv"), "pos": t("page1.import_pos")}
 data_source = st.radio(
     t("page1.data_source"),
-    [t("page1.upload_csv"), t("page1.import_pos")],
+    list(data_source_options.keys()),
+    format_func=lambda key: data_source_options[key],
     horizontal=True,
 )
 
@@ -71,7 +73,7 @@ source_df = None
 
 # ── POS Import Path ───────────────────────────────────────────────────────
 
-if data_source == "Import from POS transaction log":
+if data_source == "pos":
     from pos_connector import (  # noqa: E402 — lazy import (saves ~1–2s on page load)
         compute_lambda_mu,
         fit_service_distribution,

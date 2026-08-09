@@ -183,6 +183,7 @@ def _segment_to_record(inp: SegmentInput) -> dict:
         "c": inp.c,
         "variance": inp.variance,
         "K": inp.K,
+        "theta": inp.theta,
     }
 
 

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
+
+from app_page_utils import sample_segments
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -86,3 +89,117 @@ def test_upstream_pages_show_blocked_message(script: str, expected_heading: str)
     assert "data" in error_texts.lower() or "page" in error_texts.lower(), (
         f"Expected a 'data required' error on {script}, got: {error_texts[:200]}"
     )
+
+
+def test_page1_pos_radio_uses_stable_values_in_english() -> None:
+    """Selecting the POS radio option must reach the POS-import path."""
+    at = AppTest(str(BASE_DIR / "pages/1_current_metrics.py"), default_timeout=15)
+    at.run()
+
+    assert not at.exception, f"Page 1 raised: {at.exception}"
+    assert at.radio, "Expected a radio for data source selection"
+
+    at.radio[0].set_value("pos").run()
+
+    assert not at.exception, f"Page 1 raised after POS selection: {at.exception}"
+    assert any("POS transaction" in u.label for u in at.file_uploader), (
+        f"Expected the raw POS CSV uploader, got: {[u.label for u in at.file_uploader]}"
+    )
+
+
+def test_page1_pos_radio_works_in_filipino() -> None:
+    """The POS radio must work in the tl locale (translated label, stable value)."""
+    at = AppTest(str(BASE_DIR / "pages/1_current_metrics.py"), default_timeout=15)
+    at.session_state["locale"] = "tl"
+    at.run()
+
+    assert not at.exception, f"Page 1 (tl) raised: {at.exception}"
+    assert any("POS transaction" in opt for r in at.radio for opt in r.options), (
+        f"Expected translated POS label in tl, got: {[r.options for r in at.radio]}"
+    )
+
+    at.radio[0].set_value("pos").run()
+
+    assert not at.exception, f"Page 1 (tl) raised after POS selection: {at.exception}"
+    assert any("POS transaction" in u.label for u in at.file_uploader), (
+        f"Expected the raw POS CSV uploader in tl, got: {[u.label for u in at.file_uploader]}"
+    )
+
+
+def test_page2_no_false_validation_success_before_running() -> None:
+    """Page 2 must not claim validation passed before the user runs it."""
+    at = AppTest(str(BASE_DIR / "pages/2_optimization.py"), default_timeout=15)
+    at.session_state["df"] = sample_segments()
+    at.run()
+
+    assert not at.exception, f"Page 2 raised: {at.exception}"
+    markdown_texts = " ".join(m.value for m in at.markdown)
+    assert "Plan passed" not in markdown_texts, (
+        "False validation-success toast shown before validation was ever run"
+    )
+    assert at.info, "Expected a prompt to run DES + MC validation"
+
+
+def test_page2_stale_validation_is_invalidated_when_settings_change() -> None:
+    """Validation results computed for old settings must be dropped."""
+    at = AppTest(str(BASE_DIR / "pages/2_optimization.py"), default_timeout=15)
+    at.session_state["df"] = sample_segments()
+    at.session_state["validated_comparison"] = pd.DataFrame(
+        {"sim_status": ["NORMAL"], "mc_failure_rate": [0.0]}
+    )
+    at.session_state["validation_signature"] = "stale"
+    at.run()
+
+    assert not at.exception, f"Page 2 raised: {at.exception}"
+    assert "validated_comparison" not in at.session_state, (
+        "Stale validation results were not invalidated"
+    )
+
+
+def test_page3_invalid_seed_does_not_crash() -> None:
+    """A non-numeric random seed must not crash the simulation page."""
+    at = AppTest(str(BASE_DIR / "pages/3_simulation.py"), default_timeout=15)
+    at.session_state["df"] = sample_segments()
+    at.run()
+    at.radio[0].set_value("Current input").run()
+
+    assert not at.exception, f"Page 3 raised: {at.exception}"
+    at.text_input[0].set_value("abc").run()
+
+    assert not at.exception, f"Page 3 raised on invalid seed: {at.exception}"
+
+
+def test_page3_error_rows_do_not_break_queue_bars() -> None:
+    """Segments without a simulated rho must be skipped, not rendered as NaN bars."""
+    at = AppTest(str(BASE_DIR / "pages/3_simulation.py"), default_timeout=15)
+    at.session_state["df"] = sample_segments()
+    at.session_state["simulation_results"] = pd.DataFrame(
+        [
+            {
+                "time": "08:00-09:00",
+                "rho_sim": 0.5,
+                "Lq_sim": 1.0,
+                "max_queue": 3,
+                "served": 10,
+                "dropped": 0,
+                "status": "NORMAL",
+                "Wq_sim": 0.1,
+            },
+            {
+                "time": "09:00-10:00",
+                "rho_sim": None,
+                "Lq_sim": None,
+                "max_queue": 0,
+                "served": 0,
+                "dropped": 0,
+                "status": "ERROR",
+                "Wq_sim": None,
+            },
+        ]
+    )
+    at.run()
+    at.radio[0].set_value("Current input").run()
+
+    assert not at.exception, f"Page 3 raised on error rows: {at.exception}"
+    markdown_texts = " ".join(m.value for m in at.markdown).lower()
+    assert "nan%" not in markdown_texts, "Queue bars rendered NaN percentage"

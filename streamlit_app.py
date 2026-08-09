@@ -21,6 +21,7 @@ import os
 
 import streamlit as st
 
+from app_page_utils import init_session_state
 from config import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
@@ -59,34 +60,6 @@ def get_base64_image(image_path):
         return None
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Session State Initialization (MANDATORY)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def init_session_state():
-    """Initialize all required session state keys."""
-    if "df" not in st.session_state:
-        st.session_state["df"] = None
-    if "current_data" not in st.session_state:
-        st.session_state["current_data"] = None
-    if "recommended_data" not in st.session_state:
-        st.session_state["recommended_data"] = None
-    if "comparison_data" not in st.session_state:
-        st.session_state["comparison_data"] = None
-    if "simulation_results" not in st.session_state:
-        st.session_state["simulation_results"] = None
-    if "waste_reduction_data" not in st.session_state:
-        st.session_state["waste_reduction_data"] = None
-
-    # Costing parameters (NOVAMART defaults)
-    if "cost_per_server_hr" not in st.session_state:
-        st.session_state["cost_per_server_hr"] = DEFAULT_SERVER_COST_HR
-    if "cost_per_wait_hr" not in st.session_state:
-        st.session_state["cost_per_wait_hr"] = DEFAULT_WAIT_COST_HR
-    if "cost_per_abandonment" not in st.session_state:
-        st.session_state["cost_per_abandonment"] = DEFAULT_ABANDONMENT_COST
-
 
 def main():
     """Initialize app and configure metadata."""

@@ -12,8 +12,7 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
-from config import UNSTABLE_PENALTY_MULTIPLIER
-from optimization import DEFAULT_CUSTOMER_WAITING_COST
+from config import DEFAULT_CUSTOMER_WAITING_COST, UNSTABLE_PENALTY_MULTIPLIER
 from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
 CURRENT_COLUMNS = [

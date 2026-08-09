@@ -466,6 +466,8 @@ def erlang_a(lambda_: float, mu: float, c: int, theta: float) -> dict[str, Any]:
         return _result(error="Invalid input: lambda and mu must be finite numbers.")
     if not _is_valid_rate(theta):
         return _result(error="Invalid input: theta must be a finite number.")
+    if not isinstance(c, Integral):
+        return _result(error="Invalid input: c must be a positive integer.")
 
     lambda_ = float(lambda_)
     mu = float(mu)

@@ -700,21 +700,24 @@ def breadcrumb(current_page: int) -> None:
         4: "4_comparison",
     }
     parts = []
+    page_keys = {
+        1: "current_data",
+        2: "recommended_data",
+        3: "simulation_results",
+        4: "comparison_data",
+    }
     for num, icon, label in steps:
         if num == current_page:
             parts.append(f'<span class="breadcrumb-step active"><span class="step-icon">{icon}</span>{label}</span>')
-        elif st.session_state.get({
-            1: "current_data",
-            2: "recommended_data",
-            3: "simulation_results",
-            4: "comparison_data",
-        }.get(num)) is not None:
-            parts.append(
-                f'<a href="/{links[num]}" target="_self" class="breadcrumb-step done">'
-                f'<span class="step-icon">✅</span>{label}</a>'
-            )
         else:
-            parts.append(f'<span class="breadcrumb-step"><span class="step-icon">{icon}</span>{label}</span>')
+            key = page_keys.get(num)
+            if key is not None and st.session_state.get(key) is not None:
+                parts.append(
+                    f'<a href="/{links[num]}" target="_self" class="breadcrumb-step done">'
+                    f'<span class="step-icon">✅</span>{label}</a>'
+                )
+            else:
+                parts.append(f'<span class="breadcrumb-step"><span class="step-icon">{icon}</span>{label}</span>')
         if num < 4:
             parts.append('<span class="breadcrumb-sep">›</span>')
 

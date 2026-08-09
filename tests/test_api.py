@@ -65,3 +65,14 @@ def test_batch_three_segments():
     body = resp.json()
     assert isinstance(body, list)
     assert len(body) == 3
+
+
+def test_optimize_with_theta_uses_erlang_a():
+    resp = client.post("/optimize", json={"lambda": 9, "mu": 10, "c": 1, "theta": 0.5})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["Wq_current"] is not None
+
+    resp_no_theta = client.post("/optimize", json={"lambda": 9, "mu": 10, "c": 1})
+    assert resp_no_theta.status_code == 200
+    assert body["Wq_current"] < resp_no_theta.json()["Wq_current"]

@@ -17,7 +17,6 @@ import math
 
 import numpy as np
 import pandas as pd
-import streamlit as st
 
 from log import get_logger
 
@@ -29,6 +28,7 @@ from config import (
     DEFAULT_HOURS_PER_INTERVAL,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
+    UNSTABLE_FIXED_COST,
 )
 
 
@@ -69,8 +69,8 @@ def compute_segment_costs(
     dict
         server_cost, wait_cost, abandonment_cost, total_cost
     """
-    # Handle invalid / missing / NaN inputs
-    if any(v is None or (isinstance(v, float) and math.isnan(v)) for v in [servers, arrival_rate, wq]):
+    # Handle invalid / missing / NaN server or arrival inputs
+    if any(v is None or (isinstance(v, float) and math.isnan(v)) for v in [servers, arrival_rate]):
         return {
             "server_cost": None,
             "wait_cost": None,
@@ -80,13 +80,19 @@ def compute_segment_costs(
 
     servers = int(servers) if not isinstance(servers, int) else servers
 
-    # Unstable system (Wq = inf) → large penalty instead of infinite cost
-    if np.isinf(wq) or wq < 0:
-        wq = 999999
-
     server_cost = servers * cost_per_server_hr * hours_per_interval
-    wait_cost = wq * arrival_rate * cost_per_wait_hr
-    abandonment_cost = arrival_rate * abandonment_rate * cost_per_abandonment
+
+    # Unstable system (Wq = inf / NaN / negative / missing) → fixed penalty,
+    # matching the optimization engine (UNSTABLE_FIXED_COST) instead of 999999.
+    # Abandonment is skipped for unstable systems (no steady-state abandonment
+    # rate exists; the fixed penalty already covers customer impact).
+    if wq is None or (isinstance(wq, float) and math.isnan(wq)) or np.isinf(wq) or wq < 0:
+        wait_cost = UNSTABLE_FIXED_COST
+        abandonment_cost = 0.0
+    else:
+        wait_cost = wq * arrival_rate * cost_per_wait_hr
+        abandonment_cost = arrival_rate * abandonment_rate * cost_per_abandonment
+
     total_cost = server_cost + wait_cost + abandonment_cost
 
     return {
@@ -96,7 +102,6 @@ def compute_segment_costs(
         "total_cost": round(total_cost, 2),
     }
 
-@st.cache_data
 def compute_all_costs(
     df: pd.DataFrame,
     cost_per_server_hr: float = DEFAULT_SERVER_COST_HR,
@@ -125,8 +130,8 @@ def compute_all_costs(
     arrival_rate = pd.to_numeric(result[arrival_col], errors="coerce")
     wq = pd.to_numeric(result[wq_col], errors="coerce")
 
-    # Valid rows have all three inputs
-    valid = servers.notna() & arrival_rate.notna() & wq.notna()
+    # Valid rows have server and arrival inputs; Wq may be NaN for unstable rows
+    valid = servers.notna() & arrival_rate.notna()
 
     # Initialize cost columns as NaN
     result["server_cost"] = np.nan
@@ -135,11 +140,15 @@ def compute_all_costs(
     result["total_cost"] = np.nan
 
     if valid.any():
-        wq_clipped = wq[valid].mask(np.isinf(wq[valid]) | (wq[valid] < 0), 999999)
-
         result.loc[valid, "server_cost"] = (servers[valid] * cost_per_server_hr * hours_per_interval).round(2)
-        result.loc[valid, "wait_cost"] = (wq_clipped * arrival_rate[valid] * cost_per_wait_hr).round(2)
         result.loc[valid, "abandonment_cost"] = (arrival_rate[valid] * abandonment_rate * cost_per_abandonment).round(2)
+
+        wq_valid = wq[valid]
+        stable_mask = wq_valid.notna() & ~np.isinf(wq_valid) & (wq_valid >= 0)
+        wait_cost = pd.Series(UNSTABLE_FIXED_COST, index=wq_valid.index, dtype="float64")
+        wait_cost[stable_mask] = wq_valid[stable_mask] * arrival_rate[valid][stable_mask] * cost_per_wait_hr
+        result.loc[valid, "wait_cost"] = wait_cost.round(2)
+
         result.loc[valid, "total_cost"] = (
             result.loc[valid, "server_cost"]
             + result.loc[valid, "wait_cost"]
@@ -149,7 +158,6 @@ def compute_all_costs(
     return result
 
 
-@st.cache_data
 def compute_cost_summary(
     df: pd.DataFrame,
     cost_per_server_hr: float = DEFAULT_SERVER_COST_HR,

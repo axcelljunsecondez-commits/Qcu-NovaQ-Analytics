@@ -101,12 +101,44 @@ comparison_rows = _cached_optimize_segments(
 comparison_df = pd.DataFrame(comparison_rows)
 kpis = summarize_optimization(to_segment_records(comparison_df))
 
-with st.spinner("Validating plan with DES + Monte Carlo (10K trials)..."):
-    validated_df = validate_with_simulation(comparison_df)
-st.session_state["validated_comparison"] = validated_df
+validation_signature = json.dumps(
+    {
+        "segments": segments,
+        "target_utilization": target_utilization,
+        "max_servers": int(max_servers),
+        "server_cost": default_server_cost,
+        "wait_cost": customer_waiting_cost,
+        "abandon_cost": cost_per_abandonment,
+        "abandon_rate": abandonment_rate,
+    },
+    default=str,
+)
+if st.session_state.get("validation_signature") != validation_signature:
+    st.session_state.pop("validated_comparison", None)
+    st.session_state["validation_signature"] = validation_signature
 
-des_failures = validated_df["sim_status"].isin(["Critical", "Unstable"]).sum()
-mc_flags = validated_df["mc_failure_rate"].fillna(0).gt(0.05).sum()
+run_validation = st.button(
+    "▶ Run DES + MC Validation (10K trials)",
+    type="secondary",
+    use_container_width=True,
+    help="Runs discrete-event simulation and 10 000-trial Monte Carlo on the optimized plan.",
+)
+
+if run_validation:
+    with st.spinner("Running DES + Monte Carlo (10K trials)..."):
+        validated_df = validate_with_simulation(comparison_df)
+    st.session_state["validated_comparison"] = validated_df
+    st.session_state["validation_signature"] = validation_signature
+
+validated_df = st.session_state.get("validated_comparison")
+
+if validated_df is None:
+    st.info("Click **▶ Run DES + MC Validation** to validate the optimized staffing plan.")
+    des_failures = 0
+    mc_flags = 0
+else:
+    des_failures = validated_df["sim_status"].isin(["Critical", "Unstable"]).sum()
+    mc_flags = validated_df["mc_failure_rate"].fillna(0).gt(0.05).sum()
 
 metric_cols = st.columns(4)
 metric_cols[0].metric("Current Cost", pretty_metric(kpis["total_current_cost"], money=True), help="Total cost at current server count")
@@ -115,7 +147,9 @@ metric_cols[2].metric("Savings", pretty_metric(kpis["total_savings"], money=True
 metric_cols[3].metric("Server Change", str(kpis["total_server_change"]), help="Net change in total servers across all segments")
 
 # ── Simulation-validation summary ────────────────────────────────────
-if des_failures > 0 or mc_flags > 0:
+if validated_df is None:
+    st.info("Click **▶ Run DES + MC Validation** to validate the optimized staffing plan.")
+elif des_failures > 0 or mc_flags > 0:
     st.warning(f"⚠️ DES flagged {des_failures} segment(s) Critical · MC flagged {mc_flags} segment(s) >5% failure rate")
 else:
     toast("✅ Plan passed DES + MC validation (all segments stable)", "success")

@@ -188,6 +188,38 @@ class OptimizationTests(unittest.TestCase):
         summary = summarize_optimization(rows)
         self.assertEqual(summary["total_current_cost"], 0.0)
 
+    def test_optimize_segment_theta_uses_erlang_a(self):
+        result = optimize_segment(
+            {"time": "t", "lambda": 9, "mu": 10, "c": 1, "theta": 0.5},
+            max_servers=5,
+        )
+        result_no_theta = optimize_segment(
+            {"time": "t", "lambda": 9, "mu": 10, "c": 1},
+            max_servers=5,
+        )
+        self.assertIsNotNone(result["Wq_current"])
+        self.assertIsNotNone(result_no_theta["Wq_current"])
+        self.assertLess(result["Wq_current"], result_no_theta["Wq_current"])
+
+    def test_optimize_segment_theta_zero_falls_back_to_mm1(self):
+        result = optimize_segment(
+            {"time": "t", "lambda": 2, "mu": 5, "c": 1, "theta": 0},
+            max_servers=5,
+        )
+        result_no_theta = optimize_segment(
+            {"time": "t", "lambda": 2, "mu": 5, "c": 1},
+            max_servers=5,
+        )
+        self.assertEqual(result["Wq_current"], result_no_theta["Wq_current"])
+
+    def test_queue_metrics_theta_dispatches_to_erlang_a(self):
+        from optimization import _queue_metrics
+
+        with_theta = _queue_metrics(9, 10, 1, theta=0.5)
+        without_theta = _queue_metrics(9, 10, 1)
+        self.assertLess(with_theta["Wq"], without_theta["Wq"])
+        self.assertIn("theta", with_theta)
+
 
 if __name__ == "__main__":
     unittest.main()

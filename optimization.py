@@ -19,7 +19,7 @@ from config import (
     REGULAR_RATE,
     UNSTABLE_FIXED_COST,
 )
-from queue_models import mgc, mgck, mm1, mmc, mmck
+from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
 
 def compute_blended_rate(regular_hours, ot_hours, total_hours) -> float:
@@ -66,7 +66,7 @@ def _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment):
     return lambda_ * abandonment_rate * cost_per_abandonment
 
 
-def _queue_metrics(lambda_, mu, c, variance=None, K=None):
+def _queue_metrics(lambda_, mu, c, variance=None, K=None, theta=None):
     """Evaluate a segment using the appropriate infinite or finite-capacity model."""
     if _is_number(K) and _is_number(variance):
         return mgck(lambda_, mu, c, variance, int(K))
@@ -74,6 +74,8 @@ def _queue_metrics(lambda_, mu, c, variance=None, K=None):
         return mmck(lambda_, mu, c, int(K))
     if _is_number(variance):
         return mgc(lambda_, mu, c, variance)
+    if _is_number(theta):
+        return erlang_a(lambda_, mu, c, theta)
     if c == 1:
         return mm1(lambda_, mu)
     return mmc(lambda_, mu, c)
@@ -236,6 +238,7 @@ def optimize_segment(
     current_c = segment.get("c", 1)
     variance = segment.get("variance")
     capacity = segment.get("K")
+    theta = segment.get("theta")
     cost_per_server = _segment_server_cost(segment, default_server_cost)
     abandonment_rate = float(abandonment_rate or 0.0)
     cost_per_abandonment = float(cost_per_abandonment or 0.0)
@@ -267,7 +270,7 @@ def optimize_segment(
     target_utilization = float(target_utilization)
     max_servers = int(max_servers)
 
-    current_metrics = _queue_metrics(lambda_, mu, current_c, variance, capacity)
+    current_metrics = _queue_metrics(lambda_, mu, current_c, variance, capacity, theta)
     current_server_cost = current_c * cost_per_server
     current_waiting_cost = _compute_waiting_cost(lambda_, current_metrics.get("Wq"), customer_waiting_cost)
     current_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
@@ -275,7 +278,7 @@ def optimize_segment(
     current_rho = current_metrics.get("rho")
 
     def _eval_cost(c):
-        m = _queue_metrics(lambda_, mu, c, variance, capacity)
+        m = _queue_metrics(lambda_, mu, c, variance, capacity, theta)
         if not m.get("stable"):
             return float("inf")
         sc = c * cost_per_server
@@ -292,7 +295,7 @@ def optimize_segment(
         optimal_c = best_c
 
     def _build_result(c_val, sv_cost, w_cost, a_cost, rec_override=None):
-        opt_metrics = _queue_metrics(lambda_, mu, c_val, variance, capacity) if c_val is not None else {}
+        opt_metrics = _queue_metrics(lambda_, mu, c_val, variance, capacity, theta) if c_val is not None else {}
         return {
             "time": time_label,
             "lambda": lambda_,
@@ -302,14 +305,14 @@ def optimize_segment(
             "rho_current": current_rho,
             "Wq_current": current_metrics.get("Wq"),
             "Lq_current": current_metrics.get("Lq"),
-            "cost_current": current_server_cost,
+            "cost_current": current_total_cost,
             "waiting_cost_current": current_waiting_cost,
             "abandonment_cost_current": current_abandonment_cost,
             "c_optimal": c_val,
             "rho_optimal": opt_metrics.get("rho"),
             "Wq_optimal": opt_metrics.get("Wq"),
             "Lq_optimal": opt_metrics.get("Lq"),
-            "cost_optimal": sv_cost,
+            "cost_optimal": None if c_val is None else (sv_cost + (w_cost if w_cost is not None else 0) + a_cost),
             "waiting_cost_optimal": w_cost,
             "abandonment_cost_optimal": a_cost,
             "delta_c": None if c_val is None else c_val - current_c,
@@ -326,7 +329,7 @@ def optimize_segment(
     if optimal_c is None:
         return _build_result(None, None, None, None)
 
-    candidate_metrics = _queue_metrics(lambda_, mu, optimal_c, variance, capacity)
+    candidate_metrics = _queue_metrics(lambda_, mu, optimal_c, variance, capacity, theta)
     optimal_wq = candidate_metrics.get("Wq")
     optimal_server_cost = optimal_c * cost_per_server
     optimal_waiting_cost = _compute_waiting_cost(lambda_, optimal_wq, customer_waiting_cost)
@@ -342,7 +345,7 @@ def optimize_segment(
     # Check WASTE HOURS condition: if current ρ ≤ 30% and current_c > 1, try removing a server
     if current_rho is not None and current_rho <= 0.30 and current_c > 1:
         reduced_c = current_c - 1
-        reduced_metrics = _queue_metrics(lambda_, mu, reduced_c, variance, capacity)
+        reduced_metrics = _queue_metrics(lambda_, mu, reduced_c, variance, capacity, theta)
         reduced_rho = reduced_metrics.get("rho")
 
         if reduced_rho is not None and reduced_rho <= 0.70 and reduced_metrics.get("stable", False):

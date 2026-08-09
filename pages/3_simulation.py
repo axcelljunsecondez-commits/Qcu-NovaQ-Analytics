@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -20,6 +22,16 @@ from simulation import (
 from theme import apply_dark_overrides, apply_theme, breadcrumb, skeleton_card, skeleton_metric, toast
 
 logger = get_logger(__name__)
+
+
+def _safe_rho(value) -> float:
+    """Coerce a rho value to a finite float, defaulting to 0 for error rows."""
+    try:
+        rho = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return rho if math.isfinite(rho) else 0.0
+
 
 st.set_page_config(page_title="Simulation", layout="wide")
 init_session_state()
@@ -59,7 +71,10 @@ sim_hours = settings[0].number_input(
 )
 queue_threshold = settings[1].number_input("Queue overload threshold", min_value=1, value=20, step=1)
 seed_text = settings[2].text_input("Random seed", value="42")
-seed = None if seed_text.strip() == "" else int(seed_text)
+try:
+    seed = None if seed_text.strip() == "" else int(seed_text)
+except ValueError:
+    seed = None
 
 tab_des, tab_mc = st.tabs([t("page3.des"), t("page3.mc")])
 
@@ -114,10 +129,10 @@ with tab_des:
             f'<div class="queue-bar-row">'
             f'<span class="queue-bar-label">{r.get("time", "")}</span>'
             f'<div class="queue-bar-track">'
-            f'<div class="queue-bar-fill" style="width:{min(r.get("rho_sim", 0) * 100, 100):.0f}%;'
-            f'background:{"#C0392B" if r.get("rho_sim", 0) >= 1 else "#E8A838" if r.get("rho_sim", 0) >= 0.85 else "#27AE60"};'
+            f'<div class="queue-bar-fill" style="width:{min(_safe_rho(r.get("rho_sim")) * 100, 100):.0f}%;'
+            f'background:{"#C0392B" if _safe_rho(r.get("rho_sim")) >= 1 else "#E8A838" if _safe_rho(r.get("rho_sim")) >= 0.85 else "#27AE60"};'
             f'animation:pulse-bar 2s ease infinite;"></div></div>'
-            f'<span class="queue-bar-value">{r.get("rho_sim", 0) * 100:.0f}%</span></div>'
+            f'<span class="queue-bar-value">{_safe_rho(r.get("rho_sim")) * 100:.0f}%</span></div>'
             for _, r in results_df.iterrows()
         )
         st.markdown(f'<div class="queue-bar-container">{bar_rows}</div>', unsafe_allow_html=True)
