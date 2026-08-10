@@ -10,13 +10,12 @@ Guidance for AI agents and developers working in this repository: the **NovaMart
 - `legacy_streamlit/` — Frozen Streamlit dashboard (4 pages). DO NOT change its logic; minimal dead-code cleanup only, and only when explicitly requested. It shares the frontend locale files via `frontend/public/locales/`.
 - `tests/` — pytest suite for backend + API + queueing engine.
 - `docs/superpowers/` — plans (`plans/`) and design specs (`specs/`) written before implementation.
-- Root `api.py` — legacy FastAPI mirror, referenced only by `tests/test_api.py`; not part of the running stack. Do not extend it.
 
 ## Running the Stack
 
 - `docker compose up -d --build` — Postgres (`db`), API (`api`, :8000), web (`web`, :80 — built SPA + API proxy), legacy Streamlit (`legacy`, :8501).
 - Frontend dev: `npm run dev` in `frontend/` (Vite :5173, proxies `/api` → `localhost:8000` stripping the prefix).
-- Default admin seed: `admin@example.com` / `secret` (from `ADMIN_EMAIL`/`ADMIN_PASSWORD` env; re-seed to override).
+- Default admin seed: `admin@example.com` / `admin123` (compose default; override via `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`). Seeding is **create-only**: an existing user is never modified. To change an existing admin's password/role, run `docker compose exec api python -m backend.db.seed --email <email> --password <newpass> --force-reset`.
 
 ## Gates (run before claiming work complete)
 
