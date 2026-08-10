@@ -13,7 +13,3 @@ function cookieValue(name: string): string | null {
 export function getCsrfToken(): string | null {
   return cookieValue(CSRF_COOKIE)
 }
-
-export function hasSessionCookie(): boolean {
-  return cookieValue(SESSION_COOKIE) !== null
-}

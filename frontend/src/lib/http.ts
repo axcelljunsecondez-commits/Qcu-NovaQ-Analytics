@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { queryClient } from './queryClient'
-import { getCsrfToken, hasSessionCookie } from './csrf'
+import { getCsrfToken } from './csrf'
 
 export const http = axios.create({
   baseURL: '/api',
@@ -9,8 +9,11 @@ export const http = axios.create({
 
 http.interceptors.request.use((config) => {
   const method = (config.method ?? 'get').toUpperCase()
-  if (method !== 'GET' && hasSessionCookie()) {
-    config.headers['X-CSRF-Token'] = getCsrfToken() ?? ''
+  if (method !== 'GET') {
+    const csrf = getCsrfToken()
+    if (csrf) {
+      config.headers['X-CSRF-Token'] = csrf
+    }
   }
   return config
 })

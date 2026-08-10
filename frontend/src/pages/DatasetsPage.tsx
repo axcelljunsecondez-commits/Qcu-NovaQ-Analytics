@@ -24,8 +24,18 @@ export function DatasetsPage() {
       })
       void queryClient.invalidateQueries({ queryKey: ['datasets'] })
     },
-    onError: () => {
-      setNotice({ ok: false, message: t('errors.upload') })
+    onError: (error: unknown) => {
+      const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
+      let message = t('errors.upload')
+      if (typeof detail === 'string') {
+        message = detail
+      } else if (Array.isArray(detail)) {
+        const first = detail[0] as { msg?: string } | undefined
+        if (first?.msg) {
+          message = first.msg
+        }
+      }
+      setNotice({ ok: false, message })
     },
   })
 
