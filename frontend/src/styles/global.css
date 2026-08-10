@@ -392,6 +392,13 @@ button.btn-ghost {
   color: var(--text-secondary);
 }
 
+.form-hint {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 16rem;
+}
+
 .plotly-wrap {
   margin-bottom: 1rem;
 }

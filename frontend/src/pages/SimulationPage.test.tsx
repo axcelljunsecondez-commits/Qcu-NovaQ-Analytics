@@ -86,6 +86,11 @@ const mcRow = {
   ci_Wq_hw: 0.071029,
   ci_Lq_hw: 2.465906,
   adequate_samples: false,
+  failure_rate_ci_lower: 0.653,
+  failure_rate_ci_upper: 0.761,
+  failure_rate_ci_half_width: 0.054,
+  failure_rate_precision: 'moderate',
+  failure_rate_adequate: false,
 }
 
 const validateRow = {
@@ -109,6 +114,11 @@ const validateRow = {
   mc_rho_mean: 0.621244,
   mc_rho_p95: 0.749728,
   mc_Wq_ci: '1.22 ± 0.10 min (95% CI)',
+  mc_failure_rate_ci_lower: 0.04,
+  mc_failure_rate_ci_upper: 0.061,
+  mc_failure_rate_ci_half_width: 0.0105,
+  mc_failure_rate_precision: 'high',
+  mc_failure_rate_adequate: true,
 }
 
 beforeEach(() => {
@@ -181,7 +191,7 @@ describe('SimulationPage', () => {
     await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
     await waitFor(() => {
       expect(simulateMcMock).toHaveBeenCalledWith(segments, {
-        num_trials: 500,
+        num_trials: 2000,
         failure_threshold: 0.75,
         seed: 42,
       })
@@ -189,6 +199,32 @@ describe('SimulationPage', () => {
     await screen.findByText('FAIL')
     expect(container.querySelector('[data-testid="chart-rho-mean-p95-lines"]')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-failure-rate-bars"]')).toBeInTheDocument()
+  })
+
+  it('renders failure-rate CI and precision badge in the MC table', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await screen.findByText('FAIL')
+    expect(await screen.findByText('65%–76%')).toBeInTheDocument()
+    expect(screen.getByText('moderate')).toBeInTheDocument()
+  })
+
+  it('blocks MC runs when trials exceed 100,000', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    const trials = screen.getByLabelText('Trials')
+    await user.clear(trials)
+    await user.type(trials, '100001')
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    expect(
+      await screen.findByText('Trials must be an integer between 1 and 100000.'),
+    ).toBeInTheDocument()
+    expect(simulateMcMock).not.toHaveBeenCalled()
   })
 
   it('validates a plan and shows the pass banner and table', async () => {
@@ -219,6 +255,27 @@ describe('SimulationPage', () => {
     expect(payload).toHaveLength(1)
     expect(payload[0].lambda).toBe(30)
     expect(payload[0].lambda_).toBe(30)
+  })
+
+  it('renders the failure-rate CI in the Validate table', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    await screen.findByText('Simulation validation passed.')
+    expect(await screen.findByText('4%–6%')).toBeInTheDocument()
+  })
+
+  it('renders a dash for missing failure-rate CI values', async () => {
+    simulateMcMock.mockResolvedValue({ results: [{ ...mcRow, failure_rate_ci_lower: undefined, failure_rate_ci_upper: undefined, failure_rate_precision: undefined }] })
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await screen.findByText('FAIL')
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
   it('sends seed null when the seed input is blank', async () => {

@@ -156,6 +156,11 @@ export interface SimMcOut {
   ci_Wq_hw: number
   ci_Lq_hw: number
   adequate_samples: boolean
+  failure_rate_ci_lower?: number
+  failure_rate_ci_upper?: number
+  failure_rate_ci_half_width?: number
+  failure_rate_precision?: 'high' | 'moderate' | 'low' | null
+  failure_rate_adequate?: boolean
 }
 
 export interface SimValidateOut {
@@ -179,4 +184,9 @@ export interface SimValidateOut {
   mc_rho_mean: number
   mc_rho_p95: number
   mc_Wq_ci: string
+  mc_failure_rate_ci_lower?: number
+  mc_failure_rate_ci_upper?: number
+  mc_failure_rate_ci_half_width?: number
+  mc_failure_rate_precision?: 'high' | 'moderate' | 'low' | null
+  mc_failure_rate_adequate?: boolean
 }

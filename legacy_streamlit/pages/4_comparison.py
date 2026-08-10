@@ -278,7 +278,7 @@ st.dataframe(cost_compare, use_container_width=True)
 
 # ── Simulation-validation overview ────────────────────────────────────
 if "sim_status" in comparison_df.columns:
-    st.subheader("Simulation Validation (DES + MC 10K)")
+    st.subheader("Simulation Validation (DES + MC 2K)")
     sim_cols = st.columns(4)
 
     des_fail = int(comparison_df["sim_status"].isin(["Critical", "Unstable"]).sum())

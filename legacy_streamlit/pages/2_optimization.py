@@ -115,14 +115,14 @@ if st.session_state.get("validation_signature") != validation_signature:
     st.session_state["validation_signature"] = validation_signature
 
 run_validation = st.button(
-    "▶ Run DES + MC Validation (10K trials)",
+    "▶ Run DES + MC Validation (2K trials)",
     type="secondary",
     use_container_width=True,
-    help="Runs discrete-event simulation and 10 000-trial Monte Carlo on the optimized plan.",
+    help="Runs discrete-event simulation and 2 000-trial Monte Carlo on the optimized plan.",
 )
 
 if run_validation:
-    with st.spinner("Running DES + Monte Carlo (10K trials)..."):
+    with st.spinner("Running DES + Monte Carlo (2K trials)..."):
         validated_df = validate_with_simulation(comparison_df)
     st.session_state["validated_comparison"] = validated_df
     st.session_state["validation_signature"] = validation_signature

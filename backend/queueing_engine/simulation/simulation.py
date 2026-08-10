@@ -30,6 +30,10 @@ Monte Carlo metric glossary
   Lq_mean      : mean queue length across trials
   Wq_mean      : mean wait time across trials
   failure_rate : proportion of trials where rho > failure_threshold
+  failure_rate_ci_lower / _upper / _half_width
+               : 95 % Wilson confidence interval on failure_rate
+  failure_rate_precision : high / moderate / low band of the CI half-width
+  failure_rate_adequate : whether the CI half-width is within the adequacy band
 """
 
 from __future__ import annotations
@@ -46,6 +50,11 @@ import simpy
 
 from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.models import mm1, mmc
+from backend.queueing_engine.statistics.proportions import (
+    ADEQUATE_MAX_HW,
+    failure_rate_precision,
+    wilson_ci,
+)
 
 logger = get_logger(__name__)
 
@@ -589,10 +598,11 @@ def summarize_simulation(sim_rows: list[dict[str, Any]]) -> dict[str, Any]:
 # Public API — Monte Carlo simulation
 # ──────────────────────────────────────────────────────────────────────────────
 
-MC_DEFAULT_TRIALS = 500
+MC_DEFAULT_TRIALS = 2000
 MC_DEFAULT_FAILURE_THRESHOLD = 0.75
 MC_ARRIVAL_NOISE = 0.20
 MC_SERVICE_NOISE = 0.10
+MC_MAX_TRIALS = 100000
 
 
 def mc_simulate_segment(
@@ -622,7 +632,9 @@ def mc_simulate_segment(
     -------
     dict
         time, lambda, mu, c, rho_mean, rho_std, rho_p95, Lq_mean, Wq_mean,
-        failure_rate, status
+        failure_rate, failure_rate_ci_lower, failure_rate_ci_upper,
+        failure_rate_ci_half_width, failure_rate_precision,
+        failure_rate_adequate, status
     """
     time_label = str(segment.get("time", "Unknown"))
     error, lambda_, mu, c = _validate_segment(segment)
@@ -636,6 +648,9 @@ def mc_simulate_segment(
             "failure_rate": None, "status": "ERROR",
             "error": error,
             "ci_Wq_hw": None, "ci_Lq_hw": None, "adequate_samples": False,
+            "failure_rate_ci_lower": None, "failure_rate_ci_upper": None,
+            "failure_rate_ci_half_width": None,
+            "failure_rate_precision": None, "failure_rate_adequate": False,
         }
 
     assert lambda_ is not None and mu is not None
@@ -694,6 +709,16 @@ def mc_simulate_segment(
     else:
         ci_Lq_hw = None
 
+    # 95 % Wilson confidence interval on the failure-rate proportion.
+    fr_ci_lower, fr_ci_upper, fr_ci_hw = wilson_ci(failures, num_trials)
+    if fr_ci_lower is None or fr_ci_upper is None or fr_ci_hw is None:
+        fr_ci_lower = fr_ci_upper = fr_ci_hw = None
+        failure_rate_precision_level: str | None = None
+        failure_rate_adequate = False
+    else:
+        failure_rate_precision_level = failure_rate_precision(fr_ci_hw)
+        failure_rate_adequate = bool(fr_ci_hw <= ADEQUATE_MAX_HW)
+
     return {
         "time": time_label,
         "lambda": lambda_,
@@ -711,6 +736,11 @@ def mc_simulate_segment(
         "ci_Wq_hw": ci_Wq_hw,
         "ci_Lq_hw": ci_Lq_hw,
         "adequate_samples": adequate_samples,
+        "failure_rate_ci_lower": round(fr_ci_lower, 4) if fr_ci_lower is not None else None,
+        "failure_rate_ci_upper": round(fr_ci_upper, 4) if fr_ci_upper is not None else None,
+        "failure_rate_ci_half_width": round(fr_ci_hw, 4) if fr_ci_hw is not None else None,
+        "failure_rate_precision": failure_rate_precision_level,
+        "failure_rate_adequate": failure_rate_adequate,
     }
 
 
@@ -793,20 +823,22 @@ def mc_summarize_simulation(mc_rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def validate_with_simulation(
     comparison_df: pd.DataFrame,
-    mc_trials: int = 10000,
+    mc_trials: int = MC_DEFAULT_TRIALS,
     mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int = 42,
 ) -> pd.DataFrame:
     """Run DES + Monte Carlo on the optimized plan and merge validation columns.
 
     For each segment in *comparison_df* with a valid ``c_optimal``, a DES
-    simulation and a 10 000‑trial Monte Carlo are executed.  The following
-    columns are appended (NaN for segments where the optimizer found no
-    stable plan):
+    simulation and a Monte Carlo run (default 2 000 trials) are executed.  The
+    following columns are appended (NaN for segments where the optimizer found
+    no stable plan):
 
     - sim_status, sim_max_queue, sim_Wq, sim_rho        (DES)
     - mc_failure_rate, mc_adequate, mc_rho_mean,        (MC)
-      mc_rho_p95, mc_Wq_ci
+      mc_rho_p95, mc_Wq_ci, mc_failure_rate_ci_lower,
+      mc_failure_rate_ci_upper, mc_failure_rate_ci_half_width,
+      mc_failure_rate_precision, mc_failure_rate_adequate
     """
     if comparison_df is None or comparison_df.empty:
         return comparison_df
@@ -827,7 +859,9 @@ def validate_with_simulation(
         result = comparison_df.copy()
         for col in ["sim_status", "sim_max_queue", "sim_Wq", "sim_rho",
                      "mc_failure_rate", "mc_adequate", "mc_rho_mean",
-                     "mc_rho_p95", "mc_Wq_ci"]:
+                     "mc_rho_p95", "mc_Wq_ci", "mc_failure_rate_ci_lower",
+                     "mc_failure_rate_ci_upper", "mc_failure_rate_ci_half_width",
+                     "mc_failure_rate_precision", "mc_failure_rate_adequate"]:
             result[col] = None
         return result
 
@@ -849,13 +883,21 @@ def validate_with_simulation(
     )
     mc_raw = pd.DataFrame(mc_results)[
         ["time", "failure_rate", "adequate_samples",
-         "rho_mean", "rho_p95", "Wq_mean", "ci_Wq_hw"]
+         "rho_mean", "rho_p95", "Wq_mean", "ci_Wq_hw",
+         "failure_rate_ci_lower", "failure_rate_ci_upper",
+         "failure_rate_ci_half_width", "failure_rate_precision",
+         "failure_rate_adequate"]
     ].rename(
         columns={
             "failure_rate": "mc_failure_rate",
             "adequate_samples": "mc_adequate",
             "rho_mean": "mc_rho_mean",
             "rho_p95": "mc_rho_p95",
+            "failure_rate_ci_lower": "mc_failure_rate_ci_lower",
+            "failure_rate_ci_upper": "mc_failure_rate_ci_upper",
+            "failure_rate_ci_half_width": "mc_failure_rate_ci_half_width",
+            "failure_rate_precision": "mc_failure_rate_precision",
+            "failure_rate_adequate": "mc_failure_rate_adequate",
         }
     )
     mc_raw["mc_Wq_ci"] = mc_raw.apply(

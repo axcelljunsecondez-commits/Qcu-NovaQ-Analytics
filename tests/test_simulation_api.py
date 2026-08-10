@@ -70,3 +70,130 @@ def test_validate_empty_segments_422(db_engine, client):
 def test_validate_requires_auth(client):
     response = client.post("/simulation/validate", json={"segments": []})
     assert response.status_code == 401
+
+
+def test_mc_endpoint_exposes_failure_rate_ci_fields(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "num_trials": 200, "failure_threshold": 0.75, "seed": 7},
+    )
+    assert response.status_code == 200
+    row = response.json()["results"][0]
+    for key in [
+        "failure_rate_ci_lower",
+        "failure_rate_ci_upper",
+        "failure_rate_ci_half_width",
+        "failure_rate_precision",
+        "failure_rate_adequate",
+    ]:
+        assert key in row
+
+
+def test_validate_endpoint_exposes_mc_failure_rate_ci_fields(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    comparison = [
+        {"time": "08:00-09:00", "lambda": 30, "mu": 12, "c_optimal": 3},
+        {"time": "09:00-10:00", "lambda": 45, "mu": 12, "c_optimal": 4},
+    ]
+    response = client.post(
+        "/simulation/validate",
+        json={"segments": comparison, "mc_trials": 200, "seed": 7},
+    )
+    assert response.status_code == 200
+    row = response.json()["results"][0]
+    for key in [
+        "mc_failure_rate_ci_lower",
+        "mc_failure_rate_ci_upper",
+        "mc_failure_rate_ci_half_width",
+        "mc_failure_rate_precision",
+        "mc_failure_rate_adequate",
+    ]:
+        assert key in row
+
+
+def test_mc_defaults_to_2000_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "failure_threshold": 0.75, "seed": 7},
+    )
+    assert response.status_code == 200
+    assert len(response.json()["results"]) == 2
+
+
+def test_validate_defaults_to_2000_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    comparison = [
+        {"time": "08:00-09:00", "lambda": 30, "mu": 12, "c_optimal": 3},
+    ]
+    response = client.post("/simulation/validate", json={"segments": comparison, "seed": 7})
+    assert response.status_code == 200
+    assert len(response.json()["results"]) == 1
+
+
+def test_mc_accepts_20000_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "num_trials": 20000, "seed": 7},
+    )
+    assert response.status_code == 200
+
+
+def test_mc_accepts_100000_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "num_trials": 100000, "seed": 7},
+    )
+    assert response.status_code == 200
+
+
+def test_mc_rejects_100001_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "num_trials": 100001, "seed": 7},
+    )
+    assert response.status_code == 422
+
+
+def test_mc_rejects_extremely_large_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "num_trials": 10**9, "seed": 7},
+    )
+    assert response.status_code == 422
+
+
+def test_mc_rejects_zero_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "num_trials": 0, "seed": 7},
+    )
+    assert response.status_code == 422
+
+
+def test_validate_rejects_over_cap_trials(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    comparison = [
+        {"time": "08:00-09:00", "lambda": 30, "mu": 12, "c_optimal": 3},
+    ]
+    response = client.post(
+        "/simulation/validate",
+        json={"segments": comparison, "mc_trials": 100001, "seed": 7},
+    )
+    assert response.status_code == 422

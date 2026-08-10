@@ -65,6 +65,23 @@ function fmtPct(value: number | null | undefined): string {
   return Math.round(value * 100) + '%'
 }
 
+function fmtFrCi(lower: number | null | undefined, upper: number | null | undefined): string {
+  if (lower === null || upper === null || lower === undefined || upper === undefined || Number.isNaN(lower) || Number.isNaN(upper)) {
+    return '—'
+  }
+  return `${Math.round(lower * 100)}%–${Math.round(upper * 100)}%`
+}
+
+function PrecisionBadge({ level }: { level: SimMcOut['failure_rate_precision'] }) {
+  if (!level) {
+    return <span className="badge badge-neutral">—</span>
+  }
+  const cls = level === 'high' ? 'badge-ok' : level === 'moderate' ? 'badge-warn' : 'badge-bad'
+  return <span className={`badge ${cls}`}>{level}</span>
+}
+
+const MC_MAX_TRIALS = 100000
+
 function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
   if (rows.length === 0) return
   const header = Object.keys(rows[0])
@@ -118,7 +135,7 @@ export function SimulationPage() {
   const [desSeed, setDesSeed] = useState('42')
   const [desRows, setDesRows] = useState<SimDesOut[] | null>(null)
 
-  const [mcTrials, setMcTrials] = useState('500')
+  const [mcTrials, setMcTrials] = useState('2000')
   const [mcThreshold, setMcThreshold] = useState('0.75')
   const [mcSeed, setMcSeed] = useState('42')
   const [mcRows, setMcRows] = useState<SimMcOut[] | null>(null)
@@ -164,11 +181,16 @@ export function SimulationPage() {
   async function runMc() {
     const segments = await loadSegments()
     if (!segments) return
+    const trials = Number(mcTrials)
+    if (!Number.isInteger(trials) || trials < 1 || trials > MC_MAX_TRIALS) {
+      setError(t('simulation.trials_range_error', { max: String(MC_MAX_TRIALS) }))
+      return
+    }
     setError(null)
     setRunning(true)
     try {
       const out = await simulateMc(segments, {
-        num_trials: Number(mcTrials),
+        num_trials: trials,
         failure_threshold: Number(mcThreshold),
         seed: parseSeed(mcSeed),
       })
@@ -344,9 +366,12 @@ export function SimulationPage() {
                   id="mc-trials"
                   type="number"
                   step="any"
+                  min={1}
+                  max={MC_MAX_TRIALS}
                   value={mcTrials}
                   onChange={(e) => setMcTrials(e.target.value)}
                 />
+                <p className="form-hint">{t('simulation.trials_help')}</p>
               </div>
               <div className="form-field">
                 <label htmlFor="mc-threshold">{t('simulation.threshold')}</label>
@@ -387,6 +412,8 @@ export function SimulationPage() {
                       <th>{t('simulation.lq_mean')}</th>
                       <th>{t('simulation.wq_mean')}</th>
                       <th>{t('simulation.failure_rate')}</th>
+                      <th>{t('simulation.failure_rate_ci')}</th>
+                      <th>{t('simulation.precision')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -403,6 +430,8 @@ export function SimulationPage() {
                         <td>{fmt(row.Lq_mean, 2)}</td>
                         <td>{fmt(row.Wq_mean, 2)}</td>
                         <td>{fmtPct(row.failure_rate)}</td>
+                        <td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td>
+                        <td><PrecisionBadge level={row.failure_rate_precision} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -451,6 +480,7 @@ export function SimulationPage() {
                       <th>sim_Wq</th>
                       <th>sim max queue</th>
                       <th>{t('simulation.failure_rate')}</th>
+                      <th>{t('simulation.failure_rate_ci')}</th>
                       <th>MC ρ mean</th>
                       <th>MC ρ p95</th>
                       <th>MC Wq CI</th>
@@ -469,6 +499,7 @@ export function SimulationPage() {
                         <td>{fmt(row.sim_Wq, 3)}</td>
                         <td>{row.sim_max_queue}</td>
                         <td>{fmtPct(row.mc_failure_rate)}</td>
+                        <td>{fmtFrCi(row.mc_failure_rate_ci_lower, row.mc_failure_rate_ci_upper)}</td>
                         <td>{fmt(row.mc_rho_mean, 3)}</td>
                         <td>{fmt(row.mc_rho_p95, 3)}</td>
                         <td>{row.mc_Wq_ci}</td>

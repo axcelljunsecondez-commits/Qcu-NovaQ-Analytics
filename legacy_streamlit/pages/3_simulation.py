@@ -223,8 +223,10 @@ with tab_mc:
     mc_trials = mc_cols[0].number_input(
         "Number of trials",
         min_value=50,
+        max_value=100000,
         value=MC_DEFAULT_TRIALS,
         step=50,
+        help="1K–5K trials for normal analysis; 10K+ for tighter failure-rate precision. Returns diminish beyond 5K.",
     )
     mc_threshold = mc_cols[1].number_input(
         "Failure threshold (ρ)",
@@ -235,7 +237,7 @@ with tab_mc:
     )
 
     if st.button("Run Monte Carlo", type="primary", use_container_width=True, key="mc_run"):
-        with st.spinner("Running Monte Carlo (500 trials)…"):
+        with st.spinner(f"Running Monte Carlo ({int(mc_trials):,} trials)…"):
             mc_results = mc_simulate_segments(
                 to_segment_records(simulation_input),
                 num_trials=int(mc_trials),
@@ -263,11 +265,22 @@ with tab_mc:
                 n_bad = int(mc_df["adequate_samples"].value_counts().get(False, 0))
                 toast(
                     f"Some segments ({n_bad}) may need more trials for reliable estimates. "
-                    "Try increasing N above 500.",
+                    "Try increasing N above 2,000.",
                     type="warning",
                 )
 
-        # Build display table with CI-formatted Wq column
+        # Failure-rate precision warning (95 % Wilson CI bands, anchored to the
+        # 0.10 PASS/FAIL threshold)
+        if "failure_rate_precision" in mc_df.columns and mc_df["failure_rate_precision"].notna().any():
+            n_not_high = int(mc_df["failure_rate_precision"].isin(["moderate", "low"]).sum())
+            if n_not_high:
+                toast(
+                    f"More trials recommended for {n_not_high} segment(s): the 95% failure-rate "
+                    "CI is wide relative to the 10% PASS/FAIL threshold.",
+                    type="warning",
+                )
+
+        # Build display table with CI-formatted Wq and failure-rate columns
         display_df = mc_df[
             ["time", "rho_mean", "rho_std", "rho_p95", "Lq_mean", "Wq_mean", "failure_rate", "status"]
         ].copy()
@@ -280,6 +293,24 @@ with tab_mc:
                     else "N/A"
                 ),
                 axis=1,
+            )
+
+        if all(col in mc_df.columns for col in ("failure_rate_ci_lower", "failure_rate_ci_upper")):
+            display_df["Failure Rate (95% CI)"] = display_df.apply(
+                lambda r: (
+                    f"{r['failure_rate'] * 100:.1f}% ({r['failure_rate_ci_lower'] * 100:.1f}%–{r['failure_rate_ci_upper'] * 100:.1f}%)"
+                    if (
+                        pd.notna(r.get("failure_rate"))
+                        and pd.notna(r.get("failure_rate_ci_lower"))
+                        and pd.notna(r.get("failure_rate_ci_upper"))
+                    )
+                    else "N/A"
+                ),
+                axis=1,
+            )
+        if "failure_rate_precision" in mc_df.columns:
+            display_df["Precision"] = mc_df["failure_rate_precision"].map(
+                lambda v: "High" if v == "high" else "Moderate" if v == "moderate" else "Low" if v == "low" else "N/A"
             )
         _mc_display = display_df.copy()
         if "rho_mean" in _mc_display.columns:

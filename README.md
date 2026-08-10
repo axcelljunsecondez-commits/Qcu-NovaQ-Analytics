@@ -10,7 +10,7 @@ Production queueing-analytics platform for analyzing service queues with M/M/1, 
 - Upload CSV or Excel queue data; store datasets and scenarios in Postgres.
 - Compute utilization, queue length, waiting time, and system time per segment.
 - Recommend staffing changes based on utilization and cost (server, wait, abandonment).
-- Validate optimized plans with discrete-event simulation (SimPy) and Monte Carlo (10K trials).
+- Validate optimized plans with discrete-event simulation (SimPy) and Monte Carlo (default 2K trials, up to 100K).
 - Compare scenarios and export PDF/Excel reports.
 - English and Filipino (tl) localization.
 

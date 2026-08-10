@@ -104,7 +104,7 @@ def main():
         - **M/M/c+M (Erlang-A)** — Multi-server with customer abandonment
         - **Two-class priority** — Express lane + regular lane
 
-        **Simulation:** Discrete-event (SimPy) · Monte Carlo (10K trials)
+        **Simulation:** Discrete-event (SimPy) · Monte Carlo (configurable trials, default 2K)
         **Input:** 4 required columns (time, λ, μ, c) + 2 optional (variance, K)
         """)
 
