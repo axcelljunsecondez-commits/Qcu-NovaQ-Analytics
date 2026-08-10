@@ -36,6 +36,7 @@ def generate_pdf_report(
     recommended_kpis: dict,
     comparison_df: pd.DataFrame,
     recommendations: list[str] | None = None,
+    segment_df: pd.DataFrame | None = None,
 ) -> io.BytesIO:
     """Generate a multi-page PDF report.
 
@@ -49,6 +50,9 @@ def generate_pdf_report(
         Segment-by-segment comparison rows (Page 4).
     recommendations : list of str, optional
         Recommendation messages from ``build_recommendations()``.
+    segment_df : pd.DataFrame, optional
+        Accepted for compatibility with the legacy comparison page's call
+        pattern; not used in report content (retained as a dead parameter).
 
     Returns
     -------
@@ -211,6 +215,7 @@ def generate_pdf_report(
 def generate_excel_report(
     comparison_df: pd.DataFrame,
     recommended_kpis: dict | None = None,
+    segment_df: pd.DataFrame | None = None,
 ) -> io.BytesIO:
     """Generate a two-sheet Excel workbook.
 
@@ -220,6 +225,9 @@ def generate_excel_report(
         Segment-by-segment comparison (Page 4).
     recommended_kpis : dict, optional
         KPIs for the Summary sheet.
+    segment_df : pd.DataFrame, optional
+        Accepted for compatibility with the legacy comparison page's call
+        pattern; not used in report content (retained as a dead parameter).
 
     Returns
     -------
