@@ -1,12 +1,12 @@
 ---
-name: novamart-ui-ux
-description: Use when improving NovaMart Queueing Dashboard UI/UX. Covers Streamlit performance, responsive layout, CSS styling, data visualization for M/M/1–Erlang-A queue models, accessibility, and OpenCode prompt patterns. Trigger when user mentions styling bugs, re-renders, mobile issues, chart types, or queueing analytics design.
+name: novaq-ui-ux
+description: Use when improving Queueing Dashboard UI/UX. Covers Streamlit performance, responsive layout, CSS styling, data visualization for M/M/1–Erlang-A queue models, accessibility, and OpenCode prompt patterns. Trigger when user mentions styling bugs, re-renders, mobile issues, chart types, or queueing analytics design.
 ---
 
-# NovaMart UI/UX Guidelines
+# Queueing Dashboard UI/UX Guidelines
 
 ## Trigger Conditions
-- User asks to improve NovaMart styling, layout, or UI
+- User asks to improve Queueing Dashboard styling, layout, or UI
 - User mentions Streamlit re-renders, slow load, or performance
 - User requests new chart type for queue model output
 - User reports broken layout on mobile or tablet
