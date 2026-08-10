@@ -27,7 +27,7 @@ Guidance for AI agents and developers working in this repository: the **NovaQ �
 
 - **Queueing-engine contract is frozen**: request/response shapes of `backend/api/` (especially `/simulation/*` and `/optimize/*`) are production contracts — do not change them without a plan. New features must be additive.
 - **Single source of truth for model selection**: `backend/queueing_engine/services/model_selection.py` (dispatch: theta → Erlang-A, K+variance → M/G/c/K, K → M/M/c/K, variance → M/G/c, c==1 → M/M/1, else M/M/c). Never re-implement dispatch inline.
-- **CSRF flow**: session cookie `novamart_session` is HttpOnly; `novamart_csrf` is JS-readable (httponly=False). The SPA attaches `X-CSRF-Token` on non-GET requests whenever the csrf cookie is present (`frontend/src/lib/http.ts`). The API exempts only `/analysis`, `/simulation`, `/optimize` prefixes.
+- **CSRF flow**: session cookie `novaq_session` is HttpOnly; `novaq_csrf` is JS-readable (httponly=False). The SPA attaches `X-CSRF-Token` on non-GET requests whenever the csrf cookie is present (`frontend/src/lib/http.ts`). The API exempts only `/analysis`, `/simulation`, `/optimize` prefixes.
 - **i18n**: any new label/string must be added to BOTH `frontend/public/locales/en/translation.json` and `frontend/public/locales/tl/translation.json` (keys must stay symmetric).
 - **Reports use minutes** for wait times (multiply hour-valued Wq by 60 at display time); thresholds and alerts are minutes.
 - Never commit secrets or `.env`. No changes to `docker-compose.yml` ports without checking both `web` (nginx) and `api` exposure.

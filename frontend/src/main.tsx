@@ -9,7 +9,7 @@ import './styles/global.css'
 
 initI18n()
 
-const savedTheme = localStorage.getItem('novamart_theme')
+const savedTheme = localStorage.getItem('novaq_theme')
 if (savedTheme === 'dark') {
   document.documentElement.dataset.theme = 'dark'
 }

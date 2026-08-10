@@ -25,7 +25,7 @@ target_metadata = Base.metadata
 def get_url() -> str:
     return os.environ.get(
         "DATABASE_URL",
-        "postgresql+psycopg://novamart:novamart@localhost:5432/novamart",
+        "postgresql+psycopg://novaq:novaq@localhost:5432/novaq",
     )
 
 

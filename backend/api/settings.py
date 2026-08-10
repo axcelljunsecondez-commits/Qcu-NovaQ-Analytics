@@ -10,8 +10,8 @@ class Settings:
     instantiation time so tests can build their own instance."""
 
     def __init__(self) -> None:
-        self.session_cookie_name = os.environ.get("SESSION_COOKIE_NAME", "novamart_session")
-        self.csrf_cookie_name = os.environ.get("CSRF_COOKIE_NAME", "novamart_csrf")
+        self.session_cookie_name = os.environ.get("SESSION_COOKIE_NAME", "novaq_session")
+        self.csrf_cookie_name = os.environ.get("CSRF_COOKIE_NAME", "novaq_csrf")
         self.session_ttl_hours = float(os.environ.get("SESSION_TTL_HOURS", "24"))
         self.secure_cookies = os.environ.get("SECURE_COOKIES", "0") == "1"
         self.allowed_origins = [

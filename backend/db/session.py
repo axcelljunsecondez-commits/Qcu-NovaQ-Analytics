@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql+psycopg://novamart:novamart@localhost:5432/novamart",
+    "postgresql+psycopg://novaq:novaq@localhost:5432/novaq",
 )
 
 _engine: Engine | None = None

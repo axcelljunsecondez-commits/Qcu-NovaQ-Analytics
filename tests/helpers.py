@@ -11,8 +11,8 @@ from sqlalchemy.orm import sessionmaker
 from backend.db.models import SessionRecord, User
 from backend.db.seed import hash_password
 
-SESSION_COOKIE = "novamart_session"
-CSRF_COOKIE = "novamart_csrf"
+SESSION_COOKIE = "novaq_session"
+CSRF_COOKIE = "novaq_csrf"
 
 
 def make_sessionmaker(engine):

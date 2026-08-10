@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next'
 import en from '../../public/locales/en/translation.json'
 import tl from '../../public/locales/tl/translation.json'
 
-export const LANG_KEY = 'novamart_lang'
+export const LANG_KEY = 'novaq_lang'
 
 export function initI18n(): void {
   const saved = localStorage.getItem(LANG_KEY)

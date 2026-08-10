@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const THEME_KEY = 'novamart_theme'
+const THEME_KEY = 'novaq_theme'
 
 export function ThemeToggle() {
   const { t } = useTranslation()

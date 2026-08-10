@@ -2,13 +2,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: novamart
-      POSTGRES_PASSWORD: novamart
-      POSTGRES_DB: novamart
+      POSTGRES_USER: novaq
+      POSTGRES_PASSWORD: novaq
+      POSTGRES_DB: novaq
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U novamart -d novamart"]
+      test: ["CMD-SHELL", "pg_isready -U novaq -d novaq"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -20,7 +20,7 @@ services:
       context: .
       dockerfile: Dockerfile.api
     environment:
-      DATABASE_URL: postgresql+psycopg://novamart:novamart@db:5432/novamart
+      DATABASE_URL: postgresql+psycopg://novaq:novaq@db:5432/novaq
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       SECURE_COOKIES: "0"
