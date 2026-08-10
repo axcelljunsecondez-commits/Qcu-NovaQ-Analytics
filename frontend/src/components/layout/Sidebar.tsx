@@ -34,7 +34,7 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">NovaMart</div>
+      <div className="sidebar-brand">NovaQ</div>
       <nav className="sidebar-nav">
         {navItems.map((item) => {
           if (item.adminOnly && user?.role !== 'admin') {

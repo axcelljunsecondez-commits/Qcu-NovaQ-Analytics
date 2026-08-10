@@ -42,7 +42,7 @@ export function ReportsPage() {
     setDownloaded(false)
     try {
       const blob = await fetchReport(kind, id, format)
-      downloadReport(blob, `novamart_${kind}_${id}.${format}`)
+      downloadReport(blob, `novaq_${kind}_${id}.${format}`)
       setDownloaded(true)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail

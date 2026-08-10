@@ -30,7 +30,7 @@ from backend.db.models import User
 from backend.db.session import DATABASE_URL, create_engine_for
 from backend.db.session import get_db as global_get_db
 
-logger = logging.getLogger("novamart.api")
+logger = logging.getLogger("novaq.api")
 
 
 class LoginRequest(BaseModel):
@@ -175,7 +175,7 @@ def create_app(
         finally:
             db.close()
 
-    app = FastAPI(title="NovaMart API", version="1.0.0")
+    app = FastAPI(title="NovaQ — Queueing Analytics", version="1.0.0")
     app.state.settings = settings
     app.dependency_overrides[global_get_db] = get_db
 

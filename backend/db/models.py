@@ -1,4 +1,4 @@
-"""ORM models for the NovaMart backend (spec section 6.3)."""
+"""ORM models for the NovaQ backend (spec section 6.3)."""
 
 from __future__ import annotations
 

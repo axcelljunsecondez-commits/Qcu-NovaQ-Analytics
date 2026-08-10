@@ -11,7 +11,7 @@ describe('test infrastructure', () => {
   })
 
   it('renderWithProviders renders children with providers', () => {
-    renderWithProviders(<div>NovaMart</div>)
-    expect(screen.getByText('NovaMart')).toBeInTheDocument()
+    renderWithProviders(<div>NovaQ</div>)
+    expect(screen.getByText('NovaQ')).toBeInTheDocument()
   })
 })

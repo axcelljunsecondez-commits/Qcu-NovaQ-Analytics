@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Instructions
 
-Guidance for AI agents and developers working in this repository: the **NovaMart Queueing Theory Dashboard** (production SaaS + legacy Streamlit + React frontend).
+Guidance for AI agents and developers working in this repository: the **NovaQ — Queueing Analytics** (production SaaS + legacy Streamlit + React frontend).
 
 ## Repository Layout
 

@@ -325,7 +325,7 @@ export function SimulationPage() {
               <button
                 type="button"
                 className="btn-ghost"
-                onClick={() => downloadCsv('novamart_des_simulation.csv', desRows as unknown as Array<Record<string, unknown>>)}
+                onClick={() => downloadCsv('novaq_des_simulation.csv', desRows as unknown as Array<Record<string, unknown>>)}
               >
                 {t('simulation.download_csv')}
               </button>
@@ -419,7 +419,7 @@ export function SimulationPage() {
               <button
                 type="button"
                 className="btn-ghost"
-                onClick={() => downloadCsv('novamart_mc_simulation.csv', mcRows as unknown as Array<Record<string, unknown>>)}
+                onClick={() => downloadCsv('novaq_mc_simulation.csv', mcRows as unknown as Array<Record<string, unknown>>)}
               >
                 {t('simulation.download_csv')}
               </button>

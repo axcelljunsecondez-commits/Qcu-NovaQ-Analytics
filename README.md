@@ -1,4 +1,4 @@
-# NovaMart Queueing Theory Dashboard
+# NovaQ — Queueing Analytics
 
 [![CI](https://github.com/axcelljunsecondez-commits/qcu-queueing-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/axcelljunsecondez-commits/qcu-queueing-dashboard/actions/workflows/ci.yml)
 

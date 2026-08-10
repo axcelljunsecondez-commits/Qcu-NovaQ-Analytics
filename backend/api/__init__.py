@@ -1,1 +1,1 @@
-"""API package: FastAPI application for the NovaMart backend."""
+"""API package: FastAPI application for the NovaQ backend."""
