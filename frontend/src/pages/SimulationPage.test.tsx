@@ -206,6 +206,21 @@ describe('SimulationPage', () => {
     expect(screen.getByText('5%')).toBeInTheDocument()
   })
 
+  it('maps optimizer lambda_ to a lambda key before calling validateSimulation', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    await waitFor(() => {
+      expect(validateSimulationMock).toHaveBeenCalled()
+    })
+    const payload = validateSimulationMock.mock.calls[0][0]
+    expect(payload).toHaveLength(1)
+    expect(payload[0].lambda).toBe(30)
+    expect(payload[0].lambda_).toBe(30)
+  })
+
   it('sends seed null when the seed input is blank', async () => {
     const user = userEvent.setup()
     renderWithProviders(<SimulationPage />, { route: '/simulate' })

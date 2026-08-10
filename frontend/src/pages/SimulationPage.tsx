@@ -193,8 +193,9 @@ export function SimulationPage() {
         customer_waiting_cost: 100,
         max_servers: 24,
       })
+      const comparisonRows = optimized.results.map((r) => ({ ...r, lambda: r.lambda_ }))
       const out = await validateSimulation(
-        optimized.results as unknown as Record<string, unknown>[],
+        comparisonRows as unknown as Record<string, unknown>[],
       )
       setValidateRows(out.results)
     } catch (err) {
