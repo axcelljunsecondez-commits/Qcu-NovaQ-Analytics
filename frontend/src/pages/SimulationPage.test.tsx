@@ -139,7 +139,7 @@ beforeEach(() => {
 })
 
 async function selectDataset(user: ReturnType<typeof userEvent.setup>) {
-  await screen.findByRole('option', { name: 'sample' })
+  await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
   await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
 }
 

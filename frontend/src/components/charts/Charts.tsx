@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import Plot from 'react-plotly.js'
-import type { SimDesOut, SimMcOut } from '../../api/types'
+import type { OptimizationOut, SimDesOut, SimMcOut } from '../../api/types'
+import { RADAR_THETA } from '../../lib/radar'
 
 const MARGIN = { l: 40, r: 40, t: 50, b: 40 }
 const LINE_WIDTH = 2
@@ -215,6 +216,231 @@ export function FailureRateBars({ rows }: { rows: SimMcOut[] }) {
           yaxis: { title: 'Failure Rate' },
           height: 350,
           margin: MARGIN,
+        }}
+        style={{ width: '100%' }}
+      />
+    </ChartFrame>
+  )
+}
+
+function total(rows: OptimizationOut[], pick: (row: OptimizationOut) => number | null): number {
+  return rows.reduce((acc, row) => acc + (pick(row) ?? 0), 0)
+}
+
+export function RadarChart({ current, optimized }: { current: number[]; optimized: number[] }) {
+  const { t } = useTranslation()
+  return (
+    <ChartFrame testId="chart-radar">
+      <Plot
+        data={[
+          {
+            type: 'scatterpolar',
+            r: current,
+            theta: RADAR_THETA,
+            fill: 'toself',
+            name: t('compare.current'),
+            line: { color: '#E74C3C' },
+            fillcolor: 'rgba(231, 76, 60, 0.15)',
+          },
+          {
+            type: 'scatterpolar',
+            r: optimized,
+            theta: RADAR_THETA,
+            fill: 'toself',
+            name: t('compare.optimized'),
+            line: { color: '#27AE60' },
+            fillcolor: 'rgba(39, 174, 96, 0.15)',
+          },
+        ]}
+        layout={{
+          polar: {
+            radialaxis: { visible: true, range: [0, 100], tickfont: { size: 10 } },
+          },
+          title: t('compare.radar'),
+          height: 400,
+          legend: { orientation: 'h', yanchor: 'bottom', y: 1.08, xanchor: 'center', x: 0.5 },
+          margin: { t: 60, b: 20 },
+        }}
+        style={{ width: '100%' }}
+      />
+    </ChartFrame>
+  )
+}
+
+export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
+  const { t } = useTranslation()
+  return (
+    <ChartFrame testId="chart-utilization-compare">
+      <Plot
+        data={[
+          {
+            type: 'bar',
+            name: t('compare.current'),
+            x: rows.map((r) => r.time),
+            y: rows.map((r) => (r.rho_current ?? 0) * 100),
+            marker_color: '#E74C3C',
+          },
+          {
+            type: 'bar',
+            name: t('compare.optimized'),
+            x: rows.map((r) => r.time),
+            y: rows.map((r) => (r.rho_optimal ?? 0) * 100),
+            marker_color: '#27AE60',
+          },
+        ]}
+        layout={{
+          barmode: 'group',
+          title: t('compare.utilization'),
+          xaxis: { title: t('page1.caption') },
+          yaxis: { title: 'Utilization (%)' },
+          height: 350,
+          legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
+          margin: { t: 40, b: 20 },
+        }}
+        style={{ width: '100%' }}
+      />
+    </ChartFrame>
+  )
+}
+
+export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
+  const { t } = useTranslation()
+  return (
+    <ChartFrame testId="chart-server-compare">
+      <Plot
+        data={[
+          {
+            type: 'bar',
+            name: t('compare.current'),
+            x: rows.map((r) => r.time),
+            y: rows.map((r) => r.c_current),
+            marker_color: '#E74C3C',
+          },
+          {
+            type: 'bar',
+            name: t('compare.optimized'),
+            x: rows.map((r) => r.time),
+            y: rows.map((r) => r.c_optimal),
+            marker_color: '#27AE60',
+          },
+        ]}
+        layout={{
+          barmode: 'group',
+          title: t('compare.servers'),
+          xaxis: { title: t('page1.caption') },
+          yaxis: { title: 'Servers' },
+          height: 350,
+          legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
+          margin: { t: 40, b: 20 },
+        }}
+        style={{ width: '100%' }}
+      />
+    </ChartFrame>
+  )
+}
+
+export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
+  const { t } = useTranslation()
+  return (
+    <ChartFrame testId="chart-wait-time-lines">
+      <Plot
+        data={[
+          {
+            type: 'scatter',
+            name: t('compare.current'),
+            x: rows.map((r) => r.time),
+            y: rows.map((r) => (r.Wq_current ?? 0) * 60),
+            mode: 'lines+markers',
+            line: { color: '#E74C3C', width: LINE_WIDTH },
+            marker: { size: 4 },
+          },
+          {
+            type: 'scatter',
+            name: t('compare.optimized'),
+            x: rows.map((r) => r.time),
+            y: rows.map((r) => (r.Wq_optimal ?? 0) * 60),
+            mode: 'lines+markers',
+            line: { color: '#27AE60', width: LINE_WIDTH },
+            marker: { size: 4 },
+          },
+        ]}
+        layout={{
+          title: t('compare.waiting'),
+          xaxis: { title: t('page1.caption') },
+          yaxis: { title: 'Avg Wait (min)' },
+          height: 380,
+          legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
+          margin: { t: 40, b: 20 },
+        }}
+        style={{ width: '100%' }}
+      />
+    </ChartFrame>
+  )
+}
+
+export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
+  const { t } = useTranslation()
+  const curServer = total(rows, (r) => (r.cost_per_server ?? 0) * r.c_current)
+  const optServer = total(rows, (r) => (r.cost_per_server ?? 0) * r.c_optimal)
+  const curWait = total(rows, (r) => r.waiting_cost_current)
+  const optWait = total(rows, (r) => r.waiting_cost_optimal)
+  const curAbandon = total(rows, (r) => r.abandonment_cost_current)
+  const optAbandon = total(rows, (r) => r.abandonment_cost_optimal)
+  const curTotal = total(rows, (r) => r.cost_current)
+  const optTotal = total(rows, (r) => r.cost_optimal)
+  return (
+    <ChartFrame testId="chart-cost-waterfall">
+      <Plot
+        data={[
+          {
+            type: 'waterfall',
+            name: 'Cost',
+            orientation: 'v',
+            measure: ['relative', 'relative', 'relative', 'relative', 'total'],
+            x: ['Current Total', 'Server Delta', 'Wait Delta', 'Abandonment Delta', 'Optimized Total'],
+            y: [curTotal, optServer - curServer, optWait - curWait, optAbandon - curAbandon, optTotal],
+            connector: { line: { color: '#94A3B8', width: 1 } },
+            decreasing: { marker: { color: '#27AE60' } },
+            increasing: { marker: { color: '#E74C3C' } },
+            totals: { marker: { color: '#2E86AB' } },
+          },
+        ]}
+        layout={{
+          title: t('compare.waterfall'),
+          height: 400,
+          margin: { t: 40, b: 20 },
+          font: { size: 11 },
+        }}
+        style={{ width: '100%' }}
+      />
+    </ChartFrame>
+  )
+}
+
+export function ScenarioCompareBars({
+  scenarios,
+}: {
+  scenarios: Array<{ name: string; rows: OptimizationOut[] }>
+}) {
+  const { t } = useTranslation()
+  const colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#3B1F2B']
+  return (
+    <ChartFrame testId="chart-scenario-compare">
+      <Plot
+        data={scenarios.map((sc, idx) => ({
+          type: 'bar',
+          name: sc.name,
+          x: sc.rows.map((r) => r.time),
+          y: sc.rows.map((r) => (r.Wq_optimal ?? 0) * 60),
+          marker_color: colors[idx % colors.length],
+        }))}
+        layout={{
+          barmode: 'group',
+          xaxis: { title: t('page1.caption') },
+          yaxis: { title: 'Avg Wait (min)' },
+          height: 400,
+          legend_title: 'Scenario',
+          margin: { t: 40, b: 20 },
         }}
         style={{ width: '100%' }}
       />

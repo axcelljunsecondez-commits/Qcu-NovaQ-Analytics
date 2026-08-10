@@ -182,5 +182,8 @@
   "simulation.rho_mean": "Mean ρ",
   "simulation.rho_p95_label": "ρ p95",
   "simulation.lq_mean": "Mean Lq",
-  "simulation.wq_mean": "Mean Wq"
+  "simulation.wq_mean": "Mean Wq",
+  "compare.source_scenario": "Mula sa scenario",
+  "compare.select_scenarios": "Pumili ng mga scenario upang ihambing (hindi bababa sa 2)",
+  "compare.min_two": "Pumili ng hindi bababa sa dalawang scenario upang ipakita ang paghahambing."
 }

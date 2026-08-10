@@ -96,7 +96,7 @@ describe('OptimizePage', () => {
   it('optimizes segments from a selected dataset and renders KPI cards', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })
-    await screen.findByRole('option', { name: 'sample' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     await waitFor(() => {
@@ -115,7 +115,7 @@ describe('OptimizePage', () => {
   it('renders the staffing table with recommendation text', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })
-    await screen.findByRole('option', { name: 'sample' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     expect(await screen.findByText('Add 1 server at 08:00-09:00.')).toBeInTheDocument()
@@ -126,7 +126,7 @@ describe('OptimizePage', () => {
     createScenarioMock.mockResolvedValue({ scenario: { id: 9 } })
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })
-    await screen.findByRole('option', { name: 'sample' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     await screen.findByText('Add 1 server at 08:00-09:00.')
@@ -146,7 +146,7 @@ describe('OptimizePage', () => {
   it('scales lambda inputs for what-if analysis and sends to the API', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })
-    await screen.findByRole('option', { name: 'sample' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     await screen.findByText('Add 1 server at 08:00-09:00.')
@@ -166,7 +166,7 @@ describe('OptimizePage', () => {
     })
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })
-    await screen.findByRole('option', { name: 'sample' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     expect(

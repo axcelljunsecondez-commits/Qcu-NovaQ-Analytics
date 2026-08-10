@@ -182,5 +182,8 @@
   "simulation.rho_mean": "Mean ρ",
   "simulation.rho_p95_label": "ρ p95",
   "simulation.lq_mean": "Mean Lq",
-  "simulation.wq_mean": "Mean Wq"
+  "simulation.wq_mean": "Mean Wq",
+  "compare.source_scenario": "Source scenario",
+  "compare.select_scenarios": "Select scenarios to compare (minimum 2)",
+  "compare.min_two": "Select at least two scenarios to display the comparison."
 }
