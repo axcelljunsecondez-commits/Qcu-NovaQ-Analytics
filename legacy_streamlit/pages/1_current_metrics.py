@@ -25,7 +25,6 @@ from theme import (
     toast,
 )
 
-from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.services.costing import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
@@ -33,8 +32,6 @@ from backend.queueing_engine.services.costing import (
     compute_all_costs,
     compute_cost_summary,
 )
-
-logger = get_logger(__name__)
 
 st.set_page_config(page_title="Current Metrics", layout="wide")
 init_session_state()
@@ -241,7 +238,7 @@ st.markdown(
 metric_cols = st.columns(4)
 metric_cols[0].metric("Average Utilization", pretty_metric(kpis["avg_utilization"], percent=True), help="Fraction of time servers are busy. Above 85% → queues grow fast.")
 metric_cols[1].metric("Max Utilization", pretty_metric(kpis["max_utilization"], percent=True), help="Fraction of time servers are busy. Above 85% → queues grow fast.")
-metric_cols[2].metric("Average Wq", pretty_metric(kpis["avg_waiting_time"]), help="Average time a customer waits before being served. Excludes service time.")
+metric_cols[2].metric("Average Wq (min)", pretty_metric(kpis["avg_waiting_time"] * 60), help="Average time in minutes a customer waits before being served. Excludes service time.")
 metric_cols[3].metric("Unstable Rows", str(kpis["unstable_count"]), help="Segments where ρ ≥ 1 — system cannot keep up with arrivals")
 
 def _model_badge_html(name):

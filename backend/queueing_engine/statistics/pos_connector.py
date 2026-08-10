@@ -77,6 +77,9 @@ def load_transactions(
         if col not in df.columns:
             raise ValueError(f"Missing required column: '{col}'")
 
+    if df.empty:
+        raise ValueError("No transaction rows found.")
+
     # Parse timestamp
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     null_ts = df["timestamp"].isna()
@@ -86,8 +89,14 @@ def load_transactions(
         )
 
     # Validate duration
+    if df["transaction_duration_sec"].isna().any():
+        raise ValueError("transaction_duration_sec must not be NaN for any row.")
     if (df["transaction_duration_sec"] <= 0).any():
         raise ValueError("transaction_duration_sec must be > 0 for all rows.")
+
+    # Validate lane identifiers
+    if df["lane_id"].isna().any():
+        raise ValueError("lane_id must not be empty for any row.")
 
     return df[["timestamp", "lane_id", "transaction_duration_sec"]].reset_index(drop=True)
 
@@ -119,6 +128,11 @@ def compute_lambda_mu(
         Columns: ``time`` (bucket start as ``"HH:MM"`` string),
         ``lambda`` (arrivals/hour), ``mu`` (service rate/hour), ``c`` (lane count).
     """
+    if df.empty:
+        raise ValueError("No transaction rows found to aggregate.")
+    if lane_col not in df.columns:
+        raise ValueError(f"Missing lane column: '{lane_col}'")
+
     ts = df["timestamp"]
     start = ts.min().floor(f"{segment_minutes}min")
     end = ts.max().ceil(f"{segment_minutes}min")
@@ -184,7 +198,12 @@ def to_novamart_csv(df: pd.DataFrame, output_path: str | None = None) -> str:
     if missing:
         raise ValueError(f"DataFrame is missing required columns: {missing}")
 
-    out = df[["time", "lambda", "mu", "c"]].to_csv(index=False)
+    columns = ["time", "lambda", "mu", "c"]
+    for extra in ("variance", "K"):
+        if extra in df.columns:
+            columns.append(extra)
+
+    out = df[columns].to_csv(index=False)
 
     if output_path is not None:
         with open(output_path, "w", newline="") as fh:

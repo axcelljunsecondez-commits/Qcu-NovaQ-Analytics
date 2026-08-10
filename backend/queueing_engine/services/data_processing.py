@@ -12,7 +12,7 @@ from backend.queueing_engine.log import get_logger
 logger = get_logger(__name__)
 
 from backend.queueing_engine.config import DEFAULT_CUSTOMER_WAITING_COST, UNSTABLE_PENALTY_MULTIPLIER
-from backend.queueing_engine.models import erlang_a, mgc, mgck, mm1, mmc, mmck
+from backend.queueing_engine.services.model_selection import select_model
 
 CURRENT_COLUMNS = [
     "time",
@@ -130,44 +130,23 @@ def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
         if lambda_ is None or mu is None:
             continue
 
-        # Theta (Erlang-A) takes priority over all other model choices
-        if theta is not None and pd.notna(theta) and float(theta) > 0:
-            metrics = erlang_a(lambda_, mu, c, float(theta))
-            model_name = "M/M/c+M (Erlang-A)"
-            servers = c
-            theta_val = float(theta)
-        elif capacity is not None and pd.notna(capacity) and variance is not None and pd.notna(variance):
-            metrics = mgck(lambda_, mu, c, variance, int(capacity))
-            model_name = "M/G/c/K"
-            servers = c
-            theta_val = None
-        elif capacity is not None and pd.notna(capacity):
-            metrics = mmck(lambda_, mu, c, int(capacity))
-            model_name = "M/M/c/K"
-            servers = c
-            theta_val = None
-        elif variance is not None and pd.notna(variance):
-            metrics = mgc(lambda_, mu, c, variance)
-            model_name = "M/G/c"
-            servers = c
-            theta_val = None
-        elif c == 1:
-            metrics = mm1(lambda_, mu)
-            model_name = "M/M/1"
-            servers = 1
-            theta_val = None
-        else:
-            metrics = mmc(lambda_, mu, c)
-            model_name = "M/M/c"
-            servers = c
-            theta_val = None
-
-        rows.append(_current_row(time_label, lambda_, mu, servers, model_name, metrics, theta=theta_val))
+        selection = select_model(lambda_, mu, c, variance=variance, K=capacity, theta=theta)
+        rows.append(
+            _current_row(
+                time_label,
+                lambda_,
+                mu,
+                selection["servers"],
+                selection["name"],
+                selection["metrics"],
+                theta=selection["theta"],
+            )
+        )
 
     return pd.DataFrame(rows, columns=CURRENT_COLUMNS) if rows else _empty_frame(CURRENT_COLUMNS)
 
 
-def compute_kpis(results_df: pd.DataFrame, time_segments: Iterable[Mapping[str, Any]] | None = None, customer_waiting_cost: float | None = None) -> dict[str, Any]:
+def compute_kpis(results_df: pd.DataFrame, customer_waiting_cost: float | None = None) -> dict[str, Any]:
     """Compute Page 1 KPI summary values including waiting costs.
     
     Waiting Cost calculation:

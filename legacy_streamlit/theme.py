@@ -8,8 +8,6 @@ live here. Each page calls apply_theme() once at startup.
 from __future__ import annotations
 
 import html
-import json
-import os
 from typing import Any
 
 import streamlit as st
@@ -220,29 +218,6 @@ div[data-testid="stButtonContainer"] button {{
     font-size: 1rem !important;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
     border: none !important;
-}}
-.btn-primary {{
-    padding: 1rem 2.25rem;
-    border-radius: 10px;
-    font-weight: 700;
-    font-size: 1rem;
-    text-decoration: none;
-    cursor: pointer;
-    border: none;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
-    color: #1B2A4A;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 8px 20px var(--accent-glow);
-    font-family: var(--font-sans);
-}}
-.btn-primary:hover {{
-    background: linear-gradient(135deg, var(--accent-hover) 0%, #C07D20 100%);
-    box-shadow: 0 12px 32px var(--accent-glow);
-    transform: translateY(-2px);
-}}
-.btn-primary:active {{
-    transform: translateY(0);
-    box-shadow: 0 4px 12px var(--accent-glow);
 }}
 .btn-secondary {{
     padding: 1rem 2.25rem;
@@ -562,10 +537,6 @@ div[data-testid="stNumberInput"] input {{ background: var(--bg-input) !important
     height: 120px;
     margin-bottom: 1rem;
 }}
-.skeleton-table {{
-    height: 200px;
-    margin-bottom: 1.5rem;
-}}
 .skeleton-metric {{
     height: 100px;
     border-radius: var(--radius-lg);
@@ -585,12 +556,6 @@ div[data-testid="stNumberInput"] input {{ background: var(--bg-input) !important
 /* ══════════════════════════════════════════════════════════════
    ONBOARDING TOOLTIP
    ══════════════════════════════════════════════════════════════ */
-.onboarding-overlay {{
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 99999;
-}}
 .onboarding-tooltip {{
     position: absolute;
     background: var(--bg-card);

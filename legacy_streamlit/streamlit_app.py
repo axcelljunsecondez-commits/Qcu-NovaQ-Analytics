@@ -16,8 +16,6 @@ With strict data pipeline integrity and mandatory error-checking.
   - No mutations of original data — always .copy()
 """
 
-import base64
-import os
 import sys
 from pathlib import Path
 
@@ -37,9 +35,8 @@ from backend.queueing_engine.config import (
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
 )
-from backend.queueing_engine.log import configure_logging, get_logger
+from backend.queueing_engine.log import configure_logging
 
-logger = get_logger(__name__)
 configure_logging()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -57,17 +54,6 @@ OPTIONAL_COLUMNS = [
     "variance",  # For M/G/c and M/G/c/K model support
     "K",  # Total finite system capacity for M/M/c/K and M/G/c/K
 ]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LOGO UTILITY FUNCTION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_base64_image(image_path):
-    """Convert image file to base64 string."""
-    if not os.path.exists(image_path):
-        return None
-    with open(image_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
 
 def main():
     """Initialize app and configure metadata."""
@@ -103,24 +89,9 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # Logo strip - show only if logos exist
-    logo_b64 = get_base64_image("logo/logo1.png")
-    if logo_b64:
-        st.markdown(f"""
-        <div style='display: flex; justify-content: center; margin: 16px 0;'>
-            <img src='data:image/png;base64,{logo_b64}' style='max-width: 80px; height: auto; object-fit: contain;'>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Hero section buttons
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        pass
-    with col2:
-        if st.button("📥 Upload your CSV", key="hero_upload", use_container_width=True):
-            st.switch_page("pages/1_current_metrics.py")
-    with col3:
-        pass
+    # Hero section button
+    if st.button("📥 Upload your CSV", key="hero_upload", use_container_width=True):
+        st.switch_page("pages/1_current_metrics.py")
 
     with st.expander("📐 Technical Details — Supported Models"):
         st.markdown("""

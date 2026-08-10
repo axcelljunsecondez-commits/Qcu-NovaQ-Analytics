@@ -12,7 +12,6 @@ from app_page_utils import dataframe_download, init_session_state, pretty_metric
 from i18n import t
 from theme import apply_dark_overrides, apply_theme, breadcrumb, skeleton_card, skeleton_metric, toast
 
-from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.simulation import (
     MC_DEFAULT_TRIALS,
     SIM_HOURS_PER_SEGMENT,
@@ -21,8 +20,6 @@ from backend.queueing_engine.simulation import (
     simulate_segments,
     summarize_simulation,
 )
-
-logger = get_logger(__name__)
 
 
 def _safe_rho(value) -> float:

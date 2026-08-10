@@ -30,7 +30,6 @@ from backend.queueing_engine.config import (
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
 )
-from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.services.optimization import (
     DEFAULT_MAX_SERVERS,
     DEFAULT_TARGET_UTILIZATION,
@@ -38,8 +37,6 @@ from backend.queueing_engine.services.optimization import (
     optimize_segments,
     summarize_optimization,
 )
-
-logger = get_logger(__name__)
 
 st.set_page_config(page_title="Optimization", layout="wide")
 init_session_state()

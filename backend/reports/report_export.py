@@ -35,7 +35,6 @@ def generate_pdf_report(
     current_kpis: dict,
     recommended_kpis: dict,
     comparison_df: pd.DataFrame,
-    segment_df: pd.DataFrame,
     recommendations: list[str] | None = None,
 ) -> io.BytesIO:
     """Generate a multi-page PDF report.
@@ -48,8 +47,6 @@ def generate_pdf_report(
         KPIs from ``compute_comparison_kpis()`` (Page 2).
     comparison_df : pd.DataFrame
         Segment-by-segment comparison rows (Page 4).
-    segment_df : pd.DataFrame
-        Current-metrics segment DataFrame (Page 1 results).
     recommendations : list of str, optional
         Recommendation messages from ``build_recommendations()``.
 
@@ -213,7 +210,6 @@ def generate_pdf_report(
 
 def generate_excel_report(
     comparison_df: pd.DataFrame,
-    segment_df: pd.DataFrame,
     recommended_kpis: dict | None = None,
 ) -> io.BytesIO:
     """Generate a two-sheet Excel workbook.
@@ -222,8 +218,6 @@ def generate_excel_report(
     ----------
     comparison_df : pd.DataFrame
         Segment-by-segment comparison (Page 4).
-    segment_df : pd.DataFrame
-        Current-metrics segment DataFrame (Page 1 results) — used for additional context.
     recommended_kpis : dict, optional
         KPIs for the Summary sheet.
 

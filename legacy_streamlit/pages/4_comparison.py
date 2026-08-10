@@ -9,7 +9,6 @@ from app_page_utils import dataframe_download, init_session_state, pretty_metric
 from i18n import t
 from theme import apply_dark_overrides, apply_theme, breadcrumb
 
-from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.services.costing import (
     DEFAULT_ABANDONMENT_COST,
     DEFAULT_SERVER_COST_HR,
@@ -20,7 +19,7 @@ from backend.queueing_engine.services.costing import (
 from backend.queueing_engine.services.optimization import build_recommendations, summarize_optimization
 from backend.reports.report_export import generate_excel_report, generate_pdf_report
 
-logger = get_logger(__name__)
+st.set_page_config(page_title="Comparison", layout="wide")
 
 st.set_page_config(page_title="Comparison", layout="wide")
 init_session_state()

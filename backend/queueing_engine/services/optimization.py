@@ -19,7 +19,7 @@ from backend.queueing_engine.config import (
     REGULAR_RATE,
     UNSTABLE_FIXED_COST,
 )
-from backend.queueing_engine.models import erlang_a, mgc, mgck, mm1, mmc, mmck
+from backend.queueing_engine.services.model_selection import select_model
 
 
 def compute_blended_rate(regular_hours, ot_hours, total_hours) -> float:
@@ -69,20 +69,10 @@ def _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment):
 def _queue_metrics(lambda_, mu, c, variance=None, K=None, theta=None):
     """Evaluate a segment using the appropriate infinite or finite-capacity model.
 
-    Theta (Erlang-A) takes priority over all other model choices, matching
-    ``process_segments`` and the API dispatch chain.
+    Dispatch is delegated to ``select_model`` so the model-selection chain
+    cannot drift from ``process_segments`` and the API dispatch chain.
     """
-    if theta is not None and _is_number(theta) and float(theta) > 0:
-        return erlang_a(lambda_, mu, c, float(theta))
-    if _is_number(K) and _is_number(variance):
-        return mgck(lambda_, mu, c, variance, int(K))
-    if _is_number(K):
-        return mmck(lambda_, mu, c, int(K))
-    if _is_number(variance):
-        return mgc(lambda_, mu, c, variance)
-    if c == 1:
-        return mm1(lambda_, mu)
-    return mmc(lambda_, mu, c)
+    return select_model(lambda_, mu, c, variance=variance, K=K, theta=theta)["metrics"]
 
 
 def _safe_diff(new_value, old_value):

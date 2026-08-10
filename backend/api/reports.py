@@ -43,19 +43,19 @@ def _comparison_rows(scenario: Scenario) -> list[dict]:
     return rows
 
 
-def _scenario_payload(scenario: Scenario) -> tuple[pd.DataFrame, pd.DataFrame, dict, list[str]]:
+def _scenario_payload(scenario: Scenario) -> tuple[pd.DataFrame, dict, list[str]]:
     rows = _comparison_rows(scenario)
     comparison_df = pd.DataFrame(rows)
     kpis = summarize_optimization(rows)
     recommendations = build_recommendations(rows)
-    return comparison_df, comparison_df, kpis, recommendations
+    return comparison_df, kpis, recommendations
 
 
-def _dataset_payload(dataset: Dataset) -> tuple[pd.DataFrame, pd.DataFrame, dict, list[str]]:
+def _dataset_payload(dataset: Dataset) -> tuple[pd.DataFrame, dict, list[str]]:
     records = dataset.normalized_json or []
     results_df = process_segments(records)
-    kpis = compute_kpis(results_df, records)
-    return results_df, results_df, kpis, []
+    kpis = compute_kpis(results_df)
+    return results_df, kpis, []
 
 
 @router.get("/datasets/{dataset_id}/{format}")
@@ -66,8 +66,8 @@ def dataset_report(
     user: User = Depends(get_current_user),
 ) -> Response:
     dataset = _own_dataset(db, user, dataset_id)
-    segment_df, comparison_df, kpis, recommendations = _dataset_payload(dataset)
-    return _build_report(format, kpis, {}, comparison_df, segment_df, recommendations)
+    comparison_df, kpis, recommendations = _dataset_payload(dataset)
+    return _build_report(format, kpis, {}, comparison_df, recommendations)
 
 
 @router.get("/scenarios/{scenario_id}/{format}")
@@ -78,8 +78,8 @@ def scenario_report(
     user: User = Depends(get_current_user),
 ) -> Response:
     scenario = _own_scenario(db, user, scenario_id)
-    comparison_df, segment_df, kpis, recommendations = _scenario_payload(scenario)
-    return _build_report(format, {}, kpis, comparison_df, segment_df, recommendations)
+    comparison_df, kpis, recommendations = _scenario_payload(scenario)
+    return _build_report(format, {}, kpis, comparison_df, recommendations)
 
 
 def _build_report(
@@ -87,7 +87,6 @@ def _build_report(
     current_kpis: dict,
     recommended_kpis: dict,
     comparison_df: pd.DataFrame,
-    segment_df: pd.DataFrame,
     recommendations: list[str],
 ) -> Response:
     if format == "pdf":
@@ -95,11 +94,10 @@ def _build_report(
             current_kpis,
             recommended_kpis,
             comparison_df,
-            segment_df,
             recommendations,
         )
         return Response(content=buffer.getvalue(), media_type=PDF_MEDIA_TYPE)
     if format == "excel":
-        buffer = generate_excel_report(comparison_df, segment_df, recommended_kpis)
+        buffer = generate_excel_report(comparison_df, recommended_kpis)
         return Response(content=buffer.getvalue(), media_type=EXCEL_MEDIA_TYPE)
     raise HTTPException(status_code=404, detail="Unknown report format.")
