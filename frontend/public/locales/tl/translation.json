@@ -185,5 +185,6 @@
   "simulation.wq_mean": "Mean Wq",
   "compare.source_scenario": "Mula sa scenario",
   "compare.select_scenarios": "Pumili ng mga scenario upang ihambing (hindi bababa sa 2)",
-  "compare.min_two": "Pumili ng hindi bababa sa dalawang scenario upang ipakita ang paghahambing."
+  "compare.min_two": "Pumili ng hindi bababa sa dalawang scenario upang ipakita ang paghahambing.",
+  "admin.confirm_deactivate": "I-deactivate ang user na ito? Ire-revoke ang kanilang mga session."
 }

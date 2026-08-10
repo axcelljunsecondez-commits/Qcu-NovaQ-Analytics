@@ -185,5 +185,6 @@
   "simulation.wq_mean": "Mean Wq",
   "compare.source_scenario": "Source scenario",
   "compare.select_scenarios": "Select scenarios to compare (minimum 2)",
-  "compare.min_two": "Select at least two scenarios to display the comparison."
+  "compare.min_two": "Select at least two scenarios to display the comparison.",
+  "admin.confirm_deactivate": "Deactivate this user? Their sessions will be revoked."
 }

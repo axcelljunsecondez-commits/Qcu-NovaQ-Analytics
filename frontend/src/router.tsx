@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
+import { RequireRole } from './auth/RequireRole'
 import { AppLayout } from './components/layout/AppLayout'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -11,6 +12,7 @@ import { SimulationPage } from './pages/SimulationPage'
 import { ComparisonPage } from './pages/ComparisonPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { AccountPage } from './pages/AccountPage'
+import { AdminPage } from './pages/AdminPage'
 
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
 function RootLayout() {
@@ -66,6 +68,11 @@ export const router = createBrowserRouter([
               {
                 path: '/account',
                 element: <AccountPage />,
+              },
+              {
+                path: '/admin',
+                element: <RequireRole role="admin" />,
+                children: [{ index: true, element: <AdminPage /> }],
               },
             ],
           },
