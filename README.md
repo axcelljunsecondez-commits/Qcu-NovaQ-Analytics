@@ -1,72 +1,68 @@
-# QCU Queueing Theory Dashboard
+# NovaMart Queueing Theory Dashboard
 
 [![CI](https://github.com/axcelljunsecondez-commits/qcu-queueing-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/axcelljunsecondez-commits/qcu-queueing-dashboard/actions/workflows/ci.yml)
 
-Streamlit dashboard for analyzing QCU service queues with M/M/1, M/M/c, M/G/c, M/M/c/K, and M/G/c/K queueing models. The app helps compare current staffing, optimized staffing, Monte Carlo simulation results, and cost trade-offs.
+Production queueing-analytics platform for analyzing service queues with M/M/1, M/M/c, M/G/c, M/M/c/K, M/G/c/K, and M/M/c+M (Erlang-A) models. A React SPA (served by nginx) talks to a FastAPI + Postgres backend that computes current metrics, optimized staffing, DES + Monte Carlo validation, scenario comparison, and PDF/Excel reports.
 
 ## Features
 
-- Upload CSV or Excel queue data.
-- Compute utilization, queue length, waiting time, and system time.
-- Support M/M/1, M/M/c, M/G/c, M/M/c/K, and M/G/c/K.
-- Recommend staffing changes based on utilization and cost.
-- Run simulation and comparison pages for scenario review.
-- Export tables for reporting.
+- Role-based web app (admin/analyst) with session authentication and CSRF protection.
+- Upload CSV or Excel queue data; store datasets and scenarios in Postgres.
+- Compute utilization, queue length, waiting time, and system time per segment.
+- Recommend staffing changes based on utilization and cost (server, wait, abandonment).
+- Validate optimized plans with discrete-event simulation (SimPy) and Monte Carlo (10K trials).
+- Compare scenarios and export PDF/Excel reports.
+- English and Filipino (tl) localization.
 
-## Quick Start
+## Architecture
 
-```bash
-pip install -r requirements.txt && streamlit run legacy_streamlit/streamlit_app.py
-```
+| Component | Tech | Endpoint |
+|---|---|---|
+| `web` | nginx serving the built React SPA, proxying `/api/` | http://localhost |
+| `api` | FastAPI + SQLAlchemy (Postgres), argon2 sessions | :8000 (via nginx) |
+| `db` | PostgreSQL 16 | :5432 |
+| `legacy` | Original Streamlit dashboard (kept for parity checks; not started by default) | :8501 |
 
-## Requirements
+## Quick Start (Docker)
 
-- Python 3.10 or newer recommended
-- Streamlit and the packages listed in `requirements.txt`
-
-## Installation
-
-From PowerShell:
+Requires Docker Desktop (or any Docker engine).
 
 ```powershell
-cd path\to\project
+docker compose up -d --build
+```
+
+Then open **http://localhost**. Default admin login (set via `.env`):
+
+```text
+email:    admin@example.com
+password: admin123   (override with ADMIN_PASSWORD in a .env file, e.g. ADMIN_PASSWORD=YourPass)
+```
+
+The API is reachable directly at `http://localhost:8000` and proxied through nginx at `http://localhost/api/*`.
+
+Stop the stack:
+
+```powershell
+docker compose down
+```
+
+## Frontend Development
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite dev server runs at **http://localhost:5173** and proxies `/api` to `http://localhost:8000` (with the API running via Docker or `uvicorn backend.api.main:app`).
+
+## Backend Development
+
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-```
-
-Or on Linux/macOS:
-
-```bash
-cd path/to/project
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-```
-
-If the virtual environment already exists, activate it and install/update dependencies:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-## Run The App
-
-```powershell
-streamlit run legacy_streamlit/streamlit_app.py
-```
-
-The dashboard opens at:
-
-```text
-http://localhost:8501
-```
-
-You can also use the included launcher:
-
-```powershell
-.\launch_dashboard.ps1
+uvicorn backend.api.main:app --reload --port 8000
 ```
 
 ## Input Data
@@ -86,6 +82,7 @@ Optional columns:
 | --- | --- |
 | `variance` | Service-time variance for M/G/c analysis |
 | `K` | Total system capacity for finite-capacity models |
+| `theta` | Abandonment rate for M/M/c+M (Erlang-A) |
 
 `K` means the maximum number of customers allowed in the whole system:
 
@@ -97,40 +94,24 @@ For example, if `c = 3` and `K = 10`, then 3 customers can be served and up to 7
 
 ## Model Selection
 
-The app chooses the model per row using these rules:
+The app chooses the model per row using these rules (single source of truth: `backend/queueing_engine/services/model_selection.py`):
 
-| Uploaded columns | Model |
+| Inputs | Model |
 | --- | --- |
-| `c = 1`, no `variance`, no `K` | M/M/1 |
-| `c > 1`, no `variance`, no `K` | M/M/c |
-| `variance` present, no `K` | M/G/c |
-| `K` present, no `variance` | M/M/c/K |
+| `theta > 0` | M/M/c+M (Erlang-A) |
 | `variance` and `K` present | M/G/c/K |
+| `K` present, no `variance` | M/M/c/K |
+| `variance` present, no `K` | M/G/c |
+| `c = 1`, no `variance`, no `K` | M/M/1 |
+| otherwise | M/M/c |
 
 For finite-capacity rows, `K` must be greater than or equal to `c`.
-
-Example CSV:
-
-```csv
-time,lambda,mu,c,variance,K
-08:00-09:00,30,12,3,,12
-09:00-10:00,45,12,4,,15
-10:00-11:00,50,12,4,0.006,15
-11:00-12:00,18,20,1,,
-```
-
-In this example:
-
-- First row uses M/M/c/K.
-- Second row uses M/M/c/K.
-- Third row uses M/G/c/K.
-- Fourth row uses M/M/1.
 
 ## Key Metrics
 
 - `rho`: server utilization
 - `Lq`: average queue length
-- `Wq`: average waiting time in queue
+- `Wq`: average waiting time in queue (minutes in reports/UI)
 - `L`: average number of customers in system
 - `W`: average time in system
 
@@ -144,10 +125,27 @@ Rows that violate the stability condition are marked unstable and should be adju
 
 ## Tests
 
-Run the test suite with coverage:
+Backend (matches CI invocation):
 
 ```powershell
-python -m pytest tests --cov=queue_models --cov=optimization --cov=simulation --cov=costing --cov-report=term-missing
+python -m pytest tests/ -x --tb=short
 ```
 
-Tests cover queue formulas, optimization logic, Monte Carlo simulation, and cost analysis.
+Lint and type checks:
+
+```powershell
+ruff check .
+mypy .
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Tests cover queue formulas, optimization logic, DES/Monte Carlo simulation, cost analysis, the API (auth, datasets, scenarios, reports, admin), and the React UI.
