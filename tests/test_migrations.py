@@ -48,17 +48,28 @@ def test_upgrade_head_is_idempotent(migrated_sqlite):
     assert set(EXPECTED_TABLES) <= tables
 
 
-def test_seed_user_creates_then_updates(tmp_path, monkeypatch):
+def test_seed_user_creates_then_is_idempotent(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{(tmp_path / 'seed.db').as_posix()}")
     monkeypatch.setattr(seed_module, "get_engine", lambda: engine)
     assert seed_module.seed_user("a@example.com", "secret", "admin") == "created"
-    assert seed_module.seed_user("a@example.com", "secret2", "admin") == "updated"
+    assert seed_module.seed_user("a@example.com", "secret2", "admin") == "exists"
     with engine.connect() as conn:
         row = conn.execute(select(User).where(User.email == "a@example.com")).mappings().one()
     assert row["role"] == "admin"
     assert row["active"] is True
-    assert row["password_hash"] != "secret2"
-    assert seed_module.verify_password("secret2", row["password_hash"]) is True
+    assert seed_module.verify_password("secret", row["password_hash"]) is True
+    assert seed_module.verify_password("secret2", row["password_hash"]) is False
+
+
+def test_seed_user_force_reset_changes_password(tmp_path, monkeypatch):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'seed-force.db').as_posix()}")
+    monkeypatch.setattr(seed_module, "get_engine", lambda: engine)
+    assert seed_module.seed_user("b@example.com", "oldpass", "admin") == "created"
+    assert seed_module.seed_user("b@example.com", "newpass", "admin", force=True) == "updated"
+    with engine.connect() as conn:
+        row = conn.execute(select(User).where(User.email == "b@example.com")).mappings().one()
+    assert seed_module.verify_password("newpass", row["password_hash"]) is True
+    assert seed_module.verify_password("oldpass", row["password_hash"]) is False
 
 
 def test_hash_password_roundtrip():
