@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, timezone
 
+from fastapi.testclient import TestClient
+
 from tests.helpers import (
     CSRF_COOKIE,
     SESSION_COOKIE,
     add_session_row,
+    clear_cookies,
     create_user,
     csrf_header,
     login,
@@ -138,3 +141,55 @@ def test_request_id_echoed(client):
 def test_request_id_generated_when_absent(client):
     response = client.get("/health")
     assert response.headers.get("X-Request-ID") is not None
+
+
+def test_change_password_success(db_engine, client):
+    create_user(db_engine, "pw@example.com", "oldpass")
+    assert login(client, "pw@example.com", "oldpass") == 200
+
+    response = client.post(
+        "/account/password",
+        headers=csrf_header(client),
+        json={"current_password": "oldpass", "new_password": "newpass"},
+    )
+    assert response.status_code == 200
+
+    assert client.get("/auth/me").status_code == 200
+    clear_cookies(client)
+    assert login(client, "pw@example.com", "oldpass") == 401
+    assert login(client, "pw@example.com", "newpass") == 200
+
+
+def test_change_password_wrong_current_401(db_engine, client):
+    create_user(db_engine, "wrong@example.com", "realpass")
+    assert login(client, "wrong@example.com", "realpass") == 200
+
+    response = client.post(
+        "/account/password",
+        headers=csrf_header(client),
+        json={"current_password": "nope", "new_password": "newpass"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Current password is incorrect."
+
+    clear_cookies(client)
+    assert login(client, "wrong@example.com", "realpass") == 200
+
+
+def test_change_password_revokes_other_sessions_but_not_current(db_engine, app, client):
+    create_user(db_engine, "two@example.com", "pass1")
+    assert login(client, "two@example.com", "pass1") == 200
+
+    other = TestClient(app)
+    assert login(other, "two@example.com", "pass1") == 200
+    assert other.get("/auth/me").status_code == 200
+
+    response = client.post(
+        "/account/password",
+        headers=csrf_header(client),
+        json={"current_password": "pass1", "new_password": "pass2"},
+    )
+    assert response.status_code == 200
+
+    assert client.get("/auth/me").status_code == 200
+    assert other.get("/auth/me").status_code == 401

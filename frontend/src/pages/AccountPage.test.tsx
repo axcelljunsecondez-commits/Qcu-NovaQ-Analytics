@@ -6,6 +6,7 @@ import { renderWithProviders } from '../test/test-utils'
 import { AccountPage } from './AccountPage'
 
 const logoutMock = vi.fn()
+const changePasswordMock = vi.fn()
 
 vi.mock('../api/auth', () => ({
   me: vi.fn(async () => ({
@@ -13,11 +14,14 @@ vi.mock('../api/auth', () => ({
   })),
   login: vi.fn(async () => ({})),
   logout: (...args: unknown[]) => logoutMock(...args),
+  changePassword: (...args: unknown[]) => changePasswordMock(...args),
 }))
 
 beforeEach(() => {
   logoutMock.mockReset()
   logoutMock.mockResolvedValue(undefined)
+  changePasswordMock.mockReset()
+  changePasswordMock.mockResolvedValue({})
 })
 
 describe('AccountPage', () => {
@@ -44,5 +48,65 @@ describe('AccountPage', () => {
     await user.click(screen.getByRole('button', { name: 'Logout' }))
     expect(logoutMock).toHaveBeenCalled()
     expect(await screen.findByText('login-page-marker')).toBeInTheDocument()
+  })
+
+  it('renders the password change form', async () => {
+    renderWithProviders(<AccountPage />, { route: '/account' })
+    await screen.findByText('a@b.c')
+    expect(screen.getByLabelText('Current password')).toBeInTheDocument()
+    expect(screen.getByLabelText('New password')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirm new password')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Change password' })).toBeInTheDocument()
+  })
+
+  it('blocks submit when the confirmation does not match', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<AccountPage />, { route: '/account' })
+    await screen.findByText('a@b.c')
+    await user.type(screen.getByLabelText('Current password'), 'old')
+    await user.type(screen.getByLabelText('New password'), 'new1')
+    await user.type(screen.getByLabelText('Confirm new password'), 'new2')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(await screen.findByText('Passwords do not match')).toBeInTheDocument()
+    expect(changePasswordMock).not.toHaveBeenCalled()
+  })
+
+  it('calls the API, shows success, and does not log out the current session', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<AccountPage />, { route: '/account' })
+    await screen.findByText('a@b.c')
+    await user.type(screen.getByLabelText('Current password'), 'old')
+    await user.type(screen.getByLabelText('New password'), 'new1')
+    await user.type(screen.getByLabelText('Confirm new password'), 'new1')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(await screen.findByText('Password changed')).toBeInTheDocument()
+    expect(changePasswordMock).toHaveBeenCalledWith('old', 'new1')
+    expect(logoutMock).not.toHaveBeenCalled()
+    expect(screen.getByText('a@b.c')).toBeInTheDocument()
+  })
+
+  it('shows a distinct message for a wrong current password', async () => {
+    const user = userEvent.setup()
+    changePasswordMock.mockRejectedValue({ response: { status: 401 } })
+    renderWithProviders(<AccountPage />, { route: '/account' })
+    await screen.findByText('a@b.c')
+    await user.type(screen.getByLabelText('Current password'), 'wrong')
+    await user.type(screen.getByLabelText('New password'), 'new1')
+    await user.type(screen.getByLabelText('Confirm new password'), 'new1')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(await screen.findByText('Current password is incorrect')).toBeInTheDocument()
+    expect(logoutMock).not.toHaveBeenCalled()
+  })
+
+  it('shows a generic message for other failures', async () => {
+    const user = userEvent.setup()
+    changePasswordMock.mockRejectedValue({ response: { status: 500 } })
+    renderWithProviders(<AccountPage />, { route: '/account' })
+    await screen.findByText('a@b.c')
+    await user.type(screen.getByLabelText('Current password'), 'old')
+    await user.type(screen.getByLabelText('New password'), 'new1')
+    await user.type(screen.getByLabelText('Confirm new password'), 'new1')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(await screen.findByText('Could not change password')).toBeInTheDocument()
   })
 })

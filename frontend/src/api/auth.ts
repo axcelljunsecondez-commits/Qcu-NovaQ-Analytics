@@ -15,3 +15,14 @@ export const logout = async (): Promise<unknown> => {
   const res = await http.post('/auth/logout')
   return res.data
 }
+
+export const changePassword = async (
+  currentPassword: string,
+  newPassword: string,
+): Promise<unknown> => {
+  const res = await http.post('/account/password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+  return res.data
+}

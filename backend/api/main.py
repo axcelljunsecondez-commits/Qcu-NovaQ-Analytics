@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api import auth
+from backend.api.account import router as account_router
 from backend.api.analysis import router as analysis_router
 from backend.api.datasets import router as datasets_router
 from backend.api.deps import get_current_user
@@ -238,6 +239,7 @@ def create_app(
         return {"user": UserOut.model_validate(user)}
 
     app.include_router(users_router)
+    app.include_router(account_router)
     app.include_router(datasets_router)
     app.include_router(analysis_router)
     app.include_router(optimization_router)
