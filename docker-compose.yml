@@ -33,7 +33,8 @@ services:
 
   web:
     build:
-      context: nginx
+      context: .
+      dockerfile: frontend/Dockerfile
     depends_on:
       - api
     ports:
