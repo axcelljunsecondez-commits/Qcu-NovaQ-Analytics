@@ -119,3 +119,64 @@ export interface UpdateUserRequest {
   role?: Role
   active?: boolean
 }
+
+export interface SimDesOut {
+  time: string
+  lambda: number
+  mu: number
+  c: number
+  rho_sim: number | null
+  Lq_sim: number | null
+  Wq_sim: number | null
+  max_queue: number
+  served: number
+  dropped: number
+  status: string
+  error: string | null
+  warmup_fraction?: number
+  warmup_end?: number
+  initial_queue_depth?: number
+  final_Lq?: number
+}
+
+export interface SimMcOut {
+  time: string
+  lambda: number
+  mu: number
+  c: number
+  rho_mean: number
+  rho_std: number
+  rho_p95: number
+  Lq_mean: number
+  Wq_mean: number
+  failure_rate: number
+  failure_count: number
+  status: string
+  error: string | null
+  ci_Wq_hw: number
+  ci_Lq_hw: number
+  adequate_samples: boolean
+}
+
+export interface SimValidateOut {
+  time: string
+  lambda: number
+  mu: number
+  c: number
+  c_optimal: number
+  rho_current: number
+  rho_optimal: number
+  Lq_current: number
+  Lq_optimal: number
+  Wq_current: number
+  Wq_optimal: number
+  sim_rho: number
+  sim_Wq: number
+  sim_max_queue: number
+  sim_status: string
+  mc_failure_rate: number
+  mc_adequate: boolean
+  mc_rho_mean: number
+  mc_rho_p95: number
+  mc_Wq_ci: string
+}

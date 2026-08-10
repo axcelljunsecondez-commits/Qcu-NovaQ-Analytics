@@ -1,0 +1,54 @@
+import { http } from '../lib/http'
+import type { SegmentInput, SimDesOut, SimMcOut, SimValidateOut } from './types'
+
+export interface DesOptions {
+  sim_hours?: number
+  queue_overload_threshold?: number
+  seed?: number | null
+  carryover?: boolean
+}
+
+export interface McOptions {
+  num_trials?: number
+  failure_threshold?: number
+  seed?: number | null
+}
+
+export interface ValidateOptions {
+  mc_trials?: number
+  mc_failure_threshold?: number
+  seed?: number
+}
+
+export async function simulateDes(
+  segments: SegmentInput[],
+  options: DesOptions = {},
+): Promise<{ results: SimDesOut[] }> {
+  const { data } = await http.post<{ results: SimDesOut[] }>('/simulation/des', {
+    segments,
+    ...options,
+  })
+  return data
+}
+
+export async function simulateMc(
+  segments: SegmentInput[],
+  options: McOptions = {},
+): Promise<{ results: SimMcOut[] }> {
+  const { data } = await http.post<{ results: SimMcOut[] }>('/simulation/mc', {
+    segments,
+    ...options,
+  })
+  return data
+}
+
+export async function validateSimulation(
+  segments: Record<string, unknown>[],
+  options: ValidateOptions = {},
+): Promise<{ results: SimValidateOut[] }> {
+  const { data } = await http.post<{ results: SimValidateOut[] }>('/simulation/validate', {
+    segments,
+    ...options,
+  })
+  return data
+}

@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { DatasetsPage } from './pages/DatasetsPage'
 import { AnalysisPage } from './pages/AnalysisPage'
 import { OptimizePage } from './pages/OptimizePage'
+import { SimulationPage } from './pages/SimulationPage'
 
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
 function RootLayout() {
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
               {
                 path: '/optimize',
                 element: <OptimizePage />,
+              },
+              {
+                path: '/simulate',
+                element: <SimulationPage />,
               },
             ],
           },

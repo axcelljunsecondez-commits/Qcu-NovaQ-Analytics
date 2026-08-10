@@ -169,5 +169,18 @@
   "optimize.lambda_multiplier": "λ multiplier",
   "optimize.recommendation": "Recommendation",
   "optimize.segment": "Segment",
-  "optimize.staffing_table": "Staffing plan"
+  "optimize.staffing_table": "Staffing plan",
+  "simulation.run_des": "Run DES Simulation",
+  "simulation.run_mc": "Run Monte Carlo",
+  "simulation.validate_run": "Validate plan",
+  "simulation.stable": "Stable segments",
+  "simulation.critical": "Critical segments",
+  "simulation.served": "Served",
+  "simulation.dropped": "Dropped",
+  "simulation.status": "Status",
+  "simulation.download_csv": "Download CSV",
+  "simulation.rho_mean": "Mean ρ",
+  "simulation.rho_p95_label": "ρ p95",
+  "simulation.lq_mean": "Mean Lq",
+  "simulation.wq_mean": "Mean Wq"
 }

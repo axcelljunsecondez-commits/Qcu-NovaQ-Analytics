@@ -169,5 +169,18 @@
   "optimize.lambda_multiplier": "λ multiplier",
   "optimize.recommendation": "Rekomendasyon",
   "optimize.segment": "Segment",
-  "optimize.staffing_table": "Plano ng staffing"
+  "optimize.staffing_table": "Plano ng staffing",
+  "simulation.run_des": "Patakbuhin ang DES Simulation",
+  "simulation.run_mc": "Patakbuhin ang Monte Carlo",
+  "simulation.validate_run": "I-validate ang plano",
+  "simulation.stable": "Matatag na segment",
+  "simulation.critical": "Kritikal na segment",
+  "simulation.served": "Naserbihan",
+  "simulation.dropped": "Na-drop",
+  "simulation.status": "Katayuan",
+  "simulation.download_csv": "I-download ang CSV",
+  "simulation.rho_mean": "Mean ρ",
+  "simulation.rho_p95_label": "ρ p95",
+  "simulation.lq_mean": "Mean Lq",
+  "simulation.wq_mean": "Mean Wq"
 }
