@@ -28,6 +28,7 @@ class McRequest(BaseModel):
     segments: list[dict]
     num_trials: int = Field(default=2000, ge=1, le=100000)
     failure_threshold: float = Field(default=0.75, gt=0, le=1)
+    failure_rate_cap: float = Field(default=0.10, gt=0, le=1)
     seed: int | None = Field(default=42)
 
 
@@ -63,6 +64,7 @@ def mc(
         num_trials=payload.num_trials,
         failure_threshold=payload.failure_threshold,
         seed=payload.seed,
+        failure_rate_cap=payload.failure_rate_cap,
     )
     return {"results": results}
 

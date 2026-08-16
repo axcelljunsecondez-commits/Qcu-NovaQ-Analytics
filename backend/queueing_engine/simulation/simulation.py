@@ -610,6 +610,7 @@ def mc_simulate_segment(
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
+    failure_rate_cap: float = 0.10,
 ) -> dict[str, Any]:
     """
     Run Monte Carlo simulation for one time segment.
@@ -731,7 +732,7 @@ def mc_simulate_segment(
         "Wq_mean": round(float(np.mean(wq_samples[finite_wq])), 6) if finite_wq.any() else None,
         "failure_rate": round(failure_rate, 4),
         "failure_count": int(failures),
-        "status": "PASS" if failure_rate <= 0.10 else "FAIL",
+        "status": "PASS" if failure_rate <= failure_rate_cap else "FAIL",
         "error": None,
         "ci_Wq_hw": ci_Wq_hw,
         "ci_Lq_hw": ci_Lq_hw,
@@ -749,6 +750,7 @@ def mc_simulate_segments(
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
+    failure_rate_cap: float = 0.10,
 ) -> list[dict[str, Any]]:
     """
     Run Monte Carlo simulation across a sequence of time segments.
@@ -761,7 +763,9 @@ def mc_simulate_segments(
     results = []
     for i, seg in enumerate(time_segments):
         seg_seed = (seed + i) if seed is not None else None
-        results.append(mc_simulate_segment(seg, num_trials, failure_threshold, seg_seed))
+        results.append(
+            mc_simulate_segment(seg, num_trials, failure_threshold, seg_seed, failure_rate_cap)
+        )
     return results
 
 

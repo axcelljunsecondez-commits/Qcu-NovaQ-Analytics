@@ -139,6 +139,7 @@ export function SimulationPage() {
   const [mcTrials, setMcTrials] = useState('2000')
   const [mcThreshold, setMcThreshold] = useState('0.75')
   const [mcSeed, setMcSeed] = useState('')
+  const [failureCap, setFailureCap] = useState('0.05')
   const [mcRows, setMcRows] = useState<SimMcOut[] | null>(null)
   const [mcDirty, setMcDirty] = useState(false)
 
@@ -213,12 +214,18 @@ export function SimulationPage() {
       setError(t('simulation.threshold_range_error'))
       return
     }
+    const cap = Number(failureCap)
+    if (!Number.isFinite(cap) || cap <= 0 || cap > 1) {
+      setError(t('simulation.cap_range_error'))
+      return
+    }
     setError(null)
     setRunning(true)
     try {
       const out = await simulateMc(segments, {
         num_trials: trials,
         failure_threshold: threshold,
+        failure_rate_cap: cap,
         seed: parseSeed(mcSeed),
       })
       setMcRows(out.results)
@@ -260,6 +267,11 @@ export function SimulationPage() {
       setError(t('simulation.rate_range_error'))
       return
     }
+    const cap = Number(failureCap)
+    if (!Number.isFinite(cap) || cap <= 0 || cap > 1) {
+      setError(t('simulation.cap_range_error'))
+      return
+    }
     setError(null)
     setRunning(true)
     try {
@@ -275,6 +287,7 @@ export function SimulationPage() {
       const out = await validateSimulation(comparisonRows as unknown as Record<string, unknown>[], {
         mc_trials: trials,
         mc_failure_threshold: threshold,
+        mc_failure_rate_cap: cap,
         seed: parseSeed(vSeed),
       })
       setValidateRows(out.results)
@@ -296,7 +309,7 @@ export function SimulationPage() {
   const rowPasses = (r: SimValidateOut) =>
     r.sim_status !== 'Critical' &&
     r.sim_status !== 'Unstable' &&
-    (r.mc_failure_rate ?? 0) <= 0.05
+    (r.mc_failure_rate ?? 0) <= Number(failureCap)
   const allPassed = validateRows !== null && validateRows.length > 0 && validateRows.every(rowPasses)
   const failedRows = validateRows?.filter((r) => !rowPasses(r)) ?? []
   const unstableCount = failedRows.filter(
@@ -489,6 +502,21 @@ export function SimulationPage() {
                 />
               </div>
               <div className="form-field">
+                <label htmlFor="mc-failure-cap">{t('simulation.failure_rate_cap')}</label>
+                <input
+                  id="mc-failure-cap"
+                  aria-label={t('simulation.failure_rate_cap')}
+                  type="number"
+                  step="any"
+                  value={failureCap}
+                  onChange={(e) => {
+                    setFailureCap(e.target.value)
+                    setMcRows(null)
+                    setMcDirty(true)
+                  }}
+                />
+              </div>
+              <div className="form-field">
                 <label htmlFor="mc-seed">{t('simulation.seed')}</label>
                 <input
                   id="mc-seed"
@@ -607,6 +635,21 @@ export function SimulationPage() {
                 />
               </div>
               <div className="form-field">
+                <label htmlFor="v-failure-cap">{t('simulation.failure_rate_cap')}</label>
+                <input
+                  id="v-failure-cap"
+                  aria-label={t('simulation.failure_rate_cap')}
+                  type="number"
+                  step="any"
+                  value={failureCap}
+                  onChange={(e) => {
+                    setFailureCap(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
+                />
+              </div>
+              <div className="form-field">
                 <label htmlFor="v-seed">{t('simulation.seed')}</label>
                 <input
                   id="v-seed"
@@ -704,6 +747,7 @@ export function SimulationPage() {
                         total: String(validateRows.length),
                         unstable: String(unstableCount),
                         high: String(highFailureCount),
+                        cap: String(Math.round(Number(failureCap) * 100)),
                       })}
                 </p>
               )}

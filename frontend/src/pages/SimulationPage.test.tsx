@@ -201,6 +201,7 @@ describe('SimulationPage', () => {
       expect(simulateMcMock).toHaveBeenCalledWith(segments, {
         num_trials: 2000,
         failure_threshold: 0.75,
+        failure_rate_cap: 0.05,
         seed: null,
       })
     })
@@ -259,6 +260,51 @@ describe('SimulationPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('applies the editable failure-rate cap to MC runs', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    await user.clear(screen.getByLabelText('Failure rate cap'))
+    await user.type(screen.getByLabelText('Failure rate cap'), '0.08')
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await waitFor(() => {
+      expect(simulateMcMock).toHaveBeenCalledWith(
+        segments,
+        expect.objectContaining({ failure_rate_cap: 0.08 }),
+      )
+    })
+  })
+
+  it('applies the editable failure-rate cap to validation verdicts', async () => {
+    const user = userEvent.setup()
+    validateSimulationMock.mockResolvedValue({
+      results: [{ ...validateRow, sim_status: 'Normal', mc_failure_rate: 0.06 }],
+    })
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.clear(screen.getByLabelText('Failure rate cap'))
+    await user.type(screen.getByLabelText('Failure rate cap'), '0.08')
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
+    expect(
+      validateSimulationMock,
+    ).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ mc_failure_rate_cap: 0.08 }))
+  })
+
+  it('blocks runs with an out-of-range failure-rate cap', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    await user.clear(screen.getByLabelText('Failure rate cap'))
+    await user.type(screen.getByLabelText('Failure rate cap'), '1.5')
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await screen.findByText('Failure rate cap must be between 0 and 1.')
+    expect(simulateMcMock).not.toHaveBeenCalled()
+  })
+
   it('renders failure-rate CI and precision badge in the MC table', async () => {
     const user = userEvent.setup()
     renderWithProviders(<SimulationPage />, { route: '/simulate' })
@@ -305,7 +351,7 @@ describe('SimulationPage', () => {
       )
       expect(validateSimulationMock).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ mc_trials: 10000, mc_failure_threshold: 0.75, seed: null }),
+        expect.objectContaining({ mc_trials: 10000, mc_failure_threshold: 0.75, mc_failure_rate_cap: 0.05, seed: null }),
       )
     })
     expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()

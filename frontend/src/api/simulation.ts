@@ -11,12 +11,14 @@ export interface DesOptions {
 export interface McOptions {
   num_trials?: number
   failure_threshold?: number
+  failure_rate_cap?: number
   seed?: number | null
 }
 
 export interface ValidateOptions {
   mc_trials?: number
   mc_failure_threshold?: number
+  mc_failure_rate_cap?: number
   seed?: number | null
 }
 

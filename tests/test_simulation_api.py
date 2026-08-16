@@ -156,6 +156,38 @@ def test_mc_accepts_100000_trials(db_engine, client):
     assert response.status_code == 200
 
 
+def test_mc_accepts_failure_rate_cap(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "failure_rate_cap": 0.99, "seed": 7},
+    )
+    assert response.status_code == 200
+    assert all(r["status"] == "PASS" for r in response.json()["results"])
+
+
+def test_mc_high_failure_rate_cap_marks_all_fail(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "failure_rate_cap": 0.001, "seed": 7},
+    )
+    assert response.status_code == 200
+    assert all(r["status"] == "FAIL" for r in response.json()["results"])
+
+
+def test_mc_rejects_out_of_range_failure_rate_cap(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/mc",
+        json={"segments": SEGMENTS, "failure_rate_cap": 1.5, "seed": 7},
+    )
+    assert response.status_code == 422
+
+
 def test_mc_rejects_100001_trials(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")
