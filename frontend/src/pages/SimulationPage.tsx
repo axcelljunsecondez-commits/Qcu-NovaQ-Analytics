@@ -256,6 +256,11 @@ export function SimulationPage() {
     r.sim_status !== 'Unstable' &&
     (r.mc_failure_rate ?? 0) <= 0.05
   const allPassed = validateRows !== null && validateRows.length > 0 && validateRows.every(rowPasses)
+  const failedRows = validateRows?.filter((r) => !rowPasses(r)) ?? []
+  const unstableCount = failedRows.filter(
+    (r) => r.sim_status === 'Critical' || r.sim_status === 'Unstable',
+  ).length
+  const highFailureCount = failedRows.length - unstableCount
 
   return (
     <div>
@@ -573,6 +578,18 @@ export function SimulationPage() {
               <div className={`alert ${allPassed ? 'alert-ok' : 'alert-error'}`}>
                 {allPassed ? t('simulation.passed') : t('simulation.failed')}
               </div>
+              {!allPassed && (
+                <p className="form-hint">
+                  {validateRows.length === 0
+                    ? t('simulation.failed_empty')
+                    : t('simulation.failed_detail', {
+                        failed: String(failedRows.length),
+                        total: String(validateRows.length),
+                        unstable: String(unstableCount),
+                        high: String(highFailureCount),
+                      })}
+                </p>
+              )}
               <div className="card">
                 <table>
                   <thead>

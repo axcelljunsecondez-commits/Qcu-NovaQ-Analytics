@@ -232,6 +232,31 @@ describe('SimulationPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Validate' }))
     await user.click(screen.getByRole('button', { name: 'Validate plan' }))
     expect(await screen.findByText('Simulation validation found issues.')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        '1 of 1 segments failed — 1 unstable, 0 above the 5% failure threshold.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('explains a failure caused by high failure rate', async () => {
+    const user = userEvent.setup()
+    validateSimulationMock.mockResolvedValue({
+      results: [
+        validateRow,
+        { ...validateRow, time: '09:00-10:00', sim_status: 'Normal', mc_failure_rate: 0.12 },
+      ],
+    })
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    expect(await screen.findByText('Simulation validation found issues.')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        '1 of 2 segments failed — 0 unstable, 1 above the 5% failure threshold.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('renders failure-rate CI and precision badge in the MC table', async () => {
