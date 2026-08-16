@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { listScenarios, type ScenarioOut } from '../api/scenarios'
 import type { OptimizationOut } from '../api/types'
-import { computeRadarScores } from '../lib/radar'
+import { computeRadarScores, DEFAULT_TARGET_UTILIZATION, type RadarRow } from '../lib/radar'
+import { computeRoi, clampHolidays } from '../lib/roi'
 import {
   RadarChart,
   UtilizationCompareBars,
@@ -30,6 +31,7 @@ export function ComparisonPage() {
   const [scenarioId, setScenarioId] = useState('')
   const [selectedNames, setSelectedNames] = useState<string[]>([])
   const [holidays, setHolidays] = useState(12)
+  const [closedSundays, setClosedSundays] = useState(true)
   const defaulted = useRef(false)
 
   useEffect(() => {
@@ -45,6 +47,16 @@ export function ComparisonPage() {
 
   const rows = useMemo(() => rowsOf(selected), [selected])
 
+  const radarRows = useMemo<RadarRow[]>(
+    () => rows.map((r) => ({ ...r, lambda: r.lambda_ })),
+    [rows],
+  )
+
+  const targetUtilization = useMemo(() => {
+    const raw = selected?.settings?.target_utilization
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : DEFAULT_TARGET_UTILIZATION
+  }, [selected])
+
   const compared = useMemo(
     () => scenarios.filter((s) => selectedNames.includes(s.name)),
     [scenarios, selectedNames],
@@ -52,9 +64,7 @@ export function ComparisonPage() {
 
   const currentTotal = rows.reduce((acc, r) => acc + (r.cost_current ?? 0), 0)
   const optimalTotal = rows.reduce((acc, r) => acc + (r.cost_optimal ?? 0), 0)
-  const dailySavings = currentTotal - optimalTotal
-  const thirtyDaySavings = dailySavings * 30
-  const annualSavings = dailySavings * (365 - holidays)
+  const roi = computeRoi({ currentTotal, optimalTotal, holidays, closedSundays })
   const fmtMoney = (n: number) =>
     '₱' + n.toLocaleString(undefined, { maximumFractionDigits: 0 })
 
@@ -101,8 +111,8 @@ export function ComparisonPage() {
         <>
           <div className="card">
             <RadarChart
-              current={computeRadarScores(rows, { current: true }).r}
-              optimized={computeRadarScores(rows, { current: false }).r}
+              current={computeRadarScores(radarRows, { current: true, targetRho: targetUtilization }).r}
+              optimized={computeRadarScores(radarRows, { current: false, targetRho: targetUtilization }).r}
             />
           </div>
           <div className="card-grid">
@@ -129,16 +139,26 @@ export function ComparisonPage() {
                   aria-label={t('compare.holidays')}
                   type="number"
                   min={0}
-                  max={30}
+                  max={365}
                   value={holidays}
-                  onChange={(e) => setHolidays(Number(e.target.value))}
+                  onChange={(e) => setHolidays(clampHolidays(Number(e.target.value)))}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="roi-sundays">{t('compare.sundays')}</label>
+                <input
+                  id="roi-sundays"
+                  type="checkbox"
+                  checked={closedSundays}
+                  onChange={(e) => setClosedSundays(e.target.checked)}
                 />
               </div>
             </div>
+            <p className="page-caption">{t('compare.roi_note')}</p>
             <div className="card-grid">
-              <MetricCard label={t('compare.daily_savings')} value={fmtMoney(dailySavings)} />
-              <MetricCard label={t('compare.thirty_day_savings')} value={fmtMoney(thirtyDaySavings)} />
-              <MetricCard label={t('compare.annual_savings')} value={fmtMoney(annualSavings)} />
+              <MetricCard label={t('compare.daily_savings')} value={fmtMoney(roi.dailySavings)} />
+              <MetricCard label={t('compare.monthly_savings')} value={fmtMoney(roi.monthlySavings)} />
+              <MetricCard label={t('compare.annual_savings')} value={fmtMoney(roi.annualSavings)} />
             </div>
           </div>
         </>

@@ -168,8 +168,10 @@
   "compare.select_scenarios": "Pumili ng mga scenario upang ihambing (hindi bababa sa 2)",
   "compare.min_two": "Pumili ng hindi bababa sa dalawang na-save na scenario upang ihambing ang mga ito sa isa't isa.",
   "compare.holidays": "Mga legal na holiday bawat taon",
+  "compare.sundays": "Sarado tuwing Linggo (walang trabaho, walang bayad)",
+  "compare.roi_note": "Ang mga ipon ay naipon lamang sa mga araw ng operasyon at sumasaklaw sa mga oras ng segment sa scenario na ito.",
   "compare.daily_savings": "Pang-araw-araw na Ipon",
-  "compare.thirty_day_savings": "Ipon sa 30 Araw",
+  "compare.monthly_savings": "Buwanang Ipon",
   "compare.annual_savings": "Taunang Ipon",
   "admin.confirm_deactivate": "I-deactivate ang user na ito? Ire-revoke ang kanilang mga session.",
   "admin.confirm_activate": "I-activate ang user na ito?"

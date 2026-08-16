@@ -9,10 +9,12 @@ export interface RadarRow {
   rho_optimal: number | null
   c_current: number
   c_optimal: number
-  mc_failure_rate?: number | null
+  lambda?: number | null
 }
 
-function sum(values: Array<number | null>): number {
+export const DEFAULT_TARGET_UTILIZATION = 0.7
+
+function sum(values: Array<number | null | undefined>): number {
   return values.reduce<number>((acc, v) => acc + (v ?? 0), 0)
 }
 
@@ -22,21 +24,38 @@ function mean(values: Array<number | null | undefined>): number {
   return present.reduce((acc, v) => acc + v, 0) / present.length
 }
 
+function weightedMean(
+  values: Array<number | null | undefined>,
+  weights: Array<number | null | undefined>,
+): number | null {
+  let numerator = 0
+  let denominator = 0
+  values.forEach((v, i) => {
+    const w = weights[i]
+    if (v !== null && v !== undefined && !Number.isNaN(v) && w !== null && w !== undefined && Number.isFinite(w) && w > 0) {
+      numerator += v * w
+      denominator += w
+    }
+  })
+  return denominator > 0 ? numerator / denominator : null
+}
+
 function clamp(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value * 100) / 100))
 }
 
 export function computeRadarScores(
   rows: RadarRow[],
-  { current }: { current: boolean },
+  { current, targetRho = DEFAULT_TARGET_UTILIZATION }: { current: boolean; targetRho?: number },
 ): { r: number[]; theta: string[] } {
   const totalCostCurrent = sum(rows.map((r) => r.cost_current))
   const totalCostOptimized = sum(rows.map((r) => r.cost_optimal))
   const costMax = Math.max(totalCostCurrent, totalCostOptimized) || 1
 
-  const wqCurrent = mean(rows.map((r) => r.Wq_current))
-  const wqOptimized = mean(rows.map((r) => r.Wq_optimal))
-  const wqMax = Math.max(wqCurrent, wqOptimized) || 1
+  const lambdas = rows.map((r) => r.lambda)
+  const wqCurrent = weightedMean(rows.map((r) => r.Wq_current), lambdas)
+  const wqOptimized = weightedMean(rows.map((r) => r.Wq_optimal), lambdas)
+  const wqMax = Math.max(wqCurrent ?? 0, wqOptimized ?? 0) || 1
 
   const rhoCurrent = mean(rows.map((r) => r.rho_current))
   const rhoOptimized = mean(rows.map((r) => r.rho_optimal))
@@ -45,17 +64,20 @@ export function computeRadarScores(
   const serversOptimized = sum(rows.map((r) => r.c_optimal))
   const serversMax = Math.max(serversCurrent, serversOptimized) || 1
 
+  const waitScore = (wq: number | null) => (wq === null ? 50 : clamp(100 * (1 - wq / wqMax)))
+  const utilScore = (rho: number) => clamp(Math.max(0, 100 * (1 - Math.abs(targetRho - rho))))
+
   const r = current
     ? [
         clamp(100 * (1 - totalCostCurrent / costMax)),
-        clamp(100 * (1 - wqCurrent / wqMax)),
-        clamp(Math.max(0, 100 * (1 - Math.abs(0.85 - rhoCurrent)))),
+        waitScore(wqCurrent),
+        utilScore(rhoCurrent),
         clamp(100 * (1 - serversCurrent / serversMax)),
       ]
     : [
         clamp(100 * (1 - totalCostOptimized / costMax)),
-        clamp(100 * (1 - wqOptimized / wqMax)),
-        clamp(Math.max(0, 100 * (1 - Math.abs(0.85 - rhoOptimized)))),
+        waitScore(wqOptimized),
+        utilScore(rhoOptimized),
         clamp(100 * (1 - serversOptimized / serversMax)),
       ]
   return { r, theta: RADAR_THETA }

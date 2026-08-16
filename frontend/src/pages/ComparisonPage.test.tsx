@@ -123,17 +123,19 @@ describe('ComparisonPage', () => {
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
     expect(await screen.findByText('ROI Projection')).toBeInTheDocument()
     expect(await screen.findByText('₱300')).toBeInTheDocument()
-    expect(screen.getByText('₱9,000')).toBeInTheDocument()
-    expect(screen.getByText('₱105,900')).toBeInTheDocument()
+    expect(screen.getByText('₱7,525')).toBeInTheDocument()
+    expect(screen.getByText('₱90,300')).toBeInTheDocument()
   })
 
-  it('recomputes annual savings from the holiday count', async () => {
+  it('recomputes annual savings from the holiday count and Sunday closure', async () => {
     const user = userEvent.setup()
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
     await screen.findByText('ROI Projection')
     const input = screen.getByLabelText('Legal holidays per year')
     await user.clear(input)
     await user.type(input, '20')
+    expect(screen.getByText('₱87,900')).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Closed on Sundays (no work, no pay)' }))
     expect(screen.getByText('₱103,500')).toBeInTheDocument()
   })
 
