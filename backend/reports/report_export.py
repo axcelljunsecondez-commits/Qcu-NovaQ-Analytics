@@ -54,9 +54,9 @@ def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[st
     if recommended_kpis:
         savings = recommended_kpis.get("total_savings")
         if savings is not None:
-            bullets.append(f"• Estimated weekly savings: ₱{savings:,.0f}")
+            bullets.append(f"• Estimated daily savings: ₱{savings:,.0f}")
         else:
-            bullets.append("• Estimated weekly savings: N/A")
+            bullets.append("• Estimated daily savings: N/A")
 
     rho_current = current_kpis.get("avg_utilization")
     rho_opt = recommended_kpis.get("avg_utilization_optimized")
@@ -74,7 +74,6 @@ def generate_pdf_report(
     recommended_kpis: dict,
     comparison_df: pd.DataFrame,
     recommendations: list[str] | None = None,
-    segment_df: pd.DataFrame | None = None,
 ) -> io.BytesIO:
     """Generate a multi-page PDF report.
 
@@ -88,9 +87,6 @@ def generate_pdf_report(
         Segment-by-segment comparison rows (Page 4).
     recommendations : list of str, optional
         Recommendation messages from ``build_recommendations()``.
-    segment_df : pd.DataFrame, optional
-        Accepted for compatibility with the legacy comparison page's call
-        pattern; not used in report content (retained as a dead parameter).
 
     Returns
     -------
@@ -213,7 +209,7 @@ def generate_pdf_report(
         for rec in recommendations:
             elements.append(Paragraph(f"• {rec}", bullet_style))
     else:
-        elements.append(Paragraph("No specific recommendations available.", bullet_style))
+        elements.append(Paragraph("Run an optimization and save it as a scenario to get staffing recommendations.", bullet_style))
 
     doc.build(elements)
     buf.seek(0)
@@ -228,7 +224,6 @@ def generate_pdf_report(
 def generate_excel_report(
     comparison_df: pd.DataFrame,
     recommended_kpis: dict | None = None,
-    segment_df: pd.DataFrame | None = None,
     current_kpis: dict | None = None,
 ) -> io.BytesIO:
     """Generate a two-sheet Excel workbook.
@@ -239,9 +234,6 @@ def generate_excel_report(
         Segment-by-segment comparison (Page 4).
     recommended_kpis : dict, optional
         KPIs for the Summary sheet.
-    segment_df : pd.DataFrame, optional
-        Accepted for compatibility with the legacy comparison page's call
-        pattern; not used in report content (retained as a dead parameter).
     current_kpis : dict, optional
         Current-metric KPIs (``compute_kpis`` output); used for the Summary
         sheet when no optimization KPIs exist (dataset reports).

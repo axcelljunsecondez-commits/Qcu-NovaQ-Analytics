@@ -1,4 +1,4 @@
-"""Unit tests for backend.reports.report_export (legacy call-pattern compatibility)."""
+"""Unit tests for backend.reports.report_export."""
 
 from __future__ import annotations
 
@@ -48,30 +48,6 @@ def _kpis() -> dict:
     }
 
 
-def test_pdf_report_accepts_legacy_segment_df_keyword() -> None:
-    """The legacy comparison page calls with segment_df= — must not raise TypeError."""
-    buf = generate_pdf_report(
-        current_kpis=_kpis(),
-        recommended_kpis=_kpis(),
-        comparison_df=_comparison_df(),
-        segment_df=_comparison_df(),
-        recommendations=["Increase staffing to 3 servers."],
-    )
-    assert isinstance(buf, io.BytesIO)
-    assert buf.getvalue().startswith(b"%PDF")
-
-
-def test_excel_report_accepts_legacy_segment_df_keyword() -> None:
-    """The legacy comparison page calls with segment_df= — must not raise TypeError."""
-    buf = generate_excel_report(
-        comparison_df=_comparison_df(),
-        segment_df=_comparison_df(),
-        recommended_kpis=_kpis(),
-    )
-    assert isinstance(buf, io.BytesIO)
-    assert buf.getvalue().startswith(b"PK\x03\x04")
-
-
 def test_pdf_report_api_positional_call_without_segment_df() -> None:
     """The active API route passes arguments positionally and never segment_df."""
     buf = generate_pdf_report(_kpis(), _kpis(), _comparison_df(), ["Add a server."])
@@ -90,7 +66,7 @@ def test_exec_summary_bullets_full_pair() -> None:
     bullets = _exec_summary_bullets(_kpis(), _kpis())
     assert bullets == [
         "• Average customer wait: 9.0 min → 4.8 min (optimized)",
-        "• Estimated weekly savings: ₱12,000",
+        "• Estimated daily savings: ₱12,000",
         "• Utilization improvement: 65% → 43%",
     ]
 
