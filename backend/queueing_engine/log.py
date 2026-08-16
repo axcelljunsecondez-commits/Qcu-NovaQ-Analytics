@@ -51,7 +51,6 @@ def configure_logging(
     root.addHandler(handler)
 
     # Silence noisy third-party loggers
-    logging.getLogger("streamlit").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 

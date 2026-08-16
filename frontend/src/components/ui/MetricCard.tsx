@@ -15,12 +15,3 @@ export function MetricCard({
     </div>
   )
 }
-
-export function ProgressBar({ value }: { value: number }) {
-  const pct = Math.min(100, Math.max(0, Math.round(value * 100)))
-  return (
-    <div className="progress-track" role="progressbar" aria-valuenow={pct}>
-      <div className="progress-fill" style={{ width: `${pct}%` }} />
-    </div>
-  )
-}

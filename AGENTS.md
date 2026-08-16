@@ -1,19 +1,18 @@
 # AGENTS.md — Agent Instructions
 
-Guidance for AI agents and developers working in this repository: the **NovaQ — Queueing Analytics** (production SaaS + legacy Streamlit + React frontend).
+Guidance for AI agents and developers working in this repository: the **NovaQ — Queueing Analytics** (production SaaS + React frontend).
 
 ## Repository Layout
 
 - `backend/` — Production FastAPI service (`backend/api/main.py`). Queueing engine under `backend/queueing_engine/` (models, services, simulation, statistics), DB layer under `backend/db/` (SQLAlchemy + Postgres), report generation under `backend/reports/`.
 - `frontend/` — React 19 + Vite SPA (React Router, TanStack Query, i18next, Plotly). Builds into `dist/`; production serving via nginx.
 - `nginx/` — `nginx.conf` serves the built SPA at `/` and proxies `/api/` → `api:8000` (strips the `/api` prefix).
-- `legacy_streamlit/` — Frozen Streamlit dashboard (4 pages). DO NOT change its logic; minimal dead-code cleanup only, and only when explicitly requested. It shares the frontend locale files via `frontend/public/locales/`.
 - `tests/` — pytest suite for backend + API + queueing engine.
 - `docs/superpowers/` — plans (`plans/`) and design specs (`specs/`) written before implementation.
 
 ## Running the Stack
 
-- `docker compose up -d --build` — Postgres (`db`), API (`api`, :8000), web (`web`, :80 — built SPA + API proxy), legacy Streamlit (`legacy`, :8501).
+- `docker compose up -d --build` — Postgres (`db`), API (`api`, :8000), web (`web`, :80 — built SPA + API proxy).
 - Frontend dev: `npm run dev` in `frontend/` (Vite :5173, proxies `/api` → `localhost:8000` stripping the prefix).
 - Default admin seed: `admin@example.com` / `admin123` (compose default; override via `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`). Seeding is **create-only**: an existing user is never modified. To change an existing admin's password/role, run `docker compose exec api python -m backend.db.seed --email <email> --password <newpass> --force-reset`.
 

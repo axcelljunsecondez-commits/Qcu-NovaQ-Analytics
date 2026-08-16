@@ -1,7 +1,7 @@
 """Test-session bootstrap + shared fixtures.
 
-Bootstrap makes the repository root (for ``backend.*`` packages) and the
-legacy Streamlit app directory importable regardless of how pytest is invoked.
+Bootstrap makes the repository root importable (for ``backend.*`` packages)
+regardless of how pytest is invoked.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from tests.helpers import make_sessionmaker
 
 _ROOT = Path(__file__).resolve().parent.parent
 
-for _path in (str(_ROOT), str(_ROOT / "legacy_streamlit")):
+for _path in (str(_ROOT),):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 

@@ -21,7 +21,6 @@ Production queueing-analytics platform for analyzing service queues with M/M/1, 
 | `web` | nginx serving the built React SPA, proxying `/api/` | http://localhost |
 | `api` | FastAPI + SQLAlchemy (Postgres), argon2 sessions | :8000 (via nginx) |
 | `db` | PostgreSQL 16 | :5432 |
-| `legacy` | Original Streamlit dashboard (kept for parity checks; not started by default) | :8501 |
 
 ## Quick Start (Docker)
 

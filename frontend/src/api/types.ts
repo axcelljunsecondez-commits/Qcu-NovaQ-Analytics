@@ -90,17 +90,6 @@ export interface DatasetOut {
   normalized: Record<string, unknown>[] | null
 }
 
-export interface ScenarioOut {
-  id: number
-  user_id: number
-  dataset_id: number | null
-  name: string
-  settings: Record<string, unknown>
-  results: Record<string, unknown>
-  created_at: string
-  updated_at: string
-}
-
 export interface AdminUserOut {
   id: number
   email: string
