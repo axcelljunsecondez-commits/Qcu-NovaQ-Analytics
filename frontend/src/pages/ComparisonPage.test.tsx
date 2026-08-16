@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { ComparisonPage } from './ComparisonPage'
 import type { OptimizationOut } from '../api/types'
@@ -99,6 +100,24 @@ describe('ComparisonPage', () => {
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
     )
+  })
+
+  it('shows the ROI projection from current vs optimized costs', async () => {
+    renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    expect(await screen.findByText('ROI Projection')).toBeInTheDocument()
+    expect(await screen.findByText('₱300')).toBeInTheDocument()
+    expect(screen.getByText('₱9,000')).toBeInTheDocument()
+    expect(screen.getByText('₱105,900')).toBeInTheDocument()
+  })
+
+  it('recomputes annual savings from the holiday count', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    await screen.findByText('ROI Projection')
+    const input = screen.getByLabelText('Legal holidays per year')
+    await user.clear(input)
+    await user.type(input, '20')
+    expect(screen.getByText('₱103,500')).toBeInTheDocument()
   })
 
   it('shows the empty state when no scenarios are saved', async () => {

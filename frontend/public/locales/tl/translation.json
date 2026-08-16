@@ -211,6 +211,10 @@
   "simulation.trials_range_error": "Ang trials ay dapat integer sa pagitan ng 1 at {{max}}.",
   "compare.source_scenario": "Mula sa scenario",
   "compare.select_scenarios": "Pumili ng mga scenario upang ihambing (hindi bababa sa 2)",
-  "compare.min_two": "Pumili ng hindi bababa sa dalawang scenario upang ipakita ang paghahambing.",
+  "compare.min_two": "Pumili ng hindi bababa sa dalawang na-save na scenario upang ihambing ang mga ito sa isa't isa.",
+  "compare.holidays": "Mga legal na holiday bawat taon",
+  "compare.daily_savings": "Pang-araw-araw na Ipon",
+  "compare.thirty_day_savings": "Ipon sa 30 Araw",
+  "compare.annual_savings": "Taunang Ipon",
   "admin.confirm_deactivate": "I-deactivate ang user na ito? Ire-revoke ang kanilang mga session."
 }
