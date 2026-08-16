@@ -399,6 +399,21 @@ button.btn-ghost {
   max-width: 16rem;
 }
 
+.checkbox-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.checkbox-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
 .plotly-wrap {
   margin-bottom: 1rem;
 }

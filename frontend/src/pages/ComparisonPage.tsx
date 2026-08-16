@@ -149,20 +149,24 @@ export function ComparisonPage() {
         <div className="form-row">
           <div className="form-field">
             <label htmlFor="compare-multi">{t('compare.select_scenarios')}</label>
-            <select
-              id="compare-multi"
-              multiple
-              size={Math.min(scenarios.length, 5)}
-              aria-label={t('compare.select_scenarios')}
-              value={selectedNames}
-              onChange={(e) => setSelectedNames(Array.from(e.target.selectedOptions).map((o) => o.value))}
-            >
+            <div id="compare-multi" className="checkbox-list" role="group" aria-label={t('compare.select_scenarios')}>
               {scenarios.map((s) => (
-                <option key={s.id} value={s.name}>
+                <label key={s.id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedNames.includes(s.name)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedNames((prev) => [...prev, s.name])
+                      } else {
+                        setSelectedNames((prev) => prev.filter((n) => n !== s.name))
+                      }
+                    }}
+                  />
                   {s.name}
-                </option>
+                </label>
               ))}
-            </select>
+            </div>
           </div>
         </div>
         {compared.length >= 2 ? (

@@ -79,8 +79,8 @@ beforeEach(() => {
 describe('ComparisonPage', () => {
   it('lists saved scenarios in the picker and loads the first one', async () => {
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
-    expect((await screen.findAllByRole('option', { name: 'Plan A' })).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('option', { name: 'Plan B' }).length).toBeGreaterThan(0)
+    expect((await screen.findAllByRole('checkbox', { name: 'Plan A' })).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('checkbox', { name: 'Plan B' }).length).toBeGreaterThan(0)
     expect(await screen.findByTestId('chart-radar')).toBeInTheDocument()
   })
 
@@ -97,6 +97,23 @@ describe('ComparisonPage', () => {
 
   it('compares two saved scenarios with the scenario bars chart', async () => {
     const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
+    )
+  })
+
+  it('shows the hint when fewer than two scenarios are checked', async () => {
+    const user = userEvent.setup()
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    await screen.findByTestId('chart-scenario-compare')
+    await user.click(screen.getByRole('checkbox', { name: 'Plan A' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Plan B' }))
+    expect(
+      await screen.findByText('Select at least two saved scenarios to compare them with each other.'),
+    ).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-scenario-compare"]')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Plan A' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Plan B' }))
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
     )
