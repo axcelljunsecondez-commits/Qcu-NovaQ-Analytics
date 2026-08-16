@@ -166,6 +166,8 @@
   "optimize.target_utilization": "Target utilization",
   "optimize.server_cost": "Server cost / hr",
   "optimize.waiting_cost": "Waiting cost / hr",
+  "optimize.abandonment_cost": "Abandonment cost / customer",
+  "optimize.abandonment_rate": "Abandonment rate",
   "optimize.max_servers": "Max servers",
   "optimize.run": "Optimize",
   "optimize.total_cost": "Total cost",

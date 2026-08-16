@@ -6,6 +6,8 @@ export interface OptimizeOptions {
   server_cost_per_hr?: number
   customer_waiting_cost?: number
   max_servers?: number
+  cost_per_abandonment?: number
+  abandonment_rate?: number
 }
 
 export interface OptimizeBatchResponse {

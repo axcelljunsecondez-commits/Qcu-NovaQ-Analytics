@@ -166,6 +166,8 @@
   "optimize.target_utilization": "Target na utilization",
   "optimize.server_cost": "Gastos ng server / oras",
   "optimize.waiting_cost": "Gastos sa paghihintay / oras",
+  "optimize.abandonment_cost": "Gastos sa pag-alis / customer",
+  "optimize.abandonment_rate": "Rate ng pag-alis",
   "optimize.max_servers": "Max na server",
   "optimize.run": "I-optimize",
   "optimize.total_cost": "Kabuuang gastos",

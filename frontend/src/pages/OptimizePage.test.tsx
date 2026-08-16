@@ -188,6 +188,24 @@ describe('OptimizePage', () => {
     })
   })
 
+  it('sends abandonment cost and rate to the optimizer and renders the abandonment column', async () => {
+    optimizeBatchMock.mockResolvedValue({
+      results: [{ ...row, abandonment_cost_current: 180, abandonment_cost_optimal: 90 }],
+    })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await waitFor(() => {
+      expect(optimizeBatchMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ cost_per_abandonment: 60, abandonment_rate: 0.1 }),
+      )
+    })
+    expect(await screen.findByText('180.00 → 90.00')).toBeInTheDocument()
+  })
+
   it('shows the warning banner when a row has a warning', async () => {
     optimizeBatchMock.mockResolvedValue({
       results: [{ ...row, warning: 'Segment unstable under current staffing.' }],

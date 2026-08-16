@@ -13,6 +13,8 @@ const DEFAULT_OPTIONS: OptimizeOptions = {
   server_cost_per_hr: 87,
   customer_waiting_cost: 100,
   max_servers: 24,
+  cost_per_abandonment: 60,
+  abandonment_rate: 0.1,
 }
 
 function fmt(value: number | null | undefined, digits = 2): string {
@@ -35,6 +37,7 @@ const COLUMNS: Column[] = [
   { label: 'c', current: (r) => String(r.c_current), optimized: (r) => String(r.c_optimal) },
   { label: 'Lq', current: (r) => fmt(r.Lq_current), optimized: (r) => fmt(r.Lq_optimal) },
   { label: 'Wq', current: (r) => fmt(r.Wq_current), optimized: (r) => fmt(r.Wq_optimal) },
+  { label: 'Abandon', current: (r) => fmt(r.abandonment_cost_current), optimized: (r) => fmt(r.abandonment_cost_optimal) },
   { label: 'cost', current: (r) => fmt(r.cost_current), optimized: (r) => fmt(r.cost_optimal) },
 ]
 
@@ -217,6 +220,30 @@ export function OptimizePage() {
               value={options.customer_waiting_cost ?? ''}
               onChange={(e) =>
                 setOptions((o) => ({ ...o, customer_waiting_cost: Number(e.target.value) }))
+              }
+            />
+          </div>
+          <div className="form-field">
+            <label htmlFor="opt-aband-cost">{t('optimize.abandonment_cost')}</label>
+            <input
+              id="opt-aband-cost"
+              type="number"
+              step="any"
+              value={options.cost_per_abandonment ?? ''}
+              onChange={(e) =>
+                setOptions((o) => ({ ...o, cost_per_abandonment: Number(e.target.value) }))
+              }
+            />
+          </div>
+          <div className="form-field">
+            <label htmlFor="opt-aband-rate">{t('optimize.abandonment_rate')}</label>
+            <input
+              id="opt-aband-rate"
+              type="number"
+              step="any"
+              value={options.abandonment_rate ?? ''}
+              onChange={(e) =>
+                setOptions((o) => ({ ...o, abandonment_rate: Number(e.target.value) }))
               }
             />
           </div>
