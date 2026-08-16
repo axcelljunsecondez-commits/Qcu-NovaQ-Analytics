@@ -4,12 +4,13 @@ import Plot from 'react-plotly.js'
 import type { OptimizationOut, SimDesOut, SimMcOut } from '../../api/types'
 import { RADAR_THETA } from '../../lib/radar'
 
-const MARGIN = { l: 40, r: 40, t: 50, b: 40 }
+const MARGIN = { l: 40, r: 40, t: 25, b: 40 }
 const LINE_WIDTH = 2
 
-function ChartFrame({ testId, children }: { testId: string; children: React.ReactNode }) {
+function ChartFrame({ testId, title, children }: { testId: string; title?: string; children: React.ReactNode }) {
   return (
     <div className="plotly-wrap" data-testid={testId}>
+      {title && <h4>{title}</h4>}
       {children}
     </div>
   )
@@ -38,7 +39,7 @@ export function UtilizationHeatmap({ rows }: { rows: SimDesOut[] }) {
     return { z, xs, cs }
   }, [rows])
   return (
-    <ChartFrame testId="chart-utilization-heatmap">
+    <ChartFrame testId="chart-utilization-heatmap" title={t('simulation.heatmap.title')}>
       <Plot
         data={[
           {
@@ -54,7 +55,7 @@ export function UtilizationHeatmap({ rows }: { rows: SimDesOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('simulation.heatmap.title'),
+          title: '',
           xaxis: { title: t('simulation.heatmap.x'), automargin: true, tickangle: -45 },
           yaxis: { title: 'Servers c', automargin: true },
           height: 300,
@@ -70,7 +71,7 @@ export function UtilizationHeatmap({ rows }: { rows: SimDesOut[] }) {
 export function RhoLqLines({ rows }: { rows: SimDesOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-rho-lq-lines">
+    <ChartFrame testId="chart-rho-lq-lines" title={t('simulation.rho_lq')}>
       <Plot
         data={[
           {
@@ -93,7 +94,7 @@ export function RhoLqLines({ rows }: { rows: SimDesOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('simulation.rho_lq'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'ρ sim', color: '#E8A838', automargin: true },
           yaxis2: { title: 'Lq sim', color: '#2E86AB', overlaying: 'y', side: 'right', automargin: true },
@@ -111,7 +112,7 @@ export function RhoLqLines({ rows }: { rows: SimDesOut[] }) {
 export function MaxQueueBars({ rows }: { rows: SimDesOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-max-queue-bars">
+    <ChartFrame testId="chart-max-queue-bars" title={t('simulation.max_queue')}>
       <Plot
         data={[
           {
@@ -124,7 +125,7 @@ export function MaxQueueBars({ rows }: { rows: SimDesOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('simulation.max_queue'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'Max Queue', automargin: true },
           height: 350,
@@ -141,7 +142,7 @@ export function LqHistogram({ rows }: { rows: SimDesOut[] }) {
   const { t } = useTranslation()
   const values = rows.map((r) => r.Lq_sim).filter((v): v is number => v !== null && v !== undefined)
   return (
-    <ChartFrame testId="chart-lq-histogram">
+    <ChartFrame testId="chart-lq-histogram" title={t('simulation.lq_hist')}>
       <Plot
         data={[
           {
@@ -154,11 +155,11 @@ export function LqHistogram({ rows }: { rows: SimDesOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('simulation.lq_hist'),
+          title: '',
           xaxis: { title: 'Queue Length', automargin: true },
           yaxis: { title: 'Frequency', automargin: true },
           height: 300,
-          margin: { l: 40, r: 40, t: 40, b: 40 },
+          margin: { l: 40, r: 40, t: 20, b: 40 },
         }}
         style={{ width: '100%' }}
         useResizeHandler={true}
@@ -170,7 +171,7 @@ export function LqHistogram({ rows }: { rows: SimDesOut[] }) {
 export function RhoMeanP95Lines({ rows }: { rows: SimMcOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-rho-mean-p95-lines">
+    <ChartFrame testId="chart-rho-mean-p95-lines" title={t('simulation.rho_p95')}>
       <Plot
         data={[
           {
@@ -192,7 +193,7 @@ export function RhoMeanP95Lines({ rows }: { rows: SimMcOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('simulation.rho_p95'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'Utilization (ρ)', automargin: true },
           legend: { orientation: 'h', y: 1.12 },
@@ -209,7 +210,7 @@ export function RhoMeanP95Lines({ rows }: { rows: SimMcOut[] }) {
 export function FailureRateBars({ rows }: { rows: SimMcOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-failure-rate-bars">
+    <ChartFrame testId="chart-failure-rate-bars" title={t('simulation.failure_rate')}>
       <Plot
         data={[
           {
@@ -222,7 +223,7 @@ export function FailureRateBars({ rows }: { rows: SimMcOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('simulation.failure_rate'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'Failure Rate', automargin: true },
           height: 350,
@@ -242,7 +243,7 @@ function total(rows: OptimizationOut[], pick: (row: OptimizationOut) => number |
 export function RadarChart({ current, optimized }: { current: number[]; optimized: number[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-radar">
+    <ChartFrame testId="chart-radar" title={t('compare.radar')}>
       <Plot
         data={[
           {
@@ -269,10 +270,10 @@ export function RadarChart({ current, optimized }: { current: number[]; optimize
           polar: {
             radialaxis: { visible: true, range: [0, 100], tickfont: { size: 10 } },
           },
-          title: t('compare.radar'),
+          title: '',
           height: 400,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.08, xanchor: 'center', x: 0.5 },
-          margin: { t: 60, b: 20 },
+          margin: { t: 30, b: 20 },
         }}
         style={{ width: '100%' }}
         useResizeHandler={true}
@@ -284,7 +285,7 @@ export function RadarChart({ current, optimized }: { current: number[]; optimize
 export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-utilization-compare">
+    <ChartFrame testId="chart-utilization-compare" title={t('compare.utilization')}>
       <Plot
         data={[
           {
@@ -305,12 +306,12 @@ export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
         layout={{
           autosize: true,
           barmode: 'group',
-          title: t('compare.utilization'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'Utilization (%)', automargin: true },
           height: 350,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
-          margin: { t: 40, b: 20 },
+          margin: { t: 20, b: 20 },
         }}
         style={{ width: '100%' }}
         useResizeHandler={true}
@@ -322,7 +323,7 @@ export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
 export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-server-compare">
+    <ChartFrame testId="chart-server-compare" title={t('compare.servers')}>
       <Plot
         data={[
           {
@@ -343,12 +344,12 @@ export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
         layout={{
           autosize: true,
           barmode: 'group',
-          title: t('compare.servers'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'Servers', automargin: true },
           height: 350,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
-          margin: { t: 40, b: 20 },
+          margin: { t: 20, b: 20 },
         }}
         style={{ width: '100%' }}
         useResizeHandler={true}
@@ -360,7 +361,7 @@ export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
 export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-wait-time-lines">
+    <ChartFrame testId="chart-wait-time-lines" title={t('compare.waiting')}>
       <Plot
         data={[
           {
@@ -384,12 +385,12 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('compare.waiting'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'Avg Wait (min)', automargin: true },
           height: 380,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
-          margin: { t: 40, b: 20 },
+          margin: { t: 20, b: 20 },
         }}
         style={{ width: '100%' }}
         useResizeHandler={true}
@@ -409,7 +410,7 @@ export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
   const curTotal = total(rows, (r) => r.cost_current)
   const optTotal = total(rows, (r) => r.cost_optimal)
   return (
-    <ChartFrame testId="chart-cost-waterfall">
+    <ChartFrame testId="chart-cost-waterfall" title={t('compare.waterfall')}>
       <Plot
         data={[
           {
@@ -427,9 +428,9 @@ export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
         ]}
         layout={{
           autosize: true,
-          title: t('compare.waterfall'),
+          title: '',
           height: 400,
-          margin: { t: 40, b: 20 },
+          margin: { t: 20, b: 20 },
           font: { size: 11 },
         }}
         style={{ width: '100%' }}
@@ -447,7 +448,7 @@ export function ScenarioCompareBars({
   const { t } = useTranslation()
   const colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#3B1F2B']
   return (
-    <ChartFrame testId="chart-scenario-compare">
+    <ChartFrame testId="chart-scenario-compare" title={t('compare.scenario')}>
       <Plot
         data={scenarios.map((sc, idx) => ({
           type: 'bar',
@@ -459,12 +460,12 @@ export function ScenarioCompareBars({
         layout={{
           autosize: true,
           barmode: 'group',
-          title: t('compare.scenario'),
+          title: '',
           xaxis: { title: t('page1.caption'), automargin: true },
           yaxis: { title: 'Avg Wait (min)', automargin: true },
           height: 400,
           legend_title: 'Scenario',
-          margin: { t: 40, b: 20 },
+          margin: { t: 20, b: 20 },
         }}
         style={{ width: '100%' }}
         useResizeHandler={true}
