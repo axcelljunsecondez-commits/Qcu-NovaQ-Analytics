@@ -31,6 +31,44 @@ from reportlab.platypus import (
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[str]:
+    """Build the executive-summary bullets from available KPI sets.
+
+    Renders "current → optimized" when both sets are present, "current" only
+    when no optimization data exists, and N/A otherwise. Savings lines are
+    only emitted when optimization KPIs exist (avoids a bogus ₱0).
+    """
+    bullets: list[str] = []
+    wq_current = current_kpis.get("avg_waiting_time")
+    wq_opt = recommended_kpis.get("avg_waiting_optimized")
+    if wq_current is not None and wq_opt is not None:
+        bullets.append(
+            f"• Average customer wait: {wq_current * 60:.1f} min → "
+            f"{wq_opt * 60:.1f} min (optimized)"
+        )
+    elif wq_current is not None:
+        bullets.append(f"• Average customer wait: {wq_current * 60:.1f} min (current)")
+    else:
+        bullets.append("• Average customer wait: N/A")
+
+    if recommended_kpis:
+        savings = recommended_kpis.get("total_savings")
+        if savings is not None:
+            bullets.append(f"• Estimated weekly savings: ₱{savings:,.0f}")
+        else:
+            bullets.append("• Estimated weekly savings: N/A")
+
+    rho_current = current_kpis.get("avg_utilization")
+    rho_opt = recommended_kpis.get("avg_utilization_optimized")
+    if rho_current is not None and rho_opt is not None:
+        bullets.append(f"• Utilization improvement: {rho_current:.0%} → {rho_opt:.0%}")
+    elif rho_current is not None:
+        bullets.append(f"• Utilization improvement: {rho_current:.0%} (current)")
+    else:
+        bullets.append("• Utilization improvement: N/A")
+    return bullets
+
+
 def generate_pdf_report(
     current_kpis: dict,
     recommended_kpis: dict,
@@ -97,32 +135,7 @@ def generate_pdf_report(
     # ══════════════════════════════════════════════════════════════════════
     elements.append(Paragraph("Executive Summary", h2))
 
-    wq_current = current_kpis.get("avg_waiting_time")
-    wq_opt = recommended_kpis.get("avg_waiting_optimized")
-    savings = recommended_kpis.get("total_savings", 0)
-    rho_current = current_kpis.get("avg_utilization")
-    rho_opt = recommended_kpis.get("avg_utilization_optimized")
-
-    bullet_items = []
-    if wq_current is not None and wq_opt is not None:
-        bullet_items.append(
-            f"• Average customer wait: {wq_current * 60:.1f} min → "
-            f"{wq_opt * 60:.1f} min (optimized)"
-        )
-    else:
-        bullet_items.append("• Average customer wait: N/A")
-
-    if savings is not None:
-        bullet_items.append(f"• Estimated weekly savings: ₱{savings:,.0f}")
-    else:
-        bullet_items.append("• Estimated weekly savings: N/A")
-
-    if rho_current is not None and rho_opt is not None:
-        bullet_items.append(
-            f"• Utilization improvement: {rho_current:.0%} → {rho_opt:.0%}"
-        )
-    else:
-        bullet_items.append("• Utilization improvement: N/A")
+    bullet_items = _exec_summary_bullets(current_kpis, recommended_kpis)
 
     for item in bullet_items:
         elements.append(Paragraph(item, bullet_style))
@@ -216,6 +229,7 @@ def generate_excel_report(
     comparison_df: pd.DataFrame,
     recommended_kpis: dict | None = None,
     segment_df: pd.DataFrame | None = None,
+    current_kpis: dict | None = None,
 ) -> io.BytesIO:
     """Generate a two-sheet Excel workbook.
 
@@ -228,6 +242,9 @@ def generate_excel_report(
     segment_df : pd.DataFrame, optional
         Accepted for compatibility with the legacy comparison page's call
         pattern; not used in report content (retained as a dead parameter).
+    current_kpis : dict, optional
+        Current-metric KPIs (``compute_kpis`` output); used for the Summary
+        sheet when no optimization KPIs exist (dataset reports).
 
     Returns
     -------
@@ -277,6 +294,14 @@ def generate_excel_report(
         impr_pct = recommended_kpis.get("waiting_time_improvement_pct")
         if impr_pct is not None:
             labels_values.append(("Waiting Time Improvement", f"{impr_pct:.1f}%"))
+
+    elif current_kpis:
+        avg_w_cur = current_kpis.get("avg_waiting_time")
+        if avg_w_cur is not None:
+            labels_values.append(("Avg Wait Current (min)", f"{avg_w_cur * 60:.2f}"))
+        util_cur = current_kpis.get("avg_utilization")
+        if util_cur is not None:
+            labels_values.append(("Avg Utilization Current", f"{util_cur:.1%}"))
 
     for row_idx, (label, value) in enumerate(labels_values, start=1):
         cell_lbl = ws_summary.cell(row=row_idx, column=1, value=label)

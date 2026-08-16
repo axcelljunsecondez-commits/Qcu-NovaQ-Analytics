@@ -55,7 +55,15 @@ def _dataset_payload(dataset: Dataset) -> tuple[pd.DataFrame, dict, list[str]]:
     records = dataset.normalized_json or []
     results_df = process_segments(records)
     kpis = compute_kpis(results_df)
-    return results_df, kpis, []
+    comparison_df = pd.DataFrame(
+        {
+            "time": results_df["time"],
+            "c_current": results_df["c"],
+            "rho_current": results_df["rho"],
+            "Wq_current": results_df["Wq"],
+        }
+    )
+    return comparison_df, kpis, []
 
 
 @router.get("/datasets/{dataset_id}/{format}")
@@ -98,6 +106,8 @@ def _build_report(
         )
         return Response(content=buffer.getvalue(), media_type=PDF_MEDIA_TYPE)
     if format == "excel":
-        buffer = generate_excel_report(comparison_df, recommended_kpis)
+        buffer = generate_excel_report(
+            comparison_df, recommended_kpis, current_kpis=current_kpis
+        )
         return Response(content=buffer.getvalue(), media_type=EXCEL_MEDIA_TYPE)
     raise HTTPException(status_code=404, detail="Unknown report format.")

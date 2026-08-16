@@ -6,7 +6,11 @@ import io
 
 import pandas as pd
 
-from backend.reports.report_export import generate_excel_report, generate_pdf_report
+from backend.reports.report_export import (
+    _exec_summary_bullets,
+    generate_excel_report,
+    generate_pdf_report,
+)
 
 
 def _comparison_df() -> pd.DataFrame:
@@ -80,3 +84,30 @@ def test_excel_report_api_positional_call_without_segment_df() -> None:
     buf = generate_excel_report(_comparison_df(), _kpis())
     assert isinstance(buf, io.BytesIO)
     assert buf.getvalue().startswith(b"PK\x03\x04")
+
+
+def test_exec_summary_bullets_full_pair() -> None:
+    bullets = _exec_summary_bullets(_kpis(), _kpis())
+    assert bullets == [
+        "• Average customer wait: 9.0 min → 4.8 min (optimized)",
+        "• Estimated weekly savings: ₱12,000",
+        "• Utilization improvement: 65% → 43%",
+    ]
+
+
+def test_exec_summary_bullets_current_only() -> None:
+    bullets = _exec_summary_bullets(
+        {"avg_waiting_time": 0.15, "avg_utilization": 0.65}, {}
+    )
+    assert bullets == [
+        "• Average customer wait: 9.0 min (current)",
+        "• Utilization improvement: 65% (current)",
+    ]
+
+
+def test_exec_summary_bullets_none() -> None:
+    bullets = _exec_summary_bullets({}, {})
+    assert bullets == [
+        "• Average customer wait: N/A",
+        "• Utilization improvement: N/A",
+    ]

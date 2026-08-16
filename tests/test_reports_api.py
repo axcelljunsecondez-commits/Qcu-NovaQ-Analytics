@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import io
+
+import openpyxl
+
 from tests.helpers import clear_cookies, create_user, csrf_header, login
 
 CSV_GOOD = b"time,lambda,mu,c\n08:00-09:00,30,12,3\n09:00-10:00,45,12,4\n"
@@ -53,6 +57,17 @@ def test_dataset_excel_report(db_engine, client):
     assert response.status_code == 200
     assert "spreadsheetml" in response.headers["content-type"]
     assert len(response.content) > 500
+
+    wb = openpyxl.load_workbook(io.BytesIO(response.content))
+    ws = wb["Segments"]
+    assert [c.value for c in ws[1]] == ["time", "c_current", "rho_current", "Wq_current"]
+    assert ws["A2"].value == "08:00-09:00"
+    assert ws["B2"].value == 3
+    assert 0 < ws["C2"].value < 1
+    assert 0 < ws["D2"].value < 60
+    summary_labels = [wb["Summary"].cell(row=r, column=1).value for r in range(1, 8)]
+    assert "Avg Wait Current (min)" in summary_labels
+    assert "Avg Utilization Current" in summary_labels
 
 
 def test_scenario_pdf_report(db_engine, client):
