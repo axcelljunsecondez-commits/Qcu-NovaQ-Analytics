@@ -169,14 +169,24 @@ export function SimulationPage() {
   }
 
   async function runDes() {
+    const hours = Number(desHours)
+    if (!Number.isFinite(hours) || hours <= 0) {
+      setError(t('simulation.hours_range_error'))
+      return
+    }
+    const threshold = Number(desThreshold)
+    if (!Number.isInteger(threshold) || threshold < 1) {
+      setError(t('simulation.overload_range_error'))
+      return
+    }
     const segments = await loadSegments()
     if (!segments) return
     setError(null)
     setRunning(true)
     try {
       const out = await simulateDes(segments, {
-        sim_hours: Number(desHours),
-        queue_overload_threshold: Number(desThreshold),
+        sim_hours: hours,
+        queue_overload_threshold: threshold,
         seed: parseSeed(desSeed),
         carryover: true,
       })
@@ -198,12 +208,17 @@ export function SimulationPage() {
       setError(t('simulation.trials_range_error', { max: String(MC_MAX_TRIALS) }))
       return
     }
+    const threshold = Number(mcThreshold)
+    if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
+      setError(t('simulation.threshold_range_error'))
+      return
+    }
     setError(null)
     setRunning(true)
     try {
       const out = await simulateMc(segments, {
         num_trials: trials,
-        failure_threshold: Number(mcThreshold),
+        failure_threshold: threshold,
         seed: parseSeed(mcSeed),
       })
       setMcRows(out.results)
@@ -224,21 +239,42 @@ export function SimulationPage() {
       setError(t('simulation.trials_range_error', { max: String(MC_MAX_TRIALS) }))
       return
     }
+    const threshold = Number(vThreshold)
+    if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
+      setError(t('simulation.threshold_range_error'))
+      return
+    }
+    const serverCost = Number(vServerCost)
+    const waitCost = Number(vWaitCost)
+    const abandonCost = Number(vAbandonCost)
+    if (
+      !Number.isFinite(serverCost) || serverCost < 0 ||
+      !Number.isFinite(waitCost) || waitCost < 0 ||
+      !Number.isFinite(abandonCost) || abandonCost < 0
+    ) {
+      setError(t('simulation.cost_range_error'))
+      return
+    }
+    const abandonRate = Number(vAbandonRate)
+    if (!Number.isFinite(abandonRate) || abandonRate < 0 || abandonRate > 1) {
+      setError(t('simulation.rate_range_error'))
+      return
+    }
     setError(null)
     setRunning(true)
     try {
       const optimized = await optimizeBatch(segments, {
         target_utilization: DEFAULT_OPTIONS.target_utilization,
-        server_cost_per_hr: Number(vServerCost),
-        customer_waiting_cost: Number(vWaitCost),
+        server_cost_per_hr: serverCost,
+        customer_waiting_cost: waitCost,
         max_servers: DEFAULT_OPTIONS.max_servers,
-        cost_per_abandonment: Number(vAbandonCost),
-        abandonment_rate: Number(vAbandonRate),
+        cost_per_abandonment: abandonCost,
+        abandonment_rate: abandonRate,
       })
       const comparisonRows = optimized.results.map((r) => ({ ...r, lambda: r.lambda_ }))
       const out = await validateSimulation(comparisonRows as unknown as Record<string, unknown>[], {
         mc_trials: trials,
-        mc_failure_threshold: Number(vThreshold),
+        mc_failure_threshold: threshold,
         seed: parseSeed(vSeed),
       })
       setValidateRows(out.results)
