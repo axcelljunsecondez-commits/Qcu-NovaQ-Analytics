@@ -40,14 +40,5 @@ services:
     ports:
       - "80:80"
 
-  legacy:
-    build: .
-    depends_on:
-      - api
-    ports:
-      - "8501:8501"
-    environment:
-      STREAMLIT_SERVER_HEADLESS: "true"
-
 volumes:
   pgdata:
