@@ -132,12 +132,12 @@ export function SimulationPage() {
 
   const [desHours, setDesHours] = useState('24')
   const [desThreshold, setDesThreshold] = useState('20')
-  const [desSeed, setDesSeed] = useState('42')
+  const [desSeed, setDesSeed] = useState('')
   const [desRows, setDesRows] = useState<SimDesOut[] | null>(null)
 
   const [mcTrials, setMcTrials] = useState('2000')
   const [mcThreshold, setMcThreshold] = useState('0.75')
-  const [mcSeed, setMcSeed] = useState('42')
+  const [mcSeed, setMcSeed] = useState('')
   const [mcRows, setMcRows] = useState<SimMcOut[] | null>(null)
 
   const [validateRows, setValidateRows] = useState<SimValidateOut[] | null>(null)
@@ -245,11 +245,17 @@ export function SimulationPage() {
     }
   }
 
-  const desStable = desRows ? desRows.filter((r) => r.status !== 'Critical').length : 0
+  const desStable = desRows
+    ? desRows.filter((r) => r.status === 'Lean' || r.status === 'Normal' || r.status === 'Peak').length
+    : 0
   const desCritical = desRows ? desRows.filter((r) => r.status === 'Critical').length : 0
   const desServed = desRows ? desRows.reduce((acc, r) => acc + r.served, 0) : 0
   const desDropped = desRows ? desRows.reduce((acc, r) => acc + r.dropped, 0) : 0
-  const allAdequate = validateRows !== null && validateRows.every((r) => r.mc_adequate)
+  const rowPasses = (r: SimValidateOut) =>
+    r.sim_status !== 'Critical' &&
+    r.sim_status !== 'Unstable' &&
+    (r.mc_failure_rate ?? 0) <= 0.05
+  const allPassed = validateRows !== null && validateRows.length > 0 && validateRows.every(rowPasses)
 
   return (
     <div>
@@ -564,8 +570,8 @@ export function SimulationPage() {
 
           {validateRows && (
             <>
-              <div className={`alert ${allAdequate ? 'alert-ok' : 'alert-error'}`}>
-                {allAdequate ? t('simulation.passed') : t('simulation.failed')}
+              <div className={`alert ${allPassed ? 'alert-ok' : 'alert-error'}`}>
+                {allPassed ? t('simulation.passed') : t('simulation.failed')}
               </div>
               <div className="card">
                 <table>
@@ -588,7 +594,7 @@ export function SimulationPage() {
                       <tr key={row.time}>
                         <td>{row.time}</td>
                         <td>
-                          <span className={`badge ${row.mc_adequate ? 'badge-ok' : 'badge-bad'}`}>
+                          <span className={`badge ${rowPasses(row) ? 'badge-ok' : 'badge-bad'}`}>
                             {row.sim_status}
                           </span>
                         </td>

@@ -178,7 +178,7 @@ describe('SimulationPage', () => {
       expect(simulateDesMock).toHaveBeenCalledWith(segments, {
         sim_hours: 24,
         queue_overload_threshold: 20,
-        seed: 42,
+        seed: null,
         carryover: true,
       })
     })
@@ -201,12 +201,37 @@ describe('SimulationPage', () => {
       expect(simulateMcMock).toHaveBeenCalledWith(segments, {
         num_trials: 2000,
         failure_threshold: 0.75,
-        seed: 42,
+        seed: null,
       })
     })
     await screen.findByText('FAIL')
     expect(container.querySelector('[data-testid="chart-rho-mean-p95-lines"]')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-failure-rate-bars"]')).toBeInTheDocument()
+  })
+
+  it('counts Unstable and ERROR segments as not stable', async () => {
+    const user = userEvent.setup()
+    simulateDesMock.mockResolvedValue({
+      results: [{ ...desRow, status: 'Unstable' }],
+    })
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('button', { name: 'Run DES Simulation' }))
+    await screen.findByText('Critical segments')
+    expect(within(screen.getByText('Stable segments').closest('.metric-card')!).getByText('0')).toBeInTheDocument()
+    expect(within(screen.getByText('Critical segments').closest('.metric-card')!).getByText('0')).toBeInTheDocument()
+  })
+
+  it('shows a failed verdict when a segment is Critical or unstable', async () => {
+    const user = userEvent.setup()
+    validateSimulationMock.mockResolvedValue({
+      results: [{ ...validateRow, sim_status: 'Critical', mc_failure_rate: 0.02, mc_adequate: true }],
+    })
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    expect(await screen.findByText('Simulation validation found issues.')).toBeInTheDocument()
   })
 
   it('renders failure-rate CI and precision badge in the MC table', async () => {
