@@ -107,6 +107,8 @@
   "simulation.failed": "May nakitang isyu ang pagpapatunay ng simulation.",
   "simulation.failed_detail": "{{failed}} sa {{total}} segment ang nabigo — {{unstable}} hindi matatag, {{high}} lampas sa 5% failure threshold.",
   "simulation.failed_empty": "Walang segment na mapapatunayan.",
+  "simulation.stale_hint": "Binago ang input — pindutin ang Run upang i-update ang mga resulta.",
+  "simulation.select_dataset_first": "Pumili muna ng dataset.",
   "simulation.heatmap.title": "Utilization Heatmap: λ × c",
   "simulation.heatmap.x": "Arrival Rate λ",
   "simulation.rho_lq": "Paggamit at Haba ng Pila sa Paglipas ng Panahon",

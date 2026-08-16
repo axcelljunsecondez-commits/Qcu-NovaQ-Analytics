@@ -405,4 +405,72 @@ describe('SimulationPage', () => {
     await screen.findByText('Critical segments')
     expect(screen.queryByText('nan%')).not.toBeInTheDocument()
   })
+
+  it('clears DES results and shows a re-run hint when inputs change', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('button', { name: 'Run DES Simulation' }))
+    await screen.findByText('Critical segments')
+    await user.clear(screen.getByLabelText('Hours per segment'))
+    await user.type(screen.getByLabelText('Hours per segment'), '48')
+    expect(screen.queryByText('Critical segments')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Inputs changed — press Run to update results.'),
+    ).toBeInTheDocument()
+  })
+
+  it('clears MC results and shows a re-run hint when inputs change', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await screen.findByText('FAIL')
+    await user.clear(screen.getByLabelText('Trials'))
+    await user.type(screen.getByLabelText('Trials'), '5000')
+    expect(screen.queryByText('FAIL')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Inputs changed — press Run to update results.'),
+    ).toBeInTheDocument()
+  })
+
+  it('clears validate results and shows a re-run hint when inputs change', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    await screen.findByText('Simulation validation passed.')
+    await user.clear(screen.getByLabelText('Failure threshold (ρ)'))
+    await user.type(screen.getByLabelText('Failure threshold (ρ)'), '0.8')
+    expect(screen.queryByText('Simulation validation passed.')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Inputs changed — press Run to update results.'),
+    ).toBeInTheDocument()
+  })
+
+  it('clears all results when the dataset changes', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('button', { name: 'Run DES Simulation' }))
+    await screen.findByText('Critical segments')
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '')
+    expect(screen.queryByText('Critical segments')).not.toBeInTheDocument()
+  })
+
+  it('clears the error when switching tabs', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    const trials = screen.getByLabelText('Trials')
+    await user.clear(trials)
+    await user.type(trials, '100001')
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await screen.findByText(/between 1 and 100000/)
+    await user.click(screen.getByRole('tab', { name: 'DES (SimPy)' }))
+    expect(screen.queryByText(/between 1 and 100000/)).not.toBeInTheDocument()
+  })
 })

@@ -134,13 +134,16 @@ export function SimulationPage() {
   const [desThreshold, setDesThreshold] = useState('20')
   const [desSeed, setDesSeed] = useState('')
   const [desRows, setDesRows] = useState<SimDesOut[] | null>(null)
+  const [desDirty, setDesDirty] = useState(false)
 
   const [mcTrials, setMcTrials] = useState('2000')
   const [mcThreshold, setMcThreshold] = useState('0.75')
   const [mcSeed, setMcSeed] = useState('')
   const [mcRows, setMcRows] = useState<SimMcOut[] | null>(null)
+  const [mcDirty, setMcDirty] = useState(false)
 
   const [validateRows, setValidateRows] = useState<SimValidateOut[] | null>(null)
+  const [validateDirty, setValidateDirty] = useState(false)
 
   const [vTrials, setVTrials] = useState('10000')
   const [vThreshold, setVThreshold] = useState('0.75')
@@ -158,7 +161,7 @@ export function SimulationPage() {
   async function loadSegments(): Promise<SegmentRow[] | null> {
     const dataset = datasets.data?.datasets.find((d: DatasetOut) => String(d.id) === datasetId)
     if (!dataset) {
-      setError('Select a dataset first.')
+      setError(t('simulation.select_dataset_first'))
       return null
     }
     const loaded = await getDataset(dataset.id)
@@ -178,6 +181,7 @@ export function SimulationPage() {
         carryover: true,
       })
       setDesRows(out.results)
+      setDesDirty(false)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       setError(typeof detail === 'string' ? detail : t('errors.server'))
@@ -203,6 +207,7 @@ export function SimulationPage() {
         seed: parseSeed(mcSeed),
       })
       setMcRows(out.results)
+      setMcDirty(false)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       setError(typeof detail === 'string' ? detail : t('errors.server'))
@@ -237,6 +242,7 @@ export function SimulationPage() {
         seed: parseSeed(vSeed),
       })
       setValidateRows(out.results)
+      setValidateDirty(false)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       setError(typeof detail === 'string' ? detail : t('errors.server'))
@@ -276,7 +282,15 @@ export function SimulationPage() {
               id="sim-dataset"
               aria-label={t('optimize.source_dataset')}
               value={datasetId}
-              onChange={(e) => setDatasetId(e.target.value)}
+              onChange={(e) => {
+                setDatasetId(e.target.value)
+                setDesRows(null)
+                setDesDirty(true)
+                setMcRows(null)
+                setMcDirty(true)
+                setValidateRows(null)
+                setValidateDirty(true)
+              }}
             >
               <option value="">—</option>
               {datasets.data?.datasets.map((d: DatasetOut) => (
@@ -297,7 +311,10 @@ export function SimulationPage() {
             role="tab"
             aria-selected={tab === tItem.id}
             className={`tab${tab === tItem.id ? ' active' : ''}`}
-            onClick={() => setTab(tItem.id)}
+            onClick={() => {
+              setTab(tItem.id)
+              setError(null)
+            }}
           >
             {t(tItem.labelKey)}
           </button>
@@ -318,7 +335,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={desHours}
-                  onChange={(e) => setDesHours(e.target.value)}
+                  onChange={(e) => {
+                    setDesHours(e.target.value)
+                    setDesRows(null)
+                    setDesDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -328,7 +349,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={desThreshold}
-                  onChange={(e) => setDesThreshold(e.target.value)}
+                  onChange={(e) => {
+                    setDesThreshold(e.target.value)
+                    setDesRows(null)
+                    setDesDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -338,7 +363,11 @@ export function SimulationPage() {
                   aria-label={t('simulation.seed')}
                   type="text"
                   value={desSeed}
-                  onChange={(e) => setDesSeed(e.target.value)}
+                  onChange={(e) => {
+                    setDesSeed(e.target.value)
+                    setDesRows(null)
+                    setDesDirty(true)
+                  }}
                 />
               </div>
               <button type="button" onClick={runDes} disabled={running}>
@@ -346,6 +375,10 @@ export function SimulationPage() {
               </button>
             </div>
           </div>
+
+          {desDirty && !desRows && (
+            <p className="form-hint">{t('simulation.stale_hint')}</p>
+          )}
 
           {desRows && (
             <>
@@ -397,7 +430,11 @@ export function SimulationPage() {
                   min={1}
                   max={MC_MAX_TRIALS}
                   value={mcTrials}
-                  onChange={(e) => setMcTrials(e.target.value)}
+                  onChange={(e) => {
+                    setMcTrials(e.target.value)
+                    setMcRows(null)
+                    setMcDirty(true)
+                  }}
                 />
                 <p className="form-hint">{t('simulation.trials_help')}</p>
               </div>
@@ -408,7 +445,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={mcThreshold}
-                  onChange={(e) => setMcThreshold(e.target.value)}
+                  onChange={(e) => {
+                    setMcThreshold(e.target.value)
+                    setMcRows(null)
+                    setMcDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -418,7 +459,11 @@ export function SimulationPage() {
                   aria-label={t('simulation.seed')}
                   type="text"
                   value={mcSeed}
-                  onChange={(e) => setMcSeed(e.target.value)}
+                  onChange={(e) => {
+                    setMcSeed(e.target.value)
+                    setMcRows(null)
+                    setMcDirty(true)
+                  }}
                 />
               </div>
               <button type="button" onClick={runMc} disabled={running}>
@@ -426,6 +471,10 @@ export function SimulationPage() {
               </button>
             </div>
           </div>
+
+          {mcDirty && !mcRows && (
+            <p className="form-hint">{t('simulation.stale_hint')}</p>
+          )}
 
           {mcRows && (
             <>
@@ -499,7 +548,11 @@ export function SimulationPage() {
                   min={1}
                   max={MC_MAX_TRIALS}
                   value={vTrials}
-                  onChange={(e) => setVTrials(e.target.value)}
+                  onChange={(e) => {
+                    setVTrials(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -510,7 +563,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={vThreshold}
-                  onChange={(e) => setVThreshold(e.target.value)}
+                  onChange={(e) => {
+                    setVThreshold(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -520,7 +577,11 @@ export function SimulationPage() {
                   aria-label={t('simulation.seed')}
                   type="text"
                   value={vSeed}
-                  onChange={(e) => setVSeed(e.target.value)}
+                  onChange={(e) => {
+                    setVSeed(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -531,7 +592,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={vServerCost}
-                  onChange={(e) => setVServerCost(e.target.value)}
+                  onChange={(e) => {
+                    setVServerCost(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -542,7 +607,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={vWaitCost}
-                  onChange={(e) => setVWaitCost(e.target.value)}
+                  onChange={(e) => {
+                    setVWaitCost(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -553,7 +622,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={vAbandonCost}
-                  onChange={(e) => setVAbandonCost(e.target.value)}
+                  onChange={(e) => {
+                    setVAbandonCost(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
                 />
               </div>
               <div className="form-field">
@@ -564,7 +637,11 @@ export function SimulationPage() {
                   type="number"
                   step="any"
                   value={vAbandonRate}
-                  onChange={(e) => setVAbandonRate(e.target.value)}
+                  onChange={(e) => {
+                    setVAbandonRate(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
                 />
               </div>
               <button type="button" onClick={runValidate} disabled={running}>
@@ -572,6 +649,10 @@ export function SimulationPage() {
               </button>
             </div>
           </div>
+
+          {validateDirty && !validateRows && (
+            <p className="form-hint">{t('simulation.stale_hint')}</p>
+          )}
 
           {validateRows && (
             <>
