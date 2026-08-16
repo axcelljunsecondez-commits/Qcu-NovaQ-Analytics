@@ -825,7 +825,7 @@ def validate_with_simulation(
     comparison_df: pd.DataFrame,
     mc_trials: int = MC_DEFAULT_TRIALS,
     mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
-    seed: int = 42,
+    seed: int | None = 42,
 ) -> pd.DataFrame:
     """Run DES + Monte Carlo on the optimized plan and merge validation columns.
 

@@ -1,21 +1,12 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
-import { optimizeBatch, type OptimizeOptions } from '../api/optimization'
+import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
 import type { DatasetOut, OptimizationOut } from '../api/types'
 import { MetricCard } from '../components/ui/MetricCard'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery } from '@tanstack/react-query'
-
-const DEFAULT_OPTIONS: OptimizeOptions = {
-  target_utilization: 0.7,
-  server_cost_per_hr: 87,
-  customer_waiting_cost: 100,
-  max_servers: 24,
-  cost_per_abandonment: 60,
-  abandonment_rate: 0.1,
-}
 
 function fmt(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) {

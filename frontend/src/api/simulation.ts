@@ -17,7 +17,7 @@ export interface McOptions {
 export interface ValidateOptions {
   mc_trials?: number
   mc_failure_threshold?: number
-  seed?: number
+  seed?: number | null
 }
 
 export async function simulateDes(

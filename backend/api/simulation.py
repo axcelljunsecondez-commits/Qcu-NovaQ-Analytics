@@ -35,7 +35,7 @@ class ValidateRequest(BaseModel):
     segments: list[dict]
     mc_trials: int = Field(default=2000, ge=1, le=100000)
     mc_failure_threshold: float = Field(default=0.75, gt=0, le=1)
-    seed: int = Field(default=42)
+    seed: int | None = Field(default=None)
 
 
 @router.post("/des")

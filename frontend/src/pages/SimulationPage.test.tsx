@@ -27,6 +27,14 @@ vi.mock('../api/simulation', () => ({
 vi.mock('../api/optimization', () => ({
   optimize: vi.fn(),
   optimizeBatch: (...args: unknown[]) => optimizeBatchMock(...args),
+  DEFAULT_OPTIONS: {
+    target_utilization: 0.7,
+    server_cost_per_hr: 87,
+    customer_waiting_cost: 100,
+    max_servers: 24,
+    cost_per_abandonment: 60,
+    abandonment_rate: 0.1,
+  },
 }))
 
 vi.mock('../api/auth', () => ({
@@ -234,12 +242,60 @@ describe('SimulationPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Validate' }))
     await user.click(screen.getByRole('button', { name: 'Validate plan' }))
     await waitFor(() => {
-      expect(optimizeBatchMock).toHaveBeenCalled()
-      expect(validateSimulationMock).toHaveBeenCalled()
+      expect(optimizeBatchMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          target_utilization: 0.7,
+          server_cost_per_hr: 87,
+          customer_waiting_cost: 100,
+          max_servers: 24,
+          cost_per_abandonment: 60,
+          abandonment_rate: 0.1,
+        }),
+      )
+      expect(validateSimulationMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ mc_trials: 10000, mc_failure_threshold: 0.75, seed: null }),
+      )
     })
     expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
     expect(screen.getByText('Normal')).toBeInTheDocument()
     expect(screen.getByText('5%')).toBeInTheDocument()
+  })
+
+  it('sends edited plan and MC settings from the validate tab', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.clear(screen.getByLabelText('Trials'))
+    await user.type(screen.getByLabelText('Trials'), '20000')
+    await user.clear(screen.getByLabelText('Failure threshold (ρ)'))
+    await user.type(screen.getByLabelText('Failure threshold (ρ)'), '0.8')
+    await user.clear(screen.getByLabelText('Server cost / hr'))
+    await user.type(screen.getByLabelText('Server cost / hr'), '120')
+    await user.clear(screen.getByLabelText('Waiting cost / hr'))
+    await user.type(screen.getByLabelText('Waiting cost / hr'), '80')
+    await user.clear(screen.getByLabelText('Abandonment cost / customer'))
+    await user.type(screen.getByLabelText('Abandonment cost / customer'), '50')
+    await user.clear(screen.getByLabelText('Abandonment rate'))
+    await user.type(screen.getByLabelText('Abandonment rate'), '0.2')
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    await waitFor(() => {
+      expect(optimizeBatchMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          server_cost_per_hr: 120,
+          customer_waiting_cost: 80,
+          cost_per_abandonment: 50,
+          abandonment_rate: 0.2,
+        }),
+      )
+      expect(validateSimulationMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ mc_trials: 20000, mc_failure_threshold: 0.8 }),
+      )
+    })
   })
 
   it('maps optimizer lambda_ to a lambda key before calling validateSimulation', async () => {

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { listDatasets, getDataset } from '../api/datasets'
 import { simulateDes, simulateMc, validateSimulation } from '../api/simulation'
-import { optimizeBatch } from '../api/optimization'
+import { optimizeBatch, DEFAULT_OPTIONS } from '../api/optimization'
 import type { DatasetOut, SimDesOut, SimMcOut, SimValidateOut } from '../api/types'
 import { MetricCard } from '../components/ui/MetricCard'
 import { ApiState } from '../components/ui/ApiState'
@@ -142,6 +142,14 @@ export function SimulationPage() {
 
   const [validateRows, setValidateRows] = useState<SimValidateOut[] | null>(null)
 
+  const [vTrials, setVTrials] = useState('10000')
+  const [vThreshold, setVThreshold] = useState('0.75')
+  const [vSeed, setVSeed] = useState('')
+  const [vServerCost, setVServerCost] = useState(String(DEFAULT_OPTIONS.server_cost_per_hr))
+  const [vWaitCost, setVWaitCost] = useState(String(DEFAULT_OPTIONS.customer_waiting_cost))
+  const [vAbandonCost, setVAbandonCost] = useState(String(DEFAULT_OPTIONS.cost_per_abandonment))
+  const [vAbandonRate, setVAbandonRate] = useState(String(DEFAULT_OPTIONS.abandonment_rate))
+
   const datasets = useQuery({
     queryKey: ['datasets'],
     queryFn: () => listDatasets(),
@@ -206,19 +214,28 @@ export function SimulationPage() {
   async function runValidate() {
     const segments = await loadSegments()
     if (!segments) return
+    const trials = Number(vTrials)
+    if (!Number.isInteger(trials) || trials < 1 || trials > MC_MAX_TRIALS) {
+      setError(t('simulation.trials_range_error', { max: String(MC_MAX_TRIALS) }))
+      return
+    }
     setError(null)
     setRunning(true)
     try {
       const optimized = await optimizeBatch(segments, {
-        target_utilization: 0.7,
-        server_cost_per_hr: 87,
-        customer_waiting_cost: 100,
-        max_servers: 24,
+        target_utilization: DEFAULT_OPTIONS.target_utilization,
+        server_cost_per_hr: Number(vServerCost),
+        customer_waiting_cost: Number(vWaitCost),
+        max_servers: DEFAULT_OPTIONS.max_servers,
+        cost_per_abandonment: Number(vAbandonCost),
+        abandonment_rate: Number(vAbandonRate),
       })
       const comparisonRows = optimized.results.map((r) => ({ ...r, lambda: r.lambda_ }))
-      const out = await validateSimulation(
-        comparisonRows as unknown as Record<string, unknown>[],
-      )
+      const out = await validateSimulation(comparisonRows as unknown as Record<string, unknown>[], {
+        mc_trials: trials,
+        mc_failure_threshold: Number(vThreshold),
+        seed: parseSeed(vSeed),
+      })
       setValidateRows(out.results)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
@@ -460,9 +477,89 @@ export function SimulationPage() {
       {tab === 'validate' && (
         <div>
           <div className="card">
-            <button type="button" onClick={runValidate} disabled={running}>
-              {t('simulation.validate_run')}
-            </button>
+            <div className="form-row">
+              <div className="form-field">
+                <label htmlFor="v-trials">{t('simulation.trials')}</label>
+                <input
+                  id="v-trials"
+                  aria-label={t('simulation.trials')}
+                  type="number"
+                  step="any"
+                  min={1}
+                  max={MC_MAX_TRIALS}
+                  value={vTrials}
+                  onChange={(e) => setVTrials(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="v-threshold">{t('simulation.threshold')}</label>
+                <input
+                  id="v-threshold"
+                  aria-label={t('simulation.threshold')}
+                  type="number"
+                  step="any"
+                  value={vThreshold}
+                  onChange={(e) => setVThreshold(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="v-seed">{t('simulation.seed')}</label>
+                <input
+                  id="v-seed"
+                  aria-label={t('simulation.seed')}
+                  type="text"
+                  value={vSeed}
+                  onChange={(e) => setVSeed(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="v-server-cost">{t('optimize.server_cost')}</label>
+                <input
+                  id="v-server-cost"
+                  aria-label={t('optimize.server_cost')}
+                  type="number"
+                  step="any"
+                  value={vServerCost}
+                  onChange={(e) => setVServerCost(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="v-wait-cost">{t('optimize.waiting_cost')}</label>
+                <input
+                  id="v-wait-cost"
+                  aria-label={t('optimize.waiting_cost')}
+                  type="number"
+                  step="any"
+                  value={vWaitCost}
+                  onChange={(e) => setVWaitCost(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="v-aband-cost">{t('optimize.abandonment_cost')}</label>
+                <input
+                  id="v-aband-cost"
+                  aria-label={t('optimize.abandonment_cost')}
+                  type="number"
+                  step="any"
+                  value={vAbandonCost}
+                  onChange={(e) => setVAbandonCost(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="v-aband-rate">{t('optimize.abandonment_rate')}</label>
+                <input
+                  id="v-aband-rate"
+                  aria-label={t('optimize.abandonment_rate')}
+                  type="number"
+                  step="any"
+                  value={vAbandonRate}
+                  onChange={(e) => setVAbandonRate(e.target.value)}
+                />
+              </div>
+              <button type="button" onClick={runValidate} disabled={running}>
+                {t('simulation.validate_run')}
+              </button>
+            </div>
           </div>
 
           {validateRows && (
