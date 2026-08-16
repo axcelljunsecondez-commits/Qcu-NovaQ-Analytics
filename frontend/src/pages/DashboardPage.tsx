@@ -10,8 +10,8 @@ const quickActions = [
   { key: 'datasets', to: '/datasets', i18n: 'nav.datasets' },
   { key: 'analysis', to: '/analysis', i18n: 'nav.analysis' },
   { key: 'optimize', to: '/optimize', i18n: 'nav.optimize' },
-  { key: 'simulate', to: '/simulation', i18n: 'nav.simulate' },
-  { key: 'compare', to: '/comparison', i18n: 'nav.compare' },
+  { key: 'simulate', to: '/simulate', i18n: 'nav.simulate' },
+  { key: 'compare', to: '/compare', i18n: 'nav.compare' },
 ] as const
 
 export function DashboardPage() {

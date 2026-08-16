@@ -830,6 +830,7 @@ def validate_with_simulation(
     mc_trials: int = MC_DEFAULT_TRIALS,
     mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
+    failure_rate_cap: float = 0.10,
 ) -> pd.DataFrame:
     """Run DES + Monte Carlo on the optimized plan and merge validation columns.
 
@@ -884,6 +885,7 @@ def validate_with_simulation(
     mc_results = mc_simulate_segments(
         sim_records, num_trials=mc_trials,
         failure_threshold=mc_failure_threshold, seed=seed,
+        failure_rate_cap=failure_rate_cap,
     )
     mc_raw = pd.DataFrame(mc_results)[
         ["time", "failure_rate", "adequate_samples",

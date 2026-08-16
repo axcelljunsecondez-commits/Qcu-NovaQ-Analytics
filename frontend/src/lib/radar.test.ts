@@ -15,19 +15,19 @@ const rows: RadarRow[] = [
   },
 ]
 
-const THETA = ['Cost\nEfficiency', 'Wait\nTime', 'Utilization', 'Stability', 'Server\nEfficiency']
+const THETA = ['Cost\nEfficiency', 'Wait\nTime', 'Utilization', 'Server\nEfficiency']
 
 describe('computeRadarScores', () => {
-  it('computes exact legacy parity scores for the current plan', () => {
+  it('computes exact parity scores for the current plan', () => {
     expect(computeRadarScores(rows, { current: true })).toEqual({
-      r: [0, 0, 95, 80, 0],
+      r: [0, 0, 95, 0],
       theta: THETA,
     })
   })
 
-  it('computes exact legacy parity scores for the optimized plan', () => {
+  it('computes exact parity scores for the optimized plan', () => {
     expect(computeRadarScores(rows, { current: false })).toEqual({
-      r: [37.5, 50, 85, 88, 20],
+      r: [37.5, 50, 85, 20],
       theta: THETA,
     })
   })

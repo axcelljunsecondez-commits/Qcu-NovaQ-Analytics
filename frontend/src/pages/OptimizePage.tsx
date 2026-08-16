@@ -101,7 +101,7 @@ export function OptimizePage() {
   async function handleOptimize() {
     const dataset = datasets.data?.datasets.find((d: DatasetOut) => String(d.id) === datasetId)
     if (!dataset) {
-      setError('Select a dataset first.')
+      setError(t('optimize.select_dataset_first'))
       return
     }
     const loaded = await getDataset(dataset.id)
@@ -115,7 +115,7 @@ export function OptimizePage() {
     }
     const factor = Number(multiplier)
     if (!Number.isFinite(factor) || factor <= 0) {
-      setError('Enter a positive multiplier.')
+      setError(t('optimize.multiplier_range_error'))
       return
     }
     const loaded = await getDataset(dataset.id)
@@ -250,7 +250,7 @@ export function OptimizePage() {
       {rows && (
         <>
           {warnings.length > 0 && (
-            <div className="alert alert-warning">
+            <div className="alert alert-warn">
               {warnings.map((w) => w.warning).join(' ')}
             </div>
           )}
@@ -258,7 +258,7 @@ export function OptimizePage() {
             <MetricCard label={t('optimize.total_cost')} value={fmt(totalCurrent)} />
             <MetricCard label={t('optimize.optimal_cost')} value={fmt(totalOptimal)} />
             <MetricCard label={t('optimize.delta_cost')} value={fmt(deltaCost)} />
-            <MetricCard label={t('compare.servers')} value={'+' + String(addedServers)} />
+            <MetricCard label={t('optimize.added_servers')} value={'+' + String(addedServers)} />
           </div>
 
           <div className="card">

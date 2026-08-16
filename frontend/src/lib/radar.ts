@@ -1,4 +1,4 @@
-export const RADAR_THETA = ['Cost\nEfficiency', 'Wait\nTime', 'Utilization', 'Stability', 'Server\nEfficiency']
+export const RADAR_THETA = ['Cost\nEfficiency', 'Wait\nTime', 'Utilization', 'Server\nEfficiency']
 
 export interface RadarRow {
   cost_current: number | null
@@ -45,21 +45,17 @@ export function computeRadarScores(
   const serversOptimized = sum(rows.map((r) => r.c_optimal))
   const serversMax = Math.max(serversCurrent, serversOptimized) || 1
 
-  const mcFail = mean(rows.map((r) => r.mc_failure_rate))
-
   const r = current
     ? [
         clamp(100 * (1 - totalCostCurrent / costMax)),
         clamp(100 * (1 - wqCurrent / wqMax)),
         clamp(Math.max(0, 100 * (1 - Math.abs(0.85 - rhoCurrent)))),
-        clamp(Math.max(0, 100 * (1 - mcFail))),
         clamp(100 * (1 - serversCurrent / serversMax)),
       ]
     : [
         clamp(100 * (1 - totalCostOptimized / costMax)),
         clamp(100 * (1 - wqOptimized / wqMax)),
         clamp(Math.max(0, 100 * (1 - Math.abs(0.85 - rhoOptimized)))),
-        clamp(Math.max(0, 100 * (1 - mcFail * 0.6))),
         clamp(100 * (1 - serversOptimized / serversMax)),
       ]
   return { r, theta: RADAR_THETA }

@@ -65,4 +65,13 @@ describe('DashboardPage', () => {
       expect(link.length).toBeGreaterThan(0)
     }
   })
+
+  it('points simulate and compare quick actions at valid routes', async () => {
+    listDatasetsMock.mockResolvedValue({ datasets: [] })
+    renderWithProviders(<DashboardPage />, { route: '/dashboard' })
+    const simulateLink = (await screen.findAllByRole('link', { name: 'Simulate' }))[0]
+    const compareLink = (await screen.findAllByRole('link', { name: 'Compare' }))[0]
+    expect(simulateLink.getAttribute('href')).toBe('/simulate')
+    expect(compareLink.getAttribute('href')).toBe('/compare')
+  })
 })

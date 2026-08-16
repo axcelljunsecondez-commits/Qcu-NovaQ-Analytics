@@ -60,6 +60,9 @@ export function AdminPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
     },
+    onError: () => {
+      setBanner(t('errors.server'))
+    },
   })
 
   function handleCreate(event: FormEvent) {
@@ -68,8 +71,9 @@ export function AdminPage() {
   }
 
   function handleToggle(id: number, current: boolean) {
-    if (window.confirm(t('admin.confirm_deactivate'))) {
-      toggleMutation.mutate({ id, active: !current })
+    const next = !current
+    if (window.confirm(next ? t('admin.confirm_activate') : t('admin.confirm_deactivate'))) {
+      toggleMutation.mutate({ id, active: next })
     }
   }
 
