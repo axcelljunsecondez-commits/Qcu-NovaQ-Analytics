@@ -119,6 +119,7 @@
   "compare.waiting": "Paghahambing ng Oras ng Paghihintay (minuto)",
   "compare.waterfall": "Cost Breakdown Waterfall",
   "compare.scenarios": "Ihambing ang mga Na-save na Scenario",
+  "compare.scenario": "Paghahambing ng Scenario — Avg na Oras ng Paghihintay",
   "compare.current": "Kasalukuyan",
   "compare.optimized": "Na-optimize",
   "compare.empty": "Wala pang scenario. Mag-save ng optimization upang maghambing ng mga plano.",

@@ -53,13 +53,15 @@ export function UtilizationHeatmap({ rows }: { rows: SimDesOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('simulation.heatmap.title'),
-          xaxis: { title: t('simulation.heatmap.x') },
-          yaxis: { title: 'Servers c' },
+          xaxis: { title: t('simulation.heatmap.x'), automargin: true, tickangle: -45 },
+          yaxis: { title: 'Servers c', automargin: true },
           height: 300,
           margin: MARGIN,
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -90,15 +92,17 @@ export function RhoLqLines({ rows }: { rows: SimDesOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('simulation.rho_lq'),
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'ρ sim', color: '#E8A838' },
-          yaxis2: { title: 'Lq sim', color: '#2E86AB', overlaying: 'y', side: 'right' },
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'ρ sim', color: '#E8A838', automargin: true },
+          yaxis2: { title: 'Lq sim', color: '#2E86AB', overlaying: 'y', side: 'right', automargin: true },
           legend: { orientation: 'h', y: 1.12 },
           height: 350,
           margin: MARGIN,
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -119,13 +123,15 @@ export function MaxQueueBars({ rows }: { rows: SimDesOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('simulation.max_queue'),
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'Max Queue' },
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'Max Queue', automargin: true },
           height: 350,
           margin: MARGIN,
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -147,13 +153,15 @@ export function LqHistogram({ rows }: { rows: SimDesOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('simulation.lq_hist'),
-          xaxis: { title: 'Queue Length' },
-          yaxis: { title: 'Frequency' },
+          xaxis: { title: 'Queue Length', automargin: true },
+          yaxis: { title: 'Frequency', automargin: true },
           height: 300,
           margin: { l: 40, r: 40, t: 40, b: 40 },
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -183,14 +191,16 @@ export function RhoMeanP95Lines({ rows }: { rows: SimMcOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('simulation.rho_p95'),
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'Utilization (ρ)' },
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'Utilization (ρ)', automargin: true },
           legend: { orientation: 'h', y: 1.12 },
           height: 350,
           margin: MARGIN,
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -211,13 +221,15 @@ export function FailureRateBars({ rows }: { rows: SimMcOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('simulation.failure_rate'),
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'Failure Rate' },
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'Failure Rate', automargin: true },
           height: 350,
           margin: MARGIN,
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -253,6 +265,7 @@ export function RadarChart({ current, optimized }: { current: number[]; optimize
           },
         ]}
         layout={{
+          autosize: true,
           polar: {
             radialaxis: { visible: true, range: [0, 100], tickfont: { size: 10 } },
           },
@@ -262,6 +275,7 @@ export function RadarChart({ current, optimized }: { current: number[]; optimize
           margin: { t: 60, b: 20 },
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -289,15 +303,17 @@ export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           barmode: 'group',
           title: t('compare.utilization'),
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'Utilization (%)' },
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'Utilization (%)', automargin: true },
           height: 350,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
           margin: { t: 40, b: 20 },
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -325,15 +341,17 @@ export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           barmode: 'group',
           title: t('compare.servers'),
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'Servers' },
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'Servers', automargin: true },
           height: 350,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
           margin: { t: 40, b: 20 },
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -365,14 +383,16 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('compare.waiting'),
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'Avg Wait (min)' },
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'Avg Wait (min)', automargin: true },
           height: 380,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
           margin: { t: 40, b: 20 },
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -406,12 +426,14 @@ export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
           },
         ]}
         layout={{
+          autosize: true,
           title: t('compare.waterfall'),
           height: 400,
           margin: { t: 40, b: 20 },
           font: { size: 11 },
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )
@@ -435,14 +457,17 @@ export function ScenarioCompareBars({
           marker_color: colors[idx % colors.length],
         }))}
         layout={{
+          autosize: true,
           barmode: 'group',
-          xaxis: { title: t('page1.caption') },
-          yaxis: { title: 'Avg Wait (min)' },
+          title: t('compare.scenario'),
+          xaxis: { title: t('page1.caption'), automargin: true },
+          yaxis: { title: 'Avg Wait (min)', automargin: true },
           height: 400,
           legend_title: 'Scenario',
           margin: { t: 40, b: 20 },
         }}
         style={{ width: '100%' }}
+        useResizeHandler={true}
       />
     </ChartFrame>
   )

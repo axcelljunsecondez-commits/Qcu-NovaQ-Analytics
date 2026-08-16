@@ -119,6 +119,7 @@
   "compare.waiting": "Waiting-Time Comparison (minutes)",
   "compare.waterfall": "Cost Breakdown Waterfall",
   "compare.scenarios": "Compare Saved Scenarios",
+  "compare.scenario": "Scenario Comparison — Avg Wait Time",
   "compare.current": "Current",
   "compare.optimized": "Optimized",
   "compare.empty": "No scenarios yet. Save an optimization to compare plans.",
