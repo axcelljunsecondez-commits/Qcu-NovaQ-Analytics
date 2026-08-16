@@ -43,15 +43,30 @@ interface SegmentRow {
   lambda: number
   mu: number
   c: number
+  variance?: number
+  K?: number
+  theta?: number
+}
+
+function finiteOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function segmentsOf(dataset: DatasetOut): SegmentRow[] {
-  return (dataset.normalized ?? []).map((row) => ({
-    time: String(row.time),
-    lambda: Number(row.lambda),
-    mu: Number(row.mu),
-    c: Number(row.c),
-  }))
+  return (dataset.normalized ?? []).map((row) => {
+    const variance = finiteOrUndefined(row.variance)
+    const K = typeof row.K === 'number' && Number.isInteger(row.K) && row.K >= 1 ? row.K : undefined
+    const theta = finiteOrUndefined(row.theta)
+    return {
+      time: String(row.time),
+      lambda: Number(row.lambda),
+      mu: Number(row.mu),
+      c: Number(row.c),
+      ...(variance !== undefined ? { variance } : {}),
+      ...(K !== undefined ? { K } : {}),
+      ...(theta !== undefined && theta >= 0 ? { theta } : {}),
+    }
+  })
 }
 
 function sum(values: number[]): number {

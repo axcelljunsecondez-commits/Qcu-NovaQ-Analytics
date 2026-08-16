@@ -160,6 +160,34 @@ describe('OptimizePage', () => {
     })
   })
 
+  it('passes advanced model columns (variance/K/theta) from the dataset to optimizeBatch', async () => {
+    getDatasetMock.mockResolvedValue({
+      dataset: {
+        ...dataset,
+        normalized: [
+          { time: '08:00-09:00', lambda: 30, mu: 12, c: 3, variance: 4.5, K: 6, theta: 0.5 },
+          { time: '09:00-10:00', lambda: 45, mu: 12, c: 4, variance: 3.2, theta: 0.25 },
+          { time: '10:00-11:00', lambda: 50, mu: 12, c: 4, K: 5 },
+        ],
+      },
+    })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await waitFor(() => {
+      expect(optimizeBatchMock).toHaveBeenCalledWith(
+        [
+          { time: '08:00-09:00', lambda: 30, mu: 12, c: 3, variance: 4.5, K: 6, theta: 0.5 },
+          { time: '09:00-10:00', lambda: 45, mu: 12, c: 4, variance: 3.2, theta: 0.25 },
+          { time: '10:00-11:00', lambda: 50, mu: 12, c: 4, K: 5 },
+        ],
+        expect.anything(),
+      )
+    })
+  })
+
   it('shows the warning banner when a row has a warning', async () => {
     optimizeBatchMock.mockResolvedValue({
       results: [{ ...row, warning: 'Segment unstable under current staffing.' }],
