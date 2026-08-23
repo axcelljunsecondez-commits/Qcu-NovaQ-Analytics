@@ -50,35 +50,36 @@ export function computeRadarScores(
 ): { r: number[]; theta: string[] } {
   const totalCostCurrent = sum(rows.map((r) => r.cost_current))
   const totalCostOptimized = sum(rows.map((r) => r.cost_optimal))
-  const costMax = Math.max(totalCostCurrent, totalCostOptimized) || 1
+  const costBest = Math.min(totalCostCurrent, totalCostOptimized)
 
   const lambdas = rows.map((r) => r.lambda)
   const wqCurrent = weightedMean(rows.map((r) => r.Wq_current), lambdas)
   const wqOptimized = weightedMean(rows.map((r) => r.Wq_optimal), lambdas)
-  const wqMax = Math.max(wqCurrent ?? 0, wqOptimized ?? 0) || 1
+  const wqBest = Math.min(wqCurrent ?? 0, wqOptimized ?? 0)
 
   const rhoCurrent = mean(rows.map((r) => r.rho_current))
   const rhoOptimized = mean(rows.map((r) => r.rho_optimal))
 
   const serversCurrent = sum(rows.map((r) => r.c_current))
   const serversOptimized = sum(rows.map((r) => r.c_optimal))
-  const serversMax = Math.max(serversCurrent, serversOptimized) || 1
+  const serversBest = Math.min(serversCurrent, serversOptimized)
 
-  const waitScore = (wq: number | null) => (wq === null ? 50 : clamp(100 * (1 - wq / wqMax)))
+  const ratioScore = (trace: number, best: number) => clamp(trace > 0 ? (100 * best) / trace : 100)
+  const waitScore = (wq: number | null) => (wq === null ? 50 : ratioScore(wq, wqBest))
   const utilScore = (rho: number) => clamp(Math.max(0, 100 * (1 - Math.abs(targetRho - rho))))
 
   const r = current
     ? [
-        clamp(100 * (1 - totalCostCurrent / costMax)),
+        ratioScore(totalCostCurrent, costBest),
         waitScore(wqCurrent),
         utilScore(rhoCurrent),
-        clamp(100 * (1 - serversCurrent / serversMax)),
+        ratioScore(serversCurrent, serversBest),
       ]
     : [
-        clamp(100 * (1 - totalCostOptimized / costMax)),
+        ratioScore(totalCostOptimized, costBest),
         waitScore(wqOptimized),
         utilScore(rhoOptimized),
-        clamp(100 * (1 - serversOptimized / serversMax)),
+        ratioScore(serversOptimized, serversBest),
       ]
   return { r, theta: RADAR_THETA }
 }

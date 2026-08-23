@@ -20,14 +20,14 @@ const THETA = ['Cost\nEfficiency', 'Wait\nTime', 'Utilization', 'Server\nEfficie
 describe('computeRadarScores', () => {
   it('computes exact parity scores for the current plan at the default target', () => {
     expect(computeRadarScores(rows, { current: true })).toEqual({
-      r: [0, 0, 80, 0],
+      r: [62.5, 50, 80, 80],
       theta: THETA,
     })
   })
 
   it('computes exact parity scores for the optimized plan at the default target', () => {
     expect(computeRadarScores(rows, { current: false })).toEqual({
-      r: [37.5, 50, 100, 20],
+      r: [100, 100, 100, 100],
       theta: THETA,
     })
   })
@@ -67,8 +67,10 @@ describe('computeRadarScores', () => {
     const current = computeRadarScores(weighted, { current: true })
     const optimized = computeRadarScores(weighted, { current: false })
     const weightedCurrentWq = (0.5 * 10 + 0.1 * 90) / 100
-    expect(current.r[1]).toBeCloseTo(100 * (1 - weightedCurrentWq / 0.5), 2)
-    expect(optimized.r[1]).toBe(0)
+    const weightedOptWq = (0.5 * 10 + 0.5 * 90) / 100
+    const wqBest = Math.min(weightedCurrentWq, weightedOptWq)
+    expect(current.r[1]).toBeCloseTo(100 * wqBest / weightedCurrentWq, 2)
+    expect(optimized.r[1]).toBeCloseTo(100 * wqBest / weightedOptWq, 2)
   })
 
   it('scores the wait axis as neutral when no wait data exists', () => {
@@ -110,5 +112,18 @@ describe('computeRadarScores', () => {
     expect(r[2]).toBe(0)
     expect(r[0]).toBe(100)
     expect(r[1]).toBe(50)
+  })
+
+  it('scores the worse trace as non-zero and proportional when current is strictly worse', () => {
+    const worse = computeRadarScores(rows, { current: true })
+    const better = computeRadarScores(rows, { current: false })
+    expect(worse.r[0]).toBeGreaterThan(0)
+    expect(worse.r[1]).toBeGreaterThan(0)
+    expect(worse.r[3]).toBeGreaterThan(0)
+    expect(worse.r[0]).toBeLessThan(better.r[0])
+    expect(worse.r[1]).toBeLessThan(better.r[1])
+    expect(worse.r[3]).toBeLessThan(better.r[3])
+    expect(worse.r[2]).toBeGreaterThan(0)
+    expect(better.r[2]).toBeGreaterThan(0)
   })
 })
