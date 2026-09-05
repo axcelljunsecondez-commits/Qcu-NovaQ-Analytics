@@ -234,10 +234,8 @@ describe('SimulationPage', () => {
     await user.click(screen.getByRole('button', { name: 'Validate plan' }))
     expect(await screen.findByText('Simulation validation found issues.')).toBeInTheDocument()
     expect(
-      await screen.findByText(
-        '1 of 1 segments failed — 1 unstable, 0 above the 5% failure threshold.',
-      ),
-    ).toBeInTheDocument()
+      screen.queryByText('1 of 1 segments failed — 1 unstable, 0 above the 5% failure threshold.'),
+    ).not.toBeInTheDocument()
   })
 
   it('explains a failure caused by high failure rate', async () => {
@@ -254,10 +252,8 @@ describe('SimulationPage', () => {
     await user.click(screen.getByRole('button', { name: 'Validate plan' }))
     expect(await screen.findByText('Simulation validation found issues.')).toBeInTheDocument()
     expect(
-      await screen.findByText(
-        '1 of 2 segments failed — 0 unstable, 1 above the 5% failure threshold.',
-      ),
-    ).toBeInTheDocument()
+      screen.queryByText('1 of 2 segments failed — 0 unstable, 1 above the 5% failure threshold.'),
+    ).not.toBeInTheDocument()
   })
 
   it('applies the editable failure-rate cap to MC runs', async () => {
@@ -276,6 +272,22 @@ describe('SimulationPage', () => {
     })
   })
 
+  it('shows a warning badge for MC rows only slightly above the editable failure-rate cap', async () => {
+    const user = userEvent.setup()
+    simulateMcMock.mockResolvedValue({
+      results: [{ ...mcRow, failure_rate: 0.0104, status: 'FAIL' }],
+    })
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    await user.clear(screen.getByLabelText('Failure rate cap'))
+    await user.type(screen.getByLabelText('Failure rate cap'), '0.01')
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    const badge = (await screen.findByText('FAIL')).closest('.badge')
+    expect(badge).toHaveClass('badge-warn')
+    expect(badge).not.toHaveClass('badge-bad')
+  })
+
   it('applies the editable failure-rate cap to validation verdicts', async () => {
     const user = userEvent.setup()
     validateSimulationMock.mockResolvedValue({
@@ -291,6 +303,26 @@ describe('SimulationPage', () => {
     expect(
       validateSimulationMock,
     ).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ mc_failure_rate_cap: 0.08 }))
+  })
+
+  it('uses failure-rate allowance for Validate badges but keeps Critical red', async () => {
+    const user = userEvent.setup()
+    validateSimulationMock.mockResolvedValue({
+      results: [
+        { ...validateRow, sim_status: 'Normal', mc_failure_rate: 0.0104 },
+        { ...validateRow, time: '09:00-10:00', sim_status: 'Critical', mc_failure_rate: 0.0104 },
+      ],
+    })
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.clear(screen.getByLabelText('Failure rate cap'))
+    await user.type(screen.getByLabelText('Failure rate cap'), '0.01')
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    const normalBadge = (await screen.findByText('Normal')).closest('.badge')
+    const criticalBadge = (await screen.findByText('Critical')).closest('.badge')
+    expect(normalBadge).toHaveClass('badge-warn')
+    expect(criticalBadge).toHaveClass('badge-bad')
   })
 
   it('blocks runs with an out-of-range failure-rate cap', async () => {
@@ -351,12 +383,32 @@ describe('SimulationPage', () => {
       )
       expect(validateSimulationMock).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ mc_trials: 10000, mc_failure_threshold: 0.75, mc_failure_rate_cap: 0.05, seed: null }),
+        expect.objectContaining({ des_sim_hours: 24, mc_trials: 10000, mc_failure_threshold: 0.75, mc_failure_rate_cap: 0.05, seed: null }),
       )
     })
     expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Verdict: the optimized schedule passed DES and Monte Carlo validation under the selected 5% failure-rate cap.'),
+    ).toBeInTheDocument()
     expect(screen.getByText('Normal')).toBeInTheDocument()
     expect(screen.getByText('5%')).toBeInTheDocument()
+  })
+
+  it('shows a residual-risk verdict when validation fails', async () => {
+    const user = userEvent.setup()
+    validateSimulationMock.mockResolvedValue({
+      results: [
+        validateRow,
+        { ...validateRow, time: '09:00-10:00', sim_status: 'Normal', mc_failure_rate: 0.12 },
+      ],
+    })
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    expect(
+      await screen.findByText('Verdict: the optimized schedule improves the plan, but 1 interval(s) still show residual validation risk above the selected 5% criterion.'),
+    ).toBeInTheDocument()
   })
 
   it('sends edited plan and MC settings from the validate tab', async () => {
@@ -364,6 +416,8 @@ describe('SimulationPage', () => {
     renderWithProviders(<SimulationPage />, { route: '/simulate' })
     await selectDataset(user)
     await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.clear(screen.getByLabelText('DES hours per segment'))
+    await user.type(screen.getByLabelText('DES hours per segment'), '48')
     await user.clear(screen.getByLabelText('Trials'))
     await user.type(screen.getByLabelText('Trials'), '20000')
     await user.clear(screen.getByLabelText('Failure threshold (ρ)'))
@@ -389,9 +443,21 @@ describe('SimulationPage', () => {
       )
       expect(validateSimulationMock).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ mc_trials: 20000, mc_failure_threshold: 0.8 }),
+        expect.objectContaining({ des_sim_hours: 48, mc_trials: 20000, mc_failure_threshold: 0.8 }),
       )
     })
+  })
+
+  it('blocks validate runs with zero DES hours', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+    await user.clear(screen.getByLabelText('DES hours per segment'))
+    await user.type(screen.getByLabelText('DES hours per segment'), '0')
+    await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+    await screen.findByText('Simulation hours must be greater than 0.')
+    expect(optimizeBatchMock).not.toHaveBeenCalled()
   })
 
   it('maps optimizer lambda_ to a lambda key before calling validateSimulation', async () => {

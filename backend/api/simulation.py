@@ -34,10 +34,13 @@ class McRequest(BaseModel):
 
 class ValidateRequest(BaseModel):
     segments: list[dict]
+    des_sim_hours: float = Field(default=24.0, gt=0)
     mc_trials: int = Field(default=2000, ge=1, le=100000)
     mc_failure_threshold: float = Field(default=0.75, gt=0, le=1)
-    failure_rate_cap: float = Field(default=0.10, gt=0, le=1)
+    failure_rate_cap: float = Field(default=0.10, alias="mc_failure_rate_cap", gt=0, le=1)
     seed: int | None = Field(default=None)
+
+    model_config = {"populate_by_name": True}
 
 
 @router.post("/des")
@@ -80,6 +83,7 @@ def validate(
     comparison = pd.DataFrame(payload.segments)
     result = validate_with_simulation(
         comparison,
+        des_sim_hours=payload.des_sim_hours,
         mc_trials=payload.mc_trials,
         mc_failure_threshold=payload.mc_failure_threshold,
         seed=payload.seed,

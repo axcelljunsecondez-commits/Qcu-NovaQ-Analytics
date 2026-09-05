@@ -118,16 +118,25 @@ def test_upload_sanitizes_filename(db_engine, client):
     assert response.json()["dataset"]["source_filename"] == "evil.csv"
 
 
+def test_upload_sanitizes_filename_control_chars(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = upload(client, "..\\..\\evil\n\t\x00.csv", CSV_GOOD, csrf_header(client))
+    assert response.status_code == 201
+    assert response.json()["dataset"]["source_filename"] == "evil .csv"
+
+
 def test_list_datasets_own_only(db_engine, client):
     create_user(db_engine, "alice@example.com", "pw")
     login(client, "alice@example.com", "pw")
     upload(client, "segments.csv", CSV_GOOD, csrf_header(client))
 
     clear_cookies(client)
-    login(client, "alice@example.com", "pw")
+    create_user(db_engine, "bob@example.com", "pw")
+    login(client, "bob@example.com", "pw")
     listing = client.get("/datasets")
     assert listing.status_code == 200
-    assert len(listing.json()["datasets"]) == 1
+    assert listing.json()["datasets"] == []
 
 
 def test_get_dataset_returns_normalized_rows(db_engine, client):

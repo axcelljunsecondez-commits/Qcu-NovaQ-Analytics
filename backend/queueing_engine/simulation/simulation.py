@@ -827,6 +827,7 @@ def mc_summarize_simulation(mc_rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def validate_with_simulation(
     comparison_df: pd.DataFrame,
+    des_sim_hours: float = SIM_HOURS_PER_SEGMENT,
     mc_trials: int = MC_DEFAULT_TRIALS,
     mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
@@ -870,7 +871,7 @@ def validate_with_simulation(
             result[col] = None
         return result
 
-    des_results = simulate_segments(sim_records, seed=seed)
+    des_results = simulate_segments(sim_records, sim_hours=des_sim_hours, seed=seed)
     des_df = pd.DataFrame(des_results)[
         ["time", "rho_sim", "Wq_sim", "max_queue", "status"]
     ].rename(

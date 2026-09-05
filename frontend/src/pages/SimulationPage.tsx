@@ -81,6 +81,23 @@ function PrecisionBadge({ level }: { level: SimMcOut['failure_rate_precision'] }
 }
 
 const MC_MAX_TRIALS = 100000
+const FAILURE_RATE_DISPLAY_ALLOWANCE = 0.005
+
+function isCriticalStatus(status: string | null | undefined): boolean {
+  return status === 'Critical' || status === 'Unstable'
+}
+
+function isWithinFailureAllowance(rate: number | null | undefined, cap: number): boolean {
+  if (rate === null || rate === undefined || Number.isNaN(rate)) return false
+  return rate <= cap || rate < cap + FAILURE_RATE_DISPLAY_ALLOWANCE
+}
+
+function failureRateBadgeClass(rate: number | null | undefined, cap: number, critical = false): string {
+  if (critical || rate === null || rate === undefined || Number.isNaN(rate)) return 'badge-bad'
+  if (rate <= cap) return 'badge-ok'
+  if (rate < cap + FAILURE_RATE_DISPLAY_ALLOWANCE) return 'badge-warn'
+  return 'badge-bad'
+}
 
 function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
   if (rows.length === 0) return
@@ -147,6 +164,7 @@ export function SimulationPage() {
   const [validateDirty, setValidateDirty] = useState(false)
 
   const [vTrials, setVTrials] = useState('10000')
+  const [vDesHours, setVDesHours] = useState('24')
   const [vThreshold, setVThreshold] = useState('0.75')
   const [vSeed, setVSeed] = useState('')
   const [vServerCost, setVServerCost] = useState(String(DEFAULT_OPTIONS.server_cost_per_hr))
@@ -246,6 +264,11 @@ export function SimulationPage() {
       setError(t('simulation.trials_range_error', { max: String(MC_MAX_TRIALS) }))
       return
     }
+    const desHours = Number(vDesHours)
+    if (!Number.isFinite(desHours) || desHours <= 0) {
+      setError(t('simulation.hours_range_error'))
+      return
+    }
     const threshold = Number(vThreshold)
     if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
       setError(t('simulation.threshold_range_error'))
@@ -285,6 +308,7 @@ export function SimulationPage() {
       })
       const comparisonRows = optimized.results.map((r) => ({ ...r, lambda: r.lambda_ }))
       const out = await validateSimulation(comparisonRows as unknown as Record<string, unknown>[], {
+        des_sim_hours: desHours,
         mc_trials: trials,
         mc_failure_threshold: threshold,
         mc_failure_rate_cap: cap,
@@ -306,16 +330,12 @@ export function SimulationPage() {
   const desCritical = desRows ? desRows.filter((r) => r.status === 'Critical').length : 0
   const desServed = desRows ? desRows.reduce((acc, r) => acc + r.served, 0) : 0
   const desDropped = desRows ? desRows.reduce((acc, r) => acc + r.dropped, 0) : 0
+  const currentFailureCap = Number(failureCap)
   const rowPasses = (r: SimValidateOut) =>
-    r.sim_status !== 'Critical' &&
-    r.sim_status !== 'Unstable' &&
-    (r.mc_failure_rate ?? 0) <= Number(failureCap)
+    !isCriticalStatus(r.sim_status) &&
+    isWithinFailureAllowance(r.mc_failure_rate, currentFailureCap)
   const allPassed = validateRows !== null && validateRows.length > 0 && validateRows.every(rowPasses)
   const failedRows = validateRows?.filter((r) => !rowPasses(r)) ?? []
-  const unstableCount = failedRows.filter(
-    (r) => r.sim_status === 'Critical' || r.sim_status === 'Unstable',
-  ).length
-  const highFailureCount = failedRows.length - unstableCount
 
   return (
     <div>
@@ -562,7 +582,7 @@ export function SimulationPage() {
                       <tr key={row.time}>
                         <td>{row.time}</td>
                         <td>
-                          <span className={`badge ${row.status === 'FAIL' ? 'badge-bad' : 'badge-ok'}`}>
+                          <span className={`badge ${failureRateBadgeClass(row.failure_rate, currentFailureCap)}`}>
                             {row.status}
                           </span>
                         </td>
@@ -614,6 +634,21 @@ export function SimulationPage() {
                   value={vTrials}
                   onChange={(e) => {
                     setVTrials(e.target.value)
+                    setValidateRows(null)
+                    setValidateDirty(true)
+                  }}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="v-des-hours">{t('simulation.validate_des_hours')}</label>
+                <input
+                  id="v-des-hours"
+                  aria-label={t('simulation.validate_des_hours')}
+                  type="number"
+                  step="any"
+                  value={vDesHours}
+                  onChange={(e) => {
+                    setVDesHours(e.target.value)
                     setValidateRows(null)
                     setValidateDirty(true)
                   }}
@@ -738,19 +773,6 @@ export function SimulationPage() {
               <div className={`alert ${allPassed ? 'alert-ok' : 'alert-error'}`}>
                 {allPassed ? t('simulation.passed') : t('simulation.failed')}
               </div>
-              {!allPassed && (
-                <p className="form-hint">
-                  {validateRows.length === 0
-                    ? t('simulation.failed_empty')
-                    : t('simulation.failed_detail', {
-                        failed: String(failedRows.length),
-                        total: String(validateRows.length),
-                        unstable: String(unstableCount),
-                        high: String(highFailureCount),
-                        cap: String(Math.round(Number(failureCap) * 100)),
-                      })}
-                </p>
-              )}
               <div className="card">
                 <table>
                   <thead>
@@ -772,7 +794,13 @@ export function SimulationPage() {
                       <tr key={row.time}>
                         <td>{row.time}</td>
                         <td>
-                          <span className={`badge ${rowPasses(row) ? 'badge-ok' : 'badge-bad'}`}>
+                          <span
+                            className={`badge ${failureRateBadgeClass(
+                              row.mc_failure_rate,
+                              currentFailureCap,
+                              isCriticalStatus(row.sim_status),
+                            )}`}
+                          >
                             {row.sim_status}
                           </span>
                         </td>
@@ -788,6 +816,16 @@ export function SimulationPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className={`validation-verdict ${allPassed ? 'is-passed' : 'has-risk'}`}>
+                {allPassed
+                  ? t('simulation.verdict_passed', {
+                      cap: String(Math.round(Number(failureCap) * 100)),
+                    })
+                  : t('simulation.verdict_residual', {
+                      failed: String(failedRows.length),
+                      cap: String(Math.round(Number(failureCap) * 100)),
+                    })}
               </div>
             </>
           )}

@@ -118,6 +118,77 @@ describe('OptimizePage', () => {
     })
     expect(await screen.findByText('612.12')).toBeInTheDocument()
     expect(screen.getByText('401.31')).toBeInTheDocument()
+    expect(screen.getByLabelText('Available cashiers today')).toHaveValue(null)
+    expect(screen.getByText('Net staffing reduction')).toBeInTheDocument()
+  })
+
+  it('summarizes net cashier-hours, available pool, and grouped time ranges', async () => {
+    optimizeBatchMock.mockResolvedValue({
+      results: [
+        { ...row, time: '05:00-06:00', c_current: 3, c_optimal: 2, delta_c: -1 },
+        { ...row, time: '06:00-07:00', c_current: 5, c_optimal: 4, delta_c: -1 },
+        { ...row, time: '07:00-08:00', c_current: 5, c_optimal: 3, delta_c: -2 },
+        { ...row, time: '08:00-09:00', c_current: 5, c_optimal: 3, delta_c: -2 },
+        { ...row, time: '09:00-10:00', c_current: 5, c_optimal: 3, delta_c: -2 },
+        { ...row, time: '10:00-11:00', c_current: 5, c_optimal: 4, delta_c: -1 },
+        { ...row, time: '11:00-12:00', c_current: 2, c_optimal: 3, delta_c: 1 },
+        { ...row, time: '12:00-13:00', c_current: 3, c_optimal: 4, delta_c: 1 },
+        { ...row, time: '13:00-14:00', c_current: 5, c_optimal: 4, delta_c: -1 },
+        { ...row, time: '14:00-15:00', c_current: 5, c_optimal: 3, delta_c: -2 },
+        { ...row, time: '15:00-16:00', c_current: 5, c_optimal: 4, delta_c: -1 },
+        { ...row, time: '16:00-17:00', c_current: 5, c_optimal: 4, delta_c: -1 },
+        { ...row, time: '17:00-18:00', c_current: 2, c_optimal: 2, delta_c: 0 },
+      ],
+    })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+
+    expect(await screen.findByText('12 cashier-hours reduced')).toBeInTheDocument()
+    expect(screen.getByText('14 removed - 2 added')).toBeInTheDocument()
+    expect(screen.getByText('Peak requirement')).toBeInTheDocument()
+    expect(screen.getByText('Available pool')).toBeInTheDocument()
+    expect(screen.getByText('4 cashiers')).toBeInTheDocument()
+    expect(screen.getAllByText('—')).toHaveLength(2)
+    expect(screen.queryByText('Available pool can cover the optimized schedule.')).not.toBeInTheDocument()
+    expect(screen.getByText('Add 1 cashier: 11:00-13:00')).toBeInTheDocument()
+    expect(screen.getByText('Reduce 1 cashier: 05:00-07:00, 10:00-11:00, 13:00-14:00, 15:00-17:00')).toBeInTheDocument()
+    expect(screen.getByText('Reduce 2 cashiers: 07:00-10:00, 14:00-15:00')).toBeInTheDocument()
+    expect(screen.queryByText('+2')).not.toBeInTheDocument()
+    expect(screen.queryByText('-12')).not.toBeInTheDocument()
+  })
+
+  it('warns when the available cashier pool cannot cover peak optimized demand', async () => {
+    optimizeBatchMock.mockResolvedValue({
+      results: [
+        { ...row, time: '11:00-12:00', c_current: 2, c_optimal: 3, delta_c: 1 },
+        { ...row, time: '12:00-13:00', c_current: 3, c_optimal: 4, delta_c: 1 },
+      ],
+    })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    const poolInput = await screen.findByLabelText('Available cashiers today')
+    await user.type(poolInput, '3')
+    expect(
+      screen.getByText('Available pool is short by 1 cashier during peak optimized demand.'),
+    ).toBeInTheDocument()
+  })
+
+  it('allows zero available cashiers without blocking optimization or showing a coverage verdict', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.type(screen.getByLabelText('Available cashiers today'), '0')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText('0 cashiers')).toBeInTheDocument()
+    expect(screen.queryByText('Available pool can cover the optimized schedule.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Available pool is short by/)).not.toBeInTheDocument()
   })
 
   it('renders the staffing table with recommendation text', async () => {

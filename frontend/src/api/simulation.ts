@@ -16,6 +16,7 @@ export interface McOptions {
 }
 
 export interface ValidateOptions {
+  des_sim_hours?: number
   mc_trials?: number
   mc_failure_threshold?: number
   mc_failure_rate_cap?: number

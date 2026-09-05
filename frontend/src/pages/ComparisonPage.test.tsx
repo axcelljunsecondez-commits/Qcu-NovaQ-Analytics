@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { ComparisonPage } from './ComparisonPage'
@@ -125,6 +125,9 @@ describe('ComparisonPage', () => {
     expect(await screen.findByText('₱300')).toBeInTheDocument()
     expect(screen.getByText('₱7,525')).toBeInTheDocument()
     expect(screen.getByText('₱90,300')).toBeInTheDocument()
+    expect(screen.getByText('Operating Days')).toBeInTheDocument()
+    expect(screen.getByText('301')).toBeInTheDocument()
+    expect(screen.getByText('Annual savings are based on 301 operating days after excluding 12 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
   })
 
   it('recomputes annual savings from the holiday count and Sunday closure', async () => {
@@ -132,11 +135,12 @@ describe('ComparisonPage', () => {
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
     await screen.findByText('ROI Projection')
     const input = screen.getByLabelText('Legal holidays per year')
-    await user.clear(input)
-    await user.type(input, '20')
+    fireEvent.change(input, { target: { value: '20' } })
     expect(screen.getByText('₱87,900')).toBeInTheDocument()
     await user.click(screen.getByRole('checkbox', { name: 'Closed on Sundays (no work, no pay)' }))
     expect(screen.getByText('₱103,500')).toBeInTheDocument()
+    expect(screen.getByText('345')).toBeInTheDocument()
+    expect(screen.getByText('Annual savings are based on 345 operating days after excluding 20 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
   })
 
   it('shows the empty state when no scenarios are saved', async () => {

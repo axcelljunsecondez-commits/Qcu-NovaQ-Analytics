@@ -139,6 +139,35 @@ def test_validate_accepts_failure_rate_cap(db_engine, client):
     assert len(response.json()["results"]) == 1
 
 
+def test_validate_accepts_mc_failure_rate_cap_alias(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    comparison = [
+        {"time": "08:00-09:00", "lambda": 30, "mu": 12, "c_optimal": 3},
+    ]
+    response = client.post(
+        "/simulation/validate",
+        json={"segments": comparison, "mc_failure_rate_cap": 0.05, "seed": 7},
+    )
+    assert response.status_code == 200
+    assert len(response.json()["results"]) == 1
+
+
+def test_validate_accepts_des_sim_hours(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    comparison = [
+        {"time": "08:00-09:00", "lambda": 30, "mu": 12, "c_optimal": 3},
+    ]
+    response = client.post(
+        "/simulation/validate",
+        json={"segments": comparison, "des_sim_hours": 12, "seed": 7},
+    )
+    assert response.status_code == 200
+    row = response.json()["results"][0]
+    assert row["sim_status"] in {"Lean", "Normal", "Peak", "Critical", "Unstable"}
+
+
 def test_validate_rejects_out_of_range_failure_rate_cap(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")

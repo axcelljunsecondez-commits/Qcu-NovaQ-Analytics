@@ -5,7 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from 'react-router-dom'
 import { renderWithProviders, makeQueryClient } from '../test/test-utils'
 import { LoginPage } from './LoginPage'
-import { router } from '../App'
+import { createAppRouter } from '../router'
 
 const meMock = vi.fn()
 const loginMock = vi.fn()
@@ -40,10 +40,11 @@ describe('LoginPage', () => {
 
   it('submits credentials and shows the logged-in user email', async () => {
     loginMock.mockResolvedValue({ user: adminUser })
+    window.history.pushState({}, '', '/login')
     const qc = makeQueryClient()
     render(
       <QueryClientProvider client={qc}>
-        <RouterProvider router={router} />
+        <RouterProvider router={createAppRouter()} />
       </QueryClientProvider>,
     )
     const user = userEvent.setup()

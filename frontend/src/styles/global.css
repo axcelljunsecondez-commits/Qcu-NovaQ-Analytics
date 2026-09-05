@@ -166,6 +166,27 @@ button.btn-ghost {
   color: var(--warning);
 }
 
+.validation-verdict {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-accent);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-bottom: 0.75rem;
+  padding: 0.85rem 1rem;
+}
+
+.validation-verdict.is-passed {
+  border-left-color: var(--success);
+}
+
+.validation-verdict.has-risk {
+  border-left-color: var(--warning);
+}
+
 .queue-bar-row {
   display: flex;
   align-items: center;
@@ -240,6 +261,66 @@ button.btn-ghost {
   font-size: 0.75rem;
   color: var(--text-secondary);
   margin-top: 0.25rem;
+}
+
+.staffing-summary {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.staffing-summary .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+}
+
+.staffing-summary .sub {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+.staffing-summary-value {
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.staffing-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.staffing-summary-grid div {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.staffing-summary-grid span {
+  color: var(--text-secondary);
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.staffing-summary-grid strong {
+  color: var(--text-primary);
+  display: block;
+  font-size: 1.1rem;
+  margin-top: 0.25rem;
+}
+
+.staffing-lines {
+  border-top: 1px solid var(--border);
+  color: var(--text-primary);
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.75rem;
 }
 
 .sidebar {

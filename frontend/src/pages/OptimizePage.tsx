@@ -67,6 +67,45 @@ function sum(values: number[]): number {
   return values.reduce((acc, v) => acc + v, 0)
 }
 
+function peakOptimizedCashiers(rows: OptimizationOut[] | null): number {
+  return rows ? Math.max(...rows.map((r) => r.c_optimal ?? 0), 0) : 0
+}
+
+function formatStaffingChange(change: number): string {
+  const absChange = Math.abs(change)
+  const label = absChange === 1 ? 'cashier' : 'cashiers'
+  return change > 0 ? `Add ${absChange} ${label}` : `Reduce ${absChange} ${label}`
+}
+
+function mergeTimeRanges(times: string[]): string[] {
+  const ranges: string[] = []
+  for (const time of times) {
+    const [start, end] = time.split('-')
+    const last = ranges[ranges.length - 1]
+    if (last && start && end) {
+      const [lastStart, lastEnd] = last.split('-')
+      if (lastEnd === start) {
+        ranges[ranges.length - 1] = `${lastStart}-${end}`
+        continue
+      }
+    }
+    ranges.push(time)
+  }
+  return ranges
+}
+
+function staffingChangeLines(rows: OptimizationOut[]): string[] {
+  const grouped = new Map<number, string[]>()
+  for (const row of rows) {
+    const change = row.delta_c ?? 0
+    if (change === 0) continue
+    grouped.set(change, [...(grouped.get(change) ?? []), row.time])
+  }
+  return [...grouped.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([change, times]) => `${formatStaffingChange(change)}: ${mergeTimeRanges(times).join(', ')}`)
+}
+
 export function OptimizePage() {
   const { t } = useTranslation()
   const [datasetId, setDatasetId] = useState('')
@@ -78,6 +117,7 @@ export function OptimizePage() {
   const [saving, setSaving] = useState(false)
   const [scenarioName, setScenarioName] = useState('')
   const [saved, setSaved] = useState(false)
+  const [availableCashiers, setAvailableCashiers] = useState('')
 
   const datasets = useQuery({
     queryKey: ['datasets'],
@@ -151,7 +191,17 @@ export function OptimizePage() {
   const totalCurrent = rows ? sum(rows.map((r) => r.cost_current ?? 0)) : 0
   const totalOptimal = rows ? sum(rows.map((r) => r.cost_optimal ?? 0)) : 0
   const deltaCost = totalCurrent - totalOptimal
-  const addedServers = rows ? sum(rows.map((r) => Math.max(0, r.delta_c ?? 0))) : 0
+  const addedCashierHours = rows ? sum(rows.map((r) => Math.max(0, r.delta_c ?? 0))) : 0
+  const removedCashierHours = rows ? sum(rows.map((r) => Math.max(0, -(r.delta_c ?? 0)))) : 0
+  const netCashierHours = removedCashierHours - addedCashierHours
+  const peakRequirement = peakOptimizedCashiers(rows)
+  const availablePool = Number(availableCashiers)
+  const poolIsProvided =
+    availableCashiers.trim() !== '' &&
+    Number.isInteger(availablePool) &&
+    availablePool >= 0
+  const poolGap = poolIsProvided && availablePool > 0 ? availablePool - peakRequirement : null
+  const staffingLines = rows ? staffingChangeLines(rows) : []
   const warnings = rows?.filter((r) => r.warning) ?? []
 
   return (
@@ -215,6 +265,18 @@ export function OptimizePage() {
             />
           </div>
           <div className="form-field">
+            <label htmlFor="opt-available-cashiers">{t('optimize.available_cashiers')}</label>
+            <input
+              id="opt-available-cashiers"
+              aria-label={t('optimize.available_cashiers')}
+              type="number"
+              step={1}
+              min={0}
+              value={availableCashiers}
+              onChange={(e) => setAvailableCashiers(e.target.value)}
+            />
+          </div>
+          <div className="form-field">
             <label htmlFor="opt-aband-cost">{t('optimize.abandonment_cost')}</label>
             <input
               id="opt-aband-cost"
@@ -258,7 +320,61 @@ export function OptimizePage() {
             <MetricCard label={t('optimize.total_cost')} value={fmt(totalCurrent)} />
             <MetricCard label={t('optimize.optimal_cost')} value={fmt(totalOptimal)} />
             <MetricCard label={t('optimize.delta_cost')} value={fmt(deltaCost)} />
-            <MetricCard label={t('optimize.added_servers')} value={'+' + String(addedServers)} />
+          </div>
+
+          <div className="card staffing-summary">
+            <div>
+              <div className="label">{t('optimize.net_staffing_reduction')}</div>
+              <div className="staffing-summary-value">
+                {netCashierHours > 0
+                  ? t('optimize.net_reduced', { count: netCashierHours })
+                  : netCashierHours < 0
+                    ? t('optimize.net_added', { count: Math.abs(netCashierHours) })
+                    : t('optimize.net_no_change')}
+              </div>
+              <div className="sub">
+                {t('optimize.staffing_formula', {
+                  removed: removedCashierHours,
+                  added: addedCashierHours,
+                })}
+              </div>
+            </div>
+            <div className="staffing-summary-grid">
+              <div>
+                <span>{t('optimize.peak_requirement')}</span>
+                <strong>
+                  {t(peakRequirement === 1 ? 'optimize.cashier_count' : 'optimize.cashier_count_plural', {
+                    count: peakRequirement,
+                  })}
+                </strong>
+              </div>
+              <div>
+                <span>{t('optimize.available_pool')}</span>
+                <strong>
+                  {poolIsProvided
+                    ? t(availablePool === 1 ? 'optimize.cashier_count' : 'optimize.cashier_count_plural', {
+                        count: availablePool,
+                      })
+                    : t('common.not_available')}
+                </strong>
+              </div>
+            </div>
+            {poolGap !== null && (
+              <div className={`alert ${poolGap >= 0 ? 'alert-ok' : 'alert-warn'}`}>
+                {poolGap >= 0
+                  ? t('optimize.pool_can_cover')
+                  : t(Math.abs(poolGap) === 1 ? 'optimize.pool_short' : 'optimize.pool_short_plural', {
+                      count: Math.abs(poolGap),
+                    })}
+              </div>
+            )}
+            {staffingLines.length > 0 && (
+              <div className="staffing-lines">
+                {staffingLines.map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="card">

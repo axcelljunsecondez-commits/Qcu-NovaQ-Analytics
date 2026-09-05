@@ -159,7 +159,14 @@ export function ComparisonPage() {
               <MetricCard label={t('compare.daily_savings')} value={fmtMoney(roi.dailySavings)} />
               <MetricCard label={t('compare.monthly_savings')} value={fmtMoney(roi.monthlySavings)} />
               <MetricCard label={t('compare.annual_savings')} value={fmtMoney(roi.annualSavings)} />
+              <MetricCard label={t('compare.operating_days')} value={String(roi.workingDaysPerYear)} />
             </div>
+            <p className="form-hint">
+              {t('compare.roi_basis', {
+                days: String(roi.workingDaysPerYear),
+                holidays: String(holidays),
+              })}
+            </p>
           </div>
         </>
       )}

@@ -22,6 +22,38 @@ Production queueing-analytics platform for analyzing service queues with M/M/1, 
 | `api` | FastAPI + SQLAlchemy (Postgres), argon2 sessions | :8000 (via nginx) |
 | `db` | PostgreSQL 16 | :5432 |
 
+```mermaid
+flowchart LR
+  User[Browser user] --> Web[nginx web container]
+  Web --> Shell[React app shell]
+  Shell --> Auth[Auth/session state]
+  Shell --> Routes{Lazy route loading}
+
+  Routes --> Basic[Small page chunks]
+  Basic --> Dashboard[Dashboard]
+  Basic --> Datasets[Datasets]
+  Basic --> Reports[Reports]
+  Basic --> Admin[Admin/account]
+
+  Routes --> Analytics[Analytics page chunks]
+  Analytics --> Analysis[Analysis]
+  Analytics --> Optimize[Optimize]
+  Analytics --> Simulate[Simulation]
+  Analytics --> Compare[Comparison]
+
+  Simulate --> Charts[Lazy chart bundle]
+  Compare --> Charts
+  Charts --> Plotly[Plotly chart bundle]
+
+  Web --> Api[FastAPI api container]
+  Shell --> Api
+  Api --> Db[(Postgres database)]
+```
+
+The first screen loads the small React shell first. Chart-heavy pages load only
+when the user opens Simulation or Comparison, and those pages share the Plotly
+chart bundle.
+
 ## Quick Start (Docker)
 
 Requires Docker Desktop (or any Docker engine).
@@ -30,12 +62,16 @@ Requires Docker Desktop (or any Docker engine).
 docker compose up -d --build
 ```
 
-Then open **http://localhost**. Default admin login (set via `.env`):
+Then open **http://localhost**. The local compose defaults create this admin account:
 
 ```text
 email:    admin@example.com
-password: admin123   (override with ADMIN_PASSWORD in a .env file, e.g. ADMIN_PASSWORD=YourPass)
+password: admin123
 ```
+
+For any shared demo or deployment, copy `.env.example` to `.env` and set a strong
+`ADMIN_PASSWORD` before starting the stack. Keep `SECURE_COOKIES=0` only for local
+`http://localhost`; use `SECURE_COOKIES=1` behind HTTPS/TLS.
 
 The API is reachable directly at `http://localhost:8000` and proxied through nginx at `http://localhost/api/*`.
 

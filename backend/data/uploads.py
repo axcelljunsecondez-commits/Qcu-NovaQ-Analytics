@@ -8,7 +8,9 @@ sanitization before any data enters the pipeline.
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
+from urllib.parse import unquote
 
 import pandas as pd
 
@@ -17,6 +19,7 @@ FORMULA_PREFIXES = ("=", "+", "@", "-", "\t", "\r")
 DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 _XLSX_MAGIC = b"PK\x03\x04"
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]+")
 
 
 class UploadError(ValueError):
@@ -25,7 +28,10 @@ class UploadError(ValueError):
 
 def safe_stem(filename: str) -> str:
     """Return the basename with any directory components and control chars removed."""
-    return Path(str(filename).replace("\\", "/")).name
+    decoded = unquote(str(filename))
+    basename = Path(decoded.replace("\\", "/")).name
+    cleaned = _CONTROL_CHARS.sub(" ", basename).strip()
+    return cleaned or "upload"
 
 
 def parse_upload(filename: str, data: bytes, max_bytes: int = DEFAULT_MAX_UPLOAD_BYTES) -> pd.DataFrame:

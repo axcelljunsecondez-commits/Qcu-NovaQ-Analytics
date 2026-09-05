@@ -23,7 +23,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) =>
       loginApi({ email, password }).then((res) => res.user),
-    onSuccess: (user) => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['me'] })
+    },
+    onSuccess: async (user) => {
+      await queryClient.cancelQueries({ queryKey: ['me'] })
       queryClient.setQueryData(['me'], user)
     },
   })
