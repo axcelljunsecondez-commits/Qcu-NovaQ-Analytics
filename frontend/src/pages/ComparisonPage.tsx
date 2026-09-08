@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { listScenarios, type ScenarioOut } from '../api/scenarios'
 import type { OptimizationOut } from '../api/types'
 import { computeRadarScores, DEFAULT_TARGET_UTILIZATION, type RadarRow } from '../lib/radar'
+import {
+  comparisonTotals,
+  operationalComparisonComplete,
+} from '../lib/comparison'
 import { computeRoi, clampHolidays } from '../lib/roi'
 import {
   RadarChart,
@@ -23,26 +27,37 @@ function rowsOf(scenario?: ScenarioOut | null): OptimizationOut[] {
   return Array.isArray(arr) ? (arr as OptimizationOut[]) : []
 }
 
+function normalizeScenarioId(id: string | number): string {
+  return String(id)
+}
+
+function formatMetric(value: number | null, multiplier = 1): string {
+  return value === null || !Number.isFinite(value) ? '—' : (value * multiplier).toFixed(2)
+}
+
+function formatPercent(value: number | null): string {
+  const formatted = formatMetric(value, 100)
+  return formatted === '—' ? formatted : `${formatted}%`
+}
+
+function statusKey(stable: boolean, rho: number | null): string {
+  if (stable) return 'compare.stable'
+  return rho === null ? 'integrity.status.Unavailable' : 'integrity.status.Unstable'
+}
+
 export function ComparisonPage() {
   const { t } = useTranslation()
   const { data, isLoading, isError } = useQuery({ queryKey: ['scenarios'], queryFn: listScenarios })
   const scenarios = useMemo(() => data?.scenarios ?? [], [data])
 
   const [scenarioId, setScenarioId] = useState('')
-  const [selectedNames, setSelectedNames] = useState<string[]>([])
+  const [selectedScenarioIds, setSelectedScenarioIds] = useState<string[]>([])
   const [holidays, setHolidays] = useState(12)
-  const [closedSundays, setClosedSundays] = useState(true)
-  const defaulted = useRef(false)
-
-  useEffect(() => {
-    if (defaulted.current || scenarios.length === 0) return
-    defaulted.current = true
-    setSelectedNames(scenarios.slice(0, 2).map((s) => s.name))
-  }, [scenarios])
+  const [closedSundays, setClosedSundays] = useState(false)
 
   const selected = useMemo(() => {
-    const id = scenarioId || String(scenarios[0]?.id ?? '')
-    return scenarios.find((s) => String(s.id) === id) ?? null
+    const id = scenarioId || (scenarios[0] ? normalizeScenarioId(scenarios[0].id) : '')
+    return scenarios.find((s) => normalizeScenarioId(s.id) === id) ?? null
   }, [scenarios, scenarioId])
 
   const rows = useMemo(() => rowsOf(selected), [selected])
@@ -57,14 +72,26 @@ export function ComparisonPage() {
     return typeof raw === 'number' && Number.isFinite(raw) ? raw : DEFAULT_TARGET_UTILIZATION
   }, [selected])
 
-  const compared = useMemo(
-    () => scenarios.filter((s) => selectedNames.includes(s.name)),
-    [scenarios, selectedNames],
+  const selectedScenarios = useMemo(
+    () => scenarios.filter((scenario) => selectedScenarioIds.includes(normalizeScenarioId(scenario.id))),
+    [scenarios, selectedScenarioIds],
   )
 
-  const currentTotal = rows.reduce((acc, r) => acc + (r.cost_current ?? 0), 0)
-  const optimalTotal = rows.reduce((acc, r) => acc + (r.cost_optimal ?? 0), 0)
-  const roi = computeRoi({ currentTotal, optimalTotal, holidays, closedSundays })
+  const compared = useMemo(
+    () => selectedScenarios.filter((scenario) => operationalComparisonComplete(rowsOf(scenario))),
+    [selectedScenarios],
+  )
+
+  const incompleteSelected = useMemo(
+    () => selectedScenarios.filter((scenario) => !operationalComparisonComplete(rowsOf(scenario))),
+    [selectedScenarios],
+  )
+
+  const totals = comparisonTotals(rows)
+  const operationallyComparable = operationalComparisonComplete(rows)
+  const roi = totals
+    ? computeRoi({ currentTotal: totals.current, optimalTotal: totals.optimal, holidays, closedSundays })
+    : null
   const fmtMoney = (n: number) =>
     '₱' + n.toLocaleString(undefined, { maximumFractionDigits: 0 })
 
@@ -76,6 +103,7 @@ export function ComparisonPage() {
       <div>
         <h1 className="page-title">{t('page4.title')}</h1>
         <p className="page-caption">{t('page4.caption')}</p>
+      {!selected?.settings.calculation && <p className="alert alert-warn">{t('integrity.legacy')}</p>}
         <ApiState.Empty message={t('compare.empty')} />
       </div>
     )
@@ -85,6 +113,7 @@ export function ComparisonPage() {
     <div>
       <h1 className="page-title">{t('page4.title')}</h1>
       <p className="page-caption">{t('page4.caption')}</p>
+      {!selected?.settings.calculation && <p className="alert alert-warn">{t('integrity.legacy')}</p>}
 
       <div className="card">
         <h2 className="card-title">{t('compare.title')}</h2>
@@ -94,11 +123,11 @@ export function ComparisonPage() {
             <select
               id="compare-scenario"
               aria-label={t('compare.source_scenario')}
-              value={scenarioId || String(scenarios[0]?.id ?? '')}
+              value={scenarioId || (scenarios[0] ? normalizeScenarioId(scenarios[0].id) : '')}
               onChange={(e) => setScenarioId(e.target.value)}
             >
               {scenarios.map((s) => (
-                <option key={s.id} value={String(s.id)}>
+                <option key={normalizeScenarioId(s.id)} value={normalizeScenarioId(s.id)}>
                   {s.name}
                 </option>
               ))}
@@ -107,14 +136,44 @@ export function ComparisonPage() {
         </div>
       </div>
 
+      {!totals && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
       {rows.length > 0 && (
+        <div className="card">
+          <h2 className="card-title">{t('compare.operational')}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>{t('common.time')}</th>
+                <th>{t('compare.current_cashiers')}</th>
+                <th>{t('compare.current_utilization')}</th>
+                <th>{t('compare.current_status')}</th>
+                <th>{t('compare.current_wait')}</th>
+                <th>{t('compare.optimized_cashiers')}</th>
+                <th>{t('compare.optimized_utilization')}</th>
+                <th>{t('compare.optimized_status')}</th>
+                <th>{t('compare.optimized_wait')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.time}>
+                  <td>{row.time}</td>
+                  <td>{row.c_current}</td>
+                  <td>{formatPercent(row.rho_current)}</td>
+                  <td>{t(statusKey(row.current_stable, row.rho_current))}</td>
+                  <td>{formatMetric(row.Wq_current, 60)}</td>
+                  <td>{row.c_optimal ?? '—'}</td>
+                  <td>{formatPercent(row.rho_optimal)}</td>
+                  <td>{t(statusKey(row.optimized_stable, row.rho_optimal))}</td>
+                  <td>{formatMetric(row.Wq_optimal, 60)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {operationallyComparable && (
         <>
-          <div className="card">
-            <RadarChart
-              current={computeRadarScores(radarRows, { current: true, targetRho: targetUtilization }).r}
-              optimized={computeRadarScores(radarRows, { current: false, targetRho: targetUtilization }).r}
-            />
-          </div>
           <div className="card-grid">
             <div className="card">
               <UtilizationCompareBars rows={rows} />
@@ -125,6 +184,16 @@ export function ComparisonPage() {
           </div>
           <div className="card">
             <WaitTimeLines rows={rows} />
+          </div>
+        </>
+      )}
+      {totals && roi && (
+        <>
+          <div className="card">
+            <RadarChart
+              current={computeRadarScores(radarRows, { current: true, targetRho: targetUtilization }).r}
+              optimized={computeRadarScores(radarRows, { current: false, targetRho: targetUtilization }).r}
+            />
           </div>
           <div className="card">
             <CostWaterfall rows={rows} />
@@ -178,15 +247,16 @@ export function ComparisonPage() {
             <label htmlFor="compare-multi">{t('compare.select_scenarios')}</label>
             <div id="compare-multi" className="checkbox-list" role="group" aria-label={t('compare.select_scenarios')}>
               {scenarios.map((s) => (
-                <label key={s.id}>
+                <label key={normalizeScenarioId(s.id)}>
                   <input
                     type="checkbox"
-                    checked={selectedNames.includes(s.name)}
+                    checked={selectedScenarioIds.includes(normalizeScenarioId(s.id))}
                     onChange={(e) => {
+                      const id = normalizeScenarioId(s.id)
                       if (e.target.checked) {
-                        setSelectedNames((prev) => [...prev, s.name])
+                        setSelectedScenarioIds((prev) => prev.includes(id) ? prev : [...prev, id])
                       } else {
-                        setSelectedNames((prev) => prev.filter((n) => n !== s.name))
+                        setSelectedScenarioIds((prev) => prev.filter((selectedId) => selectedId !== id))
                       }
                     }}
                   />
@@ -196,12 +266,23 @@ export function ComparisonPage() {
             </div>
           </div>
         </div>
-        {compared.length >= 2 ? (
-          <ScenarioCompareBars
-            scenarios={compared.map((s) => ({ name: s.name, rows: rowsOf(s) }))}
-          />
-        ) : (
+        {selectedScenarios.length < 2 ? (
           <p className="page-caption">{t('compare.min_two')}</p>
+        ) : (
+          <>
+            {incompleteSelected.length > 0 && (
+              <div role="alert" className="alert alert-warn">
+                {t('compare.incomplete_scenarios', {
+                  names: incompleteSelected.map((scenario) => scenario.name).join(', '),
+                })}
+              </div>
+            )}
+            {compared.length >= 2 && (
+              <ScenarioCompareBars
+                scenarios={compared.map((s) => ({ name: s.name, rows: rowsOf(s) }))}
+              />
+            )}
+          </>
         )}
       </div>
     </div>

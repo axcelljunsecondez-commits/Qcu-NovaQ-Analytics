@@ -17,7 +17,6 @@ from backend.queueing_engine.config import (
     DEFAULT_TARGET_UTILIZATION,
     OT_RATE,
     REGULAR_RATE,
-    UNSTABLE_FIXED_COST,
 )
 from backend.queueing_engine.services.model_selection import select_model
 
@@ -44,19 +43,15 @@ def _is_number(value) -> bool:
 
 
 def _compute_waiting_cost(lambda_, wq_value, customer_waiting_cost=DEFAULT_CUSTOMER_WAITING_COST):
-    """Compute actual waiting cost from Wq, or return fixed cost for unstable systems.
-    
-    - If Wq is available: cost = λ * Wq * customer_waiting_cost
-    - If Wq is None (unstable): cost = UNSTABLE_FIXED_COST (fixed value, not infinite)
-    - For unstable systems (ρ ≥ 1), a fixed cost is assigned instead of penalties.
-    """
-    if lambda_ is None:
-        return None
+    """Compute waiting cost only from a valid analytical waiting time.
 
-    if wq_value is not None:
-        return lambda_ * wq_value * customer_waiting_cost
-    else:
-        return UNSTABLE_FIXED_COST
+    An unstable infinite-capacity baseline has no steady-state ``Wq``.  Its
+    waiting cost must therefore remain unavailable rather than being replaced
+    by a synthetic penalty that could be mistaken for measured cost or savings.
+    """
+    if not _is_number(lambda_) or not _is_number(wq_value):
+        return None
+    return float(lambda_) * float(wq_value) * customer_waiting_cost
 
 
 def _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment):
@@ -196,15 +191,19 @@ def optimize_segment(
     customer_waiting_cost: float = DEFAULT_CUSTOMER_WAITING_COST,
     cost_per_abandonment: float = 0.0,
     abandonment_rate: float = 0.0,
+    min_servers: int = 1,
+    max_wait_minutes: float | None = None,
 ) -> dict:
     """Compare current and optimized configuration for one time segment.
     
     Uses LEAN COST OPTIMIZATION:
     - Minimizes total cost (server + waiting + optional abandonment)
     - Detects waste hours (if ρ ≤ 30%, tries to remove servers)
-    - Ensures ρ stays ≤ 70% for stability
+    - Enforces the requested utilization ceiling and server/capacity bounds
     """
     empty_result = {
+        "feasibility_status": "INVALID_INPUT", "constraints_passed": False,
+        "violated_constraints": ["input_validation"],
         "time": "Unknown",
         "lambda": None,
         "mu": None,
@@ -249,13 +248,21 @@ def optimize_segment(
     cost_per_abandonment = float(cost_per_abandonment or 0.0)
 
     if (
-        not isinstance(current_c, Integral)
+        lambda_ is None or not _is_number(lambda_) or lambda_ < 0
+        or mu is None or not _is_number(mu) or mu <= 0
+        or isinstance(current_c, bool) or not isinstance(current_c, Integral)
         or int(current_c) <= 0
         or not _is_number(target_utilization)
-        or not 0 < float(target_utilization) < 1
+        or not 0 < float(target_utilization) <= 1
         or cost_per_server is None
         or not isinstance(max_servers, Integral)
-        or int(max_servers) <= 0
+        or not 1 <= int(max_servers) <= 256
+        or isinstance(min_servers, bool) or not isinstance(min_servers, Integral)
+        or not 1 <= min_servers <= max_servers
+        or (max_wait_minutes is not None and (not _is_number(max_wait_minutes) or max_wait_minutes < 0))
+        or not _is_number(customer_waiting_cost) or customer_waiting_cost < 0
+        or not _is_number(abandonment_rate) or not 0 <= abandonment_rate <= 1
+        or not _is_number(cost_per_abandonment) or cost_per_abandonment < 0
     ):
         invalid_result = empty_result.copy()
         invalid_result.update(
@@ -279,29 +286,61 @@ def optimize_segment(
     current_server_cost = current_c * cost_per_server
     current_waiting_cost = _compute_waiting_cost(lambda_, current_metrics.get("Wq"), customer_waiting_cost)
     current_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
-    current_total_cost = current_server_cost + (current_waiting_cost if current_waiting_cost is not None else 0) + current_abandonment_cost
+    current_total_cost = (
+        current_server_cost + current_waiting_cost + current_abandonment_cost
+        if current_waiting_cost is not None else None
+    )
     current_rho = current_metrics.get("rho")
+
+    rejected: set[str] = set()
 
     def _eval_cost(c):
         m = _queue_metrics(lambda_, mu, c, variance, capacity, theta)
+        reasons = []
         if not m.get("stable"):
+            reasons.append("model_stability")
+        if not _is_number(m.get("rho")) or m["rho"] > target_utilization + 1e-12:
+            reasons.append("target_utilization")
+        if not _is_number(m.get("Wq")) or not _is_number(m.get("Lq")):
+            reasons.append("analytical_metrics")
+        if max_wait_minutes is not None and (not _is_number(m.get("Wq")) or m["Wq"] * 60 > max_wait_minutes + 1e-12):
+            reasons.append("max_wait_minutes")
+        if reasons:
+            rejected.update(reasons)
             return float("inf")
         sc = c * cost_per_server
         wc = _compute_waiting_cost(lambda_, m.get("Wq"), customer_waiting_cost)
         ac = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
-        return sc + (wc if wc is not None else 0) + ac
+        if wc is None:
+            rejected.add("analytical_metrics")
+            return float("inf")
+        return sc + wc + ac
 
-    optimal_c = _ternary_search_c(_eval_cost, 1, max_servers)
-
-    # Guard sweep: re-evaluate c-1, c, c+1 to protect against non-convexity near the stability boundary
-    if optimal_c is not None:
-        neighbours = [c for c in (optimal_c - 1, optimal_c, optimal_c + 1) if 1 <= c <= max_servers]
-        best_c, best_total = min(((c, _eval_cost(c)) for c in neighbours), key=lambda x: x[1])
-        optimal_c = best_c
+    selection = select_model(lambda_, mu, current_c, variance, capacity, theta)
+    upper_bound = max_servers
+    if selection["name"] in ("M/M/c/K", "M/G/c/K") and _is_number(capacity):
+        upper_bound = min(upper_bound, int(capacity))
+    candidates = [(c, _eval_cost(c)) for c in range(min_servers, upper_bound + 1)]
+    if upper_bound < min_servers:
+        rejected.add("server_capacity_bounds")
+    feasible = [(c, cost) for c, cost in candidates if math.isfinite(cost)]
+    optimal_c = min(feasible, key=lambda item: (item[1], item[0]))[0] if feasible else None
 
     def _build_result(c_val, sv_cost, w_cost, a_cost, rec_override=None):
-        opt_metrics = _queue_metrics(lambda_, mu, c_val, variance, capacity, theta) if c_val is not None else {}
+        output_selection = select_model(lambda_, mu, c_val if c_val is not None else current_c, variance, capacity, theta)
+        opt_metrics = output_selection["metrics"] if c_val is not None else {}
         return {
+            "feasibility_status": "FEASIBLE" if c_val is not None else "NO_FEASIBLE_CONFIGURATION",
+            "constraints_passed": c_val is not None,
+            "violated_constraints": [] if c_val is not None else sorted(rejected),
+            "selected_model": output_selection["name"],
+            "model_selection_reason": output_selection["selection_reason"],
+            "model_assumptions": output_selection["assumptions"],
+            "service_cv": output_selection["service_cv"],
+            "metric_provenance": "analytical",
+            "effective_constraints": {"min_servers": min_servers, "max_servers": max_servers, "max_wait_minutes": max_wait_minutes, "target_utilization": target_utilization, "K": capacity},
+            "effective_costs": {"server_cost_per_hr": cost_per_server, "customer_waiting_cost": customer_waiting_cost, "cost_per_abandonment": cost_per_abandonment, "abandonment_rate": abandonment_rate, "basis": "configured assumption"},
+            "explanation": (f"{c_val} servers minimize configured cost among candidates satisfying all enabled constraints; ties choose fewer servers." if c_val is not None else "No candidate satisfies all enabled constraints. Rejected constraints: " + ", ".join(sorted(rejected))),
             "time": time_label,
             "lambda": lambda_,
             "mu": mu,
@@ -317,18 +356,22 @@ def optimize_segment(
             "rho_optimal": opt_metrics.get("rho"),
             "Wq_optimal": opt_metrics.get("Wq"),
             "Lq_optimal": opt_metrics.get("Lq"),
-            "cost_optimal": None if c_val is None else (sv_cost + (w_cost if w_cost is not None else 0) + a_cost),
+            "cost_optimal": None if c_val is None else (sv_cost + w_cost + a_cost),
             "waiting_cost_optimal": w_cost,
             "abandonment_cost_optimal": a_cost,
             "delta_c": None if c_val is None else c_val - current_c,
             "delta_rho": None if c_val is None else _safe_diff(opt_metrics.get("rho"), current_rho),
             "delta_Wq": None if c_val is None else _safe_diff(opt_metrics.get("Wq"), current_metrics.get("Wq")),
             "delta_Lq": None if c_val is None else _safe_diff(opt_metrics.get("Lq"), current_metrics.get("Lq")),
-            "delta_cost": None if c_val is None else (sv_cost + (w_cost if w_cost is not None else 0) + a_cost) - current_total_cost,
+            "delta_cost": (
+                None if c_val is None or current_total_cost is None
+                else (sv_cost + w_cost + a_cost) - current_total_cost
+            ),
             "current_stable": bool(current_metrics.get("stable")),
-            "optimized_stable": c_val is not None,
+            "optimized_stable": bool(c_val is not None and opt_metrics.get("stable")),
             "recommendation": rec_override or ("Unable to find a stable staffing plan." if c_val is None else _format_recommendation(time_label, current_c, c_val)),
-            "warning": current_metrics.get("error") or "",
+            "warning": ("No feasible staffing plan satisfies the utilization and server/capacity bounds."
+                        if c_val is None else current_metrics.get("error") or ""),
         }
 
     if optimal_c is None:
@@ -340,45 +383,7 @@ def optimize_segment(
     optimal_waiting_cost = _compute_waiting_cost(lambda_, optimal_wq, customer_waiting_cost)
     optimal_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
 
-    final_optimal_c = optimal_c
-    final_optimal_server_cost = optimal_server_cost
-    final_optimal_waiting_cost = optimal_waiting_cost
-    final_optimal_abandonment_cost = optimal_abandonment_cost
-
-    waste_recommendation = None
-
-    # Check WASTE HOURS condition: if current ρ ≤ 30% and current_c > 1, try removing a server
-    if current_rho is not None and current_rho <= 0.30 and current_c > 1:
-        reduced_c = current_c - 1
-        reduced_metrics = _queue_metrics(lambda_, mu, reduced_c, variance, capacity, theta)
-        reduced_rho = reduced_metrics.get("rho")
-
-        if reduced_rho is not None and reduced_rho <= 0.70 and reduced_metrics.get("stable", False):
-            reduced_wq = reduced_metrics.get("Wq")
-            reduced_server_cost = reduced_c * cost_per_server
-            reduced_waiting_cost = _compute_waiting_cost(lambda_, reduced_wq, customer_waiting_cost)
-            reduced_abandonment_cost = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
-            savings = current_total_cost - (reduced_server_cost + (reduced_waiting_cost if reduced_waiting_cost is not None else 0) + reduced_abandonment_cost)
-
-            if savings > 0:
-                change = current_c - reduced_c
-                label = "server" if change == 1 else "servers"
-                waste_recommendation = (
-                    f"Remove {change} {label} at {time_label} (waste hours: p={current_rho:.3f} <= 30%). "
-                    f"ρ becomes {reduced_rho:.3f} (stable) and save ₱{savings:,.2f} in total cost."
-                )
-                final_optimal_c = reduced_c
-                final_optimal_server_cost = reduced_server_cost
-                final_optimal_waiting_cost = reduced_waiting_cost
-                final_optimal_abandonment_cost = reduced_abandonment_cost
-
-    return _build_result(
-        final_optimal_c,
-        final_optimal_server_cost,
-        final_optimal_waiting_cost,
-        final_optimal_abandonment_cost,
-        rec_override=waste_recommendation,
-    )
+    return _build_result(optimal_c, optimal_server_cost, optimal_waiting_cost, optimal_abandonment_cost)
 
 
 def optimize_segments(
@@ -389,6 +394,8 @@ def optimize_segments(
     customer_waiting_cost: float = DEFAULT_CUSTOMER_WAITING_COST,
     cost_per_abandonment: float = 0.0,
     abandonment_rate: float = 0.0,
+    min_servers: int = 1,
+    max_wait_minutes: float | None = None,
 ) -> list[dict]:
     """Optimize a sequence of time segments."""
     if time_segments is None:
@@ -403,109 +410,61 @@ def optimize_segments(
             customer_waiting_cost=customer_waiting_cost,
             cost_per_abandonment=cost_per_abandonment,
             abandonment_rate=abandonment_rate,
+            min_servers=min_servers, max_wait_minutes=max_wait_minutes,
         )
         for segment in time_segments
     ]
 
 
+def comparable_result(row: Mapping) -> bool:
+    """A financial comparison requires real, feasible results on both sides."""
+    return (
+        row.get("current_stable") is True and row.get("optimized_stable") is True
+        and isinstance(row.get("c_optimal"), Integral) and row["c_optimal"] > 0
+        and all(_is_number(row.get(key)) and row[key] >= 0 for key in ("cost_current", "cost_optimal"))
+    )
+
+
 def summarize_optimization(comparison_rows: list[dict]) -> dict:
-    """Compute top-level comparison KPIs from optimized segment rows."""
-    if not comparison_rows:
-        return {
-            "total_current_cost": 0.0,
-            "total_optimized_cost": 0.0,
-            "total_savings": 0.0,
-            "total_waiting_cost_current": 0.0,
-            "total_waiting_cost_optimal": 0.0,
-            "total_abandonment_cost_current": 0.0,
-            "total_abandonment_cost_optimal": 0.0,
-            "avg_utilization_current": None,
-            "avg_utilization_optimized": None,
-            "avg_utilization_improvement": None,
-            "total_server_change": 0,
-            "avg_waiting_current": None,
-            "avg_waiting_optimized": None,
-            "waiting_time_improvement_pct": None,
-        }
+    """Never extrapolate partial or infeasible rows into complete-plan savings."""
+    matched = [row for row in comparison_rows if comparable_result(row)]
+    complete = bool(comparison_rows) and len(matched) == len(comparison_rows)
 
-    current_cost = sum(
-        row["cost_current"] for row in comparison_rows if row["cost_current"] is not None
-    )
-    optimized_cost = sum(
-        row["cost_optimal"] for row in comparison_rows if row["cost_optimal"] is not None
-    )
-    total_waiting_cost_current = sum(
-        row["waiting_cost_current"] for row in comparison_rows if row.get("waiting_cost_current") is not None
-    )
-    total_waiting_cost_optimal = sum(
-        row["waiting_cost_optimal"] for row in comparison_rows if row.get("waiting_cost_optimal") is not None
-    )
-    total_abandonment_cost_current = sum(
-        row.get("abandonment_cost_current", 0) for row in comparison_rows if row.get("abandonment_cost_current") is not None
-    )
-    total_abandonment_cost_optimal = sum(
-        row.get("abandonment_cost_optimal", 0) for row in comparison_rows if row.get("abandonment_cost_optimal") is not None
-    )
+    def total(key, available=True):
+        values = [row.get(key) for row in comparison_rows]
+        if not available or any(not _is_number(v) for v in values):
+            return None
+        return sum(values)
 
-    utilization_pairs = [
-        (row["rho_current"], row["rho_optimal"])
-        for row in comparison_rows
-        if row["rho_current"] is not None and row["rho_optimal"] is not None
-    ]
-    waiting_pairs = [
-        (row["Wq_current"], row["Wq_optimal"])
-        for row in comparison_rows
-        if row["Wq_current"] is not None and row["Wq_optimal"] is not None
-    ]
+    def mean_pair(current, optimal):
+        pairs = [(row.get(current), row.get(optimal)) for row in matched]
+        if not complete or any(not _is_number(v) for pair in pairs for v in pair):
+            return None, None
+        return (sum(pair[0] for pair in pairs) / len(pairs), sum(pair[1] for pair in pairs) / len(pairs))
 
-    avg_util_current = (
-        sum(pair[0] for pair in utilization_pairs) / len(utilization_pairs)
-        if utilization_pairs
-        else None
-    )
-    avg_util_optimized = (
-        sum(pair[1] for pair in utilization_pairs) / len(utilization_pairs)
-        if utilization_pairs
-        else None
-    )
-    avg_wait_current = (
-        sum(pair[0] for pair in waiting_pairs) / len(waiting_pairs)
-        if waiting_pairs
-        else None
-    )
-    avg_wait_optimized = (
-        sum(pair[1] for pair in waiting_pairs) / len(waiting_pairs)
-        if waiting_pairs
-        else None
-    )
-
-    waiting_improvement_pct = None
-    if avg_wait_current not in (None, 0) and avg_wait_optimized is not None:
-        waiting_improvement_pct = (
-            (avg_wait_current - avg_wait_optimized) / avg_wait_current
-        ) * 100.0
-
+    current_cost = total("cost_current")
+    optimal_cost = total("cost_optimal", complete)
+    rho_current, rho_optimal = mean_pair("rho_current", "rho_optimal")
+    wait_current, wait_optimal = mean_pair("Wq_current", "Wq_optimal")
     return {
+        "comparison_complete": complete,
+        "comparable_segment_count": len(matched),
+        "segment_count": len(comparison_rows),
         "total_current_cost": current_cost,
-        "total_optimized_cost": optimized_cost,
-        "total_savings": current_cost - optimized_cost,
-        "total_waiting_cost_current": total_waiting_cost_current,
-        "total_waiting_cost_optimal": total_waiting_cost_optimal,
-        "total_abandonment_cost_current": total_abandonment_cost_current,
-        "total_abandonment_cost_optimal": total_abandonment_cost_optimal,
-        "avg_utilization_current": avg_util_current,
-        "avg_utilization_optimized": avg_util_optimized,
-        "avg_utilization_improvement": (
-            avg_util_current - avg_util_optimized
-            if avg_util_current is not None and avg_util_optimized is not None
-            else None
-        ),
-        "total_server_change": sum(
-            row["delta_c"] for row in comparison_rows if row["delta_c"] is not None
-        ),
-        "avg_waiting_current": avg_wait_current,
-        "avg_waiting_optimized": avg_wait_optimized,
-        "waiting_time_improvement_pct": waiting_improvement_pct,
+        "total_optimized_cost": optimal_cost,
+        "total_savings": current_cost - optimal_cost if complete else None,
+        "total_waiting_cost_current": total("waiting_cost_current"),
+        "total_waiting_cost_optimal": total("waiting_cost_optimal", complete),
+        "total_abandonment_cost_current": total("abandonment_cost_current"),
+        "total_abandonment_cost_optimal": total("abandonment_cost_optimal", complete),
+        "avg_utilization_current": rho_current,
+        "avg_utilization_optimized": rho_optimal,
+        "avg_utilization_improvement": rho_current - rho_optimal if rho_current is not None else None,
+        "total_server_change": total("delta_c", complete),
+        "avg_waiting_current": wait_current,
+        "avg_waiting_optimized": wait_optimal,
+        "waiting_time_improvement_pct": (wait_current - wait_optimal) / wait_current * 100
+            if wait_current not in (None, 0) and wait_optimal is not None else None,
     }
 
 
@@ -518,6 +477,9 @@ def build_recommendations(comparison_rows: list[dict]) -> list[str]:
         for row in comparison_rows
         if row.get("recommendation") and row.get("delta_c") not in (None, 0)
     ]
+
+    if not summary["comparison_complete"]:
+        return ["Comparison incomplete: no aggregate savings or staffing assurance is available."]
 
     if not segment_actions:
         segment_actions = [

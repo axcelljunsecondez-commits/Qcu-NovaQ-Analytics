@@ -1,12 +1,13 @@
 import { http } from '../lib/http'
 
 export interface ScenarioOut {
-  id: number
+  id: number | string
   dataset_id: number | null
   name: string
   settings: Record<string, unknown>
   results: Record<string, unknown>
   created_at: string
+  provenance?: string
 }
 
 export interface ScenarioIn {

@@ -83,3 +83,25 @@ def test_optimize_invalid_params_422(db_engine, client):
         "/optimize", json={"segment": {"time": "x", "lambda": 30, "mu": 12, "c": 0}}
     )
     assert response.status_code == 422
+
+
+def test_optimize_api_preserves_unstable_baseline_and_feasible_plan(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/optimize",
+        json={
+            "segment": {"time": "overload", "lambda": 20.214, "mu": 10, "c": 2},
+            "target_utilization": 0.7,
+            "max_servers": 5,
+        },
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["current_stable"] is False
+    assert result["rho_current"] == 1.0107
+    assert result["Wq_current"] is None
+    assert result["cost_current"] is None
+    assert result["c_optimal"] == 3
+    assert result["optimized_stable"] is True
+    assert result["Wq_optimal"] is not None

@@ -292,14 +292,14 @@ export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
             type: 'bar',
             name: t('compare.current'),
             x: rows.map((r) => r.time),
-            y: rows.map((r) => (r.rho_current ?? 0) * 100),
+            y: rows.map((r) => r.rho_current === null ? null : r.rho_current * 100),
             marker_color: '#E74C3C',
           },
           {
             type: 'bar',
             name: t('compare.optimized'),
             x: rows.map((r) => r.time),
-            y: rows.map((r) => (r.rho_optimal ?? 0) * 100),
+            y: rows.map((r) => r.rho_optimal === null ? null : r.rho_optimal * 100),
             marker_color: '#27AE60',
           },
         ]}
@@ -368,7 +368,7 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
             type: 'scatter',
             name: t('compare.current'),
             x: rows.map((r) => r.time),
-            y: rows.map((r) => (r.Wq_current ?? 0) * 60),
+            y: rows.map((r) => r.Wq_current === null ? null : r.Wq_current * 60),
             mode: 'lines+markers',
             line: { color: '#E74C3C', width: LINE_WIDTH },
             marker: { size: 4 },
@@ -377,7 +377,7 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
             type: 'scatter',
             name: t('compare.optimized'),
             x: rows.map((r) => r.time),
-            y: rows.map((r) => (r.Wq_optimal ?? 0) * 60),
+            y: rows.map((r) => r.Wq_optimal === null ? null : r.Wq_optimal * 60),
             mode: 'lines+markers',
             line: { color: '#27AE60', width: LINE_WIDTH },
             marker: { size: 4 },
@@ -402,7 +402,7 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
 export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   const curServer = total(rows, (r) => (r.cost_per_server ?? 0) * r.c_current)
-  const optServer = total(rows, (r) => (r.cost_per_server ?? 0) * r.c_optimal)
+  const optServer = total(rows, (r) => (r.cost_per_server ?? 0) * (r.c_optimal ?? 0))
   const curWait = total(rows, (r) => r.waiting_cost_current)
   const optWait = total(rows, (r) => r.waiting_cost_optimal)
   const curAbandon = total(rows, (r) => r.abandonment_cost_current)
@@ -454,7 +454,7 @@ export function ScenarioCompareBars({
           type: 'bar',
           name: sc.name,
           x: sc.rows.map((r) => r.time),
-          y: sc.rows.map((r) => (r.Wq_optimal ?? 0) * 60),
+          y: sc.rows.map((r) => r.Wq_optimal === null ? null : r.Wq_optimal * 60),
           marker_color: colors[idx % colors.length],
         }))}
         layout={{

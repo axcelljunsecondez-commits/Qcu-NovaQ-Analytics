@@ -27,7 +27,7 @@ class OptimizationTests(unittest.TestCase):
 
     def test_compute_blended_rate_fallback(self):
         rate = compute_blended_rate(0, 0, 0)
-        self.assertAlmostEqual(rate, 1.0)
+        self.assertAlmostEqual(rate, 87.0)
 
     def test_compute_waiting_cost_stable(self):
         cost = _compute_waiting_cost(10, 0.5, 100)
@@ -35,7 +35,7 @@ class OptimizationTests(unittest.TestCase):
 
     def test_compute_waiting_cost_unstable(self):
         cost = _compute_waiting_cost(10, None, 100)
-        self.assertEqual(cost, 5000.0)
+        self.assertIsNone(cost)
 
     def test_compute_abandonment_cost(self):
         cost = _compute_abandonment_cost(100, 0.1, 60)
@@ -88,7 +88,7 @@ class OptimizationTests(unittest.TestCase):
     def test_optimize_segment_finds_stable_plan_above_inf_band(self):
         result = optimize_segment(
             {"time": "t", "lambda": 30, "mu": 1, "c": 1},
-            max_servers=40,
+            max_servers=50,
         )
         self.assertIsNotNone(result["c_optimal"])
         self.assertGreaterEqual(result["c_optimal"], 31)
@@ -123,13 +123,14 @@ class OptimizationTests(unittest.TestCase):
             "total_abandonment_cost_optimal",
         ]:
             self.assertIn(key, summary)
-            self.assertEqual(summary[key], 0.0)
+            self.assertEqual(summary[key], None if key.endswith("optimal") else 0.0)
 
     def test_build_recommendations_no_changes(self):
         rows = [
             {
                 "time": "08:00",
                 "recommendation": "Maintain current staffing at 08:00.",
+                "current_stable": True, "optimized_stable": True, "c_optimal": 2,
                 "delta_c": 0,
                 "cost_current": 100,
                 "cost_optimal": 100,
@@ -186,15 +187,74 @@ class OptimizationTests(unittest.TestCase):
 
     def test_compute_blended_rate_negative_hours(self):
         rate = compute_blended_rate(-5, 2, -3)
-        self.assertEqual(rate, 1.0)
+        self.assertEqual(rate, 87.0)
 
     def test_compute_waiting_cost_nan_lambda(self):
         cost = _compute_waiting_cost(math.nan, 0.5, 100)
-        self.assertTrue(math.isnan(cost))
+        self.assertIsNone(cost)
 
     def test_compute_waiting_cost_inf_wq(self):
         cost = _compute_waiting_cost(10, math.inf, 100)
-        self.assertTrue(math.isinf(cost))
+        self.assertIsNone(cost)
+
+    def test_stable_baseline_behavior_remains_feasible(self):
+        result = optimize_segment(
+            {"time": "stable", "lambda": 15, "mu": 10, "c": 2},
+            target_utilization=0.7,
+            max_servers=5,
+        )
+        self.assertTrue(result["current_stable"])
+        self.assertEqual(result["feasibility_status"], "FEASIBLE")
+        self.assertIsNotNone(result["cost_current"])
+        self.assertLessEqual(result["rho_optimal"], 0.7)
+
+    def test_unstable_baseline_continues_to_feasible_candidate(self):
+        result = optimize_segment(
+            {"time": "overload", "lambda": 20.214, "mu": 10, "c": 2},
+            target_utilization=0.7,
+            max_servers=5,
+        )
+        self.assertEqual(result["c_current"], 2)
+        self.assertAlmostEqual(result["rho_current"], 1.0107)
+        self.assertFalse(result["current_stable"])
+        self.assertEqual(result["feasibility_status"], "FEASIBLE")
+        self.assertEqual(result["c_optimal"], 3)
+        self.assertTrue(result["optimized_stable"])
+        self.assertLessEqual(result["rho_optimal"], 0.7)
+
+    def test_unstable_baseline_without_feasible_candidate_is_explicit(self):
+        result = optimize_segment(
+            {"time": "overload", "lambda": 20.214, "mu": 10, "c": 2},
+            target_utilization=0.7,
+            max_servers=2,
+        )
+        self.assertFalse(result["current_stable"])
+        self.assertEqual(result["feasibility_status"], "NO_FEASIBLE_CONFIGURATION")
+        self.assertIsNone(result["c_optimal"])
+        self.assertIn("model_stability", result["violated_constraints"])
+
+    def test_configured_utilization_target_changes_recommendation(self):
+        segment = {"time": "target", "lambda": 20, "mu": 10, "c": 2}
+        at_seventy = optimize_segment(segment, target_utilization=0.7, max_servers=6)
+        at_fifty = optimize_segment(segment, target_utilization=0.5, max_servers=6)
+        self.assertEqual(at_seventy["c_optimal"], 3)
+        self.assertEqual(at_fifty["c_optimal"], 4)
+        self.assertEqual(at_fifty["effective_constraints"]["target_utilization"], 0.5)
+        self.assertLessEqual(at_fifty["rho_optimal"], 0.5)
+
+    def test_unstable_baseline_does_not_fabricate_wait_or_finance(self):
+        result = optimize_segment(
+            {"time": "overload", "lambda": 20.214, "mu": 10, "c": 2},
+            target_utilization=0.7,
+            max_servers=5,
+        )
+        self.assertIsNone(result["Wq_current"])
+        self.assertIsNone(result["Lq_current"])
+        self.assertIsNone(result["waiting_cost_current"])
+        self.assertIsNone(result["cost_current"])
+        self.assertIsNone(result["delta_cost"])
+        self.assertIsNotNone(result["Wq_optimal"])
+        self.assertIsNotNone(result["cost_optimal"])
 
     def test_summarize_optimization_nan_in_rows(self):
         rows = [
@@ -213,7 +273,7 @@ class OptimizationTests(unittest.TestCase):
             }
         ]
         summary = summarize_optimization(rows)
-        self.assertEqual(summary["total_current_cost"], 0.0)
+        self.assertIsNone(summary["total_current_cost"])
 
     def test_optimize_segment_theta_uses_erlang_a(self):
         result = optimize_segment(
@@ -285,7 +345,7 @@ class OptimizationTests(unittest.TestCase):
         )
         self.assertEqual(result["c_optimal"], 1)
         self.assertIn("Remove 1 server", result["recommendation"])
-        self.assertIn("save", result["recommendation"])
+        self.assertLess(result["cost_optimal"], result["cost_current"])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { ComparisonPage } from './ComparisonPage'
@@ -95,39 +95,166 @@ describe('ComparisonPage', () => {
     expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).toBeInTheDocument()
   })
 
-  it('compares two saved scenarios with the scenario bars chart', async () => {
+  it('starts scenario comparison with no saved scenarios checked', async () => {
     const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    const planA = await screen.findByRole('checkbox', { name: 'Plan A' })
+    const planB = screen.getByRole('checkbox', { name: 'Plan B' })
+    expect(planA).not.toBeChecked()
+    expect(planB).not.toBeChecked()
+    expect(await screen.findByText('Choose at least two saved scenarios.')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-scenario-compare"]')).not.toBeInTheDocument()
+  })
+
+  it('compares two checked saved scenarios with the scenario bars chart', async () => {
+    const user = userEvent.setup()
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    await screen.findByText('Choose at least two saved scenarios.')
+    await user.click(screen.getByRole('checkbox', { name: 'Plan A' }))
+    expect(screen.getByText('Choose at least two saved scenarios.')).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Plan B' }))
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('Choose at least two saved scenarios.')).not.toBeInTheDocument()
+  })
+
+  it('removes the comparison when one of two selected scenarios is unchecked', async () => {
+    const user = userEvent.setup()
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    const planA = await screen.findByRole('checkbox', { name: 'Plan A' })
+    const planB = screen.getByRole('checkbox', { name: 'Plan B' })
+    await user.click(planA)
+    await user.click(planB)
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
+    )
+    await user.click(planB)
+    expect(container.querySelector('[data-testid="chart-scenario-compare"]')).not.toBeInTheDocument()
+    expect(screen.getByText('Choose at least two saved scenarios.')).toBeInTheDocument()
+  })
+
+  it('normalizes string scenario IDs for checkbox selection', async () => {
+    listScenariosMock.mockResolvedValue({
+      scenarios: scenarios.map((scenario) => ({ ...scenario, id: String(scenario.id) })),
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    await user.click(await screen.findByRole('checkbox', { name: 'Plan A' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Plan B' }))
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
     )
   })
 
-  it('shows the hint when fewer than two scenarios are checked', async () => {
+  it('uses IDs rather than duplicate names as checkbox identity', async () => {
+    listScenariosMock.mockResolvedValue({
+      scenarios: scenarios.map((scenario) => ({ ...scenario, name: 'Same plan' })),
+    })
     const user = userEvent.setup()
     const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
-    await screen.findByTestId('chart-scenario-compare')
-    await user.click(screen.getByRole('checkbox', { name: 'Plan A' }))
+    const boxes = await screen.findAllByRole('checkbox', { name: 'Same plan' })
+    await user.click(boxes[0])
+    expect(boxes[0]).toBeChecked()
+    expect(boxes[1]).not.toBeChecked()
+    await user.click(boxes[1])
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
+    )
+  })
+
+  it('reports a selected incomplete scenario instead of claiming fewer than two selections', async () => {
+    listScenariosMock.mockResolvedValue({
+      scenarios: [
+        scenarios[0],
+        {
+          ...scenarios[1],
+          results: { results: [{ ...rows[0], c_optimal: null, rho_optimal: null, Wq_optimal: null,
+            Lq_optimal: null, optimized_stable: false }] },
+        },
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    await user.click(await screen.findByRole('checkbox', { name: 'Plan A' }))
     await user.click(screen.getByRole('checkbox', { name: 'Plan B' }))
-    expect(
-      await screen.findByText('Select at least two saved scenarios to compare them with each other.'),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Plan B')
+    expect(screen.queryByText('Choose at least two saved scenarios.')).not.toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-scenario-compare"]')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('checkbox', { name: 'Plan A' }))
+  })
+
+  it('shows unstable Current plus one valid optimized plan without fabricating finance', async () => {
+    const unstableRow: OptimizationOut = {
+      ...rows[0],
+      lambda_: 20.214,
+      mu: 10,
+      c_current: 2,
+      rho_current: 1.0107,
+      Wq_current: null,
+      Lq_current: null,
+      waiting_cost_current: null,
+      cost_current: null,
+      delta_cost: null,
+      delta_Wq: null,
+      delta_Lq: null,
+      current_stable: false,
+      c_optimal: 3,
+      rho_optimal: 0.6738,
+      Wq_optimal: 0.046446930568118626,
+      Lq_optimal: 0.9388782545039499,
+      cost_optimal: 354.887825450395,
+      optimized_stable: true,
+    }
+    listScenariosMock.mockResolvedValue({
+      scenarios: [{ ...scenarios[0], results: { results: [unstableRow] } }],
+    })
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    const table = await screen.findByRole('table')
+    const dataRow = within(table).getAllByRole('row')[1]
+    expect(within(dataRow).getByText('101.07%')).toBeInTheDocument()
+    expect(within(dataRow).getByText('Unstable')).toBeInTheDocument()
+    expect(within(dataRow).getAllByText('—').length).toBeGreaterThan(0)
+    expect(within(dataRow).getByText('67.38%')).toBeInTheDocument()
+    expect(within(dataRow).getByText('2.79')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-utilization-compare"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-server-compare"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-wait-time-lines"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).not.toBeInTheDocument()
+    expect(screen.queryByText('ROI Projection')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Aggregate cost savings are unavailable')
+  })
+
+  it('compares two saved optimized plans independently of Current instability', async () => {
+    const unstableRows = rows.map((item) => ({
+      ...item,
+      rho_current: 1.01,
+      Wq_current: null,
+      Lq_current: null,
+      cost_current: null,
+      waiting_cost_current: null,
+      current_stable: false,
+    }))
+    listScenariosMock.mockResolvedValue({
+      scenarios: scenarios.map((scenario) => ({ ...scenario, results: { results: unstableRows } })),
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    await user.click(await screen.findByRole('checkbox', { name: 'Plan A' }))
     await user.click(screen.getByRole('checkbox', { name: 'Plan B' }))
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chart-scenario-compare"]')).toBeInTheDocument(),
     )
+    expect(screen.queryByText('Choose at least two saved scenarios.')).not.toBeInTheDocument()
   })
 
   it('shows the ROI projection from current vs optimized costs', async () => {
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
     expect(await screen.findByText('ROI Projection')).toBeInTheDocument()
     expect(await screen.findByText('₱300')).toBeInTheDocument()
-    expect(screen.getByText('₱7,525')).toBeInTheDocument()
-    expect(screen.getByText('₱90,300')).toBeInTheDocument()
+    expect(screen.getByText('₱8,825')).toBeInTheDocument()
+    expect(screen.getByText('₱105,900')).toBeInTheDocument()
     expect(screen.getByText('Operating Days')).toBeInTheDocument()
-    expect(screen.getByText('301')).toBeInTheDocument()
-    expect(screen.getByText('Annual savings are based on 301 operating days after excluding 12 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
+    expect(screen.getByText('353')).toBeInTheDocument()
+    expect(screen.getByText('Annual savings are based on 353 operating days after excluding 12 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
   })
 
   it('recomputes annual savings from the holiday count and Sunday closure', async () => {
@@ -136,11 +263,11 @@ describe('ComparisonPage', () => {
     await screen.findByText('ROI Projection')
     const input = screen.getByLabelText('Legal holidays per year')
     fireEvent.change(input, { target: { value: '20' } })
-    expect(screen.getByText('₱87,900')).toBeInTheDocument()
-    await user.click(screen.getByRole('checkbox', { name: 'Closed on Sundays (no work, no pay)' }))
     expect(screen.getByText('₱103,500')).toBeInTheDocument()
-    expect(screen.getByText('345')).toBeInTheDocument()
-    expect(screen.getByText('Annual savings are based on 345 operating days after excluding 20 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Closed on Sundays (no work, no pay)' }))
+    expect(screen.getByText('₱87,900')).toBeInTheDocument()
+    expect(screen.getByText('293')).toBeInTheDocument()
+    expect(screen.getByText('Annual savings are based on 293 operating days after excluding 20 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
   })
 
   it('shows the empty state when no scenarios are saved', async () => {

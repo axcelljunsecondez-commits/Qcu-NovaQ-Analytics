@@ -1,12 +1,17 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
 import type { DatasetOut, OptimizationOut } from '../api/types'
 import { MetricCard } from '../components/ui/MetricCard'
+import {
+  comparisonComplete,
+  comparisonTotals,
+  operationalComparisonComplete,
+} from '../lib/comparison'
 import { ApiState } from '../components/ui/ApiState'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 function fmt(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
@@ -19,15 +24,55 @@ interface Column {
   label: string
   current: (row: OptimizationOut) => string
   optimized: (row: OptimizationOut) => string
+  render?: (row: OptimizationOut) => ReactNode
+}
+
+type UtilizationStatus = 'Unavailable' | 'Lean' | 'Normal' | 'Peak' | 'Critical' | 'Unstable'
+
+function utilizationStatus(
+  rho: number | null | undefined,
+  analyticallyStable?: boolean,
+): UtilizationStatus {
+  if (analyticallyStable === false) return 'Unstable'
+  if (rho === null || rho === undefined || !Number.isFinite(rho)) return 'Unavailable'
+  if (rho >= 1) return 'Critical'
+  if (rho >= 0.9) return 'Critical'
+  if (rho > 0.8) return 'Peak'
+  if (rho >= 0.6) return 'Normal'
+  return 'Lean'
+}
+
+function statusBadgeClass(status: UtilizationStatus): string {
+  if (status === 'Critical' || status === 'Unstable') return 'badge-bad'
+  if (status === 'Peak') return 'badge-warn'
+  if (status === 'Normal') return 'badge-ok'
+  return 'badge-neutral'
+}
+
+function StatusBadge({ status }: { status: UtilizationStatus }) {
+  const { t } = useTranslation()
+  return <span className={`badge ${statusBadgeClass(status)}`}>{t(`integrity.status.${status}`)}</span>
 }
 
 const COLUMNS: Column[] = [
   { label: 'segment', current: (r) => r.time, optimized: (r) => r.time },
   { label: 'λ', current: (r) => fmt(r.lambda_), optimized: (r) => fmt(r.lambda_) },
-  { label: 'ρ', current: (r) => fmt((r.rho_current ?? 0) * 100) + '%', optimized: (r) => fmt((r.rho_optimal ?? 0) * 100) + '%' },
-  { label: 'c', current: (r) => String(r.c_current), optimized: (r) => String(r.c_optimal) },
+  { label: 'ρ', current: (r) => fmt(r.rho_current == null ? null : r.rho_current * 100) + '%', optimized: (r) => fmt(r.rho_optimal == null ? null : r.rho_optimal * 100) + '%' },
+  {
+    label: 'Status',
+    current: (r) => utilizationStatus(r.rho_current),
+    optimized: (r) => utilizationStatus(r.rho_optimal),
+    render: (r) => (
+      <div className="status-flow">
+        <StatusBadge status={utilizationStatus(r.rho_current, r.current_stable)} />
+        <span aria-hidden="true">→</span>
+        <StatusBadge status={utilizationStatus(r.rho_optimal, r.optimized_stable)} />
+      </div>
+    ),
+  },
+  { label: 'c', current: (r) => String(r.c_current), optimized: (r) => fmt(r.c_optimal, 0) },
   { label: 'Lq', current: (r) => fmt(r.Lq_current), optimized: (r) => fmt(r.Lq_optimal) },
-  { label: 'Wq', current: (r) => fmt(r.Wq_current), optimized: (r) => fmt(r.Wq_optimal) },
+  { label: 'Wq (min)', current: (r) => fmt(r.Wq_current == null ? null : r.Wq_current * 60), optimized: (r) => fmt(r.Wq_optimal == null ? null : r.Wq_optimal * 60) },
   { label: 'Abandon', current: (r) => fmt(r.abandonment_cost_current), optimized: (r) => fmt(r.abandonment_cost_optimal) },
   { label: 'cost', current: (r) => fmt(r.cost_current), optimized: (r) => fmt(r.cost_optimal) },
 ]
@@ -40,6 +85,7 @@ interface SegmentRow {
   variance?: number
   K?: number
   theta?: number
+  server_cost?: number
 }
 
 function finiteOrUndefined(value: unknown): number | undefined {
@@ -59,6 +105,7 @@ function segmentsOf(dataset: DatasetOut): SegmentRow[] {
       ...(variance !== undefined ? { variance } : {}),
       ...(K !== undefined ? { K } : {}),
       ...(theta !== undefined && theta >= 0 ? { theta } : {}),
+      ...(finiteOrUndefined(row.server_cost) !== undefined ? { server_cost: Number(row.server_cost) } : {}),
     }
   })
 }
@@ -109,8 +156,12 @@ function staffingChangeLines(rows: OptimizationOut[]): string[] {
 export function OptimizePage() {
   const { t } = useTranslation()
   const [datasetId, setDatasetId] = useState('')
+  const queryClient = useQueryClient()
   const [options, setOptions] = useState<OptimizeOptions>(DEFAULT_OPTIONS)
   const [multiplier, setMultiplier] = useState('')
+  const [snapshot, setSnapshot] = useState<{ signature: string; datasetId: string; segments: SegmentRow[]; options: OptimizeOptions; factor: number; calculatedAt: string } | null>(null)
+  const signature = JSON.stringify({ datasetId, options, multiplier })
+  const stale = snapshot !== null && snapshot.signature !== signature
   const [rows, setRows] = useState<OptimizationOut[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -124,12 +175,17 @@ export function OptimizePage() {
     queryFn: () => listDatasets(),
   })
 
-  async function run(segments: SegmentRow[]) {
+  async function run(dataset: DatasetOut, factor = 1) {
     setError(null)
+    setSaved(false)
     setRunning(true)
     try {
+      const loaded = await getDataset(dataset.id)
+      const segments = segmentsOf(loaded.dataset).map((row) => ({ ...row, lambda: row.lambda * factor }))
       const out = await optimizeBatch(segments, options)
+      queryClient.setQueryData(['optimization-options', datasetId], { ...options })
       setRows(out.results)
+      setSnapshot({ signature, datasetId, segments: structuredClone(segments), options: { ...options }, factor, calculatedAt: new Date().toISOString() })
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       setError(typeof detail === 'string' ? detail : t('errors.server'))
@@ -144,8 +200,7 @@ export function OptimizePage() {
       setError(t('optimize.select_dataset_first'))
       return
     }
-    const loaded = await getDataset(dataset.id)
-    await run(segmentsOf(loaded.dataset))
+    await run(dataset)
   }
 
   async function handleWhatIf() {
@@ -158,16 +213,11 @@ export function OptimizePage() {
       setError(t('optimize.multiplier_range_error'))
       return
     }
-    const loaded = await getDataset(dataset.id)
-    const segments = segmentsOf(loaded.dataset).map((row) => ({
-      ...row,
-      lambda: row.lambda * factor,
-    }))
-    await run(segments)
+    await run(dataset, factor)
   }
 
   async function handleSave() {
-    if (!rows || !scenarioName.trim()) {
+    if (!rows?.length || !snapshot || stale || running || !scenarioName.trim()) {
       return
     }
     setSaving(true)
@@ -175,8 +225,12 @@ export function OptimizePage() {
     try {
       await createScenario({
         name: scenarioName.trim(),
-        dataset_id: datasetId ? Number(datasetId) : null,
-        settings: { ...options },
+        dataset_id: snapshot.datasetId ? Number(snapshot.datasetId) : null,
+        settings: { ...snapshot.options, calculation: {
+          schema_version: 1, engine_version: 'novaq-2026-09-system-v2',
+          input_segments: snapshot.segments, options: snapshot.options,
+          what_if_multiplier: snapshot.factor, calculated_at: snapshot.calculatedAt,
+        } },
         results: { results: rows },
       })
       setSaved(true)
@@ -188,9 +242,11 @@ export function OptimizePage() {
     }
   }
 
-  const totalCurrent = rows ? sum(rows.map((r) => r.cost_current ?? 0)) : 0
-  const totalOptimal = rows ? sum(rows.map((r) => r.cost_optimal ?? 0)) : 0
-  const deltaCost = totalCurrent - totalOptimal
+  const totals = !stale && rows ? comparisonTotals(rows) : null
+  const operationallyComparable = !stale && rows ? operationalComparisonComplete(rows) : false
+  const totalCurrent = totals?.current ?? null
+  const totalOptimal = totals?.optimal ?? null
+  const deltaCost = totals?.savings ?? null
   const addedCashierHours = rows ? sum(rows.map((r) => Math.max(0, r.delta_c ?? 0))) : 0
   const removedCashierHours = rows ? sum(rows.map((r) => Math.max(0, -(r.delta_c ?? 0)))) : 0
   const netCashierHours = removedCashierHours - addedCashierHours
@@ -208,6 +264,9 @@ export function OptimizePage() {
     <div>
       <h1 className="page-title">{t('optimize.title')}</h1>
       <p className="page-caption">{t('page2.caption')}</p>
+      {stale && <div role="alert" className="alert alert-warn">{t('integrity.stale')}</div>}
+      {rows && !comparisonComplete(rows) && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
+      <p className="form-hint">{t('integrity.staffing_basis')}</p>
 
       <div className="card">
         <h2 className="card-title">{t('page1.data_source')}</h2>
@@ -229,7 +288,7 @@ export function OptimizePage() {
             </select>
           </div>
           <div className="form-field">
-            <label htmlFor="opt-util">{t('optimize.target_utilization')}</label>
+            <label htmlFor="opt-util">{t('system.planning_target')}</label>
             <input
               id="opt-util"
               type="number"
@@ -241,6 +300,19 @@ export function OptimizePage() {
             />
           </div>
           <div className="form-field">
+            <label htmlFor="opt-min">{t('system.min_servers')}</label>
+            <input id="opt-min" type="number" min={1} max={256} value={options.min_servers ?? 1} onChange={(e) => setOptions((o) => ({ ...o, min_servers: Number(e.target.value) }))} />
+          </div>
+          <div className="form-field">
+            <label htmlFor="opt-max">{t('system.max_servers')}</label>
+            <input id="opt-max" type="number" min={1} max={256} value={options.max_servers ?? 24} onChange={(e) => setOptions((o) => ({ ...o, max_servers: Number(e.target.value) }))} />
+          </div>
+          <div className="form-field">
+            <label htmlFor="opt-max-wait">{t('system.max_wait')}</label>
+            <input id="opt-max-wait" type="number" min={0} step="any" value={options.max_wait_minutes ?? ''} onChange={(e) => setOptions((o) => ({ ...o, max_wait_minutes: e.target.value === '' ? null : Number(e.target.value) }))} />
+          </div>
+          <div className="form-field">
+            <p>{t('system.cost_basis')}</p>
             <label htmlFor="opt-cost">{t('optimize.server_cost')}</label>
             <input
               id="opt-cost"
@@ -313,7 +385,7 @@ export function OptimizePage() {
         <>
           {warnings.length > 0 && (
             <div className="alert alert-warn">
-              {warnings.map((w) => w.warning).join(' ')}
+              {warnings.map((w) => w.feasibility_status === 'NO_FEASIBLE_CONFIGURATION' ? t('system.no_feasible') : w.warning).join(' ')}
             </div>
           )}
           <div className="card-grid">
@@ -322,7 +394,7 @@ export function OptimizePage() {
             <MetricCard label={t('optimize.delta_cost')} value={fmt(deltaCost)} />
           </div>
 
-          <div className="card staffing-summary">
+          {operationallyComparable ? <div className="card staffing-summary">
             <div>
               <div className="label">{t('optimize.net_staffing_reduction')}</div>
               <div className="staffing-summary-value">
@@ -377,8 +449,21 @@ export function OptimizePage() {
             )}
           </div>
 
+          : <p>{t('system.staffing_unavailable')}</p>}
           <div className="card">
             <h2 className="card-title">{t('optimize.staffing_table')}</h2>
+            <div className="status-legend" aria-label={t('optimize.status_legend')}>
+              <StatusBadge status="Lean" />
+              <span>{'< 60%'}</span>
+              <StatusBadge status="Normal" />
+              <span>{'60%-80%'}</span>
+              <StatusBadge status="Peak" />
+              <span>{'> 80%-< 90%'}</span>
+              <StatusBadge status="Critical" />
+              <span>{'>= 90%'}</span>
+              <StatusBadge status="Unstable" />
+              <span>{'> 100%'}</span>
+            </div>
             <table>
               <thead>
                 <tr>
@@ -393,12 +478,14 @@ export function OptimizePage() {
                   <tr key={row.time}>
                     {COLUMNS.map((col) => (
                       <td key={col.label}>
-                        {col.label === 'segment'
+                        {col.render
+                          ? col.render(row)
+                          : col.label === 'segment'
                           ? col.current(row)
                           : `${col.current(row)} → ${col.optimized(row)}`}
                       </td>
                     ))}
-                    <td>{row.recommendation}</td>
+                    <td>{row.recommendation}<p>{row.explanation}</p><small>{row.selected_model}</small></td>
                   </tr>
                 ))}
               </tbody>
@@ -438,11 +525,12 @@ export function OptimizePage() {
                   onChange={(e) => setScenarioName(e.target.value)}
                 />
               </div>
-              <button type="button" onClick={handleSave} disabled={saving || !scenarioName.trim()}>
+              <button type="button" onClick={handleSave} disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}>
                 {t('common.save')}
               </button>
             </div>
-            {saved && <div className="alert alert-success">{t('optimize.saved')}</div>}
+            {!stale && rows.length > 0 && !comparisonComplete(rows) && <p>{t('system.save_incomplete')}</p>}
+            {saved && !stale && <div className="alert alert-success">{t('optimize.saved')}</div>}
           </div>
         </>
       )}

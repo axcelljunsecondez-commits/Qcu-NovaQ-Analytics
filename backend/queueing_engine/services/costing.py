@@ -28,7 +28,6 @@ from backend.queueing_engine.config import (
     DEFAULT_HOURS_PER_INTERVAL,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_WAIT_COST_HR,
-    UNSTABLE_FIXED_COST,
 )
 
 
@@ -82,10 +81,10 @@ def compute_segment_costs(
 
     server_cost = servers * cost_per_server_hr * hours_per_interval
 
-    # Unstable system (Wq = inf / NaN / negative / missing) → fixed penalty,
-    # matching the optimization engine (UNSTABLE_FIXED_COST) instead of 999999.
+    # An invalid/missing steady-state wait cannot support a waiting or total
+    # cost. Keep the independently known server and abandonment costs.
     if wq is None or (isinstance(wq, float) and math.isnan(wq)) or np.isinf(wq) or wq < 0:
-        wait_cost = UNSTABLE_FIXED_COST
+        wait_cost = None
     else:
         wait_cost = wq * arrival_rate * cost_per_wait_hr
 
@@ -93,13 +92,13 @@ def compute_segment_costs(
     # compute_all_costs and the optimization engine.
     abandonment_cost = arrival_rate * abandonment_rate * cost_per_abandonment
 
-    total_cost = server_cost + wait_cost + abandonment_cost
+    total_cost = None if wait_cost is None else server_cost + wait_cost + abandonment_cost
 
     return {
         "server_cost": round(server_cost, 2),
-        "wait_cost": round(wait_cost, 2),
+        "wait_cost": None if wait_cost is None else round(wait_cost, 2),
         "abandonment_cost": round(abandonment_cost, 2),
-        "total_cost": round(total_cost, 2),
+        "total_cost": None if total_cost is None else round(total_cost, 2),
     }
 
 def compute_all_costs(
@@ -145,7 +144,7 @@ def compute_all_costs(
 
         wq_valid = wq[valid]
         stable_mask = wq_valid.notna() & ~np.isinf(wq_valid) & (wq_valid >= 0)
-        wait_cost = pd.Series(UNSTABLE_FIXED_COST, index=wq_valid.index, dtype="float64")
+        wait_cost = pd.Series(np.nan, index=wq_valid.index, dtype="float64")
         wait_cost[stable_mask] = wq_valid[stable_mask] * arrival_rate[valid][stable_mask] * cost_per_wait_hr
         result.loc[valid, "wait_cost"] = wait_cost.round(2)
 
@@ -193,16 +192,22 @@ def compute_cost_summary(
             "avg_cost_per_segment": 0.0,
         }
 
-    total_server = cost_df["server_cost"].sum()
-    total_wait = cost_df["wait_cost"].sum()
-    total_abandon = cost_df["abandonment_cost"].sum()
-    total = cost_df["total_cost"].sum()
+    def complete_sum(column: str) -> float | None:
+        values = cost_df[column]
+        if values.isna().any():
+            return None
+        return round(float(values.sum()), 2)
+
+    total_server = complete_sum("server_cost")
+    total_wait = complete_sum("wait_cost")
+    total_abandon = complete_sum("abandonment_cost")
+    total = complete_sum("total_cost")
     count = len(cost_df)
 
     return {
-        "total_server_cost": round(total_server, 2),
-        "total_wait_cost": round(total_wait, 2),
-        "total_abandonment_cost": round(total_abandon, 2),
-        "total_cost": round(total, 2),
-        "avg_cost_per_segment": round(total / count, 2) if count else 0.0,
+        "total_server_cost": total_server,
+        "total_wait_cost": total_wait,
+        "total_abandonment_cost": total_abandon,
+        "total_cost": total,
+        "avg_cost_per_segment": round(total / count, 2) if total is not None and count else None,
     }

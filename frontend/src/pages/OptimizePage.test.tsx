@@ -100,7 +100,96 @@ beforeEach(() => {
   listScenariosMock.mockResolvedValue({ scenarios: [] })
 })
 
+describe('calculation integrity', () => {
+  it('blocks saving after the input selection changes', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('401.31')
+    await user.type(screen.getByLabelText('Scenario name'), 'stale plan')
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Inputs changed')
+  })
+
+  it('saves the effective what-if inputs and factor as a snapshot', async () => {
+    const user = userEvent.setup()
+    createScenarioMock.mockResolvedValue({ scenario: { id: 3 } })
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('401.31')
+    await user.type(screen.getByLabelText('λ multiplier'), '1.5')
+    await user.click(screen.getByRole('button', { name: 'Run what-if' }))
+    await user.type(screen.getByLabelText('Scenario name'), 'what if')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(createScenarioMock).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({
+      calculation: expect.objectContaining({ what_if_multiplier: 1.5, input_segments: [expect.objectContaining({ lambda: 45 })] }),
+    }) }))
+  })
+
+  it('does not turn an infeasible row into zero optimized cost', async () => {
+    optimizeBatchMock.mockResolvedValue({ results: [{ ...row, c_optimal: null, optimized_stable: false,
+      rho_optimal: null, cost_optimal: null, delta_c: null }] })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Comparison incomplete')
+    expect(screen.queryByText('0.00')).not.toBeInTheDocument()
+    expect(screen.getByText('Staffing totals are unavailable until every segment has a current, feasible recommendation.')).toBeInTheDocument()
+    expect(screen.queryByText('0 cashiers')).not.toBeInTheDocument()
+    expect(screen.queryByText(/→ null/)).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('Scenario name'), 'Incomplete plan')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Scenario saved.')).toBeInTheDocument()
+    expect(createScenarioMock).toHaveBeenCalledWith(expect.objectContaining({
+      results: { results: [expect.objectContaining({ c_optimal: null, optimized_stable: false })] },
+      settings: expect.objectContaining({ calculation: expect.objectContaining({ engine_version: 'novaq-2026-09-system-v2' }) }),
+    }))
+  })
+})
+
 describe('OptimizePage', () => {
+  it('keeps operational staffing visible when the current baseline is unstable', async () => {
+    optimizeBatchMock.mockResolvedValue({
+      results: [{ ...row, c_current: 2, rho_current: 1.0107, current_stable: false,
+        Wq_current: null, Lq_current: null, waiting_cost_current: null,
+        cost_current: null, delta_cost: null, delta_Wq: null, delta_Lq: null,
+        c_optimal: 3, rho_optimal: 0.6738, optimized_stable: true,
+        warning: 'Unstable system: lambda must be less than c * mu for M/M/c.' }],
+    })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText('Net staffing reduction')).toBeInTheDocument()
+    expect(screen.getByText('101.07% → 67.38%')).toBeInTheDocument()
+    expect(screen.getAllByText('Unstable').length).toBeGreaterThan(0)
+    expect(screen.getByText('— → 1.07')).toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+
+  it('forwards minimum staffing and a wait limit, then invalidates the saved result on change', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.clear(screen.getByLabelText('Minimum cashiers'))
+    await user.type(screen.getByLabelText('Minimum cashiers'), '3')
+    await user.type(screen.getByLabelText('Maximum analytical wait in minutes (blank disables limit)'), '5')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await waitFor(() => expect(optimizeBatchMock).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ min_servers: 3, max_wait_minutes: 5 })))
+    await user.clear(screen.getByLabelText('Maximum analytical wait in minutes (blank disables limit)'))
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await waitFor(() => expect(optimizeBatchMock).toHaveBeenLastCalledWith(expect.any(Array), expect.objectContaining({ max_wait_minutes: null })))
+  })
   it('optimizes segments from a selected dataset and renders KPI cards', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })
@@ -199,6 +288,19 @@ describe('OptimizePage', () => {
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     expect(await screen.findByText('Add 1 server at 08:00-09:00.')).toBeInTheDocument()
     expect(screen.getByText('08:00-09:00')).toBeInTheDocument()
+  })
+
+  it('shows utilization status indicators and threshold legend in the staffing table', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText('Status')).toBeInTheDocument()
+    expect(screen.getByLabelText('Utilization status legend')).toBeInTheDocument()
+    expect(screen.getAllByText('Peak').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Normal').length).toBeGreaterThan(0)
+    expect(screen.getByText('> 100%')).toBeInTheDocument()
   })
 
   it('saves a scenario with the batch results', async () => {
