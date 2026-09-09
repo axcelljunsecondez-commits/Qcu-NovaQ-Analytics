@@ -233,6 +233,8 @@ describe('SimulationPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Validate' }))
     await user.click(screen.getByRole('button', { name: 'Validate plan' }))
     expect(await screen.findByText('Simulation validation found issues.')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Simulated wait (min)' })).toBeInTheDocument()
+    expect(screen.getByText('0.833')).toBeInTheDocument()
     expect(
       screen.queryByText('1 of 1 segments failed — 1 unstable, 0 above the 5% failure threshold.'),
     ).not.toBeInTheDocument()
@@ -407,7 +409,7 @@ describe('SimulationPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Validate' }))
     await user.click(screen.getByRole('button', { name: 'Validate plan' }))
     expect(
-      await screen.findByText('Verdict: the optimized schedule improves the plan, but 1 interval(s) still show residual validation risk above the selected 5% criterion.'),
+      await screen.findByText('Validation issues remain in 1 interval(s). Review the DES status and Monte Carlo interval separately; the 5% allowance applies to Monte Carlo utilization failures.'),
     ).toBeInTheDocument()
   })
 
@@ -620,4 +622,18 @@ describe('SimulationPage', () => {
     await screen.findByText('Abandonment rate must be between 0 and 1.')
     expect(optimizeBatchMock).not.toHaveBeenCalled()
   })
+})
+
+it('uses the selected target and constraints for simulation comparison', async () => {
+  const user = userEvent.setup()
+  renderWithProviders(<SimulationPage />, { route: '/simulate' })
+  await selectDataset(user)
+  await user.click(screen.getByRole('tab', { name: 'Validate' }))
+  await user.clear(screen.getByLabelText('Planning utilization target (default 70%)'))
+  await user.type(screen.getByLabelText('Planning utilization target (default 70%)'), '0.85')
+  await user.clear(screen.getByLabelText('Minimum cashiers'))
+  await user.type(screen.getByLabelText('Minimum cashiers'), '2')
+  await user.type(screen.getByLabelText('Maximum analytical wait in minutes (blank disables limit)'), '4')
+  await user.click(screen.getByRole('button', { name: 'Validate plan' }))
+  await waitFor(() => expect(optimizeBatchMock).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ target_utilization: .85, min_servers: 2, max_wait_minutes: 4 })))
 })

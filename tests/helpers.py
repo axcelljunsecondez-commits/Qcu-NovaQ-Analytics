@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
@@ -20,14 +20,21 @@ def make_sessionmaker(engine):
 
 
 def create_user(
-    engine, email: str, password: str, role: str = "analyst", active: bool = True
+    engine,
+    email: str,
+    password: str | None,
+    role: str = "analyst",
+    active: bool = True,
+    verified: bool = True,
 ) -> User:
     """Insert a user directly and return the ORM object."""
     Session = make_sessionmaker(engine)
     with Session() as db:
         user = User(
             email=email,
-            password_hash=hash_password(password),
+            email_normalized=email.strip().casefold(),
+            email_verified_at=datetime.now(timezone.utc) if verified else None,
+            password_hash=hash_password(password) if password is not None else None,
             role=role,
             active=active,
         )
@@ -72,7 +79,7 @@ def add_session_row(
         record = SessionRecord(
             user_id=user_id,
             token_hash=hashlib.sha256(token.encode()).digest(),
-            expires_at=expires_at or (datetime.now(UTC) + timedelta(hours=1)),
+            expires_at=expires_at or (datetime.now(timezone.utc) + timedelta(hours=1)),
             revoked_at=revoked_at,
         )
         db.add(record)

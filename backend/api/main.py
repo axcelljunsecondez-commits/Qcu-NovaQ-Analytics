@@ -3,49 +3,39 @@
 from __future__ import annotations
 
 import logging
-import secrets
+import re
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.api import auth
 from backend.api.account import router as account_router
+from backend.api.analyses import router as analyses_router
 from backend.api.analysis import router as analysis_router
+from backend.api.auth_routes import router as auth_router
 from backend.api.datasets import router as datasets_router
 from backend.api.deps import get_current_user
+from backend.api.email_delivery import build_email_sender
+from backend.api.google_auth import OfficialGoogleTokenVerifier
 from backend.api.optimization import router as optimization_router
+from backend.api.rate_limit import FixedWindowLimiter, ResourceLimitMiddleware
 from backend.api.reports import router as reports_router
 from backend.api.scenarios import router as scenarios_router
 from backend.api.settings import Settings
 from backend.api.simulation import router as simulation_router
 from backend.api.users import router as users_router
-from backend.db.models import User
-from backend.db.session import DATABASE_URL, create_engine_for
+from backend.db.session import create_engine_for
 from backend.db.session import get_db as global_get_db
 
 logger = logging.getLogger("novaq.api")
-
-
-class LoginRequest(BaseModel):
-    email: str = Field(min_length=3)
-    password: str = Field(min_length=1)
-
-
-class UserOut(BaseModel):
-    id: int
-    email: str
-    role: str
-    active: bool
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
+SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 
 
 class CsrfDoubleSubmitMiddleware:
@@ -57,7 +47,7 @@ class CsrfDoubleSubmitMiddleware:
     """
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-    EXEMPT_PREFIXES = ("/analysis", "/simulation", "/optimize")
+    EXEMPT_FAMILIES = ("/analysis", "/simulation", "/optimize")
 
     def __init__(self, app):
         self.app = app
@@ -70,7 +60,8 @@ class CsrfDoubleSubmitMiddleware:
         method = scope["method"]
         cookies = _cookies_from_scope(scope)
         session_cookie = cookies.get(settings.session_cookie_name)
-        exempt = scope["path"].startswith(self.EXEMPT_PREFIXES)
+        path = scope["path"]
+        exempt = any(path == family or path.startswith(family + "/") for family in self.EXEMPT_FAMILIES)
         if method not in self.SAFE_METHODS and session_cookie and not exempt:
             header = _header_from_scope(scope, "x-csrf-token")
             cookie = cookies.get(settings.csrf_cookie_name)
@@ -90,7 +81,8 @@ class RequestIdMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
-        request_id = _header_from_scope(scope, "x-request-id") or uuid.uuid4().hex
+        supplied = _header_from_scope(scope, "x-request-id")
+        request_id = supplied if supplied and SAFE_REQUEST_ID.fullmatch(supplied) else uuid.uuid4().hex
         scope["state"]["request_id"] = request_id
 
         async def send_wrapper(message):
@@ -124,13 +116,43 @@ class RequestLogMiddleware:
         await self.app(scope, receive, send_wrapper)
         duration_ms = (time.perf_counter() - start) * 1000
         logger.info(
-            "%s %s -> %s (%.1fms) id=%s",
+            "event=http_request request_id=%s method=%s path=%s status=%s duration_ms=%.1f user_id=%s",
+            scope["state"].get("request_id"),
             scope["method"],
             scope["path"],
             status_holder.get("status"),
             duration_ms,
-            scope["state"].get("request_id"),
+            scope["state"].get("user_id", "anonymous"),
         )
+
+
+class ErrorBoundaryMiddleware:
+    """Return a correlation-safe envelope for otherwise unhandled failures."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        try:
+            return await self.app(scope, receive, send)
+        except Exception as exc:
+            request_id = str(scope.get("state", {}).get("request_id", "unknown"))
+            logger.error(
+                "event=unexpected_error request_id=%s exception_type=%s",
+                request_id,
+                type(exc).__name__,
+            )
+            response = JSONResponse(
+                {
+                    "code": "internal_error",
+                    "detail": "An unexpected server error occurred.",
+                    "request_id": request_id,
+                },
+                status_code=500,
+            )
+            return await response(scope, receive, send)
 
 
 def _cookies_from_scope(scope: dict) -> dict[str, str]:
@@ -157,13 +179,15 @@ def _header_from_scope(scope: dict, name: str) -> str | None:
 def create_app(
     engine=None,
     settings: Settings | None = None,
+    email_sender=None,
+    google_token_verifier=None,
 ) -> FastAPI:
     """Build the API application.
 
     Pass an engine for tests (sqlite); otherwise the configured database is used.
     """
     settings = settings or Settings()
-    engine = engine or create_engine_for(DATABASE_URL)
+    engine = engine or create_engine_for(settings.database_url, settings)
     from sqlalchemy.orm import sessionmaker
 
     SessionFactory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -177,71 +201,54 @@ def create_app(
 
     app = FastAPI(title="NovaQ — Queueing Analytics", version="1.0.0")
     app.state.settings = settings
+    app.state.email_sender = email_sender or build_email_sender(settings)
+    app.state.google_token_verifier = google_token_verifier or OfficialGoogleTokenVerifier()
+    app.state.logger = logger
+    app.state.rate_limiter = FixedWindowLimiter()
     app.dependency_overrides[global_get_db] = get_db
 
     app.add_middleware(RequestLogMiddleware)
-    app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(ResourceLimitMiddleware)
     app.add_middleware(CsrfDoubleSubmitMiddleware)
+    app.add_middleware(ErrorBoundaryMiddleware)
+    app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins or ["http://localhost", "http://localhost:3000"],
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=settings.cors_methods,
+        allow_headers=settings.cors_headers,
     )
+
+    @app.exception_handler(auth.AuthApiError)
+    async def auth_api_error_handler(request: Request, exc: auth.AuthApiError) -> JSONResponse:
+        return JSONResponse(
+            {
+                "code": exc.code,
+                "detail": exc.detail,
+                "request_id": str(getattr(request.state, "request_id", "unknown")),
+            },
+            status_code=exc.status_code,
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/auth/login")
-    def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-        settings_local: Settings = request.app.state.settings
-        user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
-        if user is None or not auth.verify_password(payload.password, user.password_hash):
-            raise HTTPException(status_code=401, detail="Invalid email or password.")
-        if not user.active:
-            raise HTTPException(status_code=401, detail="Invalid email or password.")
+    @app.get("/ready")
+    def ready(db: Session = Depends(get_db)) -> dict[str, str]:
+        try:
+            db.execute(text("SELECT 1"))
+        except SQLAlchemyError as exc:
+            raise HTTPException(status_code=503, detail="Database not ready.") from exc
+        return {"status": "ready"}
 
-        token = auth.create_session(db, user.id, settings_local.session_ttl_hours)
-        csrf_token = secrets.token_urlsafe(32)
-        max_age = int(settings_local.session_ttl_hours * 3600)
-        response = JSONResponse({"user": UserOut.model_validate(user).model_dump(mode="json")})
-        for name, value, httponly in (
-            (settings_local.session_cookie_name, token, True),
-            (settings_local.csrf_cookie_name, csrf_token, False),
-        ):
-            response.set_cookie(
-                key=name,
-                value=value,
-                max_age=max_age,
-                httponly=httponly,
-                secure=settings_local.secure_cookies,
-                samesite="lax",
-                path="/",
-            )
-        return response
-
-    @app.post("/auth/logout")
-    def logout(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-        settings_local: Settings = request.app.state.settings
-        token = request.cookies.get(settings_local.session_cookie_name)
-        auth.revoke_session(db, token)
-        response = JSONResponse({"detail": "Logged out."})
-        response.delete_cookie(
-            key=settings_local.session_cookie_name, path="/", samesite="lax"
-        )
-        response.delete_cookie(key=settings_local.csrf_cookie_name, path="/", samesite="lax")
-        return response
-
-    @app.get("/auth/me")
-    def me(user: User = Depends(get_current_user)) -> dict[str, UserOut]:
-        return {"user": UserOut.model_validate(user)}
-
+    app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(account_router)
     app.include_router(datasets_router)
     app.include_router(analysis_router)
+    app.include_router(analyses_router)
     app.include_router(optimization_router)
     app.include_router(simulation_router)
     app.include_router(scenarios_router)

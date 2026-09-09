@@ -5,6 +5,7 @@ export interface AuthContextValue {
   user: UserOut | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<UserOut>
+  loginWithGoogle: (credential: string) => Promise<UserOut>
   logout: () => Promise<void>
 }
 

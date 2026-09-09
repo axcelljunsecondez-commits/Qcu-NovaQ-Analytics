@@ -11,9 +11,10 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { key: 'analyses', to: '/analyses' },
   { key: 'dashboard', to: '/dashboard' },
   { key: 'datasets', to: '/datasets' },
-  { key: 'analysis', to: '/analysis' },
+  { key: 'advanced_analysis', to: '/analysis' },
   { key: 'optimize', to: '/optimize' },
   { key: 'simulate', to: '/simulate' },
   { key: 'compare', to: '/compare' },
@@ -54,6 +55,7 @@ export function Sidebar() {
       <LanguageSelector />
       <ThemeToggle />
       <div className="sidebar-footer">
+        {user && <div className="form-hint">{user.email}</div>}
         <button type="button" className="btn-ghost" onClick={handleLogout}>
           {t('nav.logout')}
         </button>

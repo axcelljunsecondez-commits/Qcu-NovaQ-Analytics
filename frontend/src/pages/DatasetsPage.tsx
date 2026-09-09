@@ -12,7 +12,7 @@ export function DatasetsPage() {
 
   const datasetsQuery = useQuery({
     queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryFn: () => listDatasets(),
   })
 
   const uploadMutation = useMutation({
@@ -79,7 +79,7 @@ export function DatasetsPage() {
               id="dataset-file"
               aria-label="file"
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx"
               onChange={handleFileChange}
             />
           </div>

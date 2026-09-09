@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 
 from backend.queueing_engine.config import (
@@ -33,9 +35,9 @@ def read_uploaded_table(uploaded_file) -> pd.DataFrame:
     name = uploaded_file.name.lower()
     if name.endswith(".csv"):
         return pd.read_csv(uploaded_file)
-    if name.endswith((".xlsx", ".xls")):
+    if name.endswith(".xlsx"):
         return pd.read_excel(uploaded_file)
-    raise ValueError("Upload must be a CSV or Excel file.")
+    raise ValueError("Upload must be a CSV or XLSX file.")
 
 
 def validate_and_normalize(df: pd.DataFrame) -> tuple[bool, str, pd.DataFrame]:
@@ -50,38 +52,44 @@ def validate_and_normalize(df: pd.DataFrame) -> tuple[bool, str, pd.DataFrame]:
     if missing:
         return False, f"Missing required columns: {', '.join(missing)}.", normalized
 
+    if normalized.columns.duplicated().any():
+        return False, "Duplicate column names are not allowed.", normalized
     numeric_columns = [column for column in REQUIRED_COLUMNS[1:] + OPTIONAL_COLUMNS if column in normalized.columns]
     for column in numeric_columns:
-        normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
-
-    required_numeric = ["lambda", "mu", "c"]
-    invalid_required = [
-        column
-        for column in required_numeric
-        if normalized[column].isna().any()
-    ]
-    if invalid_required:
-        return False, f"Invalid numeric values in: {', '.join(invalid_required)}.", normalized
-
-    if (normalized["lambda"] < 0).any():
-        return False, "lambda must be greater than or equal to 0.", normalized
-    if (normalized["mu"] <= 0).any():
-        return False, "mu must be greater than 0.", normalized
-    if (normalized["c"] <= 0).any():
-        return False, "c must be greater than 0.", normalized
-
+        converted: list[float | None] = []
+        for position, value in enumerate(normalized[column], start=1):
+            absent = value is None or value is pd.NA or (not isinstance(value, str) and pd.isna(value)) or (isinstance(value, str) and not value.strip())
+            if absent and column in OPTIONAL_COLUMNS:
+                converted.append(None)
+                continue
+            error = None
+            try:
+                number = float(value)
+                if absent or isinstance(value, bool) or type(value).__name__ == "bool_" or not math.isfinite(number):
+                    error = "must be a finite number"
+                elif column in ("c", "K") and (not number.is_integer() or not 1 <= number <= 100000):
+                    error = "must be an integer between 1 and 100000"
+                elif column in ("mu", "total_hours") and number <= 0:
+                    error = "must be greater than 0"
+                elif number < 0:
+                    error = "must be greater than or equal to 0"
+            except (TypeError, ValueError, OverflowError):
+                number = 0.0
+                error = "must be a finite number"
+            if error:
+                return False, f"Row {position}: {column} {error}.", normalized
+            converted.append(number)
+        normalized[column] = converted
+    for position, value in enumerate(normalized["time"], start=1):
+        if value is None or pd.isna(value) or not str(value).strip():
+            return False, f"Row {position}: time must be a nonempty label.", normalized
     normalized["time"] = normalized["time"].astype(str)
     normalized["c"] = normalized["c"].astype(int)
     if "K" in normalized.columns:
-        capacity = normalized["K"].dropna()
-        if not capacity.empty and (capacity < normalized.loc[capacity.index, "c"]).any():
-            return False, "K must be greater than or equal to c.", normalized
+        for position, (capacity, servers) in enumerate(zip(normalized["K"], normalized["c"]), start=1):
+            if pd.notna(capacity) and capacity < servers:
+                return False, f"Row {position}: K must be greater than or equal to c.", normalized
         normalized["K"] = normalized["K"].astype("Int64")
-
-    if "theta" in normalized.columns:
-        theta_vals = normalized["theta"].dropna()
-        if not theta_vals.empty and (theta_vals < 0).any():
-            return False, "theta must be greater than or equal to 0.", normalized
 
     return True, "Input data is valid.", normalized
 

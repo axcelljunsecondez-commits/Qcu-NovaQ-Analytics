@@ -15,8 +15,8 @@ from typing import Literal
 # z-value for a 95 % confidence level.
 Z95 = 1.959963984540054
 
-# Precision bands for a failure-rate decision anchored to the existing
-# PASS/FAIL threshold of failure_rate <= 0.10 (see simulation.py).  Half-width
+# Precision bands are numerical adequacy guidance, independent of the configured
+# PASS/FAIL allowance (default 0.05). Half-width
 # is measured in percentage points as a fraction (0.05 == 5 pp).
 HIGH_PRECISION_MAX_HW = 0.03
 ADEQUATE_MAX_HW = 0.05

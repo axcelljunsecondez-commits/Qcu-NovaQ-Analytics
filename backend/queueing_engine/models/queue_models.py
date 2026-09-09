@@ -296,6 +296,9 @@ def mgck(lambda_: float, mu: float, c: int, service_variance: float, K: int) -> 
         Lq = effective_lambda * Wq
         W = Wq + (1.0 / mu)
         L = effective_lambda * W
+        if not all(math.isfinite(v) and v >= 0 for v in (L, Lq, W, Wq)) or L > K + 1e-10 or Lq > K - c + 1e-10:
+            return _result(rho=base.get("rho"), stable=False, K=K,
+                           error="M/G/c/K approximation exceeds finite-capacity bounds.")
 
         return _result(
             rho=base["rho"],
@@ -425,135 +428,80 @@ def mmc_priority(lambda1: float, lambda2: float, mu: float, c: int) -> dict[str,
 # M/M/c+M (Erlang-A)  —  Garnett, Mandelbaum & Reiman (2002)
 # ─────────────────────────────────────────────────────────────────────────────
 
+ERLANG_A_TOLERANCE = 1e-12
+ERLANG_A_MAX_STATES = 100000
+
+
+def _logadd(a: float, b: float) -> float:
+    peak = max(a, b)
+    return peak + math.log1p(math.exp(min(a, b) - peak))
+
+
 def erlang_a(lambda_: float, mu: float, c: int, theta: float) -> dict[str, Any]:
+    """Erlang-A birth/death distribution with bounded omitted mass/first moment.
+
+    Descending tail ratios bound the remaining terms by a geometric sequence.
+    Both tail probability and first moment must be <= 1e-12 of accumulated
+    values before stopping. At 100000 states an unconverged result is rejected.
+    W/Wq preserve legacy workload-per-served-throughput ratios, not all-arrival
+    or served-customer mean sojourn/wait times. ``metric_basis`` states this.
     """
-    Compute steady-state metrics for an M/M/c+M queue (Erlang-A).
-
-    Customers arriving when all servers are busy enter a FIFO queue and may
-    *renege* (abandon) after an exponentially distributed patience time with
-    rate *θ* (*M* = Memoryless abandonment).
-
-    The state probabilities follow the Garnett *et al.* (2002) recursion:
-
-      P(n) / P(0) = (λ/μ)ⁿ / n!                          n ≤ c
-
-      P(c+k) / P(0) = P(c) / P(0)  ·  λᵏ / ∏_{j=1}ᵏ (cμ + jθ)   k ≥ 1
-
-    Parameters
-    ----------
-    lambda_ : float
-        Arrival rate (customers / time).
-    mu : float
-        Service rate per server (customers / time).
-    c : int
-        Number of servers.
-    theta : float
-        Reneging (abandonment) rate per customer in queue (1 / patience).
-
-    Returns
-    -------
-    dict
-        {rho, L, Lq, W, Wq, stable, error,
-         theta, lambda_eff, abandonment_rate}
-
-    References
-    ----------
-    Garnett, O., Mandelbaum, A., & Reiman, M. (2002).
-    Designing a Call Center with Impatient Customers.
-    *Manufacturing & Service Operations Management*, 4(3), 208–227.
-    """
-    if not _is_valid_rate(lambda_) or not _is_valid_rate(mu):
-        return _result(error="Invalid input: lambda and mu must be finite numbers.")
-    if not _is_valid_rate(theta):
-        return _result(error="Invalid input: theta must be a finite number.")
-    if not isinstance(c, Integral):
-        return _result(error="Invalid input: c must be a positive integer.")
-
-    lambda_ = float(lambda_)
-    mu = float(mu)
-    c = int(c)
-    theta = float(theta)
-
-    if lambda_ <= 0 or mu <= 0 or c < 1 or theta < 0:
-        return _result(
-            error=(
-                "Invalid input: lambda > 0, mu > 0, c >= 1, "
-                "and theta >= 0 are required."
-            )
-        )
-
-    # θ = 0  →  degenerate to M/M/c (no abandonment)
-    if theta == 0.0:
+    if (not all(_is_valid_rate(v) for v in (lambda_, mu, theta))
+            or isinstance(c, bool) or not isinstance(c, Integral)
+            or lambda_ < 0 or mu <= 0 or c < 1 or theta < 0):
+        return _result(error="Invalid input: finite lambda >= 0, mu > 0, integer c >= 1, theta >= 0 required.")
+    lambda_, mu, theta, c = float(lambda_), float(mu), float(theta), int(c)
+    if theta == 0:
         return mmc(lambda_, mu, c)
-
-    offered_load = lambda_ / mu
-    # ── 1.  Compute log-ratios  log(P(n)/P(0))  ──────────────────────────────
-    log_ratios: list[float] = [0.0]            # n = 0
-    running_max = 0.0
-    # n ≤ c
-    for n in range(1, c + 1):
-        lr = log_ratios[-1] + math.log(lambda_) - math.log(n) - math.log(mu)
-        log_ratios.append(lr)
-        if lr > running_max:
-            running_max = lr
-    # n > c
-    small_count = 0
-    min_tail_terms = max(5, c // 10)
-    for k in range(1, 201):                    # hard cap at c + 200
-        n = c + k
-        lr = log_ratios[-1] + math.log(lambda_) - math.log(c * mu + k * theta)
-        log_ratios.append(lr)
-        if lr > running_max:
-            running_max = lr
-        # Stop once the tail is negligible (≤ 1e-16 relative to peak)
-        if running_max - lr > 37 and k >= min_tail_terms:
-            small_count += 1
-            if small_count >= 3:
-                break
-        else:
-            small_count = 0
-
-    N = len(log_ratios) - 1                    # highest index computed
-
-    # ── 2.  Normalise via log-sum-exp trick  ─────────────────────────────────
-    weights = [math.exp(lr - running_max) for lr in log_ratios]
-    total_weight = sum(weights)
-    P = [w / total_weight for w in weights]    # P[0] … P[N]
-
-    # ── 3.  Metrics  ─────────────────────────────────────────────────────────
-    # Lq = Σ (n - c) · P(n)   for n > c
-    Lq = sum((n - c) * P[n] for n in range(c + 1, N + 1))
-
-    # idle_servers = Σ_{n < c} (c - n) · P(n)
-    idle_servers = sum((c - n) * P[n] for n in range(c))
-    L = Lq + c - idle_servers
-
-    # Effective arrival rate (throughput):
-    #   λ_eff = λ - Σ_{n > c} (n - c) · θ · P(n)
-    abandon_customers = sum((n - c) * theta * P[n] for n in range(c + 1, N + 1))
-    lambda_eff = lambda_ - abandon_customers
-
-    if lambda_eff <= 0:
-        return _result(
-            stable=False,
-            error="Effective arrival rate is zero or negative — "
-                  "all customers abandon.",
-        )
-
-    W = L / lambda_eff
-    Wq = Lq / lambda_eff
-    rho = offered_load / c                     # nominal utilisation
-    p_abandon = abandon_customers / lambda_ if lambda_ > 0 else 0.0
-
-    return _result(
-        rho=rho,
-        rho_effective=round(lambda_eff / (c * mu), 6),
-        L=L,
-        Lq=Lq,
-        W=W,
-        Wq=Wq,
-        stable=True,
-        theta=theta,
-        lambda_eff=lambda_eff,
-        abandonment_rate=p_abandon,
-    )
+    capacity = c * mu
+    if not math.isfinite(capacity):
+        return _result(error="Numerical range exceeded by service capacity.")
+    metadata = {"theta": theta, "metric_basis": "workload_per_served_throughput",
+                "numerical_tolerance": ERLANG_A_TOLERANCE}
+    if lambda_ == 0:
+        return _result(rho=0.0, L=0.0, Lq=0.0, W=1 / mu, Wq=0.0, stable=True,
+                       lambda_eff=0.0, rho_effective=0.0, abandonment_rate=0.0, **metadata)
+    logs = [0.0]
+    log_total = 0.0
+    log_moment = -math.inf
+    log_lambda = math.log(lambda_)
+    converged = False
+    for n in range(1, ERLANG_A_MAX_STATES + 1):
+        log_death = math.log(n) + math.log(mu) if n <= c else _logadd(math.log(capacity), math.log(n - c) + math.log(theta))
+        log_weight = logs[-1] + log_lambda - log_death
+        logs.append(log_weight)
+        log_total = _logadd(log_total, log_weight)
+        log_moment = _logadd(log_moment, log_weight + math.log(n))
+        if n >= c:
+            log_next_death = _logadd(math.log(capacity), math.log(n + 1 - c) + math.log(theta))
+            log_ratio = log_lambda - log_next_death
+            if log_ratio < 0:
+                ratio = math.exp(log_ratio)
+                gap = -math.expm1(log_ratio)
+                tail_log = log_weight + log_ratio - math.log(gap)
+                moment_tail_log = tail_log + math.log(n + 1 + ratio / gap)
+                if (tail_log <= log_total + math.log(ERLANG_A_TOLERANCE)
+                        and moment_tail_log <= log_moment + math.log(ERLANG_A_TOLERANCE)):
+                    converged = True
+                    break
+    if not converged:
+        return _result(error="Erlang-A did not converge within the state budget.", **metadata)
+    peak = max(logs)
+    weights = [math.exp(value - peak) for value in logs]
+    total = math.fsum(weights)
+    probabilities = [value / total for value in weights]
+    if abs(math.fsum(probabilities) - 1.0) > ERLANG_A_TOLERANCE:
+        return _result(error="Erlang-A probability normalization failed.", **metadata)
+    busy = math.fsum(min(n, c) * probability for n, probability in enumerate(probabilities))
+    lq = math.fsum(max(n - c, 0) * probability for n, probability in enumerate(probabilities))
+    throughput = min(capacity, mu * busy)  # roundoff safeguard on the bounded expectation
+    abandoned = theta * lq
+    if throughput <= 0 or not math.isclose(throughput + abandoned, lambda_, rel_tol=1e-9, abs_tol=1e-12):
+        return _result(error="Erlang-A flow conservation failed.", **metadata)
+    length = lq + busy
+    wait, sojourn = lq / throughput, length / throughput
+    if not all(math.isfinite(v) and v >= 0 for v in (lq, length, wait, sojourn)):
+        return _result(error="Erlang-A metrics exceed numerical range.", **metadata)
+    return _result(rho=lambda_ / capacity, L=length, Lq=lq, W=sojourn, Wq=wait, stable=True,
+                   lambda_eff=throughput, rho_effective=throughput / capacity,
+                   abandonment_rate=abandoned / lambda_, **metadata)

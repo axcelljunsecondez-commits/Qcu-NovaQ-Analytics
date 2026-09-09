@@ -4,43 +4,51 @@ from __future__ import annotations
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, user_rate_limit
+from backend.queueing_engine.config import MC_DEFAULT_FAILURE_THRESHOLD, MC_DEFAULT_TRIALS, MC_FAILURE_RATE_CAP
 from backend.queueing_engine.simulation.simulation import (
     mc_simulate_segments,
     simulate_segments,
     validate_with_simulation,
 )
 
-router = APIRouter(prefix="/simulation", tags=["simulation"])
+router = APIRouter(
+    prefix="/simulation",
+    tags=["simulation"],
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
 
 
 class DesRequest(BaseModel):
-    segments: list[dict]
-    sim_hours: float = Field(default=24.0, gt=0)
+    model_config = ConfigDict(allow_inf_nan=False)
+    segments: list[dict] = Field(max_length=1000)
+    sim_hours: float = Field(default=24.0, gt=0, le=168)
     queue_overload_threshold: int = Field(default=20, ge=1)
     seed: int | None = Field(default=42)
     carryover: bool = True
 
 
 class McRequest(BaseModel):
-    segments: list[dict]
-    num_trials: int = Field(default=2000, ge=1, le=100000)
-    failure_threshold: float = Field(default=0.75, gt=0, le=1)
-    failure_rate_cap: float = Field(default=0.10, gt=0, le=1)
+    model_config = ConfigDict(allow_inf_nan=False)
+    segments: list[dict] = Field(max_length=1000)
+    num_trials: int = Field(default=MC_DEFAULT_TRIALS, ge=1, le=100000)
+    failure_threshold: float = Field(default=MC_DEFAULT_FAILURE_THRESHOLD, gt=0, le=1)
+    failure_rate_cap: float = Field(default=MC_FAILURE_RATE_CAP, gt=0, le=1)
     seed: int | None = Field(default=42)
 
 
 class ValidateRequest(BaseModel):
-    segments: list[dict]
-    des_sim_hours: float = Field(default=24.0, gt=0)
-    mc_trials: int = Field(default=2000, ge=1, le=100000)
-    mc_failure_threshold: float = Field(default=0.75, gt=0, le=1)
-    failure_rate_cap: float = Field(default=0.10, alias="mc_failure_rate_cap", gt=0, le=1)
+    model_config = ConfigDict(allow_inf_nan=False)
+    segments: list[dict] = Field(max_length=1000)
+    des_sim_hours: float = Field(default=24.0, gt=0, le=168)
+    mc_trials: int = Field(default=MC_DEFAULT_TRIALS, ge=1, le=100000)
+    mc_failure_threshold: float = Field(default=MC_DEFAULT_FAILURE_THRESHOLD, gt=0, le=1)
+    failure_rate_cap: float = Field(default=MC_FAILURE_RATE_CAP, alias="mc_failure_rate_cap", gt=0, le=1)
     seed: int | None = Field(default=None)
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True, allow_inf_nan=False)
 
 
 @router.post("/des")
@@ -89,4 +97,4 @@ def validate(
         seed=payload.seed,
         failure_rate_cap=payload.failure_rate_cap,
     )
-    return {"results": result.where(pd.notna(result), None).to_dict("records")}
+    return {"results": result.astype(object).where(pd.notna(result), None).to_dict("records")}

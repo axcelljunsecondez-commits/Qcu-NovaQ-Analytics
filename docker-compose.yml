@@ -13,7 +13,29 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://novaq:novaq@db:5432/novaq
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bootstrap-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["python", "-m", "backend.db.seed", "--email", "${ADMIN_EMAIL:-admin@example.com}", "--password", "${ADMIN_PASSWORD:-admin123}", "--role", "admin"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://novaq:novaq@db:5432/novaq
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   api:
     build:
@@ -21,24 +43,38 @@ services:
       dockerfile: Dockerfile.api
     environment:
       DATABASE_URL: postgresql+psycopg://novaq:novaq@db:5432/novaq
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      SECURE_COOKIES: "0"
-      ALLOWED_ORIGINS: '["http://localhost"]'
+      SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost}
+      EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-console}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-1}
+      GOOGLE_SIGN_IN_ENABLED: ${GOOGLE_SIGN_IN_ENABLED:-0}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     depends_on:
-      db:
-        condition: service_healthy
+      bootstrap-admin:
+        condition: service_completed_successfully
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   web:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     depends_on:
-      - api
+      api:
+        condition: service_started
     ports:
-      - "80:80"
+      - "127.0.0.1:80:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

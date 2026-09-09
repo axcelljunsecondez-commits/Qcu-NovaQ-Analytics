@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -71,7 +71,7 @@ def test_logout_revokes_session(db_engine, client):
 def test_expired_session_rejected(db_engine, client):
     user = create_user(db_engine, "carol@example.com", "s3cret")
     add_session_row(
-        db_engine, user.id, "expired-token", expires_at=datetime.now(UTC) - timedelta(minutes=1)
+        db_engine, user.id, "expired-token", expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
     )
     client.cookies.set(SESSION_COOKIE, "expired-token")
     assert client.get("/auth/me").status_code == 401
@@ -83,7 +83,7 @@ def test_revoked_session_rejected(db_engine, client):
         db_engine,
         user.id,
         "revoked-token",
-        revoked_at=datetime.now(UTC),
+        revoked_at=datetime.now(timezone.utc),
     )
     client.cookies.set(SESSION_COOKIE, "revoked-token")
     assert client.get("/auth/me").status_code == 401
@@ -150,14 +150,14 @@ def test_change_password_success(db_engine, client):
     response = client.post(
         "/account/password",
         headers=csrf_header(client),
-        json={"current_password": "oldpass", "new_password": "newpass"},
+        json={"current_password": "oldpass", "new_password": "newpass123"},
     )
     assert response.status_code == 200
 
     assert client.get("/auth/me").status_code == 200
     clear_cookies(client)
     assert login(client, "pw@example.com", "oldpass") == 401
-    assert login(client, "pw@example.com", "newpass") == 200
+    assert login(client, "pw@example.com", "newpass123") == 200
 
 
 def test_change_password_wrong_current_401(db_engine, client):
@@ -167,7 +167,7 @@ def test_change_password_wrong_current_401(db_engine, client):
     response = client.post(
         "/account/password",
         headers=csrf_header(client),
-        json={"current_password": "nope", "new_password": "newpass"},
+        json={"current_password": "nope", "new_password": "newpass123"},
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Current password is incorrect."
@@ -187,7 +187,7 @@ def test_change_password_revokes_other_sessions_but_not_current(db_engine, app, 
     response = client.post(
         "/account/password",
         headers=csrf_header(client),
-        json={"current_password": "pass1", "new_password": "pass2"},
+        json={"current_password": "pass1", "new_password": "password2"},
     )
     assert response.status_code == 200
 

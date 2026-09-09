@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import Plot from 'react-plotly.js'
+import Plotly from 'plotly.js'
+import createPlotlyComponent from 'react-plotly.js/factory'
 import type { OptimizationOut, SimDesOut, SimMcOut } from '../../api/types'
 import { RADAR_THETA } from '../../lib/radar'
 
+const Plot = createPlotlyComponent(Plotly)
 const MARGIN = { l: 40, r: 40, t: 25, b: 40 }
 const LINE_WIDTH = 2
 
@@ -247,29 +249,25 @@ export function RadarChart({ current, optimized }: { current: number[]; optimize
       <Plot
         data={[
           {
-            type: 'scatterpolar',
-            r: current,
-            theta: RADAR_THETA,
-            fill: 'toself',
+            type: 'bar',
+            x: RADAR_THETA,
+            y: current,
             name: t('compare.current'),
-            line: { color: '#E74C3C' },
-            fillcolor: 'rgba(231, 76, 60, 0.15)',
+            marker_color: '#E74C3C',
           },
           {
-            type: 'scatterpolar',
-            r: optimized,
-            theta: RADAR_THETA,
-            fill: 'toself',
+            type: 'bar',
+            x: RADAR_THETA,
+            y: optimized,
             name: t('compare.optimized'),
-            line: { color: '#27AE60' },
-            fillcolor: 'rgba(39, 174, 96, 0.15)',
+            marker_color: '#27AE60',
           },
         ]}
         layout={{
           autosize: true,
-          polar: {
-            radialaxis: { visible: true, range: [0, 100], tickfont: { size: 10 } },
-          },
+          barmode: 'group',
+          yaxis: { range: [0, 100], title: 'Score', automargin: true },
+          xaxis: { automargin: true },
           title: '',
           height: 400,
           legend: { orientation: 'h', yanchor: 'bottom', y: 1.08, xanchor: 'center', x: 0.5 },
@@ -414,20 +412,23 @@ export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
       <Plot
         data={[
           {
-            type: 'waterfall',
-            name: 'Cost',
-            orientation: 'v',
-            measure: ['relative', 'relative', 'relative', 'relative', 'total'],
-            x: ['Current Total', 'Server Delta', 'Wait Delta', 'Abandonment Delta', 'Optimized Total'],
-            y: [curTotal, optServer - curServer, optWait - curWait, optAbandon - curAbandon, optTotal],
-            connector: { line: { color: '#94A3B8', width: 1 } },
-            decreasing: { marker: { color: '#27AE60' } },
-            increasing: { marker: { color: '#E74C3C' } },
-            totals: { marker: { color: '#2E86AB' } },
+            type: 'bar',
+            name: t('compare.current'),
+            x: ['Server', 'Wait', 'Abandonment', 'Total'],
+            y: [curServer, curWait, curAbandon, curTotal],
+            marker_color: '#E74C3C',
+          },
+          {
+            type: 'bar',
+            name: t('compare.optimized'),
+            x: ['Server', 'Wait', 'Abandonment', 'Total'],
+            y: [optServer, optWait, optAbandon, optTotal],
+            marker_color: '#27AE60',
           },
         ]}
         layout={{
           autosize: true,
+          barmode: 'group',
           title: '',
           height: 400,
           margin: { t: 20, b: 20 },

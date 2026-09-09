@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import io
+import json
+import math
 from datetime import date
+from xml.sax.saxutils import escape
 
 import openpyxl
 import pandas as pd
@@ -11,7 +14,7 @@ import pandas as pd
 from backend.queueing_engine.log import get_logger
 
 logger = get_logger(__name__)
-from openpyxl.styles import Font
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -26,6 +29,132 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+
+def _number(value: object) -> float | None:
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        result = float(value)
+        return result if math.isfinite(result) else None
+    except ValueError:
+        return None
+
+
+def _money(value: object) -> str:
+    number = _number(value)
+    return f"₱{number:,.2f}" if number is not None else "N/A"
+
+
+def _utilization_status(rho: object) -> str:
+    value = _number(rho)
+    if value is None:
+        return "Unavailable"
+    if value > 1:
+        return "Unstable"
+    if value >= 0.9:
+        return "Critical"
+    if value > 0.8:
+        return "Peak"
+    if value >= 0.6:
+        return "Normal"
+    return "Lean"
+
+
+def _status_color(status: str):
+    return {
+        "Lean": colors.HexColor("#E5E7EB"),
+        "Normal": colors.HexColor("#22C55E"),
+        "Peak": colors.HexColor("#F59E0B"),
+        "Critical": colors.HexColor("#EF4444"),
+        "Unstable": colors.HexColor("#991B1B"),
+    }.get(status, colors.HexColor("#E5E7EB"))
+
+
+def _status_fill(status: str) -> PatternFill:
+    return PatternFill(
+        fill_type="solid",
+        fgColor={
+            "Lean": "E5E7EB",
+            "Normal": "22C55E",
+            "Peak": "F59E0B",
+            "Critical": "EF4444",
+            "Unstable": "991B1B",
+        }.get(status, "E5E7EB"),
+    )
+
+
+def _plural_cashier(count: int) -> str:
+    return "cashier" if abs(count) == 1 else "cashiers"
+
+
+def _merge_time_ranges(times: list[str]) -> list[str]:
+    ranges: list[str] = []
+    for time in times:
+        start, sep, end = time.partition("-")
+        last = ranges[-1] if ranges else ""
+        last_start, last_sep, last_end = last.partition("-")
+        if sep and last_sep and last_end == start:
+            ranges[-1] = f"{last_start}-{end}"
+        else:
+            ranges.append(time)
+    return ranges
+
+
+def _staffing_change_lines(comparison_df: pd.DataFrame) -> list[str]:
+    if "delta_c" not in comparison_df.columns:
+        return []
+    grouped: dict[int, list[str]] = {}
+    for _, row in comparison_df.iterrows():
+        delta = row.get("delta_c")
+        if pd.isna(delta) or int(delta) == 0:
+            continue
+        grouped.setdefault(int(delta), []).append(str(row.get("time", "")))
+
+    lines: list[str] = []
+    for change in sorted(grouped, reverse=True):
+        action = "Add" if change > 0 else "Reduce"
+        count = abs(change)
+        ranges = ", ".join(_merge_time_ranges(grouped[change]))
+        lines.append(f"{action} {count} {_plural_cashier(count)}: {ranges}")
+    return lines
+
+
+def _staffing_summary(comparison_df: pd.DataFrame) -> list[tuple[str, str]]:
+    if "delta_c" not in comparison_df.columns:
+        return []
+    if comparison_df["delta_c"].isna().any():
+        return [("Staffing Adjustment", "Incomplete: staffing change unavailable")]
+    added = int(sum(max(0, row.get("delta_c") or 0) for _, row in comparison_df.iterrows()))
+    removed = int(sum(max(0, -(row.get("delta_c") or 0)) for _, row in comparison_df.iterrows()))
+    net = removed - added
+    peak = None
+    if "c_optimal" in comparison_df.columns and not comparison_df.empty and comparison_df["c_optimal"].notna().all():
+        peak = int(comparison_df["c_optimal"].max())
+
+    if net > 0:
+        net_label = f"{net} cashier-hours reduced"
+    elif net < 0:
+        net_label = f"{abs(net)} cashier-hours added"
+    else:
+        net_label = "No net staffing change"
+
+    rows = [
+        ("Net Staffing Change", net_label),
+        ("Cashier-Hour Formula", f"{removed} removed - {added} added"),
+    ]
+    if peak is not None:
+        rows.append(("Peak Optimized Requirement", f"{peak} {_plural_cashier(peak)}"))
+    return rows
+
+
+STATUS_LEGEND = [
+    ("Lean", "< 60%"),
+    ("Normal", "60%-80%"),
+    ("Peak", "> 80%-< 90%"),
+    ("Critical", ">= 90%"),
+    ("Unstable", "> 100%"),
+]
+
 # ──────────────────────────────────────────────────────────────────────────────
 # PDF Report
 # ──────────────────────────────────────────────────────────────────────────────
@@ -39,7 +168,7 @@ def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[st
     only emitted when optimization KPIs exist (avoids a bogus ₱0).
     """
     bullets: list[str] = []
-    wq_current = current_kpis.get("avg_waiting_time")
+    wq_current = current_kpis.get("avg_waiting_time", recommended_kpis.get("avg_waiting_current"))
     wq_opt = recommended_kpis.get("avg_waiting_optimized")
     if wq_current is not None and wq_opt is not None:
         bullets.append(
@@ -58,7 +187,7 @@ def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[st
         else:
             bullets.append("• Estimated daily savings: N/A")
 
-    rho_current = current_kpis.get("avg_utilization")
+    rho_current = current_kpis.get("avg_utilization", recommended_kpis.get("avg_utilization_current"))
     rho_opt = recommended_kpis.get("avg_utilization_optimized")
     if rho_current is not None and rho_opt is not None:
         bullets.append(f"• Utilization improvement: {rho_current:.0%} → {rho_opt:.0%}")
@@ -132,9 +261,22 @@ def generate_pdf_report(
     elements.append(Paragraph("Executive Summary", h2))
 
     bullet_items = _exec_summary_bullets(current_kpis, recommended_kpis)
+    if recommended_kpis.get("comparison_complete") is False:
+        bullet_items.append("Comparison incomplete: aggregate savings are unavailable.")
+    bullet_items.append("Staffing totals assume one-hour segments. Modeled costs are not payroll savings or employee schedules.")
 
     for item in bullet_items:
-        elements.append(Paragraph(item, bullet_style))
+        elements.append(Paragraph(escape(item), bullet_style))
+
+    staffing_summary = _staffing_summary(comparison_df)
+    staffing_lines = _staffing_change_lines(comparison_df)
+    if staffing_summary:
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph("Staffing Adjustment Summary", h2))
+        for label, value in staffing_summary:
+            elements.append(Paragraph(escape(f"• {label}: {value}"), bullet_style))
+        for line in staffing_lines:
+            elements.append(Paragraph(escape(f"• {line}"), bullet_style))
 
     elements.append(PageBreak())
 
@@ -148,9 +290,11 @@ def generate_pdf_report(
         "Time",
         "Curr c",
         "Curr ρ",
+        "Curr Status",
         "Curr Wq (min)",
         "Opt c",
         "Opt ρ",
+        "Opt Status",
         "Opt Wq (min)",
     ]
     table_data = [
@@ -160,21 +304,23 @@ def generate_pdf_report(
     for _, row in comparison_df.iterrows():
         table_data.append(
             [
-                Paragraph(str(row.get("time", "")), cell_style),
-                Paragraph(str(row.get("c_current", "")), cell_style),
+                Paragraph(escape(str(row.get("time", ""))), cell_style),
+                Paragraph(escape(str(row.get("c_current", ""))), cell_style),
                 Paragraph(
                     f"{row['rho_current']:.1%}" if pd.notna(row.get("rho_current")) else "N/A",
                     cell_style,
                 ),
+                Paragraph(_utilization_status(row.get("rho_current")), cell_style),
                 Paragraph(
                     f"{row['Wq_current'] * 60:.2f}" if pd.notna(row.get("Wq_current")) else "N/A",
                     cell_style,
                 ),
-                Paragraph(str(row.get("c_optimal", "")), cell_style),
+                Paragraph(escape(str(row.get("c_optimal", ""))), cell_style),
                 Paragraph(
                     f"{row['rho_optimal']:.1%}" if pd.notna(row.get("rho_optimal")) else "N/A",
                     cell_style,
                 ),
+                Paragraph(_utilization_status(row.get("rho_optimal")), cell_style),
                 Paragraph(
                     f"{row['Wq_optimal'] * 60:.2f}" if pd.notna(row.get("Wq_optimal")) else "N/A",
                     cell_style,
@@ -182,7 +328,17 @@ def generate_pdf_report(
             ]
         )
 
-    col_widths = [0.8 * inch, 0.6 * inch, 0.7 * inch, 0.9 * inch, 0.6 * inch, 0.7 * inch, 0.9 * inch]
+    col_widths = [
+        0.75 * inch,
+        0.55 * inch,
+        0.65 * inch,
+        0.75 * inch,
+        0.8 * inch,
+        0.55 * inch,
+        0.65 * inch,
+        0.75 * inch,
+        0.8 * inch,
+    ]
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
     tbl.setStyle(
         TableStyle(
@@ -199,6 +355,26 @@ def generate_pdf_report(
         )
     )
     elements.append(tbl)
+
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("Utilization Status Legend", h2))
+    legend_data = [[Paragraph("Status", header_cell), Paragraph("ρ Range", header_cell)]]
+    for status, threshold in STATUS_LEGEND:
+        legend_data.append([Paragraph(status, cell_style), Paragraph(threshold, cell_style)])
+    legend = Table(legend_data, colWidths=[1.2 * inch, 1.4 * inch], repeatRows=1)
+    legend.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2F5496")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ]
+        )
+    )
+    for row_idx, (status, _) in enumerate(STATUS_LEGEND, start=1):
+        legend.setStyle(TableStyle([("BACKGROUND", (0, row_idx), (0, row_idx), _status_color(status))]))
+    elements.append(legend)
     elements.append(PageBreak())
 
     # ══════════════════════════════════════════════════════════════════════
@@ -207,7 +383,7 @@ def generate_pdf_report(
     elements.append(Paragraph("Recommendations", h2))
     if recommendations:
         for rec in recommendations:
-            elements.append(Paragraph(f"• {rec}", bullet_style))
+            elements.append(Paragraph(escape(f"• {rec}"), bullet_style))
     else:
         elements.append(Paragraph("Run an optimization and save it as a scenario to get staffing recommendations.", bullet_style))
 
@@ -259,9 +435,9 @@ def generate_excel_report(
     if recommended_kpis:
         labels_values = [
             ("Metric", "Value"),
-            ("Total Current Cost", f"₱{recommended_kpis.get('total_current_cost', 0):,.2f}"),
-            ("Total Optimized Cost", f"₱{recommended_kpis.get('total_optimized_cost', 0):,.2f}"),
-            ("Total Savings", f"₱{recommended_kpis.get('total_savings', 0):,.2f}"),
+            ("Total Current Cost", _money(recommended_kpis.get("total_current_cost"))),
+            ("Total Optimized Cost", _money(recommended_kpis.get("total_optimized_cost"))),
+            ("Total Savings", _money(recommended_kpis.get("total_savings"))),
             ("Total Server Change", str(recommended_kpis.get("total_server_change", 0))),
         ]
 
@@ -287,6 +463,20 @@ def generate_excel_report(
         if impr_pct is not None:
             labels_values.append(("Waiting Time Improvement", f"{impr_pct:.1f}%"))
 
+        staffing_summary = _staffing_summary(comparison_df)
+        if staffing_summary:
+            labels_values.append(("", ""))
+            labels_values.append(("Staffing Adjustment Summary", ""))
+            labels_values.extend(staffing_summary)
+            for line in _staffing_change_lines(comparison_df):
+                labels_values.append(("Schedule Action", line))
+
+            labels_values.append(("", ""))
+            labels_values.append(("Utilization Status Legend", ""))
+            labels_values.extend(
+                (f"{status} Status", threshold) for status, threshold in STATUS_LEGEND
+            )
+
     elif current_kpis:
         avg_w_cur = current_kpis.get("avg_waiting_time")
         if avg_w_cur is not None:
@@ -307,19 +497,37 @@ def generate_excel_report(
     # ── Sheet 2: Segments ───────────────────────────────────────────────
     ws_segments = wb.create_sheet("Segments")
 
+    export_df = comparison_df.copy()
+    if "rho_current" in export_df.columns:
+        insert_at = export_df.columns.get_loc("rho_current") + 1
+        export_df.insert(
+            insert_at,
+            "rho_current_status",
+            export_df["rho_current"].map(_utilization_status),
+        )
+    if "rho_optimal" in export_df.columns:
+        insert_at = export_df.columns.get_loc("rho_optimal") + 1
+        export_df.insert(
+            insert_at,
+            "rho_optimal_status",
+            export_df["rho_optimal"].map(_utilization_status),
+        )
+
     # Write header
-    headers = list(comparison_df.columns)
+    headers = list(export_df.columns)
     for col_idx, h in enumerate(headers, start=1):
         cell = ws_segments.cell(row=1, column=col_idx, value=h)
         cell.font = Font(bold=True)
 
     # Write data rows
-    for row_idx, (_, row) in enumerate(comparison_df.iterrows(), start=2):
+    for row_idx, (_, row) in enumerate(export_df.iterrows(), start=2):
         for col_idx, h in enumerate(headers, start=1):
             val = row.get(h)
             cell = ws_segments.cell(row=row_idx, column=col_idx)
             # Format percentages and costs
-            if h in ("rho_current", "rho_optimal") and val is not None:
+            if isinstance(val, (dict, list)):
+                cell.value = json.dumps(val, ensure_ascii=False, sort_keys=True)
+            elif h in ("rho_current", "rho_optimal") and val is not None:
                 cell.value = val
                 cell.number_format = pct_fmt
             elif h.startswith("cost_") and val is not None:
@@ -328,22 +536,31 @@ def generate_excel_report(
             elif h.startswith("Wq_") and val is not None:
                 cell.value = val * 60  # convert to minutes
                 cell.number_format = "0.00"
+            elif h.endswith("_status") and val is not None:
+                cell.value = val
+                cell.fill = _status_fill(str(val))
             else:
                 cell.value = val if pd.notna(val) else None
 
     # Auto-fit column widths
     for col_idx, h in enumerate(headers, start=1):
         max_len = len(str(h))
-        for row_idx in range(2, len(comparison_df) + 2):
+        for row_idx in range(2, len(export_df) + 2):
             cell_val = ws_segments.cell(row=row_idx, column=col_idx).value
             if cell_val is not None:
                 max_len = max(max_len, len(str(cell_val)))
         ws_segments.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 3, 30)
 
     # Autofilter
-    ws_segments.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(comparison_df) + 1}"
+    ws_segments.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(export_df) + 1}"
 
     buf = io.BytesIO()
+    # Force all strings to text even when a scenario supplies a formula prefix.
+    for sheet in wb:
+        for row in sheet:
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
     wb.save(buf)
     buf.seek(0)
     return buf

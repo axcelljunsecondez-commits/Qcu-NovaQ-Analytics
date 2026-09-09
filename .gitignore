@@ -42,3 +42,27 @@ Screenshot*.jpg
 
 # Docker
 .env
+
+# Local deployment secret files
+.env.*
+!.env.example
+
+# Private deployment material and database exports
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.dump
+*.backup
+*.sql
+secrets/
+backups/
+
+# Generated local verification artifacts
+.pytest_tmp/
+.test-tmp-*/
+.pwd/
+/outputs/
+/pptx-output/
+/reports/

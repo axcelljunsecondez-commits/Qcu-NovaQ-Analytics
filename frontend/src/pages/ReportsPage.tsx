@@ -1,21 +1,30 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import { useParams } from 'react-router-dom'
 import { listDatasets } from '../api/datasets'
 import { listScenarios } from '../api/scenarios'
-import { downloadReport, fetchReport, type ReportFormat, type ReportKind } from '../api/reports'
+import {
+  downloadReport,
+  fetchReport,
+  reportFileExtension,
+  type ReportFormat,
+  type ReportKind,
+} from '../api/reports'
 import { ApiState } from '../components/ui/ApiState'
 
 export function ReportsPage() {
   const { t } = useTranslation()
+  const analysisParam = useParams().analysisId
+  const analysisId = analysisParam ? Number(analysisParam) : undefined
   const [datasetId, setDatasetId] = useState('')
   const [scenarioId, setScenarioId] = useState('')
   const [fetching, setFetching] = useState<ReportKind | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [downloaded, setDownloaded] = useState(false)
 
-  const datasets = useQuery({ queryKey: ['datasets'], queryFn: () => listDatasets() })
-  const scenarios = useQuery({ queryKey: ['scenarios'], queryFn: () => listScenarios() })
+  const datasets = useQuery({ queryKey: ['datasets', analysisId], queryFn: () => listDatasets(analysisId) })
+  const scenarios = useQuery({ queryKey: ['scenarios', analysisId], queryFn: () => listScenarios(analysisId) })
 
   if (datasets.isLoading || scenarios.isLoading) return <ApiState.Loading />
   if (datasets.isError || scenarios.isError) return <ApiState.ErrorState />
@@ -41,8 +50,10 @@ export function ReportsPage() {
     setError(null)
     setDownloaded(false)
     try {
-      const blob = await fetchReport(kind, id, format)
-      downloadReport(blob, `novaq_${kind}_${id}.${format}`)
+      const blob = analysisId
+        ? await fetchReport(kind, id, format, analysisId)
+        : await fetchReport(kind, id, format)
+      downloadReport(blob, `novaq_${kind}_${id}.${reportFileExtension(format)}`)
       setDownloaded(true)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail

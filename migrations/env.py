@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -12,6 +11,7 @@ from sqlalchemy import create_engine
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from backend.api.settings import database_url_from_environment  # noqa: E402
 from backend.db import models  # noqa: E402, F401
 from backend.db.base import Base  # noqa: E402
 
@@ -23,10 +23,7 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return os.environ.get(
-        "DATABASE_URL",
-        "postgresql+psycopg://novaq:novaq@localhost:5432/novaq",
-    )
+    return database_url_from_environment()
 
 
 def run_migrations_offline() -> None:

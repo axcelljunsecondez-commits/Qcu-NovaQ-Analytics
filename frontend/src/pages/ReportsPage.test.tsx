@@ -114,6 +114,7 @@ describe('ReportsPage', () => {
 
   it('downloads a scenario Excel via the scenario source card', async () => {
     const user = userEvent.setup()
+    const downloadSpy = vi.spyOn(HTMLAnchorElement.prototype, 'download', 'set')
     renderWithProviders(<ReportsPage />, { route: '/reports' })
     const scenarioCard = await screen.findByTestId('report-card-scenarios')
     await within(scenarioCard).findByRole('option', { name: 'Plan A' })
@@ -121,6 +122,10 @@ describe('ReportsPage', () => {
     await waitFor(() => {
       expect(fetchReportMock).toHaveBeenCalledWith('scenarios', 1, 'excel')
     })
+    await waitFor(() => {
+      expect(downloadSpy).toHaveBeenCalledWith('novaq_scenarios_1.xlsx')
+    })
+    downloadSpy.mockRestore()
   })
 
   it('shows the empty state when no datasets or scenarios exist', async () => {

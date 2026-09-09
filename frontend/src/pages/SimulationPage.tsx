@@ -1,9 +1,11 @@
+import simulationDefaults from '../api/simulation-defaults.json'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useParams } from 'react-router-dom'
 import { listDatasets, getDataset } from '../api/datasets'
 import { simulateDes, simulateMc, validateSimulation } from '../api/simulation'
-import { optimizeBatch, DEFAULT_OPTIONS } from '../api/optimization'
+import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
 import type { DatasetOut, SimDesOut, SimMcOut, SimValidateOut } from '../api/types'
 import { MetricCard } from '../components/ui/MetricCard'
 import { ApiState } from '../components/ui/ApiState'
@@ -23,6 +25,9 @@ interface SegmentRow {
   lambda: number
   mu: number
   c: number
+  variance?: number
+  K?: number
+  theta?: number
 }
 
 const TABS: Array<{ id: Tab; labelKey: string }> = [
@@ -37,6 +42,7 @@ function segmentsOf(dataset: DatasetOut): SegmentRow[] {
     lambda: Number(row.lambda),
     mu: Number(row.mu),
     c: Number(row.c),
+    ...Object.fromEntries(['variance', 'K', 'theta'].filter((key) => row[key] != null).map((key) => [key, row[key]])),
   }))
 }
 
@@ -142,7 +148,11 @@ function QueueBars({ rows }: { rows: SimDesOut[] }) {
 
 export function SimulationPage() {
   const { t } = useTranslation()
+  const analysisParam = useParams().analysisId
+  const analysisId = analysisParam ? Number(analysisParam) : undefined
   const [tab, setTab] = useState<Tab>('des')
+  const queryClient = useQueryClient()
+  const [vOptions, setVOptions] = useState<OptimizeOptions>(DEFAULT_OPTIONS)
   const [datasetId, setDatasetId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -153,10 +163,10 @@ export function SimulationPage() {
   const [desRows, setDesRows] = useState<SimDesOut[] | null>(null)
   const [desDirty, setDesDirty] = useState(false)
 
-  const [mcTrials, setMcTrials] = useState('2000')
-  const [mcThreshold, setMcThreshold] = useState('0.75')
+  const [mcTrials, setMcTrials] = useState(String(simulationDefaults.num_trials))
+  const [mcThreshold, setMcThreshold] = useState(String(simulationDefaults.failure_threshold))
   const [mcSeed, setMcSeed] = useState('')
-  const [failureCap, setFailureCap] = useState('0.05')
+  const [failureCap, setFailureCap] = useState(String(simulationDefaults.failure_rate_cap))
   const [mcRows, setMcRows] = useState<SimMcOut[] | null>(null)
   const [mcDirty, setMcDirty] = useState(false)
 
@@ -165,7 +175,7 @@ export function SimulationPage() {
 
   const [vTrials, setVTrials] = useState('10000')
   const [vDesHours, setVDesHours] = useState('24')
-  const [vThreshold, setVThreshold] = useState('0.75')
+  const [vThreshold, setVThreshold] = useState(String(simulationDefaults.failure_threshold))
   const [vSeed, setVSeed] = useState('')
   const [vServerCost, setVServerCost] = useState(String(DEFAULT_OPTIONS.server_cost_per_hr))
   const [vWaitCost, setVWaitCost] = useState(String(DEFAULT_OPTIONS.customer_waiting_cost))
@@ -173,8 +183,8 @@ export function SimulationPage() {
   const [vAbandonRate, setVAbandonRate] = useState(String(DEFAULT_OPTIONS.abandonment_rate))
 
   const datasets = useQuery({
-    queryKey: ['datasets'],
-    queryFn: () => listDatasets(),
+    queryKey: ['datasets', analysisId],
+    queryFn: () => listDatasets(analysisId),
   })
 
   async function loadSegments(): Promise<SegmentRow[] | null> {
@@ -299,14 +309,15 @@ export function SimulationPage() {
     setRunning(true)
     try {
       const optimized = await optimizeBatch(segments, {
-        target_utilization: DEFAULT_OPTIONS.target_utilization,
+        ...vOptions,
+        target_utilization: vOptions.target_utilization,
         server_cost_per_hr: serverCost,
         customer_waiting_cost: waitCost,
-        max_servers: DEFAULT_OPTIONS.max_servers,
+        max_servers: vOptions.max_servers,
         cost_per_abandonment: abandonCost,
         abandonment_rate: abandonRate,
       })
-      const comparisonRows = optimized.results.map((r) => ({ ...r, lambda: r.lambda_ }))
+      const comparisonRows = optimized.results.map((r, index) => ({ ...segments[index], ...r, lambda: r.lambda_ }))
       const out = await validateSimulation(comparisonRows as unknown as Record<string, unknown>[], {
         des_sim_hours: desHours,
         mc_trials: trials,
@@ -332,6 +343,7 @@ export function SimulationPage() {
   const desDropped = desRows ? desRows.reduce((acc, r) => acc + r.dropped, 0) : 0
   const currentFailureCap = Number(failureCap)
   const rowPasses = (r: SimValidateOut) =>
+    r.simulation_supported !== false && !r.validation_reason && r.sim_status !== 'ERROR' &&
     !isCriticalStatus(r.sim_status) &&
     isWithinFailureAllowance(r.mc_failure_rate, currentFailureCap)
   const allPassed = validateRows !== null && validateRows.length > 0 && validateRows.every(rowPasses)
@@ -340,7 +352,12 @@ export function SimulationPage() {
   return (
     <div>
       <h1 className="page-title">{t('simulation.title')}</h1>
+      <p>{t('system.simulation_basis')}</p>
+      <p>{t('system.mc_basis')}</p>
       <p className="page-caption">{t('page3.caption')}</p>
+      <p className="form-hint">{t('integrity.simulation_coverage')}</p>
+      {[...(desRows ?? []), ...(mcRows ?? []), ...(validateRows ?? [])].filter((r) => r.simulation_supported === false).map((r, index) =>
+        <div role="alert" className="alert alert-warn" key={index}>{r.time}: {r.selected_model ?? '—'} — {t('integrity.unsupported')}</div>)}
 
       <div className="card">
         <h2 className="card-title">{t('page1.data_source')}</h2>
@@ -353,6 +370,12 @@ export function SimulationPage() {
               value={datasetId}
               onChange={(e) => {
                 setDatasetId(e.target.value)
+                const prior = queryClient.getQueryData<OptimizeOptions>(['optimization-options', e.target.value]) ?? DEFAULT_OPTIONS
+                setVOptions(prior)
+                setVServerCost(String(prior.server_cost_per_hr))
+                setVWaitCost(String(prior.customer_waiting_cost))
+                setVAbandonCost(String(prior.cost_per_abandonment))
+                setVAbandonRate(String(prior.abandonment_rate))
                 setDesRows(null)
                 setDesDirty(true)
                 setMcRows(null)
@@ -623,6 +646,14 @@ export function SimulationPage() {
           <div className="card">
             <div className="form-row">
               <div className="form-field">
+                <label htmlFor="v-target">{t('system.planning_target')}</label>
+                <input id="v-target" type="number" step="any" value={vOptions.target_utilization} onChange={(e) => { setVOptions((o) => ({...o, target_utilization: Number(e.target.value)})); setValidateRows(null) }} />
+                <label htmlFor="v-min">{t('system.min_servers')}</label>
+                <input id="v-min" type="number" min={1} value={vOptions.min_servers ?? 1} onChange={(e) => { setVOptions((o) => ({...o, min_servers: Number(e.target.value)})); setValidateRows(null) }} />
+                <label htmlFor="v-max">{t('system.max_servers')}</label>
+                <input id="v-max" type="number" min={1} value={vOptions.max_servers ?? 24} onChange={(e) => { setVOptions((o) => ({...o, max_servers: Number(e.target.value)})); setValidateRows(null) }} />
+                <label htmlFor="v-wait">{t('system.max_wait')}</label>
+                <input id="v-wait" type="number" min={0} step="any" value={vOptions.max_wait_minutes ?? ''} onChange={(e) => { setVOptions((o) => ({...o, max_wait_minutes: e.target.value === '' ? null : Number(e.target.value)})); setValidateRows(null) }} />
                 <label htmlFor="v-trials">{t('simulation.trials')}</label>
                 <input
                   id="v-trials"
@@ -780,7 +811,7 @@ export function SimulationPage() {
                       <th>{t('optimize.segment')}</th>
                       <th>{t('simulation.status')}</th>
                       <th>sim_ρ</th>
-                      <th>sim_Wq</th>
+                      <th>{t('system.sim_wait_minutes')}</th>
                       <th>sim max queue</th>
                       <th>{t('simulation.failure_rate')}</th>
                       <th>{t('simulation.failure_rate_ci')}</th>
@@ -805,7 +836,7 @@ export function SimulationPage() {
                           </span>
                         </td>
                         <td>{fmt(row.sim_rho, 3)}</td>
-                        <td>{fmt(row.sim_Wq, 3)}</td>
+                        <td>{fmt(row.sim_Wq == null ? null : row.sim_Wq * 60, 3)}</td>
                         <td>{row.sim_max_queue}</td>
                         <td>{fmtPct(row.mc_failure_rate)}</td>
                         <td>{fmtFrCi(row.mc_failure_rate_ci_lower, row.mc_failure_rate_ci_upper)}</td>

@@ -14,6 +14,9 @@ vi.mock('../api/auth', () => ({
   me: (...args: unknown[]) => meMock(...args),
   login: (...args: unknown[]) => loginMock(...args),
   logout: vi.fn(async () => ({})),
+  authConfig: vi.fn(async () => ({ google_sign_in_enabled: false, google_client_id: null })),
+  googleLogin: vi.fn(),
+  googleNonce: vi.fn(),
 }))
 
 const adminUser = {
@@ -36,10 +39,16 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.getByText('Register')).toBeInTheDocument()
+    expect(screen.getByText('Forgot password?')).toBeInTheDocument()
+    expect(screen.getByText('Resend verification email')).toBeInTheDocument()
   })
 
   it('submits credentials and shows the logged-in user email', async () => {
-    loginMock.mockResolvedValue({ user: adminUser })
+    loginMock.mockImplementation(async () => {
+      meMock.mockResolvedValue({ user: adminUser })
+      return { user: adminUser }
+    })
     window.history.pushState({}, '', '/login')
     const qc = makeQueryClient()
     render(

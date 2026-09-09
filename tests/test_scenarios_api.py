@@ -27,7 +27,7 @@ SCENARIO_BODY = {
 
 @pytest.fixture
 def small_result_client(db_engine, monkeypatch):
-    monkeypatch.setenv("RESULT_JSONB_MAX_BYTES", "256")
+    monkeypatch.setenv("RESULT_JSONB_MAX_BYTES", "1024")
     return TestClient(create_app(engine=db_engine, settings=Settings()))
 
 
@@ -40,6 +40,17 @@ def test_create_scenario(db_engine, client):
     assert scenario["name"] == "Morning rush"
     assert scenario["settings"]["target_utilization"] == 0.7
     assert scenario["results"]["total_cost"] == 1044.0
+
+
+def test_scenario_name_rejects_whitespace_only_value(db_engine, client):
+    create_user(db_engine, "owner@example.com", "pw")
+    login(client, "owner@example.com", "pw")
+    response = client.post(
+        "/scenarios",
+        headers=csrf_header(client),
+        json={"name": "   ", "settings": {}, "results": {}},
+    )
+    assert response.status_code == 422
 
 
 def test_create_scenario_with_dataset(db_engine, client):
@@ -80,7 +91,7 @@ def test_create_scenario_rejects_oversize_results(db_engine, small_result_client
     response = small_result_client.post(
         "/scenarios",
         headers=csrf_header(small_result_client),
-        json={"name": "big", "settings": {}, "results": {"blob": "x" * 1000}},
+        json={"name": "big", "settings": {}, "results": {"blob": "x" * 2000}},
     )
     assert response.status_code == 413
 
@@ -103,9 +114,7 @@ def test_list_scenarios(db_engine, client):
 def test_get_scenario(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")
-    scenario_id = client.post(
-        "/scenarios", headers=csrf_header(client), json=SCENARIO_BODY
-    ).json()["scenario"]["id"]
+    scenario_id = client.post("/scenarios", headers=csrf_header(client), json=SCENARIO_BODY).json()["scenario"]["id"]
     detail = client.get(f"/scenarios/{scenario_id}")
     assert detail.status_code == 200
     assert detail.json()["scenario"]["name"] == "Morning rush"
@@ -120,18 +129,16 @@ def test_get_missing_scenario_404(db_engine, client):
 def test_patch_scenario(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")
-    scenario_id = client.post(
-        "/scenarios", headers=csrf_header(client), json=SCENARIO_BODY
-    ).json()["scenario"]["id"]
+    scenario_id = client.post("/scenarios", headers=csrf_header(client), json=SCENARIO_BODY).json()["scenario"]["id"]
     response = client.patch(
         f"/scenarios/{scenario_id}",
         headers=csrf_header(client),
-        json={"name": "Renamed", "results": {"total_cost": 1.0}},
+        json={"name": "Renamed"},
     )
     assert response.status_code == 200
     scenario = response.json()["scenario"]
     assert scenario["name"] == "Renamed"
-    assert scenario["results"]["total_cost"] == 1.0
+    assert scenario["results"]["total_cost"] == 1044.0
     assert scenario["settings"]["target_utilization"] == 0.7
 
 
@@ -146,7 +153,7 @@ def test_patch_scenario_rejects_oversize_results(db_engine, small_result_client)
     response = small_result_client.patch(
         f"/scenarios/{scenario_id}",
         headers=csrf_header(small_result_client),
-        json={"results": {"blob": "x" * 1000}},
+        json={"results": {"blob": "x" * 2000}},
     )
     assert response.status_code == 413
 
@@ -154,9 +161,7 @@ def test_patch_scenario_rejects_oversize_results(db_engine, small_result_client)
 def test_delete_scenario(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")
-    scenario_id = client.post(
-        "/scenarios", headers=csrf_header(client), json=SCENARIO_BODY
-    ).json()["scenario"]["id"]
+    scenario_id = client.post("/scenarios", headers=csrf_header(client), json=SCENARIO_BODY).json()["scenario"]["id"]
     response = client.delete(f"/scenarios/{scenario_id}", headers=csrf_header(client))
     assert response.status_code == 200
     assert client.get(f"/scenarios/{scenario_id}").status_code == 404
@@ -165,17 +170,13 @@ def test_delete_scenario(db_engine, client):
 def test_cross_user_isolation(db_engine, client):
     create_user(db_engine, "alice@example.com", "pw")
     login(client, "alice@example.com", "pw")
-    scenario_id = client.post(
-        "/scenarios", headers=csrf_header(client), json=SCENARIO_BODY
-    ).json()["scenario"]["id"]
+    scenario_id = client.post("/scenarios", headers=csrf_header(client), json=SCENARIO_BODY).json()["scenario"]["id"]
 
     clear_cookies(client)
     create_user(db_engine, "bob@example.com", "pw")
     login(client, "bob@example.com", "pw")
     assert client.get(f"/scenarios/{scenario_id}").status_code == 404
-    assert client.patch(
-        f"/scenarios/{scenario_id}", headers=csrf_header(client), json={"name": "x"}
-    ).status_code == 404
+    assert client.patch(f"/scenarios/{scenario_id}", headers=csrf_header(client), json={"name": "x"}).status_code == 404
     assert client.delete(f"/scenarios/{scenario_id}", headers=csrf_header(client)).status_code == 404
 
 

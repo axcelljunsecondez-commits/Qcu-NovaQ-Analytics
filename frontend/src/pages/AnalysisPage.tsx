@@ -154,6 +154,7 @@ export function AnalysisPage() {
   return (
     <div>
       <h1 className="page-title">{t('analysis.title')}</h1>
+      <p>{t('system.analytical_basis')}</p>
       <p className="page-caption">{t('analysis.model')}</p>
 
       <div className="tabs">
@@ -200,8 +201,8 @@ export function AnalysisPage() {
             <MetricCard label={t('analysis.rho')} value={fmt(result.rho * 100) + '%'} />
             <MetricCard label="L" value={fmt(result.L)} />
             <MetricCard label="Lq" value={fmt(result.Lq)} />
-            <MetricCard label="W" value={fmt(result.W)} />
-            <MetricCard label="Wq" value={fmt(result.Wq)} />
+            <MetricCard label="W (min)" value={fmt(result.W == null ? null : result.W * 60)} />
+            <MetricCard label="Wq (min)" value={fmt(result.Wq == null ? null : result.Wq * 60)} />
           </div>
           <div className="card">
             <span className={`badge ${result.stable ? 'badge-ok' : 'badge-bad'}`}>
@@ -209,6 +210,7 @@ export function AnalysisPage() {
             </span>
           </div>
           {result.error && <div className="alert alert-error">{result.error}</div>}
+          {result.metric_basis && <p className="alert alert-warn">{t('integrity.erlang_basis')}</p>}
           <ModelExtras result={result} />
         </>
       )}

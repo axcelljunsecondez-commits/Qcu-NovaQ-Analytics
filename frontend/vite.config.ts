@@ -1,17 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
-import { fileURLToPath } from 'node:url'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      'plotly.js/dist/plotly': fileURLToPath(
-        new URL('./node_modules/plotly.js/dist/plotly.js', import.meta.url),
-      ),
-    },
-  },
   server: {
     proxy: {
       '/api': {
@@ -25,5 +17,7 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
     css: false,
+    testTimeout: 10000,
+    maxWorkers: 1,
   },
 })

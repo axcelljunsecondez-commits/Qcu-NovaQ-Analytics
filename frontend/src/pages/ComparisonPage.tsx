@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import { useParams } from 'react-router-dom'
 import { listScenarios, type ScenarioOut } from '../api/scenarios'
 import type { OptimizationOut } from '../api/types'
 import { computeRadarScores, DEFAULT_TARGET_UTILIZATION, type RadarRow } from '../lib/radar'
@@ -47,7 +48,9 @@ function statusKey(stable: boolean, rho: number | null): string {
 
 export function ComparisonPage() {
   const { t } = useTranslation()
-  const { data, isLoading, isError } = useQuery({ queryKey: ['scenarios'], queryFn: listScenarios })
+  const analysisParam = useParams().analysisId
+  const analysisId = analysisParam ? Number(analysisParam) : undefined
+  const { data, isLoading, isError } = useQuery({ queryKey: ['scenarios', analysisId], queryFn: () => listScenarios(analysisId) })
   const scenarios = useMemo(() => data?.scenarios ?? [], [data])
 
   const [scenarioId, setScenarioId] = useState('')

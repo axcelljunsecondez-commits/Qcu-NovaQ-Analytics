@@ -45,6 +45,9 @@ def test_dataset_pdf_report(db_engine, client):
     response = client.get(f"/reports/datasets/{dataset_id}/pdf")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="novaq_datasets_{dataset_id}.pdf"'
+    )
     assert response.content[:4] == b"%PDF"
     assert len(response.content) > 1000
 
@@ -56,15 +59,28 @@ def test_dataset_excel_report(db_engine, client):
     response = client.get(f"/reports/datasets/{dataset_id}/excel")
     assert response.status_code == 200
     assert "spreadsheetml" in response.headers["content-type"]
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="novaq_datasets_{dataset_id}.xlsx"'
+    )
     assert len(response.content) > 500
 
     wb = openpyxl.load_workbook(io.BytesIO(response.content))
     ws = wb["Segments"]
-    assert [c.value for c in ws[1]] == ["time", "c_current", "rho_current", "Wq_current"]
+    assert [c.value for c in ws[1]] == [
+        "time",
+        "c_current",
+        "rho_current",
+        "rho_current_status",
+        "Wq_current",
+        "metric_provenance",
+        "selected_model",
+    ]
     assert ws["A2"].value == "08:00-09:00"
+    assert ws["F2"].value == "analytical"
     assert ws["B2"].value == 3
     assert 0 < ws["C2"].value < 1
-    assert 0 < ws["D2"].value < 60
+    assert ws["D2"].value in {"Lean", "Normal", "Peak", "Critical", "Unstable"}
+    assert 0 < ws["E2"].value < 60
     summary_labels = [wb["Summary"].cell(row=r, column=1).value for r in range(1, 8)]
     assert "Avg Wait Current (min)" in summary_labels
     assert "Avg Utilization Current" in summary_labels
@@ -77,6 +93,9 @@ def test_scenario_pdf_report(db_engine, client):
     response = client.get(f"/reports/scenarios/{scenario_id}/pdf")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="novaq_scenarios_{scenario_id}.pdf"'
+    )
     assert response.content[:4] == b"%PDF"
 
 
@@ -87,6 +106,9 @@ def test_scenario_excel_report(db_engine, client):
     response = client.get(f"/reports/scenarios/{scenario_id}/excel")
     assert response.status_code == 200
     assert "spreadsheetml" in response.headers["content-type"]
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="novaq_scenarios_{scenario_id}.xlsx"'
+    )
 
 
 def test_reports_require_auth(client):

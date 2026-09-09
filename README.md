@@ -7,7 +7,7 @@ Production queueing-analytics platform for analyzing service queues with M/M/1, 
 ## Features
 
 - Role-based web app (admin/analyst) with session authentication and CSRF protection.
-- Upload CSV or Excel queue data; store datasets and scenarios in Postgres.
+- Upload CSV or XLSX queue data; store datasets and scenarios in Postgres.
 - Compute utilization, queue length, waiting time, and system time per segment.
 - Recommend staffing changes based on utilization and cost (server, wait, abandonment).
 - Validate optimized plans with discrete-event simulation (SimPy) and Monte Carlo (default 2K trials, up to 100K).
@@ -73,7 +73,9 @@ For any shared demo or deployment, copy `.env.example` to `.env` and set a stron
 `ADMIN_PASSWORD` before starting the stack. Keep `SECURE_COOKIES=0` only for local
 `http://localhost`; use `SECURE_COOKIES=1` behind HTTPS/TLS.
 
-The API is reachable directly at `http://localhost:8000` and proxied through nginx at `http://localhost/api/*`.
+The API is reachable directly at `http://localhost:8000` only in local development
+and is proxied through nginx at `http://localhost/api/*`. Production publishes
+only NovaQ nginx on `127.0.0.1:8080`; API and PostgreSQL remain private.
 
 Stop the stack:
 
@@ -90,6 +92,46 @@ npm run dev
 ```
 
 The Vite dev server runs at **http://localhost:5173** and proxies `/api` to `http://localhost:8000` (with the API running via Docker or `uvicorn backend.api.main:app`).
+
+## Registration, email, and Google Sign-In
+
+Public accounts are created as unverified analysts and cannot sign in until they
+follow the emailed verification link. Verification and password-reset secrets
+are stored only as SHA-256 digests and are submitted from URL fragments so they
+do not appear in ordinary request URLs. Password and Google authentication both
+create the same opaque NovaQ session and resolve to the same `users.id`.
+
+Local development defaults to `EMAIL_DELIVERY_MODE=console`; verification and
+reset messages appear in API logs. Production requires SMTP and HTTPS settings.
+Copy the placeholders from `.env.example` and set `PUBLIC_APP_URL`, `SMTP_HOST`,
+`SMTP_FROM_EMAIL`, and any SMTP credentials without committing them.
+
+To enable Google Identity Services, create a Google OAuth 2.0 **Web application**
+client, add the exact NovaQ origin (for example `https://novaq.example.com`) to
+Authorized JavaScript origins, then set:
+
+```text
+GOOGLE_SIGN_IN_ENABLED=1
+GOOGLE_CLIENT_ID=<web-client-id>.apps.googleusercontent.com
+```
+
+No Google client secret, access token, refresh token, Drive, Gmail, or Calendar
+scope is used. The backend verifies ID-token signatures, audience, issuer,
+expiry, verified email, subject, and a five-minute single-use nonce.
+
+## Production deployment
+
+Production uses `docker-compose.production.yml` behind an external TLS reverse
+proxy. Database, SMTP, and bootstrap-password secrets are read from restrictive
+files outside the repository. The Compose dependency chain runs one migration
+job and one create-only administrator bootstrap before API readiness; those
+credentials are not present in the long-running API container.
+
+Do not deploy directly from a dirty working tree. Review and commit every required
+migration, runtime source, lock file, nginx configuration, and operations script.
+Follow `docs/operations.md` for preflight, backup confirmation, deployment,
+TLS/proxy configuration, smoke tests, rollback, recovery, monitoring, and the
+operator evidence required for a public GO decision.
 
 ## Backend Development
 
@@ -184,3 +226,9 @@ npm run build
 ```
 
 Tests cover queue formulas, optimization logic, DES/Monte Carlo simulation, cost analysis, the API (auth, datasets, scenarios, reports, admin), and the React UI.
+
+## Result integrity and deployment
+
+See [operations and analytical boundaries](docs/operations.md) for production
+configuration, supported Python versions, snapshot semantics, simulation coverage,
+backup verification, and limits of financial/staffing estimates.

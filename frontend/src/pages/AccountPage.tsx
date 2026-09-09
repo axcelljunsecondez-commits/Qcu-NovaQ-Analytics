@@ -1,20 +1,25 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { changePassword } from '../api/auth'
+import { useQueryClient } from '@tanstack/react-query'
+import { changePassword, forgotPassword, linkGoogle } from '../api/auth'
 import { useAuth } from '../auth/useAuth'
+import { GoogleSignInButton } from '../auth/GoogleSignInButton'
 import { ApiState } from '../components/ui/ApiState'
 
 export function AccountPage() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+  const [googleLinked, setGoogleLinked] = useState(false)
 
   async function handleLogout() {
     await logout()
@@ -60,6 +65,16 @@ export function AccountPage() {
           <p className="page-caption">{user.email}</p>
         </div>
         <div className="form-field">
+          <label>{t('auth.email_status')}</label>
+          <span className={`badge ${user.email_verified ? 'badge-ok' : 'badge-warn'}`}>
+            {t(user.email_verified ? 'auth.verified' : 'auth.unverified')}
+          </span>
+        </div>
+        <div className="form-field">
+          <label>{t('auth.login_methods')}</label>
+          <p className="page-caption">{(user.auth_methods ?? (user.has_password === false ? [] : ['password'])).join(', ') || '—'}</p>
+        </div>
+        <div className="form-field">
           <label>{t('account.role')}</label>
           <span className={`badge ${user.role === 'admin' ? 'badge-ok' : 'badge-neutral'}`}>
             {user.role}
@@ -78,7 +93,14 @@ export function AccountPage() {
         </button>
       </div>
 
-      <div className="card">
+      {user.has_password === false ? <div className="card">
+        <h2 className="page-title">{t('auth.set_password')}</h2>
+        <p className="page-caption">{t('auth.set_password_help')}</p>
+        {resetSent && <div className="alert alert-ok">{t('auth.reset_sent')}</div>}
+        <button type="button" onClick={() => void forgotPassword(user.email).then(() => setResetSent(true))}>
+          {t('auth.send_reset')}
+        </button>
+      </div> : <div className="card">
         <h2 className="page-title">{t('account.change_password')}</h2>
         <form onSubmit={handlePasswordChange}>
           <div className="form-field">
@@ -97,6 +119,8 @@ export function AccountPage() {
             <input
               id="account-new-password"
               type="password"
+              minLength={8}
+              maxLength={128}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
@@ -108,6 +132,8 @@ export function AccountPage() {
             <input
               id="account-confirm-password"
               type="password"
+              minLength={8}
+              maxLength={128}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
@@ -120,7 +146,18 @@ export function AccountPage() {
             {t('account.change_password')}
           </button>
         </form>
-      </div>
+      </div>}
+
+      {!user.auth_methods?.includes('google') && <div className="card">
+        <h2 className="page-title">{t('auth.link_google')}</h2>
+        <p className="page-caption">{t('auth.link_google_help')}</p>
+        {googleLinked && <div className="alert alert-ok">{t('auth.google_linked')}</div>}
+        <GoogleSignInButton onCredential={async (credential) => {
+          const response = await linkGoogle(credential)
+          queryClient.setQueryData(['me'], response.user)
+          setGoogleLinked(true)
+        }} />
+      </div>}
     </div>
   )
 }

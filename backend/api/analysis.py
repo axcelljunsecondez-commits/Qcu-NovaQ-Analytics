@@ -7,10 +7,14 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.api.deps import get_current_user
+from backend.api.deps import get_current_user, user_rate_limit
 from backend.queueing_engine.models.queue_models import erlang_a, mgc, mgck, mm1, mmc, mmck
 
-router = APIRouter(prefix="/analysis", tags=["analysis"])
+router = APIRouter(
+    prefix="/analysis",
+    tags=["analysis"],
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
 
 MODELS = {"mm1", "mmc", "mgc", "mmck", "mgck", "erlang_a"}
 
@@ -33,7 +37,7 @@ class AnalysisRequest(BaseModel):
     K: int | None = Field(default=None, ge=1)
     theta: float | None = Field(default=None, ge=0)
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "allow_inf_nan": False}
 
 
 def _get_param(payload: AnalysisRequest, name: str):
@@ -74,4 +78,4 @@ def analyze(
     payload: AnalysisRequest,
     _user=Depends(get_current_user),
 ) -> dict:
-    return _run_model(model, payload)
+    return {**_run_model(model, payload), "metric_provenance": "analytical", "selected_model": model, "model_selection_reason": "Explicit model requested by the user."}

@@ -3,8 +3,15 @@ import { http } from '../lib/http'
 export type ReportKind = 'datasets' | 'scenarios'
 export type ReportFormat = 'pdf' | 'excel'
 
-export async function fetchReport(kind: ReportKind, id: number, format: ReportFormat): Promise<Blob> {
-  const res = await http.get(`/reports/${kind}/${id}/${format}`, { responseType: 'blob' })
+export function reportFileExtension(format: ReportFormat): 'pdf' | 'xlsx' {
+  return format === 'excel' ? 'xlsx' : 'pdf'
+}
+
+export async function fetchReport(kind: ReportKind, id: number, format: ReportFormat, analysisId?: number): Promise<Blob> {
+  const res = await http.get(`/reports/${kind}/${id}/${format}`, {
+    responseType: 'blob',
+    params: analysisId ? { analysis_id: analysisId } : undefined,
+  })
   return res.data as Blob
 }
 

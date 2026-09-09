@@ -51,15 +51,16 @@ def test_admin_creates_user(db_engine, client):
     response = client.post(
         "/admin/users",
         headers=csrf_header(client),
-        json={"email": "new@example.com", "password": "s3cret", "role": "analyst"},
+        json={"email": "new@example.com", "password": "s3cret88", "role": "analyst"},
     )
     assert response.status_code == 201
     body = response.json()["user"]
     assert body["email"] == "new@example.com"
     assert body["role"] == "analyst"
     assert body["active"] is True
-    assert "password" not in response.text
+    assert "s3cret88" not in response.text
     assert "password_hash" not in response.text
+    assert body["has_password"] is True
 
 
 def test_created_user_can_login(db_engine, client):
@@ -67,10 +68,10 @@ def test_created_user_can_login(db_engine, client):
     client.post(
         "/admin/users",
         headers=csrf_header(client),
-        json={"email": "new@example.com", "password": "s3cret", "role": "analyst"},
+        json={"email": "new@example.com", "password": "s3cret88", "role": "analyst"},
     )
     clear_cookies(client)
-    assert login(client, "new@example.com", "s3cret") == 200
+    assert login(client, "new@example.com", "s3cret88") == 200
 
 
 def test_admin_can_create_admin(db_engine, client):
@@ -78,7 +79,7 @@ def test_admin_can_create_admin(db_engine, client):
     response = client.post(
         "/admin/users",
         headers=csrf_header(client),
-        json={"email": "second@example.com", "password": "s3cret", "role": "admin"},
+        json={"email": "second@example.com", "password": "s3cret88", "role": "admin"},
     )
     assert response.status_code == 201
     assert response.json()["user"]["role"] == "admin"
@@ -90,7 +91,7 @@ def test_duplicate_email_409(db_engine, client):
     response = client.post(
         "/admin/users",
         headers=csrf_header(client),
-        json={"email": "taken@example.com", "password": "pw2", "role": "analyst"},
+        json={"email": "taken@example.com", "password": "password2", "role": "analyst"},
     )
     assert response.status_code == 409
 

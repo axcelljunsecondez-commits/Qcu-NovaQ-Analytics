@@ -48,8 +48,10 @@ import numpy as np
 import pandas as pd
 import simpy
 
+from backend.data.ingestion import validate_and_normalize
 from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.models import mm1, mmc
+from backend.queueing_engine.services.model_selection import select_model
 from backend.queueing_engine.statistics.proportions import (
     ADEQUATE_MAX_HW,
     failure_rate_precision,
@@ -96,6 +98,12 @@ class SegmentResult:
     warmup_end: float = 0.0
     initial_queue_depth: int = 0
     final_Lq: int = 0
+    requested_sim_hours: float = 0.0
+    effective_sim_hours: float = 0.0
+    measurement_hours: float = 0.0
+
+    selected_model: str | None = None
+    simulation_supported: bool = False
 
     # Internal accumulators (not exposed to callers)
     _busy_area: float = field(default=0.0, repr=False)
@@ -108,6 +116,13 @@ class SegmentResult:
             "lambda": self.lambda_,
             "mu": self.mu,
             "c": self.c,
+            "metric_provenance": "simulated",
+            "requested_sim_hours": self.requested_sim_hours,
+            "effective_sim_hours": self.effective_sim_hours,
+            "measurement_hours": self.measurement_hours,
+            "served_basis": "service_starts_after_warmup",
+            "wait_time_unit": "hours",
+            "wait_estimator": "mean_of_service_starts" if self.served else "queue_area_over_arrival_rate",
             "rho_sim": self.rho_sim,
             "Lq_sim": self.Lq_sim,
             "Wq_sim": self.Wq_sim,
@@ -116,6 +131,8 @@ class SegmentResult:
             "dropped": self.dropped,
             "status": self.status,
             "error": self.error,
+            "selected_model": self.selected_model,
+            "simulation_supported": self.simulation_supported,
             "warmup_fraction": self.warmup_fraction,
             "warmup_end": self.warmup_end,
             "initial_queue_depth": self.initial_queue_depth,
@@ -126,6 +143,21 @@ class SegmentResult:
 # ──────────────────────────────────────────────────────────────────────────────
 # Internal helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+def simulation_coverage(segment: Mapping) -> tuple[str | None, str | None]:
+    """Identify the model using the shared dispatcher; only M/M families are simulated."""
+    row = {"time": "segment", "c": 1, **segment}
+    ok, message, frame = validate_and_normalize(pd.DataFrame([row]))
+    if not ok:
+        return None, message
+    row = frame.astype(object).where(pd.notna(frame), None).to_dict("records")[0]
+    selected = select_model(row.get("lambda"), row.get("mu"), row.get("c"),
+                            row.get("variance"), row.get("K"), row.get("theta"))
+    name = selected["name"]
+    if name not in ("M/M/1", "M/M/c"):
+        return name, f"Unsupported simulation model: {name}. DES/Monte Carlo cover M/M/1 and M/M/c only."
+    return name, None
+
 
 def _validate_segment(segment: Mapping[str, Any]) -> tuple[str | None, float | None, float | None, int]:
     """Extract and validate segment fields. Returns (error, lambda_, mu, c)."""
@@ -139,8 +171,10 @@ def _validate_segment(segment: Mapping[str, Any]) -> tuple[str | None, float | N
     try:
         lambda_ = float(lambda_)
         mu = float(mu)
+        if isinstance(c, bool) or not math.isfinite(float(c)) or not float(c).is_integer():
+            return "c must be a finite integer.", None, None, 1
         c = int(c)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return "lambda, mu, and c must be numeric.", None, None, 1
 
     if not math.isfinite(lambda_):
@@ -350,6 +384,9 @@ def simulate_segment(
     result = SegmentResult(time=time_label, lambda_=0.0, mu=0.0, c=1)
 
     error, lambda_, mu, c = _validate_segment(segment)
+    result.selected_model, coverage_error = simulation_coverage(segment)
+    result.simulation_supported = coverage_error is None
+    error = error or coverage_error
     result.lambda_ = lambda_ or 0.0
     result.mu = mu or 0.0
     result.c = c
@@ -362,6 +399,9 @@ def simulate_segment(
     # Clamp and record warm-up parameters
     warmup_fraction = max(0.0, min(0.5, warmup_fraction))
     result.warmup_fraction = warmup_fraction
+    result.requested_sim_hours = sim_hours
+    result.effective_sim_hours = sim_hours
+    result.measurement_hours = sim_hours
 
     if error:
         result.error = error
@@ -371,24 +411,15 @@ def simulate_segment(
     assert lambda_ is not None and mu is not None
 
     # Zero-arrival edge case: no queue, servers idle
-    if lambda_ == 0:
+    if lambda_ == 0 and initial_queue_depth == 0:
         result.rho_sim = 0.0
         result.Lq_sim = 0.0
         result.Wq_sim = 0.0
         result.status = "NORMAL"
         return result
 
-    # Detect analytically unstable segments (λ ≥ c·μ).
-    # For unstable segments, long simulations just build infinite queues and
-    # produce rho_sim >> 1.0, which is meaningless and distorts all averages.
-    # Cap sim_duration to 1 hour for unstable segments so the result stays
-    # comparable to the analytical tab (which marks them as UNSTABLE/OVERLOADED).
-    theoretical_rho = lambda_ / (c * mu)
-    is_unstable = theoretical_rho >= 1.0
-    effective_sim_hours = 1.0 if is_unstable else sim_hours
-
     rng = random.Random(seed)
-    sim_duration = effective_sim_hours  # environment time unit = hours
+    sim_duration = sim_hours  # environment time unit = hours
     # Adaptive warm-up: ensure at least 30 expected arrivals before measurement begins
     if lambda_ and lambda_ > 0:
         arrivals_based_warmup = 30.0 / lambda_
@@ -399,6 +430,7 @@ def simulate_segment(
     else:
         warmup_end = sim_duration * warmup_fraction
     result.warmup_end = warmup_end
+    result.measurement_hours = sim_duration - warmup_end
 
     env = simpy.Environment()
     servers = simpy.Resource(env, capacity=c)
@@ -423,13 +455,11 @@ def simulate_segment(
 
     # Finalize time-averaged metrics at the true segment boundary
     lq_avg, rho_emp = monitor.finalize(sim_duration)
-    # For unstable segments, rho can exceed 1.0 — cap at 0.9999 so KPI cards
-    # stay meaningful and consistent with the analytical tab's OVERLOADED label.
-    result.rho_sim = round(min(rho_emp, 0.9999) if is_unstable else rho_emp, 6)
+    result.rho_sim = round(rho_emp, 6)
     result.Lq_sim = round(lq_avg, 6)
 
-    # Mean waiting time: use Little's Law (Wq = Lq / λ) as primary estimate;
-    # fall back to accumulated wait sums when available.
+    # Sample mean for service starts after warmup; disclose the Little's Law
+    # fallback when no sampled customer starts service.
     if result.served > 0:
         result.Wq_sim = round(result._wait_sum / result.served, 6)
     elif lambda_ > 0:
@@ -598,11 +628,15 @@ def summarize_simulation(sim_rows: list[dict[str, Any]]) -> dict[str, Any]:
 # Public API — Monte Carlo simulation
 # ──────────────────────────────────────────────────────────────────────────────
 
-MC_DEFAULT_TRIALS = 2000
-MC_DEFAULT_FAILURE_THRESHOLD = 0.75
-MC_ARRIVAL_NOISE = 0.20
-MC_SERVICE_NOISE = 0.10
-MC_MAX_TRIALS = 100000
+from backend.queueing_engine.config import (
+    MC_ARRIVAL_NOISE,
+    MC_CONFIDENCE_LEVEL,
+    MC_DEFAULT_FAILURE_THRESHOLD,
+    MC_DEFAULT_TRIALS,
+    MC_FAILURE_RATE_CAP,
+    MC_MAX_TRIALS,
+    MC_SERVICE_NOISE,
+)
 
 
 def mc_simulate_segment(
@@ -610,7 +644,7 @@ def mc_simulate_segment(
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
-    failure_rate_cap: float = 0.10,
+    failure_rate_cap: float = MC_FAILURE_RATE_CAP,
 ) -> dict[str, Any]:
     """
     Run Monte Carlo simulation for one time segment.
@@ -637,16 +671,26 @@ def mc_simulate_segment(
         failure_rate_ci_half_width, failure_rate_precision,
         failure_rate_adequate, status
     """
+    metadata = {"metric_provenance": "monte_carlo", "method": "analytical_parameter_perturbation",
+                "wait_time_unit": "hours", "num_trials": num_trials, "failure_criterion": "utilization_exceeds_threshold",
+                "failure_threshold": failure_threshold, "failure_rate_cap": failure_rate_cap,
+                "confidence_level": MC_CONFIDENCE_LEVEL,
+                "arrival_noise_fraction": MC_ARRIVAL_NOISE, "service_noise_fraction": MC_SERVICE_NOISE,
+                "noise_distribution": "independent_uniform", "assumption_basis": "configured sensitivity assumptions"}
     time_label = str(segment.get("time", "Unknown"))
     error, lambda_, mu, c = _validate_segment(segment)
 
+    selected_model, coverage_error = simulation_coverage(segment)
+    error = error or coverage_error
     if error:
         logger.warning("mc_simulate_segment(time=%s) validation error: %s", time_label, error)
         return {
+            **metadata, "failure_count": None, "trials_completed": 0,
             "time": time_label, "lambda": lambda_, "mu": mu, "c": c,
             "rho_mean": None, "rho_std": None, "rho_p95": None,
             "Lq_mean": None, "Wq_mean": None,
             "failure_rate": None, "status": "ERROR",
+            "selected_model": selected_model, "simulation_supported": False,
             "error": error,
             "ci_Wq_hw": None, "ci_Lq_hw": None, "adequate_samples": False,
             "failure_rate_ci_lower": None, "failure_rate_ci_upper": None,
@@ -721,6 +765,7 @@ def mc_simulate_segment(
         failure_rate_adequate = bool(fr_ci_hw <= ADEQUATE_MAX_HW)
 
     return {
+        **metadata,
         "time": time_label,
         "lambda": lambda_,
         "mu": mu,
@@ -732,8 +777,10 @@ def mc_simulate_segment(
         "Wq_mean": round(float(np.mean(wq_samples[finite_wq])), 6) if finite_wq.any() else None,
         "failure_rate": round(failure_rate, 4),
         "failure_count": int(failures),
+        "trials_completed": num_trials,
         "status": "PASS" if failure_rate <= failure_rate_cap else "FAIL",
         "error": None,
+        "selected_model": selected_model, "simulation_supported": True,
         "ci_Wq_hw": ci_Wq_hw,
         "ci_Lq_hw": ci_Lq_hw,
         "adequate_samples": adequate_samples,
@@ -750,7 +797,7 @@ def mc_simulate_segments(
     num_trials: int = MC_DEFAULT_TRIALS,
     failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
-    failure_rate_cap: float = 0.10,
+    failure_rate_cap: float = MC_FAILURE_RATE_CAP,
 ) -> list[dict[str, Any]]:
     """
     Run Monte Carlo simulation across a sequence of time segments.
@@ -796,7 +843,7 @@ def mc_summarize_simulation(mc_rows: list[dict[str, Any]]) -> dict[str, Any]:
             "avg_rho": None, "avg_rho_std": None,
             "max_rho_mean": None, "max_rho_time": None,
             "avg_failure_rate": None,
-            "total_failures": sum(r.get("failure_count", 0) for r in mc_rows),
+            "total_failures": sum((r.get("failure_count") or 0) for r in mc_rows),
             "segments_failed": sum(1 for r in mc_rows if r.get("status") == "FAIL"),
             "segments_total": len(mc_rows),
             "avg_Lq": None, "avg_Wq": None,
@@ -815,7 +862,7 @@ def mc_summarize_simulation(mc_rows: list[dict[str, Any]]) -> dict[str, Any]:
         "max_rho_mean": round(float(np.max(rho_vals)), 6),
         "max_rho_time": max_row["time"],
         "avg_failure_rate": round(float(np.mean([r["failure_rate"] for r in valid if r.get("failure_rate") is not None])), 4),
-        "total_failures": sum(r.get("failure_count", 0) for r in mc_rows),
+        "total_failures": sum((r.get("failure_count") or 0) for r in mc_rows),
         "segments_failed": sum(1 for r in mc_rows if r.get("status") == "FAIL"),
         "segments_total": len(mc_rows),
         "avg_Lq": round(float(np.nanmean([r["Lq_mean"] for r in valid if r.get("Lq_mean") is not None])), 6),
@@ -831,7 +878,7 @@ def validate_with_simulation(
     mc_trials: int = MC_DEFAULT_TRIALS,
     mc_failure_threshold: float = MC_DEFAULT_FAILURE_THRESHOLD,
     seed: int | None = 42,
-    failure_rate_cap: float = 0.10,
+    failure_rate_cap: float = MC_FAILURE_RATE_CAP,
 ) -> pd.DataFrame:
     """Run DES + Monte Carlo on the optimized plan and merge validation columns.
 
@@ -849,16 +896,19 @@ def validate_with_simulation(
     if comparison_df is None or comparison_df.empty:
         return comparison_df
 
+    comparison_df = comparison_df.drop(columns=["selected_model", "simulation_supported"], errors="ignore").copy().reset_index(drop=True)
+    comparison_df["_validation_row"] = range(len(comparison_df))
     sim_records = []
-    for _, row in comparison_df.iterrows():
+    for index, row in comparison_df.iterrows():
         c_opt = row.get("c_optimal")
         if c_opt is None or pd.isna(c_opt):
             continue
         sim_records.append({
-            "time": row["time"],
-            "lambda": row["lambda"],
-            "mu": row["mu"],
-            "c": int(c_opt),
+            "time": str(index),
+            "lambda": row.get("lambda", row.get("lambda_")),
+            "mu": row.get("mu"),
+            "c": c_opt,
+            **{key: row[key] for key in ("variance", "K", "theta") if key in row and pd.notna(row[key])},
         })
 
     if not sim_records:
@@ -869,17 +919,20 @@ def validate_with_simulation(
                      "mc_failure_rate_ci_upper", "mc_failure_rate_ci_half_width",
                      "mc_failure_rate_precision", "mc_failure_rate_adequate"]:
             result[col] = None
-        return result
+        result["simulation_supported"] = False
+        result["validation_reason"] = "No feasible optimized staffing to validate."
+        return result.drop(columns=["_validation_row"])
 
     des_results = simulate_segments(sim_records, sim_hours=des_sim_hours, seed=seed)
     des_df = pd.DataFrame(des_results)[
-        ["time", "rho_sim", "Wq_sim", "max_queue", "status"]
+        ["time", "rho_sim", "Wq_sim", "max_queue", "status", "selected_model", "simulation_supported", "error", "requested_sim_hours", "effective_sim_hours", "measurement_hours", "warmup_end"]
     ].rename(
         columns={
             "rho_sim": "sim_rho",
             "Wq_sim": "sim_Wq",
             "max_queue": "sim_max_queue",
             "status": "sim_status",
+            "error": "validation_reason",
         }
     )
 
@@ -888,6 +941,7 @@ def validate_with_simulation(
         failure_threshold=mc_failure_threshold, seed=seed,
         failure_rate_cap=failure_rate_cap,
     )
+    mc_metadata = pd.DataFrame(mc_results)[["num_trials", "failure_count", "failure_criterion", "failure_threshold", "failure_rate_cap", "confidence_level", "method", "arrival_noise_fraction", "service_noise_fraction"]].add_prefix("mc_")
     mc_raw = pd.DataFrame(mc_results)[
         ["time", "failure_rate", "adequate_samples",
          "rho_mean", "rho_p95", "Wq_mean", "ci_Wq_hw",
@@ -907,6 +961,7 @@ def validate_with_simulation(
             "failure_rate_adequate": "mc_failure_rate_adequate",
         }
     )
+    mc_raw = pd.concat([mc_raw, mc_metadata], axis=1)
     mc_raw["mc_Wq_ci"] = mc_raw.apply(
         lambda r: (
             f"{r['Wq_mean'] * 60:.2f} ± {r['ci_Wq_hw'] * 60:.2f} min (95% CI)"
@@ -917,10 +972,12 @@ def validate_with_simulation(
     )
     mc_raw.drop(columns=["Wq_mean", "ci_Wq_hw"], inplace=True)
 
-    result = comparison_df.copy()
-    result = result.merge(des_df, on="time", how="left")
-    result = result.merge(mc_raw, on="time", how="left")
-    return result
+    for frame in (des_df, mc_raw):
+        frame["_validation_row"] = frame.pop("time").astype(int)
+    result = comparison_df.merge(des_df, on="_validation_row", how="left").merge(mc_raw, on="_validation_row", how="left")
+    result["simulation_supported"] = result["simulation_supported"].fillna(False).astype(bool)
+    result.loc[result["c_optimal"].isna(), "validation_reason"] = "No feasible optimized staffing to validate."
+    return result.drop(columns=["_validation_row"])
 
 
 

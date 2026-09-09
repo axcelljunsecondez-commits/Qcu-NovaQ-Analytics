@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -18,8 +18,8 @@ router = APIRouter(prefix="/account", tags=["account"])
 
 
 class PasswordChange(BaseModel):
-    current_password: str = Field(min_length=1)
-    new_password: str = Field(min_length=1)
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 @router.post("/password", response_model=dict)
@@ -35,6 +35,10 @@ def change_password(
     are revoked (the session carrying this request is kept), so a leaked
     session cannot outlive a legitimate password change.
     """
+    if user.password_hash is None:
+        raise auth.AuthApiError(
+            400, "password_not_set", "Use the secure Set Password email flow."
+        )
     if not auth.verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=401, detail="Current password is incorrect.")
 
@@ -43,9 +47,14 @@ def change_password(
     query = select(SessionRecord).where(SessionRecord.user_id == user.id)
     if current_token:
         query = query.where(SessionRecord.token_hash != auth.hash_token(current_token))
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     for record in db.execute(query).scalars().all():
         if record.revoked_at is None:
             record.revoked_at = now
     db.commit()
+    request.app.state.logger.info(
+        "event=password_change request_id=%s outcome=success user_id=%s",
+        getattr(request.state, "request_id", "unknown"),
+        user.id,
+    )
     return {"detail": "Password changed."}

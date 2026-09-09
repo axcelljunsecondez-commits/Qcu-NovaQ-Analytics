@@ -19,7 +19,7 @@ export function DashboardPage() {
   const { user } = useAuth()
   const datasetsQuery = useQuery({
     queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryFn: () => listDatasets(),
   })
 
   const datasets = datasetsQuery.data?.datasets ?? []

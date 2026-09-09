@@ -18,7 +18,7 @@ def _is_number(value) -> bool:
     return isinstance(value, Real) and math.isfinite(float(value))
 
 
-def select_model(lambda_, mu, c, variance=None, K=None, theta=None) -> dict:
+def _select_model(lambda_, mu, c, variance=None, K=None, theta=None) -> dict:
     """Select the queueing model for a segment and compute its metrics.
 
     Dispatch precedence (matches the frozen legacy contract):
@@ -70,3 +70,22 @@ def select_model(lambda_, mu, c, variance=None, K=None, theta=None) -> dict:
     if c == 1:
         return {"name": "M/M/1", "metrics": mm1(lambda_, mu), "servers": 1, "theta": None}
     return {"name": "M/M/c", "metrics": mmc(lambda_, mu, c), "servers": c, "theta": None}
+
+
+def select_model(lambda_, mu, c, variance=None, K=None, theta=None) -> dict:
+    """Select once and disclose the supplied inputs that determined dispatch."""
+    result = _select_model(lambda_, mu, c, variance, K, theta)
+    reasons = {
+        "M/M/c+M (Erlang-A)": "Positive patience rate theta supplied; it takes dispatch precedence.",
+        "M/G/c/K": "Finite capacity and service-time variance supplied; approximation.",
+        "M/M/c/K": "Finite capacity supplied without service-time variance.",
+        "M/G/c": "Service-time variance supplied; approximation.",
+        "M/M/1": "One server and no advanced model parameters supplied.",
+        "M/M/c": "Multiple servers and no advanced model parameters supplied.",
+    }
+    result["selection_reason"] = reasons[result["name"]]
+    result["service_cv"] = math.sqrt(variance) * mu if _is_number(variance) and variance >= 0 and _is_number(mu) else None
+    result["assumptions"] = "Poisson arrivals; rates per hour; service variance in hours squared; theta is patience rate per hour. Variability is supplied, not inferred from aggregate rates."
+    if result["name"] == "M/M/c+M (Erlang-A)":
+        result["assumptions"] += " Wq is queue workload divided by served throughput, not a directly observed served-customer wait."
+    return result

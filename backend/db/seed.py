@@ -6,19 +6,22 @@ an error. To deliberately reset an existing user's password/role, add
 --force-reset (it is the ONLY way to change an existing admin's password).
 
 Usage:
-    python -m backend.db.seed --email admin@example.com --password secret --role admin
-    python -m backend.db.seed --email admin@example.com --password newpass --force-reset
+    python -m backend.db.seed --email admin@example.com --password-file /run/secrets/admin_password
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from datetime import datetime, timezone
 
 from argon2 import PasswordHasher
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from backend.api.auth import normalize_email
+from backend.api.settings import env_value
 from backend.db.base import Base
 from backend.db.models import User
 from backend.db.session import get_engine
@@ -45,14 +48,30 @@ def seed_user(email: str, password: str, role: str = "admin", force: bool = Fals
     Repeat runs never overwrite an existing user's credentials unless
     ``force`` is set. Returns 'created', 'exists', or 'updated'.
     """
+    if os.environ.get("NOVAQ_ENV") == "production" and (
+        len(password) < 12 or password in {"admin123", "password", "change-me"}
+    ):
+        raise ValueError("Bootstrap passwords must be at least 12 characters and non-default")
     engine = get_engine()
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, expire_on_commit=False)
     with Session() as db:
-        existing = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        normalized = normalize_email(email)
+        existing = db.execute(
+            select(User).where(User.email_normalized == normalized)
+        ).scalar_one_or_none()
         if existing is None:
             password_hash = hash_password(password)
-            db.add(User(email=email, password_hash=password_hash, role=role, active=True))
+            db.add(
+                User(
+                    email=email.strip(),
+                    email_normalized=normalized,
+                    email_verified_at=datetime.now(timezone.utc),
+                    password_hash=password_hash,
+                    role=role,
+                    active=True,
+                )
+            )
             db.commit()
             return "created"
         if not force:
@@ -67,7 +86,9 @@ def seed_user(email: str, password: str, role: str = "admin", force: bool = Fals
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Bootstrap an admin user.")
     parser.add_argument("--email", required=True)
-    parser.add_argument("--password", required=True)
+    password = parser.add_mutually_exclusive_group(required=True)
+    password.add_argument("--password")
+    password.add_argument("--password-file")
     parser.add_argument("--role", default="admin", choices=["admin", "analyst"])
     parser.add_argument(
         "--force-reset",
@@ -79,8 +100,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
-    status = seed_user(args.email, args.password, args.role, force=args.force_reset)
-    print(f"User {args.email} {status}.")
+    if args.password_file:
+        os.environ["ADMIN_PASSWORD_FILE"] = args.password_file
+        resolved_password = env_value("ADMIN_PASSWORD")
+    else:
+        resolved_password = args.password
+    assert resolved_password is not None
+    status = seed_user(args.email, resolved_password, args.role, force=args.force_reset)
+    print(f"Bootstrap user {status}.")
     return 0
 
 

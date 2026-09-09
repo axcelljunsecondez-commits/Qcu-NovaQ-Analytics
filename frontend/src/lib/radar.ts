@@ -8,7 +8,7 @@ export interface RadarRow {
   rho_current: number | null
   rho_optimal: number | null
   c_current: number
-  c_optimal: number
+  c_optimal: number | null
   lambda?: number | null
 }
 

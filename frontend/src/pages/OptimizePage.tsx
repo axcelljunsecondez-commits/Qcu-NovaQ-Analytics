@@ -12,6 +12,7 @@ import {
 } from '../lib/comparison'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useParams } from 'react-router-dom'
 
 function fmt(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
@@ -155,6 +156,8 @@ function staffingChangeLines(rows: OptimizationOut[]): string[] {
 
 export function OptimizePage() {
   const { t } = useTranslation()
+  const analysisParam = useParams().analysisId
+  const analysisId = analysisParam ? Number(analysisParam) : undefined
   const [datasetId, setDatasetId] = useState('')
   const queryClient = useQueryClient()
   const [options, setOptions] = useState<OptimizeOptions>(DEFAULT_OPTIONS)
@@ -171,8 +174,8 @@ export function OptimizePage() {
   const [availableCashiers, setAvailableCashiers] = useState('')
 
   const datasets = useQuery({
-    queryKey: ['datasets'],
-    queryFn: () => listDatasets(),
+    queryKey: ['datasets', analysisId],
+    queryFn: () => listDatasets(analysisId),
   })
 
   async function run(dataset: DatasetOut, factor = 1) {
@@ -225,6 +228,7 @@ export function OptimizePage() {
     try {
       await createScenario({
         name: scenarioName.trim(),
+        analysis_id: analysisId,
         dataset_id: snapshot.datasetId ? Number(snapshot.datasetId) : null,
         settings: { ...snapshot.options, calculation: {
           schema_version: 1, engine_version: 'novaq-2026-09-system-v2',
@@ -233,6 +237,7 @@ export function OptimizePage() {
         } },
         results: { results: rows },
       })
+      void queryClient.invalidateQueries({ queryKey: ['scenarios', analysisId] })
       setSaved(true)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail

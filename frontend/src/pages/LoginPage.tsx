@@ -1,19 +1,28 @@
-import { useState, type FormEvent } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { GoogleSignInButton } from '../auth/GoogleSignInButton'
+import { apiErrorCode } from '../auth/fragmentToken'
 import { useAuth } from '../auth/useAuth'
 
 export function LoginPage() {
   const { t } = useTranslation()
-  const { login, isLoading } = useAuth()
+  const { login, isLoading, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [loginComplete, setLoginComplete] = useState(false)
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+  const from = (location.state as { from?: string } | null)?.from ?? '/analyses'
+
+  // The query cache update can notify React after mutateAsync resolves.
+  // Wait for the authenticated context before entering the protected route.
+  useEffect(() => {
+    if (loginComplete && user) navigate(from, { replace: true })
+  }, [loginComplete, user, from, navigate])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -21,9 +30,13 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login(email, password)
-      navigate(from, { replace: true })
-    } catch {
-      setError(t('login.error'))
+      setLoginComplete(true)
+    } catch (err) {
+      setError(
+        apiErrorCode(err) === 'email_not_verified'
+          ? t('auth.email_not_verified')
+          : t('login.error'),
+      )
     } finally {
       setSubmitting(false)
     }
@@ -61,6 +74,13 @@ export function LoginPage() {
             {t('login.submit')}
           </button>
         </form>
+        <div className="auth-divider"><span>{t('auth.or')}</span></div>
+        <GoogleSignInButton onSuccess={() => navigate(from, { replace: true })} />
+        <div className="auth-links">
+          <span>{t('auth.no_account')} <Link to="/register">{t('auth.register')}</Link></span>
+          <Link to="/forgot-password">{t('auth.forgot')}</Link>
+          <Link to="/register?mode=resend">{t('auth.resend')}</Link>
+        </div>
       </div>
     </div>
   )

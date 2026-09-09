@@ -75,7 +75,7 @@ describe('AnalysisPage', () => {
     await user.click(screen.getByRole('button', { name: 'Run analysis' }))
     expect(await screen.findByText('83.33%')).toBeInTheDocument()
     expect(screen.getByText('3.51')).toBeInTheDocument()
-    expect(screen.getByText('0.12')).toBeInTheDocument()
+    expect(screen.getByText('7.02')).toBeInTheDocument() // API hours displayed as minutes.
   })
 
   it('shows the error message for an unstable system', async () => {

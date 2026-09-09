@@ -15,6 +15,11 @@ vi.mock('../api/auth', () => ({
   login: vi.fn(async () => ({})),
   logout: (...args: unknown[]) => logoutMock(...args),
   changePassword: (...args: unknown[]) => changePasswordMock(...args),
+  authConfig: vi.fn(async () => ({ google_sign_in_enabled: false, google_client_id: null })),
+  googleLogin: vi.fn(),
+  googleNonce: vi.fn(),
+  forgotPassword: vi.fn(async () => ({})),
+  linkGoogle: vi.fn(async () => ({})),
 }))
 
 beforeEach(() => {

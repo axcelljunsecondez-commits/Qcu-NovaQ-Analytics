@@ -1,8 +1,10 @@
 import { http } from '../lib/http'
 import type { DatasetOut } from './types'
 
-export const listDatasets = async (): Promise<{ datasets: DatasetOut[] }> => {
-  const res = await http.get<{ datasets: DatasetOut[] }>('/datasets')
+export const listDatasets = async (analysisId?: number): Promise<{ datasets: DatasetOut[] }> => {
+  const res = await http.get<{ datasets: DatasetOut[] }>('/datasets', {
+    params: analysisId ? { analysis_id: analysisId } : undefined,
+  })
   return res.data
 }
 

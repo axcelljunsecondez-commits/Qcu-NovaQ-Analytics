@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import zipfile
 
 import pandas as pd
 import pytest
@@ -37,6 +38,11 @@ def test_parse_rejects_unsupported_extension():
         parse_upload("segments.txt", b"hello")
 
 
+def test_parse_rejects_unavailable_legacy_xls_format():
+    with pytest.raises(UploadError, match="CSV or XLSX"):
+        parse_upload("segments.xls", b"legacy")
+
+
 def test_parse_rejects_binary_garbage_as_csv():
     with pytest.raises(UploadError):
         parse_upload("segments.csv", b"\x00\x01\x02\x03\x00binary")
@@ -50,6 +56,42 @@ def test_parse_rejects_garbage_as_xlsx():
 def test_parse_rejects_oversized_payload():
     with pytest.raises(UploadError):
         parse_upload("segments.csv", CSV_BYTES, max_bytes=10)
+
+
+def test_parse_rejects_row_column_cell_and_dataframe_bounds():
+    with pytest.raises(UploadError, match="too many rows"):
+        parse_upload("segments.csv", CSV_BYTES, max_rows=1)
+    with pytest.raises(UploadError, match="too many columns"):
+        parse_upload("segments.csv", CSV_BYTES, max_columns=3)
+    with pytest.raises(UploadError, match="text that is too long"):
+        parse_upload("segments.csv", b"time,lambda,mu,c\nvery-long,1,2,1\n", max_cell_chars=4)
+    with pytest.raises(UploadError, match="parsed memory"):
+        parse_upload("segments.csv", CSV_BYTES, max_dataframe_bytes=32)
+
+
+def test_parse_rejects_xlsx_zip_bomb_ratio_and_member_count():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "types")
+        archive.writestr("xl/workbook.xml", "workbook")
+        archive.writestr("xl/worksheets/sheet1.xml", "A" * 10000)
+    with pytest.raises(UploadError, match="compression ratio"):
+        parse_upload("bomb.xlsx", buffer.getvalue(), xlsx_max_compression_ratio=2)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", "types")
+        archive.writestr("xl/workbook.xml", "workbook")
+        for index in range(10):
+            archive.writestr(f"extra-{index}", "x")
+    with pytest.raises(UploadError, match="too many ZIP entries"):
+        parse_upload("many.xlsx", buffer.getvalue(), xlsx_max_zip_members=10)
+
+
+def test_parser_error_is_sanitized():
+    with pytest.raises(UploadError) as caught:
+        parse_upload("bad.csv", b'"unterminated')
+    assert "tokenizing" not in str(caught.value).lower()
 
 
 def test_sanitize_formula_injection():
