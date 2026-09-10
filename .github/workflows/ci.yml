@@ -134,9 +134,6 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       NOVAQ_RELEASE_ID: ci-fixture
-      NOVAQ_DB_PASSWORD_FILE: ${{ runner.temp }}/novaq-db-password
-      NOVAQ_SMTP_PASSWORD_FILE: ${{ runner.temp }}/novaq-smtp-password
-      NOVAQ_ADMIN_PASSWORD_FILE: ${{ runner.temp }}/novaq-admin-password
       POSTGRES_USER: novaq_ci
       POSTGRES_DB: novaq_ci
       ADMIN_EMAIL: admin@novaq.invalid
@@ -147,6 +144,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Create restrictive fixture secret files
+        env:
+          NOVAQ_DB_PASSWORD_FILE: ${{ runner.temp }}/novaq-db-password
+          NOVAQ_SMTP_PASSWORD_FILE: ${{ runner.temp }}/novaq-smtp-password
+          NOVAQ_ADMIN_PASSWORD_FILE: ${{ runner.temp }}/novaq-admin-password
         run: |
           install -m 600 /dev/null "$NOVAQ_DB_PASSWORD_FILE"
           install -m 600 /dev/null "$NOVAQ_SMTP_PASSWORD_FILE"
@@ -183,14 +184,14 @@ jobs:
 
   stack-integration:
     runs-on: ubuntu-22.04
-    env:
-      NOVAQ_REHEARSAL_CERT_DIR: ${{ runner.temp }}/novaq-certs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Start disposable Postgres, API and nginx stack
+        env:
+          NOVAQ_REHEARSAL_CERT_DIR: ${{ runner.temp }}/novaq-certs
         run: docker compose -p novaq-ci -f docker-compose.integration.yml up -d --build --wait --wait-timeout 180
       - name: Exercise nginx, sessions, uploads, calculations and reports
         run: python scripts/stack_smoke.py
