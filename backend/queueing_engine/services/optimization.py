@@ -6,19 +6,18 @@ import math
 from collections.abc import Iterable, Mapping
 from numbers import Integral, Real
 
-from backend.queueing_engine.log import get_logger
-
-logger = get_logger(__name__)
-
 from backend.queueing_engine.config import (
-    DEFAULT_WAIT_COST_HR,
     DEFAULT_MAX_SERVERS,
     DEFAULT_SERVER_COST_HR,
     DEFAULT_TARGET_UTILIZATION,
+    DEFAULT_WAIT_COST_HR,
     OT_RATE,
     REGULAR_RATE,
 )
+from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.services.model_selection import select_model
+
+logger = get_logger(__name__)
 
 
 def compute_blended_rate(regular_hours, ot_hours, total_hours) -> float:

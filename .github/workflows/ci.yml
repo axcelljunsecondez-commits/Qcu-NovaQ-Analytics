@@ -189,9 +189,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Set rehearsal certificate directory
+        run: echo "NOVAQ_REHEARSAL_CERT_DIR=${{ runner.temp }}/novaq-certs" >> "$GITHUB_ENV"
       - name: Start disposable Postgres, API and nginx stack
-        env:
-          NOVAQ_REHEARSAL_CERT_DIR: ${{ runner.temp }}/novaq-certs
         run: docker compose -p novaq-ci -f docker-compose.integration.yml up -d --build --wait --wait-timeout 180
       - name: Exercise nginx, sessions, uploads, calculations and reports
         run: python scripts/stack_smoke.py
