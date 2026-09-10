@@ -76,21 +76,21 @@ jobs:
       - name: Build database production image
         run: docker build --tag novaq-db:ci --file Dockerfile.db .
       - name: Scan API image
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.34.0
         with:
           image-ref: novaq-api:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           exit-code: 1
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.34.0
         with:
           image-ref: novaq-web:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           exit-code: 1
       - name: Scan database image
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.34.0
         with:
           image-ref: novaq-db:ci
           severity: CRITICAL,HIGH
