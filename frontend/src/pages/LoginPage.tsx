@@ -131,6 +131,11 @@ export function LoginPage() {
                 {t('auth.forgot')}
               </Link>
             </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '-10px 0 18px' }}>
+              <Link to="/verify-email" className="link" style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>
+                {t('auth.resend')}
+              </Link>
+            </div>
             {error && <div className="alert alert-error">{error}</div>}
             <button type="submit" disabled={submitting || isLoading} style={{ width: '100%' }}>
               {t('login.submit')}

@@ -14,7 +14,6 @@ import { NovaQInsights, generateOptimizationInsights } from '../components/insig
 import {
   comparisonComplete,
   comparisonTotals,
-  operationalComparisonComplete,
 } from '../lib/comparison'
 import { fmt } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
@@ -146,6 +145,12 @@ function staffingChangeLines(rows: OptimizationOut[]): string[] {
     .map(([change, times]) => `${formatStaffingChange(change)}: ${mergeTimeRanges(times).join(', ')}`)
 }
 
+function staffingTotals(rows: OptimizationOut[]) {
+  const removed = rows.reduce((total, row) => total + Math.max(-(row.delta_c ?? 0), 0), 0)
+  const added = rows.reduce((total, row) => total + Math.max(row.delta_c ?? 0, 0), 0)
+  return { removed, added, net: removed - added }
+}
+
 export function OptimizePage() {
   const { t } = useTranslation()
   const analysisParam = useParams().analysisId
@@ -240,7 +245,6 @@ export function OptimizePage() {
   }
 
   const totals = !stale && rows ? comparisonTotals(rows) : null
-  const operationallyComparable = !stale && rows ? operationalComparisonComplete(rows) : false
   const totalCurrent = totals?.current ?? null
   const totalOptimal = totals?.optimal ?? null
   const deltaCost = totals?.savings ?? null
@@ -252,6 +256,8 @@ export function OptimizePage() {
     availablePool >= 0
   const poolGap = poolIsProvided && availablePool > 0 ? availablePool - peakRequirement : null
   const staffingLines = rows ? staffingChangeLines(rows) : []
+  const staffingTotalsValue = rows ? staffingTotals(rows) : null
+  const staffingSummaryAvailable = rows !== null && rows.length > 0 && rows.every((row) => row.c_optimal !== null && row.c_optimal !== undefined)
   const warnings = rows?.filter((r) => r.warning) ?? []
 
   return (
@@ -267,6 +273,21 @@ export function OptimizePage() {
 
       {stale && <div role="alert" className="alert alert-warn">{t('integrity.stale')}</div>}
       {rows && !comparisonComplete(rows) && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
+      {rows && !staffingSummaryAvailable && (
+        <div className="alert alert-warn">{t('system.staffing_unavailable')}</div>
+      )}
+      {rows && staffingSummaryAvailable && !totals && staffingTotalsValue && (
+        <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+          <div style={{ color: '#76889e', fontSize: '11px' }}>Net staffing reduction</div>
+          <div style={{ fontWeight: 800 }}>
+            {staffingTotalsValue.net > 0
+              ? `${staffingTotalsValue.net} cashier-hours reduced`
+              : staffingTotalsValue.net < 0
+              ? `${Math.abs(staffingTotalsValue.net)} cashier-hours added`
+              : 'No net staffing change'}
+          </div>
+        </div>
+      )}
 
       {/* Two-column layout: Controls + Result */}
       <div className="grid g2" style={{ marginTop: '12px' }}>
@@ -485,18 +506,31 @@ export function OptimizePage() {
                 )}
 
                 {/* Peak requirement + staffing lines */}
-                {operationallyComparable && (
+                {staffingSummaryAvailable && (
                   <div style={{ marginTop: '12px', borderTop: '1px solid #e9ecef', paddingTop: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
-                      <span style={{ color: '#76889e' }}>Peak Staff Required</span>
-                      <span style={{ fontWeight: 800 }}>{peakRequirement}</span>
-                    </div>
-                    {poolGap !== null && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
-                        <span style={{ color: '#76889e' }}>Available Pool</span>
-                        <span style={{ fontWeight: 800 }}>{availablePool}</span>
+                    {staffingTotalsValue && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <div style={{ color: '#76889e', fontSize: '11px' }}>Net staffing reduction</div>
+                        <div style={{ fontWeight: 800 }}>
+                          {staffingTotalsValue.net > 0
+                            ? `${staffingTotalsValue.net} cashier-hours reduced`
+                            : staffingTotalsValue.net < 0
+                            ? `${Math.abs(staffingTotalsValue.net)} cashier-hours added`
+                            : 'No net staffing change'}
+                        </div>
+                        <div style={{ color: '#76889e', fontSize: '11px' }}>
+                          {staffingTotalsValue.removed} removed - {staffingTotalsValue.added} added
+                        </div>
                       </div>
                     )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                      <span style={{ color: '#76889e' }}>Peak requirement</span>
+                      <span style={{ fontWeight: 800 }}>{peakRequirement} cashiers</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                      <span style={{ color: '#76889e' }}>Available pool</span>
+                      <span style={{ fontWeight: 800 }}>{poolIsProvided ? `${availablePool} cashiers` : '—'}</span>
+                    </div>
                     {poolGap !== null && (
                       <div className={`alert ${poolGap >= 0 ? 'alert-ok' : 'alert-warn'}`} style={{ marginTop: '8px', fontSize: '11px' }}>
                         {poolGap >= 0
@@ -514,6 +548,11 @@ export function OptimizePage() {
                       </div>
                     )}
                   </div>
+                )}
+                {!staffingSummaryAvailable && (
+                  <p style={{ marginTop: '12px', color: '#76889e', fontSize: '11px' }}>
+                    {t('system.staffing_unavailable')}
+                  </p>
                 )}
 
                 {/* Recommendation */}
@@ -666,7 +705,16 @@ export function OptimizePage() {
                           : `${col.current(row)} → ${col.optimized(row)}`}
                       </td>
                     ))}
-                    <td>{row.recommendation}<p>{row.explanation}</p><small>{row.selected_model}</small></td>
+                    <td>
+                      {row.explanation && row.explanation !== row.recommendation ? (
+                        <>
+                          <p>{row.explanation}</p>
+                          <small>{row.selected_model}</small>
+                        </>
+                      ) : (
+                        <small>{row.selected_model}</small>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
