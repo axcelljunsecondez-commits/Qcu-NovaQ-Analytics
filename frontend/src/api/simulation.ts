@@ -1,9 +1,16 @@
 import { http } from '../lib/http'
-import type { SegmentInput, SimDesOut, SimMcOut, SimValidateOut } from './types'
+import type { SegmentInput, SimDesOut, SimMcOut, SimValidateOut, SimulationTrace } from './types'
 
 export interface DesOptions {
   sim_hours?: number
   queue_overload_threshold?: number
+  seed?: number | null
+  carryover?: boolean
+}
+
+export interface TraceOptions {
+  trace_hours?: number
+  max_events?: number
   seed?: number | null
   carryover?: boolean
 }
@@ -28,6 +35,17 @@ export async function simulateDes(
   options: DesOptions = {},
 ): Promise<{ results: SimDesOut[] }> {
   const { data } = await http.post<{ results: SimDesOut[] }>('/simulation/des', {
+    segments,
+    ...options,
+  })
+  return data
+}
+
+export async function simulateDesTrace(
+  segments: SegmentInput[],
+  options: TraceOptions = {},
+): Promise<SimulationTrace> {
+  const { data } = await http.post<SimulationTrace>('/simulation/des/trace', {
     segments,
     ...options,
   })

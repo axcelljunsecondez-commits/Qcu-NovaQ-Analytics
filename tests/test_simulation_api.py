@@ -27,6 +27,34 @@ def test_des_requires_auth(client):
     assert client.post("/simulation/des", json={"segments": SEGMENTS}).status_code == 401
 
 
+def test_des_trace_endpoint(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/des/trace",
+        json={"segments": SEGMENTS[:1], "trace_hours": 1, "max_events": 100, "seed": 7},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["event_count"] == len(body["trace"])
+    assert body["trace"]
+    assert body["trace"][0]["type"] == "arrival"
+
+
+def test_des_trace_requires_auth(client):
+    assert client.post("/simulation/des/trace", json={"segments": SEGMENTS}).status_code == 401
+
+
+def test_des_trace_rejects_out_of_range_hours(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    response = client.post(
+        "/simulation/des/trace",
+        json={"segments": SEGMENTS, "trace_hours": 4.1},
+    )
+    assert response.status_code == 422
+
+
 def test_mc_endpoint(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")

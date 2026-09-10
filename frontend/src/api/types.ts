@@ -205,6 +205,38 @@ export interface SimDesOut {
   final_Lq?: number
 }
 
+export type SimulationTraceEventType = 'arrival' | 'service_start' | 'service_end' | 'abandon'
+
+export interface SimulationTraceEvent {
+  t: number
+  type: SimulationTraceEventType
+  segment_id: number
+  server_id: number | null
+  queue_len_after: number
+}
+
+export interface SimulationTraceSegment {
+  segment_id: number
+  time: string
+  lambda: number | null
+  mu: number | null
+  c: number
+  selected_model: string | null
+  simulation_supported: boolean
+  error: string | null
+  initial_queue_depth: number
+  final_queue_depth: number
+}
+
+export interface SimulationTrace {
+  trace: SimulationTraceEvent[]
+  trace_hours: number
+  total_hours: number
+  event_count: number
+  truncated: boolean
+  segments: SimulationTraceSegment[]
+}
+
 export interface SimMcOut {
   num_trials?: number
   failure_criterion?: string

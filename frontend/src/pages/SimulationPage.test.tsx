@@ -7,6 +7,7 @@ import { SimulationPage } from './SimulationPage'
 const listDatasetsMock = vi.fn()
 const getDatasetMock = vi.fn()
 const simulateDesMock = vi.fn()
+const simulateDesTraceMock = vi.fn()
 const simulateMcMock = vi.fn()
 const validateSimulationMock = vi.fn()
 const optimizeBatchMock = vi.fn()
@@ -20,6 +21,7 @@ vi.mock('../api/datasets', () => ({
 
 vi.mock('../api/simulation', () => ({
   simulateDes: (...args: unknown[]) => simulateDesMock(...args),
+  simulateDesTrace: (...args: unknown[]) => simulateDesTraceMock(...args),
   simulateMc: (...args: unknown[]) => simulateMcMock(...args),
   validateSimulation: (...args: unknown[]) => validateSimulationMock(...args),
 }))
@@ -133,12 +135,36 @@ beforeEach(() => {
   listDatasetsMock.mockReset()
   getDatasetMock.mockReset()
   simulateDesMock.mockReset()
+  simulateDesTraceMock.mockReset()
   simulateMcMock.mockReset()
   validateSimulationMock.mockReset()
   optimizeBatchMock.mockReset()
   listDatasetsMock.mockResolvedValue({ datasets: [dataset] })
   getDatasetMock.mockResolvedValue({ dataset })
   simulateDesMock.mockResolvedValue({ results: [desRow] })
+  simulateDesTraceMock.mockResolvedValue({
+    trace: [
+      { t: 0.1, type: 'arrival', segment_id: 0, server_id: null, queue_len_after: 1 },
+      { t: 0.2, type: 'service_start', segment_id: 0, server_id: 0, queue_len_after: 0 },
+      { t: 0.4, type: 'service_end', segment_id: 0, server_id: 0, queue_len_after: 0 },
+    ],
+    trace_hours: 1,
+    total_hours: 1,
+    event_count: 3,
+    truncated: false,
+    segments: [{
+      segment_id: 0,
+      time: '08:00-09:00',
+      lambda: 30,
+      mu: 12,
+      c: 3,
+      selected_model: 'M/M/c',
+      simulation_supported: true,
+      error: null,
+      initial_queue_depth: 0,
+      final_queue_depth: 0,
+    }],
+  })
   simulateMcMock.mockResolvedValue({ results: [mcRow] })
   validateSimulationMock.mockResolvedValue({ results: [validateRow] })
   optimizeBatchMock.mockResolvedValue({
@@ -167,6 +193,35 @@ describe('SimulationPage', () => {
     expect(await screen.findByRole('tab', { name: 'DES (SimPy)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Monte Carlo' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Validate' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Live' })).toBeInTheDocument()
+  })
+
+  it('runs and replays a backend event trace in the Live tab', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SimulationPage />, { route: '/simulate' })
+    await selectDataset(user)
+    await user.click(screen.getByRole('tab', { name: 'Live' }))
+    await user.clear(screen.getByLabelText('Trace hours per segment'))
+    await user.type(screen.getByLabelText('Trace hours per segment'), '1')
+    await user.click(screen.getByRole('button', { name: 'Run live trace' }))
+    await waitFor(() => {
+      expect(simulateDesTraceMock).toHaveBeenCalledWith(segments, {
+        trace_hours: 1,
+        max_events: 10000,
+        seed: null,
+        carryover: true,
+      })
+    })
+    expect(await screen.findByText('Live queue floor')).toBeInTheDocument()
+    expect(screen.getByText('Customers served')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Step' }))
+    expect(screen.getByText('Event 1 of 3')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Step' }))
+    expect(screen.getByText('6.00 min')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Play' }))
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(screen.getByText('Event 0 of 3')).toBeInTheDocument()
   })
 
   it('runs DES with defaults and renders KPI counts and queue bars', async () => {

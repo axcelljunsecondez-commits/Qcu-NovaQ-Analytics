@@ -280,6 +280,160 @@ class _QueueMonitor:
         return lq, busy_fraction
 
 
+class _TraceRecorder:
+    """Collect a bounded, ordered event trace from a SimPy run."""
+
+    def __init__(self, max_events: int):
+        self.events: list[dict[str, Any]] = []
+        self.max_events = max_events
+        self.truncated = False
+
+    def record(
+        self,
+        at: float,
+        event_type: str,
+        segment_id: int,
+        server_id: int | None,
+        queue_len_after: int,
+        time_offset: float = 0.0,
+    ) -> bool:
+        if len(self.events) >= self.max_events:
+            self.truncated = True
+            return False
+        self.events.append({
+            "t": round(time_offset + at, 6),
+            "type": event_type,
+            "segment_id": segment_id,
+            "server_id": server_id,
+            "queue_len_after": queue_len_after,
+        })
+        return True
+
+
+def _trace_customer_process(
+    env: simpy.Environment,
+    servers: simpy.Resource,
+    mu: float,
+    recorder: _TraceRecorder,
+    rng: random.Random,
+    segment_id: int,
+    server_ids: dict[simpy.events.Event, int],
+    time_offset: float,
+):
+    """Trace one real customer through arrival, service, and completion."""
+    req = servers.request()
+    if not recorder.record(env.now, "arrival", segment_id, None, len(servers.queue), time_offset):
+        req.cancel()
+        return
+    yield req
+
+    server_id = min(set(range(int(servers.capacity))) - set(server_ids.values()), default=0)
+    server_ids[req] = server_id
+    if not recorder.record(env.now, "service_start", segment_id, server_id, len(servers.queue), time_offset):
+        servers.release(req)
+        server_ids.pop(req, None)
+        return
+
+    yield env.timeout(_exponential(mu, rng))
+    servers.release(req)
+    server_ids.pop(req, None)
+    recorder.record(env.now, "service_end", segment_id, server_id, len(servers.queue), time_offset)
+
+
+def _trace_arrival_process(
+    env: simpy.Environment,
+    servers: simpy.Resource,
+    lambda_: float,
+    mu: float,
+    sim_duration: float,
+    recorder: _TraceRecorder,
+    rng: random.Random,
+    segment_id: int,
+    server_ids: dict[simpy.events.Event, int],
+    time_offset: float,
+):
+    """Generate real arrivals until the bounded trace or segment ends."""
+    while not recorder.truncated:
+        iat = _exponential(lambda_, rng)
+        if env.now + iat >= sim_duration:
+            break
+        yield env.timeout(iat)
+        if recorder.truncated:
+            break
+        env.process(_trace_customer_process(
+            env, servers, mu, recorder, rng, segment_id, server_ids, time_offset,
+        ))
+
+
+def trace_simulate_segments(
+    time_segments: Iterable[Mapping[str, Any]] | None,
+    trace_hours: float = 1.0,
+    max_events: int = 10000,
+    seed: int | None = RANDOM_SEED,
+    carryover: bool = True,
+) -> dict[str, Any]:
+    """Capture a bounded, deterministic event trace from the DES lifecycle."""
+    if time_segments is None:
+        return {"trace": [], "trace_hours": trace_hours, "total_hours": 0.0, "event_count": 0, "truncated": False, "segments": []}
+
+    recorder = _TraceRecorder(max_events)
+    summaries: list[dict[str, Any]] = []
+    carry = 0
+    time_offset = 0.0
+    for segment_id, segment in enumerate(time_segments):
+        if recorder.truncated:
+            break
+        time_label = str(segment.get("time", "Unknown"))
+        error, lambda_, mu, c = _validate_segment(segment)
+        selected_model, coverage_error = simulation_coverage(segment)
+        error = error or coverage_error
+        summary = {
+            "segment_id": segment_id,
+            "time": time_label,
+            "c": c,
+            "lambda": lambda_,
+            "mu": mu,
+            "selected_model": selected_model,
+            "simulation_supported": coverage_error is None,
+            "error": error,
+            "initial_queue_depth": carry,
+            "final_queue_depth": carry,
+        }
+        if error or lambda_ is None or mu is None:
+            summaries.append(summary)
+            time_offset += trace_hours
+            carry = 0
+            continue
+
+        env = simpy.Environment()
+        servers = simpy.Resource(env, capacity=c)
+        server_ids: dict[simpy.events.Event, int] = {}
+        segment_rng = random.Random((seed + segment_id) if seed is not None else None)
+        for _ in range(max(0, int(carry))):
+            env.process(_trace_customer_process(
+                env, servers, mu, recorder, segment_rng, segment_id,
+                server_ids, time_offset,
+            ))
+        env.process(_trace_arrival_process(
+            env, servers, lambda_, mu, trace_hours, recorder, segment_rng,
+            segment_id, server_ids, time_offset,
+        ))
+        env.run(until=trace_hours)
+        carry = len(servers.queue) if carryover else 0
+        summary["final_queue_depth"] = carry
+        summaries.append(summary)
+        time_offset += trace_hours
+
+    return {
+        "trace": recorder.events,
+        "trace_hours": trace_hours,
+        "total_hours": time_offset,
+        "event_count": len(recorder.events),
+        "truncated": recorder.truncated,
+        "segments": summaries,
+    }
+
+
 def _customer_process(
     env: simpy.Environment,
     servers: simpy.Resource,

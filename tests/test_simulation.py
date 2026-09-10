@@ -16,6 +16,7 @@ from backend.queueing_engine.simulation.simulation import (
     simulate_segment,
     simulate_segments,
     summarize_simulation,
+    trace_simulate_segments,
     validate_with_simulation,
 )
 
@@ -85,6 +86,37 @@ class SimulationTests(unittest.TestCase):
 
     def test_simulate_segments_none(self):
         self.assertEqual(simulate_segments(None), [])
+
+    def test_trace_is_seeded_and_contains_ordered_events(self):
+        segments = [{"time": "test", "lambda": 6, "mu": 8, "c": 2}]
+        first = trace_simulate_segments(segments, trace_hours=1, seed=42)
+        second = trace_simulate_segments(segments, trace_hours=1, seed=42)
+        self.assertEqual(first, second)
+        self.assertGreater(first["event_count"], 0)
+        self.assertEqual(first["event_count"], len(first["trace"]))
+        self.assertEqual(
+            {event["type"] for event in first["trace"]},
+            {"arrival", "service_start", "service_end"},
+        )
+        self.assertEqual(
+            [event["t"] for event in first["trace"]],
+            sorted(event["t"] for event in first["trace"]),
+        )
+        for event in first["trace"]:
+            self.assertEqual(
+                set(event), {"t", "type", "segment_id", "server_id", "queue_len_after"}
+            )
+            self.assertGreaterEqual(event["queue_len_after"], 0)
+
+    def test_trace_respects_event_cap(self):
+        result = trace_simulate_segments(
+            [{"time": "test", "lambda": 20, "mu": 8, "c": 2}],
+            trace_hours=2,
+            max_events=3,
+            seed=42,
+        )
+        self.assertEqual(result["event_count"], 3)
+        self.assertTrue(result["truncated"])
 
     def test_summarize_simulation_empty(self):
         summary = summarize_simulation([])

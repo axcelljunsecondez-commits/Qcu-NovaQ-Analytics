@@ -11,6 +11,7 @@ from backend.queueing_engine.config import MC_DEFAULT_FAILURE_THRESHOLD, MC_DEFA
 from backend.queueing_engine.simulation.simulation import (
     mc_simulate_segments,
     simulate_segments,
+    trace_simulate_segments,
     validate_with_simulation,
 )
 
@@ -26,6 +27,15 @@ class DesRequest(BaseModel):
     segments: list[dict] = Field(max_length=1000)
     sim_hours: float = Field(default=24.0, gt=0, le=168)
     queue_overload_threshold: int = Field(default=20, ge=1)
+    seed: int | None = Field(default=42)
+    carryover: bool = True
+
+
+class TraceRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+    segments: list[dict] = Field(max_length=1000)
+    trace_hours: float = Field(default=1.0, gt=0, le=4)
+    max_events: int = Field(default=10000, ge=1, le=10000)
     seed: int | None = Field(default=42)
     carryover: bool = True
 
@@ -64,6 +74,20 @@ def des(
         carryover=payload.carryover,
     )
     return {"results": results}
+
+
+@router.post("/des/trace")
+def des_trace(
+    payload: TraceRequest,
+    _user=Depends(get_current_user),
+) -> dict:
+    return trace_simulate_segments(
+        payload.segments,
+        trace_hours=payload.trace_hours,
+        max_events=payload.max_events,
+        seed=payload.seed,
+        carryover=payload.carryover,
+    )
 
 
 @router.post("/mc")
