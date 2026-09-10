@@ -160,6 +160,7 @@ def test_csrf_exemptions_are_exact_and_cookie_is_not_authorization(client):
         "/analysis",
         "/simulation",
         "/optimize",
+        "/onboarding",
     )
     client.cookies.set("novaq_csrf", "csrf-only")
     assert client.post("/scenarios", json={}).status_code == 401

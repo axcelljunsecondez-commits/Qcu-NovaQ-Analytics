@@ -59,7 +59,7 @@ def test_real_postgres_upgrade_paths_preserve_ownership(starting_revision, monke
         command.upgrade(config, "head")
         target = create_engine(target_url)
         with target.connect() as connection:
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0003"
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0004"
             if starting_revision == "0001":
                 row = connection.execute(
                     text(
