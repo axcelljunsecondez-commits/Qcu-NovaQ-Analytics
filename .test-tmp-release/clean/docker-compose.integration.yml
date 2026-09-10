@@ -1,0 +1,69 @@
+# Disposable CI stack only: these public test credentials are never production secrets.
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:15432:5432"
+    environment:
+      POSTGRES_USER: novaq_test
+      POSTGRES_PASSWORD: integration-only
+      POSTGRES_DB: novaq_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novaq_test -d novaq_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["sh", "-c", "alembic upgrade head && python -m backend.operations.migration_status"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://novaq_test:integration-only@db:5432/novaq_test
+    depends_on:
+      db:
+        condition: service_healthy
+  bootstrap-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["python", "-m", "backend.db.seed", "--email", "integration@example.com", "--password", "integration-only", "--role", "admin"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://novaq_test:integration-only@db:5432/novaq_test
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      NOVAQ_ENV: integration
+      DATABASE_URL: postgresql+psycopg://novaq_test:integration-only@db:5432/novaq_test
+      SECURE_COOKIES: "0"
+      ALLOWED_ORIGINS: http://127.0.0.1:18080
+      MAX_UPLOAD_BYTES: "5242880"
+    depends_on:
+      bootstrap-admin:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=4)"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
