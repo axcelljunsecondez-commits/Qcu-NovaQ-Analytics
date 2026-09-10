@@ -18,6 +18,7 @@ import {
   CostWaterfall,
   ScenarioCompareBars,
 } from '../components/charts/Charts'
+import { NovaQInsights, generateOptimizationInsights } from '../components/insights/NovaQInsights'
 import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
 
@@ -104,9 +105,15 @@ export function ComparisonPage() {
   if (scenarios.length === 0) {
     return (
       <div>
-        <h1 className="page-title">{t('page4.title')}</h1>
-        <p className="page-caption">{t('page4.caption')}</p>
-      {!selected?.settings.calculation && <p className="alert alert-warn">{t('integrity.legacy')}</p>}
+        {/* Topbar */}
+        <div className="topbar">
+          <div>
+            <div className="topbar-eyebrow">Comparison · Compare Scenarios Against Current Operations</div>
+            <h1 className="page-title">{t('page4.title')}</h1>
+            <p className="page-caption">Compare scenarios side by side to find the best staffing plan.</p>
+          </div>
+        </div>
+        {!selected?.settings.calculation && <p className="alert alert-warn" style={{ marginTop: '8px' }}>{t('integrity.legacy')}</p>}
         <ApiState.Empty message={t('compare.empty')} />
       </div>
     )
@@ -114,20 +121,28 @@ export function ComparisonPage() {
 
   return (
     <div>
-      <h1 className="page-title">{t('page4.title')}</h1>
-      <p className="page-caption">{t('page4.caption')}</p>
-      {!selected?.settings.calculation && <p className="alert alert-warn">{t('integrity.legacy')}</p>}
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="topbar-eyebrow">Comparison · Compare Scenarios Against Current Operations</div>
+          <h1 className="page-title">{t('page4.title')}</h1>
+          <p className="page-caption">Compare scenarios side by side to find the best staffing plan.</p>
+        </div>
+      </div>
+      {!selected?.settings.calculation && <p className="alert alert-warn" style={{ marginTop: '8px' }}>{t('integrity.legacy')}</p>}
 
-      <div className="card">
-        <h2 className="card-title">{t('compare.title')}</h2>
+      {/* Scenario Selector */}
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('compare.title')}</h3>
         <div className="form-row">
-          <div className="form-field">
-            <label htmlFor="compare-scenario">{t('compare.source_scenario')}</label>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="compare-scenario" style={{ fontSize: '11px', fontWeight: 800 }}>{t('compare.source_scenario')}</label>
             <select
               id="compare-scenario"
               aria-label={t('compare.source_scenario')}
               value={scenarioId || (scenarios[0] ? normalizeScenarioId(scenarios[0].id) : '')}
               onChange={(e) => setScenarioId(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
             >
               {scenarios.map((s) => (
                 <option key={normalizeScenarioId(s.id)} value={normalizeScenarioId(s.id)}>
@@ -139,45 +154,79 @@ export function ComparisonPage() {
         </div>
       </div>
 
-      {!totals && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
+      {!totals && <div role="alert" className="alert alert-warn" style={{ marginTop: '12px' }}>{t('integrity.incomplete')}</div>}
+
+      {/* Quick Summary */}
+      {totals && operationallyComparable && (
+        <>
+          <div className="card-grid" style={{ marginTop: '12px' }}>
+            <MetricCard label={t('compare.current_total_cost')} value={`₱${totals.current.toLocaleString()}`} />
+            <MetricCard label={t('compare.optimized_total_cost')} value={`₱${totals.optimal.toLocaleString()}`} />
+            <MetricCard label={t('compare.cost_savings')} value={`₱${totals.savings.toLocaleString()}`} />
+            <MetricCard label={t('compare.savings_percent')} value={`${((totals.savings / totals.current) * 100).toFixed(1)}%`} />
+          </div>
+          {(() => {
+            const avgCurrentRho = rows.length > 0 ? rows.reduce((s, r) => s + (r.rho_current ?? 0), 0) / rows.length : null
+            const avgCurrentWq = rows.length > 0 ? rows.reduce((s, r) => s + (r.Wq_current ?? 0), 0) / rows.length : null
+            const avgOptWq = rows.length > 0 ? rows.reduce((s, r) => s + (r.Wq_optimal ?? 0), 0) / rows.length : null
+            const peakCurrent = rows.length > 0 ? Math.max(...rows.map((r) => r.c_current)) : 0
+            const peakOptimal = rows.length > 0 ? Math.max(...rows.map((r) => r.c_optimal ?? 0)) : 0
+            const insights = generateOptimizationInsights(
+              peakCurrent,
+              peakOptimal,
+              avgCurrentWq !== null ? avgCurrentWq * 60 : null,
+              avgOptWq !== null ? avgOptWq * 60 : null,
+              avgCurrentRho,
+              t,
+            )
+            return insights.length > 0 ? <NovaQInsights insights={insights} /> : null
+          })()}
+        </>
+      )}
+
+      {/* Operational Table */}
       {rows.length > 0 && (
-        <div className="card">
-          <h2 className="card-title">{t('compare.operational')}</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>{t('common.time')}</th>
-                <th>{t('compare.current_cashiers')}</th>
-                <th>{t('compare.current_utilization')}</th>
-                <th>{t('compare.current_status')}</th>
-                <th>{t('compare.current_wait')}</th>
-                <th>{t('compare.optimized_cashiers')}</th>
-                <th>{t('compare.optimized_utilization')}</th>
-                <th>{t('compare.optimized_status')}</th>
-                <th>{t('compare.optimized_wait')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.time}>
-                  <td>{row.time}</td>
-                  <td>{row.c_current}</td>
-                  <td>{formatPercent(row.rho_current)}</td>
-                  <td>{t(statusKey(row.current_stable, row.rho_current))}</td>
-                  <td>{formatMetric(row.Wq_current, 60)}</td>
-                  <td>{row.c_optimal ?? '—'}</td>
-                  <td>{formatPercent(row.rho_optimal)}</td>
-                  <td>{t(statusKey(row.optimized_stable, row.rho_optimal))}</td>
-                  <td>{formatMetric(row.Wq_optimal, 60)}</td>
+        <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+          <h3 className="section-title">{t('compare.operational')}</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('common.time')}</th>
+                  <th>{t('compare.current_cashiers')}</th>
+                  <th>{t('compare.current_utilization')}</th>
+                  <th>{t('compare.current_status')}</th>
+                  <th>{t('compare.current_wait')}</th>
+                  <th>{t('compare.optimized_cashiers')}</th>
+                  <th>{t('compare.optimized_utilization')}</th>
+                  <th>{t('compare.optimized_status')}</th>
+                  <th>{t('compare.optimized_wait')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.time}>
+                    <td>{row.time}</td>
+                    <td>{row.c_current}</td>
+                    <td>{formatPercent(row.rho_current)}</td>
+                    <td>{t(statusKey(row.current_stable, row.rho_current))}</td>
+                    <td>{formatMetric(row.Wq_current, 60)}</td>
+                    <td>{row.c_optimal ?? '—'}</td>
+                    <td>{formatPercent(row.rho_optimal)}</td>
+                    <td>{t(statusKey(row.optimized_stable, row.rho_optimal))}</td>
+                    <td>{formatMetric(row.Wq_optimal, 60)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+
+      {/* Charts */}
       {operationallyComparable && (
         <>
-          <div className="card-grid">
+          <div className="card-grid" style={{ marginTop: '12px' }}>
             <div className="card">
               <UtilizationCompareBars rows={rows} />
             </div>
@@ -185,27 +234,29 @@ export function ComparisonPage() {
               <ServerCompareBars rows={rows} />
             </div>
           </div>
-          <div className="card">
+          <div className="card" style={{ marginTop: '12px' }}>
             <WaitTimeLines rows={rows} />
           </div>
         </>
       )}
+
+      {/* ROI */}
       {totals && roi && (
         <>
-          <div className="card">
+          <div className="card" style={{ marginTop: '12px' }}>
             <RadarChart
               current={computeRadarScores(radarRows, { current: true, targetRho: targetUtilization }).r}
               optimized={computeRadarScores(radarRows, { current: false, targetRho: targetUtilization }).r}
             />
           </div>
-          <div className="card">
+          <div className="card" style={{ marginTop: '12px' }}>
             <CostWaterfall rows={rows} />
           </div>
-          <div className="card">
-            <h2 className="card-title">{t('page4.roi')}</h2>
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="roi-holidays">{t('compare.holidays')}</label>
+          <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+            <h3 className="section-title">{t('page4.roi')}</h3>
+            <div className="form-row" style={{ gap: '10px' }}>
+              <div className="form-field" style={{ flex: 1 }}>
+                <label htmlFor="roi-holidays" style={{ fontSize: '11px', fontWeight: 800 }}>{t('compare.holidays')}</label>
                 <input
                   id="roi-holidays"
                   aria-label={t('compare.holidays')}
@@ -214,26 +265,30 @@ export function ComparisonPage() {
                   max={365}
                   value={holidays}
                   onChange={(e) => setHolidays(clampHolidays(Number(e.target.value)))}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
                 />
               </div>
-              <div className="form-field">
-                <label htmlFor="roi-sundays">{t('compare.sundays')}</label>
-                <input
-                  id="roi-sundays"
-                  type="checkbox"
-                  checked={closedSundays}
-                  onChange={(e) => setClosedSundays(e.target.checked)}
-                />
+              <div className="form-field" style={{ flex: 1 }}>
+                <label htmlFor="roi-sundays" style={{ fontSize: '11px', fontWeight: 800 }}>{t('compare.sundays')}</label>
+                <div style={{ padding: '8px 0' }}>
+                  <input
+                    id="roi-sundays"
+                    type="checkbox"
+                    checked={closedSundays}
+                    onChange={(e) => setClosedSundays(e.target.checked)}
+                    style={{ width: '16px', height: '16px' }}
+                  />
+                </div>
               </div>
             </div>
-            <p className="page-caption">{t('compare.roi_note')}</p>
-            <div className="card-grid">
+            <p className="page-caption" style={{ marginTop: '6px' }}>{t('compare.roi_note')}</p>
+            <div className="card-grid" style={{ marginTop: '10px' }}>
               <MetricCard label={t('compare.daily_savings')} value={fmtMoney(roi.dailySavings)} />
               <MetricCard label={t('compare.monthly_savings')} value={fmtMoney(roi.monthlySavings)} />
               <MetricCard label={t('compare.annual_savings')} value={fmtMoney(roi.annualSavings)} />
               <MetricCard label={t('compare.operating_days')} value={String(roi.workingDaysPerYear)} />
             </div>
-            <p className="form-hint">
+            <p className="form-hint" style={{ marginTop: '8px' }}>
               {t('compare.roi_basis', {
                 days: String(roi.workingDaysPerYear),
                 holidays: String(holidays),
@@ -243,14 +298,15 @@ export function ComparisonPage() {
         </>
       )}
 
-      <div className="card">
-        <h2 className="card-title">{t('compare.scenarios')}</h2>
+      {/* Multi-Scenario Compare */}
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('compare.scenarios')}</h3>
         <div className="form-row">
-          <div className="form-field">
-            <label htmlFor="compare-multi">{t('compare.select_scenarios')}</label>
-            <div id="compare-multi" className="checkbox-list" role="group" aria-label={t('compare.select_scenarios')}>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="compare-multi" style={{ fontSize: '11px', fontWeight: 800 }}>{t('compare.select_scenarios')}</label>
+            <div id="compare-multi" className="checkbox-list" role="group" aria-label={t('compare.select_scenarios')} style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
               {scenarios.map((s) => (
-                <label key={normalizeScenarioId(s.id)}>
+                <label key={normalizeScenarioId(s.id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
                   <input
                     type="checkbox"
                     checked={selectedScenarioIds.includes(normalizeScenarioId(s.id))}
@@ -262,6 +318,7 @@ export function ComparisonPage() {
                         setSelectedScenarioIds((prev) => prev.filter((selectedId) => selectedId !== id))
                       }
                     }}
+                    style={{ width: '14px', height: '14px' }}
                   />
                   {s.name}
                 </label>
@@ -270,20 +327,22 @@ export function ComparisonPage() {
           </div>
         </div>
         {selectedScenarios.length < 2 ? (
-          <p className="page-caption">{t('compare.min_two')}</p>
+          <p className="page-caption" style={{ marginTop: '8px' }}>{t('compare.min_two')}</p>
         ) : (
           <>
             {incompleteSelected.length > 0 && (
-              <div role="alert" className="alert alert-warn">
+              <div role="alert" className="alert alert-warn" style={{ marginTop: '8px' }}>
                 {t('compare.incomplete_scenarios', {
                   names: incompleteSelected.map((scenario) => scenario.name).join(', '),
                 })}
               </div>
             )}
             {compared.length >= 2 && (
-              <ScenarioCompareBars
-                scenarios={compared.map((s) => ({ name: s.name, rows: rowsOf(s) }))}
-              />
+              <div style={{ marginTop: '10px' }}>
+                <ScenarioCompareBars
+                  scenarios={compared.map((s) => ({ name: s.name, rows: rowsOf(s) }))}
+                />
+              </div>
             )}
           </>
         )}

@@ -27,7 +27,13 @@ export interface SegmentInput {
   variance?: number
   K?: number
   theta?: number
+  server_cost?: number
 }
+
+/**
+ * Alias for SegmentInput used in optimization and simulation pages.
+ */
+export type SegmentRow = SegmentInput
 
 export interface OptimizationOut {
   feasibility_status?: string

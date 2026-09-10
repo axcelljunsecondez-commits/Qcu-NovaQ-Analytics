@@ -24,6 +24,7 @@ from backend.api.datasets import router as datasets_router
 from backend.api.deps import get_current_user
 from backend.api.email_delivery import build_email_sender
 from backend.api.google_auth import OfficialGoogleTokenVerifier
+from backend.api.onboarding import router as onboarding_router
 from backend.api.optimization import router as optimization_router
 from backend.api.rate_limit import FixedWindowLimiter, ResourceLimitMiddleware
 from backend.api.reports import router as reports_router
@@ -47,7 +48,7 @@ class CsrfDoubleSubmitMiddleware:
     """
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-    EXEMPT_FAMILIES = ("/analysis", "/simulation", "/optimize")
+    EXEMPT_FAMILIES = ("/analysis", "/simulation", "/optimize", "/onboarding")
 
     def __init__(self, app):
         self.app = app
@@ -246,6 +247,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(account_router)
+    app.include_router(onboarding_router)
     app.include_router(datasets_router)
     app.include_router(analysis_router)
     app.include_router(analyses_router)

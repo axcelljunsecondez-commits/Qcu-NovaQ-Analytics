@@ -1,12 +1,12 @@
 import simulationDefaults from '../api/simulation-defaults.json'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { listDatasets, getDataset } from '../api/datasets'
 import { simulateDes, simulateMc, validateSimulation } from '../api/simulation'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
-import type { DatasetOut, SimDesOut, SimMcOut, SimValidateOut } from '../api/types'
+import type { DatasetOut, SimDesOut, SimMcOut, SimValidateOut, SegmentRow } from '../api/types'
 import { MetricCard } from '../components/ui/MetricCard'
 import { ApiState } from '../components/ui/ApiState'
 import {
@@ -17,34 +17,16 @@ import {
   RhoMeanP95Lines,
   FailureRateBars,
 } from '../components/charts/Charts'
+import { fmt, fmtPct, fmtFrCi, downloadCsv } from '../lib/format'
+import { segmentsOf } from '../lib/queue'
 
 type Tab = 'des' | 'mc' | 'validate'
-
-interface SegmentRow {
-  time: string
-  lambda: number
-  mu: number
-  c: number
-  variance?: number
-  K?: number
-  theta?: number
-}
 
 const TABS: Array<{ id: Tab; labelKey: string }> = [
   { id: 'des', labelKey: 'simulation.tabs.des' },
   { id: 'mc', labelKey: 'simulation.tabs.mc' },
   { id: 'validate', labelKey: 'simulation.tabs.validate' },
 ]
-
-function segmentsOf(dataset: DatasetOut): SegmentRow[] {
-  return (dataset.normalized ?? []).map((row) => ({
-    time: String(row.time),
-    lambda: Number(row.lambda),
-    mu: Number(row.mu),
-    c: Number(row.c),
-    ...Object.fromEntries(['variance', 'K', 'theta'].filter((key) => row[key] != null).map((key) => [key, row[key]])),
-  }))
-}
 
 function parseSeed(raw: string): number | null {
   if (raw.trim() === '') return null
@@ -55,27 +37,6 @@ function parseSeed(raw: string): number | null {
 function safeRho(value: number | null | undefined): number {
   if (value === null || value === undefined || Number.isNaN(value)) return 0
   return value
-}
-
-function fmt(value: number | null | undefined, digits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return '—'
-  }
-  return value.toFixed(digits)
-}
-
-function fmtPct(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return '—'
-  }
-  return Math.round(value * 100) + '%'
-}
-
-function fmtFrCi(lower: number | null | undefined, upper: number | null | undefined): string {
-  if (lower === null || upper === null || lower === undefined || upper === undefined || Number.isNaN(lower) || Number.isNaN(upper)) {
-    return '—'
-  }
-  return `${Math.round(lower * 100)}%–${Math.round(upper * 100)}%`
 }
 
 function PrecisionBadge({ level }: { level: SimMcOut['failure_rate_precision'] }) {
@@ -105,22 +66,6 @@ function failureRateBadgeClass(rate: number | null | undefined, cap: number, cri
   return 'badge-bad'
 }
 
-function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
-  if (rows.length === 0) return
-  const header = Object.keys(rows[0])
-  const lines = [
-    header.join(','),
-    ...rows.map((row) => header.map((h) => String(row[h] ?? '')).join(',')),
-  ]
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 function QueueBars({ rows }: { rows: SimDesOut[] }) {
   return (
     <div className="card">
@@ -142,6 +87,104 @@ function QueueBars({ rows }: { rows: SimDesOut[] }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function SimulationPlayback({ rows }: { rows: SimDesOut[] }) {
+  const { t } = useTranslation()
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [speed, setSpeed] = useState(500)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (isPlaying && rows.length > 0) {
+      intervalRef.current = setInterval(() => {
+        setCurrentIndex((prev) => {
+          if (prev >= rows.length - 1) {
+            setIsPlaying(false)
+            return prev
+          }
+          return prev + 1
+        })
+      }, speed)
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [isPlaying, speed, rows.length])
+
+  function handlePlay() {
+    if (currentIndex >= rows.length - 1) {
+      setCurrentIndex(0)
+    }
+    setIsPlaying(true)
+  }
+
+  function handlePause() {
+    setIsPlaying(false)
+  }
+
+  function handleReset() {
+    setIsPlaying(false)
+    setCurrentIndex(0)
+  }
+
+  if (rows.length === 0) return null
+
+  const currentRow = rows[currentIndex]
+  const rho = safeRho(currentRow.rho_sim)
+  const width = Math.min(rho, 1) * 100
+  const level = rho >= 1 ? 'bad' : rho >= 0.85 ? 'warn' : 'ok'
+
+  return (
+    <div className="card simulation-playback">
+      <h3>{t('simulation.playback_title')}</h3>
+      <div className="playback-visual">
+        <div className="playback-row">
+          <span className="playback-time">{currentRow.time}</span>
+          <div className="playback-bar-track">
+            <div className={`playback-bar-fill ${level}`} style={{ width: `${width}%` }} />
+          </div>
+          <span className="playback-rho">{rho !== null ? `${Math.round(rho * 100)}%` : '—'}</span>
+        </div>
+        <div className="playback-stats">
+          <span>Lq: {currentRow.Lq_sim !== null ? currentRow.Lq_sim.toFixed(1) : '—'}</span>
+          <span>Served: {currentRow.served ?? '—'}</span>
+          <span>Dropped: {currentRow.dropped ?? '—'}</span>
+        </div>
+      </div>
+      <div className="playback-controls">
+        <button type="button" onClick={handleReset} className="btn-ghost">
+          {t('simulation.playback_reset')}
+        </button>
+        <button type="button" onClick={isPlaying ? handlePause : handlePlay} className="btn-primary">
+          {isPlaying ? t('simulation.playback_pause') : t('simulation.playback_play')}
+        </button>
+        <div className="playback-progress">
+          <span>{currentIndex + 1} / {rows.length}</span>
+          <input
+            type="range"
+            min={0}
+            max={rows.length - 1}
+            value={currentIndex}
+            onChange={(e) => {
+              setIsPlaying(false)
+              setCurrentIndex(Number(e.target.value))
+            }}
+          />
+        </div>
+        <div className="playback-speed">
+          <label>{t('simulation.playback_speed')}</label>
+          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
+            <option value={1000}>0.5x</option>
+            <option value={500}>1x</option>
+            <option value={250}>2x</option>
+            <option value={100}>5x</option>
+          </select>
+        </div>
+      </div>
     </div>
   )
 }
@@ -351,19 +394,24 @@ export function SimulationPage() {
 
   return (
     <div>
-      <h1 className="page-title">{t('simulation.title')}</h1>
-      <p>{t('system.simulation_basis')}</p>
-      <p>{t('system.mc_basis')}</p>
-      <p className="page-caption">{t('page3.caption')}</p>
-      <p className="form-hint">{t('integrity.simulation_coverage')}</p>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="topbar-eyebrow">Simulation · Stress-Test the Plan Under Realistic Variability</div>
+          <h1 className="page-title">{t('simulation.title')}</h1>
+          <p className="page-caption">Stress-test the staffing plan with queueing simulation to ensure reliability.</p>
+        </div>
+      </div>
+      <p style={{ fontSize: '11px', color: '#76889e', marginTop: '4px' }}>{t('integrity.simulation_coverage')}</p>
       {[...(desRows ?? []), ...(mcRows ?? []), ...(validateRows ?? [])].filter((r) => r.simulation_supported === false).map((r, index) =>
         <div role="alert" className="alert alert-warn" key={index}>{r.time}: {r.selected_model ?? '—'} — {t('integrity.unsupported')}</div>)}
 
-      <div className="card">
-        <h2 className="card-title">{t('page1.data_source')}</h2>
+      {/* Dataset Selector */}
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('page1.data_source')}</h3>
         <div className="form-row">
-          <div className="form-field">
-            <label htmlFor="sim-dataset">{t('optimize.source_dataset')}</label>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="sim-dataset" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.source_dataset')}</label>
             <select
               id="sim-dataset"
               aria-label={t('optimize.source_dataset')}
@@ -383,6 +431,7 @@ export function SimulationPage() {
                 setValidateRows(null)
                 setValidateDirty(true)
               }}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
             >
               <option value="">—</option>
               {datasets.data?.datasets.map((d: DatasetOut) => (
@@ -480,6 +529,7 @@ export function SimulationPage() {
                 <MetricCard label={t('simulation.served')} value={desServed} />
                 <MetricCard label={t('simulation.dropped')} value={desDropped} />
               </div>
+              <SimulationPlayback rows={desRows} />
               <QueueBars rows={desRows} />
               <div className="card-grid">
                 <div className="card">

@@ -13,7 +13,7 @@ const steps = [
 
 const workspacePages = [
   ['current', 'nav.current'], ['optimize', 'nav.optimize'], ['simulate', 'nav.simulate'],
-  ['compare', 'nav.compare'], ['reports', 'nav.reports'],
+  ['compare', 'nav.compare'], ['reports', 'nav.reports'], ['decision', 'nav.decision'],
 ] as const
 
 export function AnalysisWorkspace() {

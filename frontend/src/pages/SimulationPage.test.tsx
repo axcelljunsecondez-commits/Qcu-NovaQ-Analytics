@@ -188,7 +188,7 @@ describe('SimulationPage', () => {
     expect(container.querySelector('[data-testid="chart-rho-lq-lines"]')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-max-queue-bars"]')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-lq-histogram"]')).toBeInTheDocument()
-    expect(await screen.findByText('90%')).toBeInTheDocument()
+    expect(screen.getAllByText('90%').length).toBeGreaterThan(0)
   })
 
   it('runs Monte Carlo with defaults and renders MC charts', async () => {

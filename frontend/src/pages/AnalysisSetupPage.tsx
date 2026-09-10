@@ -5,13 +5,9 @@ import { Link, useParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, uploadAnalysisDataset } from '../api/analyses'
 import type { QueueSetup } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
+import { messageOf } from '../lib/format'
 
 const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null }
-
-function messageOf(error: unknown, fallback: string): string {
-  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
-  return typeof detail === 'string' ? detail : fallback
-}
 
 export function AnalysisSetupPage() {
   const { t } = useTranslation()

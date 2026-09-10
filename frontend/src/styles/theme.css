@@ -1,46 +1,90 @@
 :root {
-  --bg-page: #f1f5f9;
+  /* Backgrounds */
+  --bg-page: #f4f8fc;
   --bg-card: #ffffff;
-  --bg-sidebar: #0f172a;
+  --bg-secondary: #f1f5f9;
+  --bg-sidebar: #08213f;
   --bg-input: #ffffff;
   --bg-code: #1b2a4a;
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-sidebar: #e2e8f0;
+
+  /* Text */
+  --text-primary: #0a2345;
+  --text-secondary: #697a90;
+  --text-sidebar: #c4d3e4;
   --text-sidebar-heading: #ffffff;
   --text-on-hero: #ffffff;
+
+  /* Accent (NovaQ gold) */
   --accent: #e8a838;
   --accent-hover: #d4912f;
-  --border: #e2e8f0;
+  --accent-bg: rgba(232, 168, 56, 0.08);
+
+  /* Borders */
+  --border: #dce6f0;
   --border-accent: #e8a838;
-  --success: #27ae60;
-  --warning: #e8a838;
-  --danger: #c0392b;
+
+  /* Semantic colors */
+  --success: #0cad70;
+  --success-bg: #eaf8f1;
+  --warning: #f28a17;
+  --warning-bg: #fff7e8;
+  --danger: #ff365a;
+  --danger-bg: #fff0f3;
   --info: #2e86ab;
+  --info-bg: #eef7ff;
+
+  /* Model badge colors */
   --badge-mmc: #5dade2;
   --badge-mgc: #a569bd;
   --badge-mmck: #58d68d;
   --badge-mgck: #ec7063;
   --badge-erlang-a: #f39c12;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* Typography */
+  --font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(10, 42, 80, 0.025);
+  --shadow-md: 0 12px 30px rgba(7, 39, 75, 0.08);
 }
 
 [data-theme='dark'] {
   --bg-page: #0b1120;
   --bg-card: #162032;
+  --bg-secondary: #1e293b;
   --bg-sidebar: #070d18;
   --bg-input: #1b2a4a;
   --bg-code: #0f172a;
+
   --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
   --text-sidebar: #94a3b8;
   --text-sidebar-heading: #f1f5f9;
   --text-on-hero: #f1f5f9;
+
   --accent: #f0b84c;
   --accent-hover: #e8a838;
+  --accent-bg: rgba(240, 184, 76, 0.1);
+
   --border: #1e2d45;
   --border-accent: #f0b84c;
+
   --success: #2ecc71;
+  --success-bg: rgba(46, 204, 113, 0.12);
   --warning: #f0b84c;
+  --warning-bg: rgba(240, 184, 76, 0.12);
   --danger: #e74c3c;
+  --danger-bg: rgba(231, 76, 60, 0.12);
   --info: #3498db;
+  --info-bg: rgba(52, 152, 219, 0.12);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.3);
 }

@@ -4,6 +4,7 @@ import { runAnalysis, type AnalysisModel, type AnalysisRequest } from '../api/an
 import type { AnalysisOut } from '../api/types'
 import { MetricCard } from '../components/ui/MetricCard'
 import { ApiState } from '../components/ui/ApiState'
+import { fmt } from '../lib/format'
 
 const MODELS: AnalysisModel[] = ['mm1', 'mmc', 'mgc', 'mmck', 'mgck', 'erlang_a']
 
@@ -48,13 +49,6 @@ const FIELD_SETS: Record<AnalysisModel, FieldDef[]> = {
     { key: 'c', label: 'c', required: true },
     { key: 'theta', label: 'θ', required: true },
   ],
-}
-
-function fmt(value: number | null | undefined, digits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return '—'
-  }
-  return value.toFixed(digits)
 }
 
 function ModelExtras({ result }: { result: AnalysisOut }) {

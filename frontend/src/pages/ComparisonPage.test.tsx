@@ -249,7 +249,7 @@ describe('ComparisonPage', () => {
   it('shows the ROI projection from current vs optimized costs', async () => {
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
     expect(await screen.findByText('ROI Projection')).toBeInTheDocument()
-    expect(await screen.findByText('₱300')).toBeInTheDocument()
+    expect(screen.getAllByText('₱300').length).toBeGreaterThan(0)
     expect(screen.getByText('₱8,825')).toBeInTheDocument()
     expect(screen.getByText('₱105,900')).toBeInTheDocument()
     expect(screen.getByText('Operating Days')).toBeInTheDocument()

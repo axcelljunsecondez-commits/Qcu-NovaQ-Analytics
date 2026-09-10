@@ -13,6 +13,8 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage').then((m) => ({ de
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })))
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })))
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })))
+const GuidedSetupPage = lazy(() => import('./pages/GuidedSetupPage').then((m) => ({ default: m.GuidedSetupPage })))
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 )
@@ -42,6 +44,7 @@ const AnalysesPage = lazy(() => import('./pages/AnalysesPage').then((m) => ({ de
 const NewAnalysisPage = lazy(() => import('./pages/NewAnalysisPage').then((m) => ({ default: m.NewAnalysisPage })))
 const AnalysisSetupPage = lazy(() => import('./pages/AnalysisSetupPage').then((m) => ({ default: m.AnalysisSetupPage })))
 const AnalysisCurrentPage = lazy(() => import('./pages/AnalysisCurrentPage').then((m) => ({ default: m.AnalysisCurrentPage })))
+const DecisionEndpointPage = lazy(() => import('./components/analysis/DecisionEndpointPage').then((m) => ({ default: m.DecisionEndpointPage })))
 
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
 function RootLayout() {
@@ -68,6 +71,10 @@ export function createAppRouter() {
         { path: '/forgot-password', element: <ForgotPasswordPage /> },
         { path: '/reset-password', element: <ResetPasswordPage /> },
         {
+          path: '/onboarding',
+          element: <OnboardingPage />,
+        },
+        {
           element: <RequireAuth />,
           children: [
             {
@@ -87,11 +94,13 @@ export function createAppRouter() {
                   children: [
                     { index: true, element: <Navigate to="setup" replace /> },
                     { path: 'setup', element: <AnalysisSetupPage /> },
+                    { path: 'guided-setup', element: <GuidedSetupPage /> },
                     { path: 'current', element: <AnalysisCurrentPage /> },
                     { path: 'optimize', element: <OptimizePage /> },
                     { path: 'simulate', element: <SimulationPage /> },
                     { path: 'compare', element: <ComparisonPage /> },
                     { path: 'reports', element: <ReportsPage /> },
+                    { path: 'decision', element: <DecisionEndpointPage /> },
                   ],
                 },
                 {
@@ -105,22 +114,6 @@ export function createAppRouter() {
                 {
                   path: '/analysis',
                   element: <AnalysisPage />,
-                },
-                {
-                  path: '/optimize',
-                  element: <OptimizePage />,
-                },
-                {
-                  path: '/simulate',
-                  element: <SimulationPage />,
-                },
-                {
-                  path: '/compare',
-                  element: <ComparisonPage />,
-                },
-                {
-                  path: '/reports',
-                  element: <ReportsPage />,
                 },
                 {
                   path: '/account',
