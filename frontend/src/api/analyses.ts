@@ -1,6 +1,5 @@
 import { http } from '../lib/http'
 import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, QueueSetup } from './types'
-import type { ScenarioOut } from './scenarios'
 
 export interface AnalysisInput {
   name: string
@@ -51,7 +50,3 @@ export async function getAnalysisCurrent(id: number): Promise<AnalysisCurrentOut
   return data
 }
 
-export async function listAnalysisScenarios(id: number): Promise<{ scenarios: ScenarioOut[] }> {
-  const { data } = await http.get<{ scenarios: ScenarioOut[] }>(`/analyses/${id}/scenarios`)
-  return data
-}

@@ -11,7 +11,7 @@ from backend.queueing_engine.log import get_logger
 
 logger = get_logger(__name__)
 
-from backend.queueing_engine.config import DEFAULT_CUSTOMER_WAITING_COST, UNSTABLE_PENALTY_MULTIPLIER
+from backend.queueing_engine.config import DEFAULT_WAIT_COST_HR, UNSTABLE_PENALTY_MULTIPLIER
 from backend.queueing_engine.services.model_selection import select_model
 
 CURRENT_COLUMNS = [
@@ -154,7 +154,7 @@ def compute_kpis(results_df: pd.DataFrame, customer_waiting_cost: float | None =
     - Unstable (ρ ≥ 1): cost = λ × UNSTABLE_PENALTY_MULTIPLIER × customer_waiting_cost
     """
     if customer_waiting_cost is None:
-        customer_waiting_cost = DEFAULT_CUSTOMER_WAITING_COST
+        customer_waiting_cost = DEFAULT_WAIT_COST_HR
 
     if results_df is None or results_df.empty:
         return {

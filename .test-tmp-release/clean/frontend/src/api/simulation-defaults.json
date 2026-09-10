@@ -1,6 +1,0 @@
-{
-  "num_trials": 2000,
-  "failure_threshold": 0.75,
-  "failure_rate_cap": 0.05,
-  "seed": 42
-}

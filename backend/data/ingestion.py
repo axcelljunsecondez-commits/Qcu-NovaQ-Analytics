@@ -101,24 +101,12 @@ def to_segment_records(df: pd.DataFrame) -> list[dict]:
     return df.astype(object).where(pd.notna(df), None).to_dict("records")
 
 
-def pretty_metric(value, percent: bool = False, money: bool = False) -> str:
-    """Format optional numeric values for Streamlit metric cards."""
-    if value is None or pd.isna(value):
-        return "N/A"
-    if percent:
-        return f"{float(value) * 100:.1f}%"
-    if money:
-        return f"₱{float(value):,.2f}"
-    return f"{float(value):.2f}"
-
-
 __all__ = [
     "DEFAULT_ABANDONMENT_COST",
     "DEFAULT_SERVER_COST_HR",
     "DEFAULT_WAIT_COST_HR",
     "OPTIONAL_COLUMNS",
     "REQUIRED_COLUMNS",
-    "pretty_metric",
     "read_uploaded_table",
     "sample_segments",
     "to_segment_records",

@@ -11,9 +11,9 @@ from backend.queueing_engine.log import get_logger
 logger = get_logger(__name__)
 
 from backend.queueing_engine.config import (
-    DEFAULT_CUSTOMER_WAITING_COST,
+    DEFAULT_WAIT_COST_HR,
     DEFAULT_MAX_SERVERS,
-    DEFAULT_SERVER_COST,
+    DEFAULT_SERVER_COST_HR,
     DEFAULT_TARGET_UTILIZATION,
     OT_RATE,
     REGULAR_RATE,
@@ -24,17 +24,17 @@ from backend.queueing_engine.services.model_selection import select_model
 def compute_blended_rate(regular_hours, ot_hours, total_hours) -> float:
     """Compute blended server cost rate: (reg_hrs*87 + OT_hrs*109) / total_hrs.
 
-    Falls back to DEFAULT_SERVER_COST when any value is missing or invalid.
+    Falls back to DEFAULT_SERVER_COST_HR when any value is missing or invalid.
     """
     try:
         reg = float(regular_hours)
         ot = float(ot_hours)
         tot = float(total_hours)
         if tot <= 0:
-            return DEFAULT_SERVER_COST
+            return DEFAULT_SERVER_COST_HR
         return (reg * REGULAR_RATE + ot * OT_RATE) / tot
     except (TypeError, ValueError, ZeroDivisionError):
-        return DEFAULT_SERVER_COST
+        return DEFAULT_SERVER_COST_HR
 
 
 def _is_number(value) -> bool:
@@ -42,7 +42,7 @@ def _is_number(value) -> bool:
     return isinstance(value, Real) and math.isfinite(float(value))
 
 
-def _compute_waiting_cost(lambda_, wq_value, customer_waiting_cost=DEFAULT_CUSTOMER_WAITING_COST):
+def _compute_waiting_cost(lambda_, wq_value, customer_waiting_cost=DEFAULT_WAIT_COST_HR):
     """Compute waiting cost only from a valid analytical waiting time.
 
     An unstable infinite-capacity baseline has no steady-state ``Wq``.  Its
@@ -186,9 +186,9 @@ def _format_recommendation(time_label, current_c, optimal_c):
 def optimize_segment(
     segment: Mapping,
     target_utilization: float = DEFAULT_TARGET_UTILIZATION,
-    default_server_cost: float = DEFAULT_SERVER_COST,
+    default_server_cost: float = DEFAULT_SERVER_COST_HR,
     max_servers: int = DEFAULT_MAX_SERVERS,
-    customer_waiting_cost: float = DEFAULT_CUSTOMER_WAITING_COST,
+    customer_waiting_cost: float = DEFAULT_WAIT_COST_HR,
     cost_per_abandonment: float = 0.0,
     abandonment_rate: float = 0.0,
     min_servers: int = 1,
@@ -389,9 +389,9 @@ def optimize_segment(
 def optimize_segments(
     time_segments: Iterable[Mapping],
     target_utilization: float = DEFAULT_TARGET_UTILIZATION,
-    default_server_cost: float = DEFAULT_SERVER_COST,
+    default_server_cost: float = DEFAULT_SERVER_COST_HR,
     max_servers: int = DEFAULT_MAX_SERVERS,
-    customer_waiting_cost: float = DEFAULT_CUSTOMER_WAITING_COST,
+    customer_waiting_cost: float = DEFAULT_WAIT_COST_HR,
     cost_per_abandonment: float = 0.0,
     abandonment_rate: float = 0.0,
     min_servers: int = 1,

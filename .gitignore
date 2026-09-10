@@ -63,6 +63,7 @@ backups/
 .pytest_tmp/
 .test-tmp-*/
 .pwd/
+.trivy-cache/
 /outputs/
 /pptx-output/
 /reports/

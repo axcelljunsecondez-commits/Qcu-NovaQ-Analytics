@@ -26,19 +26,3 @@ export function segmentsOf(dataset: DatasetOut): SegmentRow[] {
   })
 }
 
-/**
- * Check if a rate input is numeric and finite.
- */
-export function isValidRate(value: unknown): boolean {
-  return typeof value === 'number' && Number.isFinite(value)
-}
-
-/**
- * Safely convert a value to a finite number, returning 0 for invalid values.
- */
-export function safeNumber(value: number | null | undefined, fallback = 0): number {
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return fallback
-  }
-  return Number.isFinite(value) ? value : fallback
-}

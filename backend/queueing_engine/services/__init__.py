@@ -10,7 +10,6 @@ from .costing import (
 from .data_processing import (
     CURRENT_COLUMNS,
     compute_kpis,
-    get_unstable_messages,
     process_segments,
 )
 from .optimization import (
@@ -27,7 +26,6 @@ __all__ = [
     "compute_cost_summary",
     "compute_kpis",
     "compute_segment_costs",
-    "get_unstable_messages",
     "optimize_segment",
     "optimize_segments",
     "process_segments",
