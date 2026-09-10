@@ -8,7 +8,7 @@ import unittest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from queue_models import erlang_a, mgc, mgck, mm1, mmc, mmc_priority, mmck
+from backend.queueing_engine.models import erlang_a, mgc, mgck, mm1, mmc, mmc_priority, mmck
 
 
 class QueueModelTests(unittest.TestCase):

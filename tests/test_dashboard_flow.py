@@ -7,9 +7,9 @@ from importlib.util import find_spec
 
 import pandas as pd
 
-from app_page_utils import sample_segments, to_segment_records, validate_and_normalize
-from data_processing import compute_kpis, process_segments
-from optimization import optimize_segments
+from backend.data.ingestion import sample_segments, to_segment_records, validate_and_normalize
+from backend.queueing_engine.services.data_processing import compute_kpis, process_segments
+from backend.queueing_engine.services.optimization import optimize_segments
 
 
 class DashboardFlowTests(unittest.TestCase):
@@ -51,7 +51,7 @@ class DashboardFlowTests(unittest.TestCase):
         if find_spec("simpy") is None:
             self.skipTest("simpy is not installed in this Python environment")
 
-        from simulation import simulate_segments, summarize_simulation
+        from backend.queueing_engine.simulation import simulate_segments, summarize_simulation
 
         rows = [{"time": "08:00-09:00", "lambda": 2.0, "mu": 3.0, "c": 1}]
 
