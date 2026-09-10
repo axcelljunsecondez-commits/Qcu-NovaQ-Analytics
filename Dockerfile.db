@@ -1,0 +1,6 @@
+FROM postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+
+RUN apk upgrade --no-cache \
+    && rm /usr/local/bin/gosu /usr/local/bin/su-exec \
+    && apk add --no-cache su-exec \
+    && sed -i 's/exec gosu postgres/exec su-exec postgres/' /usr/local/bin/docker-entrypoint.sh

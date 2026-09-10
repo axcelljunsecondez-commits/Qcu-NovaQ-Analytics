@@ -7,8 +7,7 @@ import unittest
 
 import pandas as pd
 
-from config import UNSTABLE_FIXED_COST
-from costing import (
+from backend.queueing_engine.services.costing import (
     compute_all_costs,
     compute_cost_summary,
     compute_segment_costs,
@@ -53,7 +52,8 @@ class CostingTests(unittest.TestCase):
             hours_per_interval=1,
         )
         self.assertEqual(costs["server_cost"], 174.0)
-        self.assertGreater(costs["wait_cost"], 0)
+        self.assertIsNone(costs["wait_cost"])
+        self.assertIsNone(costs["total_cost"])
 
     def test_compute_all_costs_empty(self):
         result = compute_all_costs(pd.DataFrame())
@@ -126,9 +126,9 @@ class CostingTests(unittest.TestCase):
             "Wq": [None],
         })
         summary = compute_cost_summary(df)
-        self.assertEqual(summary["total_cost"], 0.0)
+        self.assertIsNone(summary["total_cost"])
 
-    def test_compute_segment_costs_infinite_wq_uses_fixed_penalty(self):
+    def test_compute_segment_costs_infinite_wq_is_unavailable(self):
         costs = compute_segment_costs(
             servers=2,
             arrival_rate=10,
@@ -137,10 +137,10 @@ class CostingTests(unittest.TestCase):
             cost_per_wait_hr=100,
             hours_per_interval=1,
         )
-        self.assertEqual(costs["wait_cost"], UNSTABLE_FIXED_COST)
-        self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST)
+        self.assertIsNone(costs["wait_cost"])
+        self.assertIsNone(costs["total_cost"])
 
-    def test_compute_segment_costs_nan_wq_uses_fixed_penalty(self):
+    def test_compute_segment_costs_nan_wq_is_unavailable(self):
         costs = compute_segment_costs(
             servers=2,
             arrival_rate=10,
@@ -149,10 +149,25 @@ class CostingTests(unittest.TestCase):
             cost_per_wait_hr=100,
             hours_per_interval=1,
         )
-        self.assertEqual(costs["wait_cost"], UNSTABLE_FIXED_COST)
-        self.assertAlmostEqual(costs["total_cost"], 174.0 + UNSTABLE_FIXED_COST)
+        self.assertIsNone(costs["wait_cost"])
+        self.assertIsNone(costs["total_cost"])
 
-    def test_compute_all_costs_unstable_row_gets_penalty(self):
+    def test_compute_segment_costs_unstable_row_charges_abandonment_like_all_costs(self):
+        costs = compute_segment_costs(
+            servers=2,
+            arrival_rate=10,
+            wq=float("nan"),
+            cost_per_server_hr=87,
+            cost_per_wait_hr=100,
+            cost_per_abandonment=60,
+            abandonment_rate=0.1,
+            hours_per_interval=1,
+        )
+        self.assertIsNone(costs["wait_cost"])
+        self.assertAlmostEqual(costs["abandonment_cost"], 60.0)
+        self.assertIsNone(costs["total_cost"])
+
+    def test_compute_all_costs_unstable_row_keeps_independent_costs(self):
         df = pd.DataFrame({
             "time": ["08:00"],
             "c": [2],
@@ -167,34 +182,37 @@ class CostingTests(unittest.TestCase):
             abandonment_rate=0.1,
             hours_per_interval=1,
         )
-        self.assertEqual(result.loc[0, "wait_cost"], UNSTABLE_FIXED_COST)
-        self.assertAlmostEqual(result.loc[0, "total_cost"], 174.0 + UNSTABLE_FIXED_COST + 60.0)
+        self.assertTrue(math.isnan(result.loc[0, "wait_cost"]))
+        self.assertTrue(math.isnan(result.loc[0, "total_cost"]))
+        self.assertEqual(result.loc[0, "server_cost"], 174.0)
+        self.assertEqual(result.loc[0, "abandonment_cost"], 60.0)
 
     def test_costing_matches_optimization_for_unstable_segment(self):
-        from optimization import optimize_segment
+        from backend.queueing_engine.services.optimization import optimize_segment
 
         opt = optimize_segment({"time": "t", "lambda": 30, "mu": 10, "c": 1})
         costs = compute_segment_costs(
             servers=1,
             arrival_rate=30,
             wq=float("nan"),
-            cost_per_server_hr=1.0,
+            cost_per_server_hr=87.0,
             cost_per_wait_hr=100,
             cost_per_abandonment=0,
             abandonment_rate=0,
             hours_per_interval=1,
         )
-        self.assertAlmostEqual(opt["cost_current"], costs["total_cost"], places=2)
+        self.assertIsNone(opt["cost_current"])
+        self.assertIsNone(costs["total_cost"])
 
     def test_costing_matches_optimization_for_stable_segment(self):
-        from optimization import optimize_segment
+        from backend.queueing_engine.services.optimization import optimize_segment
 
         opt = optimize_segment({"time": "t", "lambda": 2, "mu": 5, "c": 1})
         costs = compute_segment_costs(
             servers=1,
             arrival_rate=2,
             wq=opt["Wq_current"],
-            cost_per_server_hr=1.0,
+            cost_per_server_hr=87.0,
             cost_per_wait_hr=100,
             cost_per_abandonment=0,
             abandonment_rate=0,
