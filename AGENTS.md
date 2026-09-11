@@ -1,6 +1,20 @@
 # AGENTS.md — Agent Instructions
 
-Guidance for AI agents and developers working in this repository: the **NovaQ — Queueing Analytics** (production SaaS + React frontend).
+Guidance for AI agents and developers working in this repository: the **NovaQ — Queueing Analytics**, a web-based queueing analytics, simulation, and service-operations optimization system with a React frontend and FastAPI backend.
+
+## Required Context
+
+Before substantial work, read:
+
+1. `AGENTS.md`
+2. `memory.md`
+3. `handoff.md`
+4. Relevant files under `docs/`
+5. Relevant existing Superpowers spec or plan when one exists
+
+Use `memory.md` for durable project decisions and `handoff.md` for the current development state.
+
+Treat the current repository state as authoritative over old session history.
 
 ## Repository Layout
 
