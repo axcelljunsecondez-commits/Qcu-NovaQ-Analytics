@@ -97,10 +97,10 @@ export function createAppRouter() {
                     { path: 'guided-setup', element: <GuidedSetupPage /> },
                     { path: 'current', element: <AnalysisCurrentPage /> },
                     { path: 'optimize', element: <OptimizePage /> },
-                    { path: 'simulate', element: <SimulationPage /> },
                     { path: 'compare', element: <ComparisonPage /> },
-                    { path: 'reports', element: <ReportsPage /> },
+                    { path: 'simulate', element: <SimulationPage /> },
                     { path: 'decision', element: <DecisionEndpointPage /> },
+                    { path: 'reports', element: <ReportsPage /> },
                   ],
                 },
                 {

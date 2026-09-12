@@ -67,6 +67,15 @@ describe('AnalysisWorkspace', () => {
       </QueryClientProvider>,
     )
     expect(await screen.findByRole('heading', { name: 'Analysis 1' })).toBeInTheDocument()
+    expect(screen.getByText('Step 2 of 7')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back: Setup' })).toHaveAttribute(
+      'href',
+      '/analyses/1/setup',
+    )
+    expect(screen.getByRole('link', { name: 'Next: Optimize' })).toHaveAttribute(
+      'href',
+      '/analyses/1/optimize',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Transient 0' }))
     expect(screen.getByRole('button', { name: 'Transient 1' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Switch Analysis'), { target: { value: '2' } })

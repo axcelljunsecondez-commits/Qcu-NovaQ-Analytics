@@ -34,7 +34,8 @@ class DesRequest(BaseModel):
 class TraceRequest(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     segments: list[dict] = Field(max_length=1000)
-    trace_hours: float = Field(default=1.0, gt=0, le=4)
+    trace_hours: float = Field(default=1.0, gt=0, le=168)
+    queue_overload_threshold: int = Field(default=20, ge=1)
     max_events: int = Field(default=10000, ge=1, le=10000)
     seed: int | None = Field(default=42)
     carryover: bool = True
@@ -84,6 +85,7 @@ def des_trace(
     return trace_simulate_segments(
         payload.segments,
         trace_hours=payload.trace_hours,
+        queue_overload_threshold=payload.queue_overload_threshold,
         max_events=payload.max_events,
         seed=payload.seed,
         carryover=payload.carryover,

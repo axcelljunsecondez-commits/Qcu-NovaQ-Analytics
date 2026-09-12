@@ -1,99 +1,83 @@
-/**
- * Decision Endpoint - Shows completion status and next actions.
- * This is the final screen in the NovaQ workflow.
- */
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-
-interface DecisionStep {
-  id: string
-  label: string
-  completed: boolean
-}
+import type { WorkflowDecision } from '../../api/workflow'
 
 interface DecisionEndpointProps {
-  steps: DecisionStep[]
   analysisId: number
+  decision: WorkflowDecision | null
+  decisionStale: boolean
+  isPending: boolean
+  error: string | null
+  onDerive: () => void
 }
 
-export function DecisionEndpoint({ steps, analysisId }: DecisionEndpointProps) {
-  const { t } = useTranslation()
-  const completedCount = steps.filter((s) => s.completed).length
-  const allComplete = completedCount === steps.length
+const statusClasses: Record<WorkflowDecision['status'], string> = {
+  insufficient_evidence: 'badge-warn',
+  revise: 'badge-bad',
+  adopt: 'badge-ok',
+  conditional: 'badge-warn',
+}
 
+export function DecisionEndpoint({
+  analysisId,
+  decision,
+  decisionStale,
+  isPending,
+  error,
+  onDerive,
+}: DecisionEndpointProps) {
+  const { t } = useTranslation()
   return (
     <div className="decision-endpoint">
-      <div className="card decision-card">
-        <h1 className="decision-title">{t('decision.title')}</h1>
-
-        <div className="decision-checklist">
-          {steps.map((step) => (
-            <div key={step.id} className={`decision-step ${step.completed ? 'completed' : ''}`}>
-              <span className="step-check">{step.completed ? '✓' : '○'}</span>
-              <span className="step-label">{step.label}</span>
-            </div>
-          ))}
+      <div className="topbar">
+        <div>
+          <div className="topbar-eyebrow">{t('decision.eyebrow')}</div>
+          <h1 className="page-title">{t('decision.title')}</h1>
+          <p className="page-caption">{t('decision.description')}</p>
         </div>
+        <button type="button" className="btn-primary" disabled={isPending} onClick={onDerive}>
+          {isPending ? t('common.loading') : t('decision.derive')}
+        </button>
+      </div>
 
-        {allComplete && (
-          <div className="decision-success">
-            <p>{t('decision.all_complete')}</p>
-          </div>
-        )}
-
-        <div className="decision-actions">
-          <h2>{t('decision.next_actions')}</h2>
-          <div className="action-grid">
-            <Link to={`/analyses/${analysisId}/compare`} className="action-card">
-              <span className="action-icon">📊</span>
-              <span className="action-label">{t('decision.use_preferred')}</span>
-            </Link>
-            <Link to={`/analyses/${analysisId}/optimize`} className="action-card">
-              <span className="action-icon">🔄</span>
-              <span className="action-label">{t('decision.test_another')}</span>
-            </Link>
-            <Link to={`/analyses/${analysisId}/simulate`} className="action-card">
-              <span className="action-icon">▶</span>
-              <span className="action-label">{t('decision.run_simulation')}</span>
-            </Link>
-            <Link to="/analyses/new" className="action-card">
-              <span className="action-icon">➕</span>
-              <span className="action-label">{t('decision.new_analysis')}</span>
-            </Link>
-            <Link to="/dashboard" className="action-card">
-              <span className="action-icon">🏠</span>
-              <span className="action-label">{t('decision.return_dashboard')}</span>
-            </Link>
-          </div>
+      {decisionStale && <div className="alert alert-warn">{t('decision.stale')}</div>}
+      {error && <div role="alert" className="alert alert-error">{error}</div>}
+      {!decision && (
+        <div className="card">
+          <h2 className="card-title">{t('decision.no_decision')}</h2>
+          <p className="form-hint">{t('decision.no_decision_help')}</p>
         </div>
+      )}
+      {decision && (
+        <div className="card decision-card">
+          <span className={`badge ${statusClasses[decision.status]}`}>
+            {t(`decision.status.${decision.status}`)}
+          </span>
+          <h2 className="decision-title">{decision.headline}</h2>
+          <p className="decision-recommendation">{decision.recommendation}</p>
+
+          <h3 className="section-title">{t('decision.evidence')}</h3>
+          <ul className="decision-evidence">
+            {decision.rationale.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+
+          {decision.missing_evidence.length > 0 && (
+            <>
+              <h3 className="section-title">{t('decision.missing')}</h3>
+              <ul className="decision-evidence">
+                {decision.missing_evidence.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </>
+          )}
+          <div className="alert alert-warn">{decision.provenance_warning}</div>
+        </div>
+      )}
+
+      <div className="decision-actions">
+        <Link className="btn-ghost" to={`/analyses/${analysisId}/compare`}>{t('decision.back_compare')}</Link>
+        <Link className="btn-ghost" to={`/analyses/${analysisId}/simulate`}>{t('decision.back_simulation')}</Link>
+        <Link className="btn-primary" to={`/analyses/${analysisId}/reports`}>{t('decision.continue_reports')}</Link>
       </div>
     </div>
   )
-}
-
-/**
- * Get completion steps for the current analysis.
- */
-export function getCompletionSteps(analysis: {
-  queue_setup?: { queue_structure?: string }
-  datasets?: Array<{ id: number }>
-  scenarios?: Array<{ id: number }>
-}, t: (key: string) => string): DecisionStep[] {
-  return [
-    {
-      id: 'setup',
-      label: t('decision.step_setup'),
-      completed: analysis.queue_setup?.queue_structure != null && analysis.queue_setup.queue_structure !== 'unknown',
-    },
-    {
-      id: 'data',
-      label: t('decision.step_data'),
-      completed: (analysis.datasets?.length ?? 0) > 0,
-    },
-    {
-      id: 'optimize',
-      label: t('decision.step_optimize'),
-      completed: (analysis.scenarios?.length ?? 0) > 0,
-    },
-  ]
 }

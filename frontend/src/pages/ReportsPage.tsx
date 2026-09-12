@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { listDatasets } from '../api/datasets'
 import { listScenarios } from '../api/scenarios'
 import {
@@ -15,6 +15,7 @@ import {
   type ReportKind,
 } from '../api/reports'
 import { ApiState } from '../components/ui/ApiState'
+import { getWorkflow } from '../api/workflow'
 
 interface ReportSection {
   id: string
@@ -47,14 +48,26 @@ export function ReportsPage() {
 
   const datasets = useQuery({ queryKey: ['datasets', analysisId], queryFn: () => listDatasets(analysisId) })
   const scenarios = useQuery({ queryKey: ['scenarios', analysisId], queryFn: () => listScenarios(analysisId) })
+  const workflow = useQuery({
+    queryKey: ['workflow', analysisId],
+    queryFn: () => getWorkflow(analysisId!),
+    enabled: Number.isInteger(analysisId),
+  })
 
-  if (datasets.isLoading || scenarios.isLoading) return <ApiState.Loading />
-  if (datasets.isError || scenarios.isError) return <ApiState.ErrorState />
+  if (datasets.isLoading || scenarios.isLoading || workflow.isLoading) return <ApiState.Loading />
+  if (datasets.isError || scenarios.isError || workflow.isError) return <ApiState.ErrorState />
 
   const datasetList = datasets.data?.datasets ?? []
   const scenarioList = scenarios.data?.scenarios ?? []
   const effectiveDatasetId = datasetId || String(datasetList[0]?.id ?? '')
-  const effectiveScenarioId = scenarioId || String(scenarioList[0]?.id ?? '')
+  const effectiveScenarioId = scenarioId
+    || String(workflow.data?.scenario?.id ?? scenarioList[0]?.id ?? '')
+  const decision = workflow.data?.decision?.result ?? null
+  const scenarioDecisionReady = Boolean(
+    decision
+    && decision.scenario_id === Number(effectiveScenarioId)
+    && !workflow.data?.decision_stale,
+  )
 
   if (datasetList.length === 0 && scenarioList.length === 0) {
     return (
@@ -105,6 +118,20 @@ export function ReportsPage() {
 
       {downloaded && <div className="alert alert-ok" style={{ marginTop: '12px' }}>{t('reports.download')}</div>}
       {error && <div className="alert alert-error" style={{ marginTop: '12px' }}>{error}</div>}
+      {analysisId && decision && (
+        <div className="card" data-testid="report-decision" style={{ marginTop: '12px' }}>
+          <span className="badge badge-ok">{t('reports.decision_source')}</span>
+          <h3 className="section-title">{decision.headline}</h3>
+          <p>{decision.recommendation}</p>
+          <p className="form-hint">{decision.provenance_warning}</p>
+        </div>
+      )}
+      {analysisId && !decision && (
+        <div className="alert alert-warn" style={{ marginTop: '12px' }}>
+          {workflow.data?.decision_stale ? t('reports.decision_stale') : t('reports.decision_required')}{' '}
+          <Link to={`/analyses/${analysisId}/decision`}>{t('nav.decision')}</Link>
+        </div>
+      )}
 
       {/* Report Preview */}
       <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
@@ -191,7 +218,7 @@ export function ReportsPage() {
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               type="button"
-              disabled={fetching !== null || scenarioList.length === 0}
+              disabled={fetching !== null || scenarioList.length === 0 || Boolean(analysisId && !scenarioDecisionReady)}
               onClick={() => handleDownload('scenarios', 'pdf')}
               style={{ padding: '8px 16px', background: '#1a2b4a', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: fetching !== null ? 'not-allowed' : 'pointer' }}
             >
@@ -199,7 +226,7 @@ export function ReportsPage() {
             </button>
             <button
               type="button"
-              disabled={fetching !== null || scenarioList.length === 0}
+              disabled={fetching !== null || scenarioList.length === 0 || Boolean(analysisId && !scenarioDecisionReady)}
               onClick={() => handleDownload('scenarios', 'excel')}
               style={{ padding: '8px 16px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: fetching !== null ? 'not-allowed' : 'pointer' }}
             >

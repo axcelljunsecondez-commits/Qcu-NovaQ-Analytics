@@ -401,8 +401,9 @@ def generate_excel_report(
     comparison_df: pd.DataFrame,
     recommended_kpis: dict | None = None,
     current_kpis: dict | None = None,
+    recommendations: list[str] | None = None,
 ) -> io.BytesIO:
-    """Generate a two-sheet Excel workbook.
+    """Generate an Excel workbook with summary, segment, and recommendation evidence.
 
     Parameters
     ----------
@@ -413,6 +414,8 @@ def generate_excel_report(
     current_kpis : dict, optional
         Current-metric KPIs (``compute_kpis`` output); used for the Summary
         sheet when no optimization KPIs exist (dataset reports).
+    recommendations : list of str, optional
+        Decision or analytical recommendation messages.
 
     Returns
     -------
@@ -553,6 +556,14 @@ def generate_excel_report(
 
     # Autofilter
     ws_segments.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(export_df) + 1}"
+
+    if recommendations:
+        ws_recommendations = wb.create_sheet("Recommendations")
+        header = ws_recommendations.cell(row=1, column=1, value="Recommendation Evidence")
+        header.font = Font(bold=True, size=12)
+        for row_idx, message in enumerate(recommendations, start=2):
+            ws_recommendations.cell(row=row_idx, column=1, value=message)
+        ws_recommendations.column_dimensions["A"].width = 100
 
     buf = io.BytesIO()
     # Force all strings to text even when a scenario supplies a formula prefix.

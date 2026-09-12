@@ -1,28 +1,39 @@
-/**
- * DecisionEndpointPage - Wrapper that fetches analysis data and renders DecisionEndpoint.
- */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
-import { getAnalysis } from '../../api/analyses'
+import { createWorkflowDecision, getWorkflow } from '../../api/workflow'
+import { DecisionEndpoint } from '../decision/DecisionEndpoint'
 import { ApiState } from '../ui/ApiState'
-import { DecisionEndpoint, getCompletionSteps } from '../decision/DecisionEndpoint'
 
 export function DecisionEndpointPage() {
   const { t } = useTranslation()
   const id = Number(useParams().analysisId)
-
-  const analysis = useQuery({
-    queryKey: ['analysis', id],
-    queryFn: () => getAnalysis(id),
+  const queryClient = useQueryClient()
+  const workflow = useQuery({
+    queryKey: ['workflow', id],
+    queryFn: () => getWorkflow(id),
     enabled: Number.isInteger(id),
+  })
+  const derive = useMutation({
+    mutationFn: () => createWorkflowDecision(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workflow', id] })
+    },
   })
 
   if (!Number.isInteger(id)) return <ApiState.ErrorState />
-  if (analysis.isLoading) return <ApiState.Loading />
-  if (analysis.isError || !analysis.data) return <ApiState.ErrorState />
+  if (workflow.isLoading) return <ApiState.Loading />
+  if (workflow.isError || !workflow.data) return <ApiState.ErrorState />
 
-  const steps = getCompletionSteps(analysis.data.analysis, t)
-
-  return <DecisionEndpoint steps={steps} analysisId={id} />
+  const decision = derive.data?.decision ?? workflow.data.decision?.result ?? null
+  return (
+    <DecisionEndpoint
+      analysisId={id}
+      decision={decision}
+      decisionStale={workflow.data.decision_stale}
+      isPending={derive.isPending}
+      error={derive.isError ? t('errors.server') : null}
+      onDerive={() => derive.mutate()}
+    />
+  )
 }

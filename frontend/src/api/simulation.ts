@@ -10,6 +10,7 @@ export interface DesOptions {
 
 export interface TraceOptions {
   trace_hours?: number
+  queue_overload_threshold?: number
   max_events?: number
   seed?: number | null
   carryover?: boolean

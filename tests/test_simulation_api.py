@@ -42,20 +42,23 @@ def test_des_trace_endpoint(db_engine, client):
     assert isinstance(body["trace"][0]["customer_id"], int)
     assert body["segments"][0]["queue_structure"] == "shared"
     assert body["abandonment_supported"] is False
+    assert body["results"]
+    assert body["results"][0]["time"] == SEGMENTS[0]["time"]
 
 
 def test_des_trace_requires_auth(client):
     assert client.post("/simulation/des/trace", json={"segments": SEGMENTS}).status_code == 401
 
 
-def test_des_trace_rejects_out_of_range_hours(db_engine, client):
+def test_des_trace_accepts_standard_des_horizon(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")
     response = client.post(
         "/simulation/des/trace",
-        json={"segments": SEGMENTS, "trace_hours": 4.1},
+        json={"segments": SEGMENTS[:1], "trace_hours": 24, "max_events": 10},
     )
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert response.json()["results"][0]["requested_sim_hours"] == 24
 
 
 def test_mc_endpoint(db_engine, client):

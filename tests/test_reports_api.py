@@ -165,3 +165,78 @@ def test_unknown_format_404(db_engine, client):
     login(client, "u@example.com", "pw")
     dataset_id = make_dataset(client)
     assert client.get(f"/reports/datasets/{dataset_id}/csv").status_code == 404
+
+
+def test_analysis_scoped_report_uses_decision_recommendation(monkeypatch, db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    scenario_id = make_scenario(client)
+    scenario = client.get(f"/scenarios/{scenario_id}").json()["scenario"]
+    analysis_id = scenario["analysis_id"]
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_pdf(current, recommended, frame, recommendations):
+        captured["recommendations"] = recommendations
+        return io.BytesIO(b"%PDF decision")
+
+    monkeypatch.setattr("backend.api.reports.generate_pdf_report", fake_pdf)
+    response = client.get(
+        f"/reports/scenarios/{scenario_id}/pdf?analysis_id={analysis_id}"
+    )
+    assert response.status_code == 200
+    assert captured["recommendations"] == [
+        "Management recommendation unavailable: complete Decision for the "
+        "currently selected and simulated Scenario."
+    ]
+
+
+def test_analysis_scoped_reports_consume_the_persisted_decision(
+    monkeypatch, db_engine, client
+):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    scenario_id = make_scenario(client)
+    scenario = client.get(f"/scenarios/{scenario_id}").json()["scenario"]
+    analysis_id = scenario["analysis_id"]
+    decision = {
+        "headline": "Adopt Scenario A.",
+        "recommendation": "All validation intervals passed.",
+        "rationale": ["Modeled cost is lower."],
+        "provenance_warning": "Simulation is decision support.",
+    }
+    monkeypatch.setattr(
+        "backend.api.reports.current_decision_for_report",
+        lambda *args: decision,
+    )
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_pdf(current, recommended, frame, recommendations):
+        captured["recommendations"] = recommendations
+        return io.BytesIO(b"%PDF decision")
+
+    monkeypatch.setattr("backend.api.reports.generate_pdf_report", fake_pdf)
+    pdf = client.get(
+        f"/reports/scenarios/{scenario_id}/pdf?analysis_id={analysis_id}"
+    )
+    assert pdf.status_code == 200
+    assert captured["recommendations"] == [
+        "Adopt Scenario A.",
+        "All validation intervals passed.",
+        "Modeled cost is lower.",
+        "Simulation is decision support.",
+    ]
+
+    excel = client.get(
+        f"/reports/scenarios/{scenario_id}/excel?analysis_id={analysis_id}"
+    )
+    assert excel.status_code == 200
+    workbook = openpyxl.load_workbook(io.BytesIO(excel.content))
+    assert [cell.value for cell in workbook["Recommendations"]["A"]] == [
+        "Recommendation Evidence",
+        "Adopt Scenario A.",
+        "All validation intervals passed.",
+        "Modeled cost is lower.",
+        "Simulation is decision support.",
+    ]

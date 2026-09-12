@@ -35,8 +35,16 @@ export function AnalysisCurrentPage() {
   }
 
   const { selected_model, rows, kpis, explanations } = query.data
-  const avgRho = typeof kpis?.avg_rho === 'number' ? kpis.avg_rho : null
-  const avgWq = typeof kpis?.avg_wq === 'number' ? kpis.avg_wq : null
+  const avgRho = typeof kpis?.avg_utilization === 'number' ? kpis.avg_utilization : null
+  const avgWq = typeof kpis?.avg_waiting_time === 'number' ? kpis.avg_waiting_time : null
+  const numericWq = rows
+    .map((row) => typeof row.Wq === 'number' ? row.Wq : Number(row.Wq))
+    .filter((value) => Number.isFinite(value))
+  const numericRho = rows
+    .map((row) => typeof row.rho === 'number' ? row.rho : Number(row.rho))
+    .filter((value) => Number.isFinite(value))
+  const maxWq = numericWq.length > 0 ? Math.max(...numericWq) : null
+  const maxRho = numericRho.length > 0 ? Math.max(...numericRho) : null
 
   const insights = generateOptimizationInsights(
     0, 0,
@@ -56,6 +64,10 @@ export function AnalysisCurrentPage() {
   const timeLabels = Object.keys(arrivalsByTime)
   const arrivalValues = Object.values(arrivalsByTime)
   const maxArrival = Math.max(...arrivalValues, 1)
+  const peakHourIndex = arrivalValues.length > 0 ? arrivalValues.indexOf(Math.max(...arrivalValues)) : -1
+  const peakHour = peakHourIndex >= 0 ? timeLabels[peakHourIndex] : null
+  const leanHourIndex = arrivalValues.length > 0 ? arrivalValues.indexOf(Math.min(...arrivalValues)) : -1
+  const leanHour = leanHourIndex >= 0 ? timeLabels[leanHourIndex] : null
 
   // Model distribution for donut
   const modelCounts: Record<string, number> = {}
@@ -78,34 +90,56 @@ export function AnalysisCurrentPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="kpi-row">
+      <div className="kpi-row kpi-row-summary">
         <div className="card kpi-card">
-          <div className="kpi-label">{t('analyses.avg_wq')}</div>
-          <div className="kpi-value" style={{ color: 'var(--info)' }}>
-            {avgWq !== null ? `${(avgWq * 60).toFixed(1)} min` : '—'}
+          <div className="kpi-group-title">{t('analyses.wait_summary')}</div>
+          <div className="kpi-pair">
+            <div>
+              <div className="kpi-label">{t('analyses.avg_wq')}</div>
+              <div className="kpi-value" style={{ color: 'var(--info)' }}>
+                {avgWq !== null ? `${(avgWq * 60).toFixed(1)} min` : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="kpi-label">{t('analyses.max_wq')}</div>
+              <div className="kpi-value" style={{ color: 'var(--info)' }}>
+                {maxWq !== null ? `${(maxWq * 60).toFixed(1)} min` : '—'}
+              </div>
+            </div>
           </div>
           <div className="kpi-hint" style={{ color: 'var(--success)' }}>Observed baseline</div>
         </div>
         <div className="card kpi-card">
-          <div className="kpi-label">Peak Hour</div>
-          <div className="kpi-value" style={{ fontSize: '18px' }}>
-            {timeLabels.length > 0 ? timeLabels[timeLabels.length - 1] : '—'}
-          </div>
-          <div className="kpi-hint">Most customers</div>
-        </div>
-        <div className="card kpi-card">
-          <div className="kpi-label">{t('analyses.avg_rho')}</div>
-          <div className="kpi-value" style={{ color: 'var(--info)' }}>
-            {avgRho !== null ? fmtPct(avgRho) : '—'}
+          <div className="kpi-group-title">{t('analyses.utilization_summary')}</div>
+          <div className="kpi-pair">
+            <div>
+              <div className="kpi-label">{t('analyses.avg_rho')}</div>
+              <div className="kpi-value" style={{ color: 'var(--info)' }}>
+                {avgRho !== null ? fmtPct(avgRho) : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="kpi-label">{t('analyses.max_rho')}</div>
+              <div className="kpi-value" style={{ color: 'var(--warning)' }}>
+                {maxRho !== null ? fmtPct(maxRho) : '—'}
+              </div>
+            </div>
           </div>
           <div className="kpi-hint" style={{ color: 'var(--warning)' }}>High during peak periods</div>
         </div>
         <div className="card kpi-card">
-          <div className="kpi-label">Estimated Lost Customers</div>
-          <div className="kpi-value" style={{ color: 'var(--danger)' }}>
-            {rows.filter((r) => String(r.status || '').includes('CRITICAL')).length}
+          <div className="kpi-group-title">{t('analyses.hour_summary')}</div>
+          <div className="kpi-pair">
+            <div>
+              <div className="kpi-label">{t('analyses.peak_hour')}</div>
+              <div className="kpi-value kpi-value-small">{peakHour ?? '—'}</div>
+            </div>
+            <div>
+              <div className="kpi-label">{t('analyses.lean_hour')}</div>
+              <div className="kpi-value kpi-value-small">{leanHour ?? '—'}</div>
+            </div>
           </div>
-          <div className="kpi-hint">Needs operational attention</div>
+          <div className="kpi-hint">{rows.filter((r) => String(r.status || '').includes('CRITICAL')).length} critical intervals</div>
         </div>
       </div>
 
@@ -240,6 +274,12 @@ export function AnalysisCurrentPage() {
       {/* Detailed Results Table */}
       <div className="card" style={{ marginTop: '12px' }}>
         <h3 className="section-title">{t('analyses.detailed_results')}</h3>
+        <div className="status-legend" aria-label={t('analyses.status_legend')}>
+          <span className="status-legend-title">{t('analyses.status_legend')}</span>
+          <span><i className="status-dot status-dot-peak" />Peak</span>
+          <span><i className="status-dot status-dot-normal" />Normal</span>
+          <span><i className="status-dot status-dot-lean" />Lean</span>
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -259,7 +299,15 @@ export function AnalysisCurrentPage() {
                 const rho = typeof row.rho === 'number' ? row.rho : null
                 const wq = typeof row.Wq === 'number' ? row.Wq : null
                 const status = String(row.status || '')
-                const isCritical = status.includes('CRITICAL') || status.includes('Unstable')
+                const normalizedStatus = status.toLowerCase()
+                const isCritical = normalizedStatus.includes('critical') || normalizedStatus.includes('unstable')
+                const statusClass = isCritical
+                  ? 'status-peak'
+                  : normalizedStatus.includes('peak')
+                    ? 'status-peak'
+                    : normalizedStatus.includes('normal')
+                      ? 'status-normal'
+                      : 'status-lean'
                 return (
                   <tr key={String(row.time ?? index)} className={isCritical ? 'row-warning' : undefined}>
                     <td>{String(row.time)}</td>
@@ -270,7 +318,7 @@ export function AnalysisCurrentPage() {
                     <td>{rho !== null ? fmtPct(rho) : '—'}</td>
                     <td>{wq !== null ? (wq * 60).toFixed(2) : '—'}</td>
                     <td>
-                      <span className={`status-badge ${isCritical ? 'status-warning' : 'status-ok'}`}>
+                      <span className={`status-badge ${statusClass}`}>
                         {status}
                       </span>
                     </td>

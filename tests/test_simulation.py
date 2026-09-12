@@ -169,6 +169,19 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(result["event_count"], 3)
         self.assertTrue(result["truncated"])
 
+    def test_trace_and_aggregate_results_come_from_same_execution(self):
+        segments = [{"time": "test", "lambda": 12, "mu": 8, "c": 2}]
+        traced = trace_simulate_segments(segments, trace_hours=2, seed=19)
+        aggregate = simulate_segments(segments, sim_hours=2, seed=19)
+        self.assertEqual(traced["results"], aggregate)
+
+    def test_trace_cap_does_not_truncate_aggregate_simulation(self):
+        segments = [{"time": "test", "lambda": 20, "mu": 8, "c": 2}]
+        traced = trace_simulate_segments(segments, trace_hours=2, max_events=3, seed=42)
+        aggregate = simulate_segments(segments, sim_hours=2, seed=42)
+        self.assertTrue(traced["truncated"])
+        self.assertEqual(traced["results"], aggregate)
+
     def test_summarize_simulation_empty(self):
         summary = summarize_simulation([])
         self.assertIsNone(summary["avg_rho"])

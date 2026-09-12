@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Route, Routes } from 'react-router-dom'
 import { renderWithProviders } from '../test/test-utils'
 import { ReportsPage } from './ReportsPage'
 
 const listDatasetsMock = vi.fn()
 const listScenariosMock = vi.fn()
 const fetchReportMock = vi.fn()
+const getWorkflowMock = vi.fn()
 const createObjectURLMock = vi.fn()
 const revokeObjectURLMock = vi.fn()
 let clickSpy: ReturnType<typeof vi.spyOn>
@@ -27,6 +29,10 @@ vi.mock('../api/reports', async () => {
   const actual = await vi.importActual<typeof import('../api/reports')>('../api/reports')
   return { ...actual, fetchReport: (...args: unknown[]) => fetchReportMock(...args) }
 })
+
+vi.mock('../api/workflow', () => ({
+  getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
+}))
 
 vi.mock('../api/auth', () => ({
   me: vi.fn(async () => ({
@@ -56,10 +62,54 @@ const scenario = {
   created_at: '2026-08-02T10:00:00Z',
 }
 
+const decision = {
+  status: 'adopt',
+  headline: 'Adopt Scenario "Plan A".',
+  recommendation: 'All intervals passed and modeled cost decreases.',
+  rationale: ['Selected Scenario: Plan A (ID 1).'],
+  missing_evidence: [],
+  scenario_id: 1,
+  scenario_name: 'Plan A',
+  dataset_id: 1,
+  evidence_ids: { selection: 2, des: 3, mc: null, validation: 4 },
+  provenance_warning: 'Simulation is decision support, not an observed future outcome.',
+}
+
+function workflow(decisionResult: typeof decision | null) {
+  return {
+    analysis_id: 7,
+    selection: null,
+    scenario: { id: 1, name: 'Plan A', dataset_id: 1, provenance: 'verified_snapshot' },
+    des: null,
+    mc: null,
+    validation: null,
+    decision: decisionResult ? {
+      id: 5,
+      kind: 'workflow_decision',
+      status: 'completed',
+      params: {},
+      result: decisionResult,
+      created_at: '2026-09-13T00:00:00Z',
+      finished_at: '2026-09-13T00:01:00Z',
+    } : null,
+    decision_stale: false,
+  }
+}
+
+function renderAnalysisReports() {
+  return renderWithProviders(
+    <Routes>
+      <Route path="/analyses/:analysisId/reports" element={<ReportsPage />} />
+    </Routes>,
+    { route: '/analyses/7/reports' },
+  )
+}
+
 beforeEach(() => {
   listDatasetsMock.mockReset()
   listScenariosMock.mockReset()
   fetchReportMock.mockReset()
+  getWorkflowMock.mockReset().mockResolvedValue(workflow(decision))
   listDatasetsMock.mockResolvedValue({ datasets: [dataset] })
   listScenariosMock.mockResolvedValue({ scenarios: [scenario] })
   fetchReportMock.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
@@ -133,5 +183,24 @@ describe('ReportsPage', () => {
     listScenariosMock.mockResolvedValue({ scenarios: [] })
     renderWithProviders(<ReportsPage />, { route: '/reports' })
     expect(await screen.findByText('No data available for reports.')).toBeInTheDocument()
+  })
+
+  it('blocks an analysis scenario report until a matching Decision exists', async () => {
+    getWorkflowMock.mockResolvedValue(workflow(null))
+    renderAnalysisReports()
+    expect(await screen.findByText(/Generate a Decision before exporting/)).toBeInTheDocument()
+    const card = await screen.findByTestId('report-card-scenarios')
+    expect(within(card).getByRole('button', { name: 'Download PDF' })).toBeDisabled()
+    expect(within(card).getByRole('button', { name: 'Download Excel' })).toBeDisabled()
+  })
+
+  it('shows and exports the persisted Decision recommendation', async () => {
+    const user = userEvent.setup()
+    renderAnalysisReports()
+    const summary = await screen.findByTestId('report-decision')
+    expect(within(summary).getByText('Adopt Scenario "Plan A".')).toBeInTheDocument()
+    const card = await screen.findByTestId('report-card-scenarios')
+    await user.click(within(card).getByRole('button', { name: 'Download PDF' }))
+    await waitFor(() => expect(fetchReportMock).toHaveBeenCalledWith('scenarios', 1, 'pdf', 7))
   })
 })

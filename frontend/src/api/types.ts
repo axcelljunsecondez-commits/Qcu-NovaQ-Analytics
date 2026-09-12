@@ -231,6 +231,7 @@ export interface SimulationTraceSegment {
 }
 
 export interface SimulationTrace {
+  results?: SimDesOut[]
   trace: SimulationTraceEvent[]
   trace_hours: number
   total_hours: number

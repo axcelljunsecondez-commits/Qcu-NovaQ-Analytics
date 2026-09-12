@@ -318,144 +318,23 @@ class _TraceRecorder:
         return True
 
 
-def _trace_customer_process(
-    env: simpy.Environment,
-    servers: simpy.Resource,
-    mu: float,
-    recorder: _TraceRecorder,
-    rng: random.Random,
-    segment_id: int,
-    customer_id: int,
-    server_ids: dict[simpy.events.Event, int],
-    time_offset: float,
-):
-    """Trace one real customer through arrival, service, and completion."""
-    req = servers.request()
-    if not recorder.record(
-        env.now, "arrival", segment_id, customer_id, None, len(servers.queue), time_offset,
-    ):
-        req.cancel()
-        return
-    yield req
-
-    server_id = min(set(range(int(servers.capacity))) - set(server_ids.values()), default=0)
-    server_ids[req] = server_id
-    if not recorder.record(
-        env.now, "service_start", segment_id, customer_id,
-        server_id, len(servers.queue), time_offset,
-    ):
-        servers.release(req)
-        server_ids.pop(req, None)
-        return
-
-    yield env.timeout(_exponential(mu, rng))
-    servers.release(req)
-    server_ids.pop(req, None)
-    recorder.record(
-        env.now, "service_end", segment_id, customer_id,
-        server_id, len(servers.queue), time_offset,
-    )
-
-
-def _trace_arrival_process(
-    env: simpy.Environment,
-    servers: simpy.Resource,
-    lambda_: float,
-    mu: float,
-    sim_duration: float,
-    recorder: _TraceRecorder,
-    rng: random.Random,
-    segment_id: int,
-    server_ids: dict[simpy.events.Event, int],
-    time_offset: float,
-):
-    """Generate real arrivals until the bounded trace or segment ends."""
-    while not recorder.truncated:
-        iat = _exponential(lambda_, rng)
-        if env.now + iat >= sim_duration:
-            break
-        yield env.timeout(iat)
-        if recorder.truncated:
-            break
-        env.process(_trace_customer_process(
-            env, servers, mu, recorder, rng, segment_id,
-            recorder.next_customer_id(), server_ids, time_offset,
-        ))
-
-
 def trace_simulate_segments(
     time_segments: Iterable[Mapping[str, Any]] | None,
     trace_hours: float = 1.0,
+    queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
     max_events: int = 10000,
     seed: int | None = RANDOM_SEED,
     carryover: bool = True,
 ) -> dict[str, Any]:
-    """Capture a bounded, deterministic event trace from the DES lifecycle."""
-    if time_segments is None:
-        return {
-            "trace": [], "trace_hours": trace_hours, "total_hours": 0.0,
-            "event_count": 0, "truncated": False,
-            "abandonment_supported": False, "segments": [],
-        }
-
-    recorder = _TraceRecorder(max_events)
-    summaries: list[dict[str, Any]] = []
-    carry = 0
-    time_offset = 0.0
-    for segment_id, segment in enumerate(time_segments):
-        if recorder.truncated:
-            break
-        time_label = str(segment.get("time", "Unknown"))
-        error, lambda_, mu, c = _validate_segment(segment)
-        selected_model, coverage_error = simulation_coverage(segment)
-        error = error or coverage_error
-        summary = {
-            "segment_id": segment_id,
-            "time": time_label,
-            "c": c,
-            "lambda": lambda_,
-            "mu": mu,
-            "selected_model": selected_model,
-            "simulation_supported": coverage_error is None,
-            "error": error,
-            "queue_structure": "shared",
-            "initial_queue_depth": carry,
-            "final_queue_depth": carry,
-        }
-        if error or lambda_ is None or mu is None:
-            summaries.append(summary)
-            time_offset += trace_hours
-            carry = 0
-            continue
-
-        env = simpy.Environment()
-        servers = simpy.Resource(env, capacity=c)
-        server_ids: dict[simpy.events.Event, int] = {}
-        segment_rng = random.Random((seed + segment_id) if seed is not None else None)
-        for _ in range(max(0, int(carry))):
-            env.process(_trace_customer_process(
-                env, servers, mu, recorder, segment_rng, segment_id,
-                recorder.next_customer_id(), server_ids, time_offset,
-            ))
-        env.process(_trace_arrival_process(
-            env, servers, lambda_, mu, trace_hours, recorder, segment_rng,
-            segment_id, server_ids, time_offset,
-        ))
-        env.run(until=trace_hours)
-        carry = len(servers.queue) if carryover else 0
-        summary["final_queue_depth"] = carry
-        summaries.append(summary)
-        time_offset += trace_hours
-
-    return {
-        "trace": recorder.events,
-        "trace_hours": trace_hours,
-        "total_hours": time_offset,
-        "event_count": len(recorder.events),
-        "truncated": recorder.truncated,
-        "abandonment_supported": False,
-        "segments": summaries,
-    }
+    """Compatibility wrapper for the single instrumented DES lifecycle."""
+    return simulate_segments_with_trace(
+        time_segments,
+        sim_hours=trace_hours,
+        queue_overload_threshold=queue_overload_threshold,
+        max_events=max_events,
+        seed=seed,
+        carryover=carryover,
+    )
 
 
 def _customer_process(
@@ -466,8 +345,13 @@ def _customer_process(
     monitor: _QueueMonitor,
     rng: random.Random,
     warmup_end: float = 0.0,
+    recorder: _TraceRecorder | None = None,
+    segment_id: int = 0,
+    customer_id: int | None = None,
+    server_ids: dict[simpy.events.Event, int] | None = None,
+    time_offset: float = 0.0,
 ):
-    """SimPy generator: one customer enters queue, waits for a server, gets served."""
+    """Run one customer through the canonical, optionally observed DES lifecycle."""
     arrival = env.now
     monitor.record()
 
@@ -476,9 +360,26 @@ def _customer_process(
         q_depth = len(servers.queue)
         if q_depth > result.max_queue:
             result.max_queue = q_depth
+        if recorder is not None and customer_id is not None:
+            recorder.record(
+                env.now, "arrival", segment_id, customer_id, None,
+                q_depth, time_offset,
+            )
 
         yield req
         monitor.record()
+
+        server_id: int | None = None
+        if recorder is not None and customer_id is not None and server_ids is not None:
+            server_id = min(
+                set(range(int(servers.capacity))) - set(server_ids.values()),
+                default=0,
+            )
+            server_ids[req] = server_id
+            recorder.record(
+                env.now, "service_start", segment_id, customer_id,
+                server_id, len(servers.queue), time_offset,
+            )
 
         service_start = env.now
         wait = service_start - arrival
@@ -491,6 +392,14 @@ def _customer_process(
         service_time = _exponential(mu, rng)
         yield env.timeout(service_time)
         monitor.record()
+
+        if recorder is not None and customer_id is not None:
+            recorder.record(
+                env.now, "service_end", segment_id, customer_id,
+                server_id, len(servers.queue), time_offset,
+            )
+        if server_ids is not None:
+            server_ids.pop(req, None)
 
         # result.served used to be incremented unconditionally here; moved above
 
@@ -505,6 +414,10 @@ def _arrival_process(
     monitor: _QueueMonitor,
     rng: random.Random,
     warmup_end: float = 0.0,
+    recorder: _TraceRecorder | None = None,
+    segment_id: int = 0,
+    server_ids: dict[simpy.events.Event, int] | None = None,
+    time_offset: float = 0.0,
 ):
     """SimPy generator: generates arrivals for the duration of one segment."""
     while True:
@@ -514,9 +427,11 @@ def _arrival_process(
             break
         yield env.timeout(iat)
 
-        env.process(
-            _customer_process(env, servers, mu, result, monitor, rng, warmup_end)
-        )
+        customer_id = recorder.next_customer_id() if recorder is not None else None
+        env.process(_customer_process(
+            env, servers, mu, result, monitor, rng, warmup_end,
+            recorder, segment_id, customer_id, server_ids, time_offset,
+        ))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -530,6 +445,9 @@ def simulate_segment(
     seed: int | None = RANDOM_SEED,
     warmup_fraction: float = 0.2,
     initial_queue_depth: int = 0,
+    recorder: _TraceRecorder | None = None,
+    segment_id: int = 0,
+    time_offset: float = 0.0,
 ) -> SegmentResult:
     """
     Run a discrete-event simulation for one time segment.
@@ -613,19 +531,23 @@ def simulate_segment(
     env = simpy.Environment()
     servers = simpy.Resource(env, capacity=c)
     monitor = _QueueMonitor(env, servers, warmup_end=warmup_end)
+    server_ids: dict[simpy.events.Event, int] = {}
 
     # Inject initial queue depth (customers already waiting at t=0)
     initial_queue_depth = max(0, int(initial_queue_depth))
     result.initial_queue_depth = initial_queue_depth
     if initial_queue_depth > 0:
         for _ in range(initial_queue_depth):
-            env.process(
-                _customer_process(env, servers, mu, result, monitor, rng, warmup_end)
-            )
+            customer_id = recorder.next_customer_id() if recorder is not None else None
+            env.process(_customer_process(
+                env, servers, mu, result, monitor, rng, warmup_end,
+                recorder, segment_id, customer_id, server_ids, time_offset,
+            ))
 
-    env.process(
-        _arrival_process(env, servers, lambda_, mu, sim_duration, result, monitor, rng, warmup_end)
-    )
+    env.process(_arrival_process(
+        env, servers, lambda_, mu, sim_duration, result, monitor, rng, warmup_end,
+        recorder, segment_id, server_ids, time_offset,
+    ))
     env.run(until=sim_duration)
 
     # Record final queue depth (for carryover to next segment)
@@ -696,28 +618,92 @@ def simulate_segments(
     list[dict]
         One dict per segment, matching SegmentResult.to_dict() schema.
     """
-    if time_segments is None:
-        return []
+    results, _ = _simulate_segments_core(
+        time_segments,
+        sim_hours=sim_hours,
+        queue_overload_threshold=queue_overload_threshold,
+        seed=seed,
+        carryover=carryover,
+    )
+    return results
 
-    results = []
-    carry = 0  # initial queue depth for the first segment
-    for i, seg in enumerate(time_segments):
-        seg_seed = (seed + i) if seed is not None else None
+
+def _simulate_segments_core(
+    time_segments: Iterable[Mapping[str, Any]] | None,
+    sim_hours: float,
+    queue_overload_threshold: int,
+    seed: int | None,
+    carryover: bool,
+    recorder: _TraceRecorder | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run all segments once, optionally observing their real DES events."""
+    if time_segments is None:
+        return [], []
+
+    results: list[dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
+    carry = 0
+    time_offset = 0.0
+    for segment_id, segment in enumerate(time_segments):
+        seg_seed = (seed + segment_id) if seed is not None else None
         res = simulate_segment(
-            segment=seg,
+            segment=segment,
             sim_hours=sim_hours,
             queue_overload_threshold=queue_overload_threshold,
             seed=seg_seed,
             initial_queue_depth=carry,
+            recorder=recorder,
+            segment_id=segment_id,
+            time_offset=time_offset,
         )
-        results.append(res.to_dict())
+        row = res.to_dict()
+        results.append(row)
+        summaries.append({
+            "segment_id": segment_id,
+            "time": row["time"],
+            "c": row["c"],
+            "lambda": row["lambda"],
+            "mu": row["mu"],
+            "selected_model": row["selected_model"],
+            "simulation_supported": row["simulation_supported"],
+            "error": row["error"],
+            "queue_structure": "shared",
+            "initial_queue_depth": row["initial_queue_depth"],
+            "final_queue_depth": row["final_Lq"],
+        })
+        carry = int(round(row.get("final_Lq", 0))) if carryover else 0
+        time_offset += sim_hours
+    return results, summaries
 
-        if carryover:
-            carry = int(round(results[-1].get("final_Lq", 0)))
-        else:
-            carry = 0
 
-    return results
+def simulate_segments_with_trace(
+    time_segments: Iterable[Mapping[str, Any]] | None,
+    sim_hours: float = SIM_HOURS_PER_SEGMENT,
+    queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
+    max_events: int = 10000,
+    seed: int | None = RANDOM_SEED,
+    carryover: bool = True,
+) -> dict[str, Any]:
+    """Return aggregate metrics and bounded playback events from one DES run."""
+    recorder = _TraceRecorder(max_events)
+    results, summaries = _simulate_segments_core(
+        time_segments,
+        sim_hours=sim_hours,
+        queue_overload_threshold=queue_overload_threshold,
+        seed=seed,
+        carryover=carryover,
+        recorder=recorder,
+    )
+    return {
+        "results": results,
+        "trace": recorder.events,
+        "trace_hours": sim_hours,
+        "total_hours": sim_hours * len(results),
+        "event_count": len(recorder.events),
+        "truncated": recorder.truncated,
+        "abandonment_supported": False,
+        "segments": summaries,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────

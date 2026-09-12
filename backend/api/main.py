@@ -32,6 +32,7 @@ from backend.api.scenarios import router as scenarios_router
 from backend.api.settings import Settings
 from backend.api.simulation import router as simulation_router
 from backend.api.users import router as users_router
+from backend.api.workflow import router as workflow_router
 from backend.db.session import create_engine_for
 from backend.db.session import get_db as global_get_db
 
@@ -255,6 +256,7 @@ def create_app(
     app.include_router(simulation_router)
     app.include_router(scenarios_router)
     app.include_router(reports_router)
+    app.include_router(workflow_router)
 
     return app
 

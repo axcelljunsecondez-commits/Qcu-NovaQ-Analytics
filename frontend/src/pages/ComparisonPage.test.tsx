@@ -4,12 +4,20 @@ import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { ComparisonPage } from './ComparisonPage'
 import type { OptimizationOut } from '../api/types'
+import { Route, Routes } from 'react-router-dom'
 
 const listScenariosMock = vi.fn()
+const getWorkflowMock = vi.fn()
+const selectWorkflowScenarioMock = vi.fn()
 
 vi.mock('../api/scenarios', () => ({
   listScenarios: (...args: unknown[]) => listScenariosMock(...args),
   createScenario: vi.fn(),
+}))
+
+vi.mock('../api/workflow', () => ({
+  getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
+  selectWorkflowScenario: (...args: unknown[]) => selectWorkflowScenarioMock(...args),
 }))
 
 vi.mock('../api/auth', () => ({
@@ -74,6 +82,17 @@ const scenarios = [
 beforeEach(() => {
   listScenariosMock.mockReset()
   listScenariosMock.mockResolvedValue({ scenarios })
+  getWorkflowMock.mockReset().mockResolvedValue({
+    analysis_id: 7,
+    selection: null,
+    scenario: null,
+    des: null,
+    mc: null,
+    validation: null,
+    decision: null,
+    decision_stale: false,
+  })
+  selectWorkflowScenarioMock.mockReset().mockResolvedValue({ selection: { id: 10 } })
 })
 
 describe('ComparisonPage', () => {
@@ -82,6 +101,25 @@ describe('ComparisonPage', () => {
     expect((await screen.findAllByRole('checkbox', { name: 'Plan A' })).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('checkbox', { name: 'Plan B' }).length).toBeGreaterThan(0)
     expect(await screen.findByTestId('chart-radar')).toBeInTheDocument()
+  })
+
+  it('persists a verified, complete scenario as the simulation selection', async () => {
+    const user = userEvent.setup()
+    listScenariosMock.mockResolvedValue({
+      scenarios: [{
+        ...scenarios[0],
+        provenance: 'verified_snapshot',
+        settings: { calculation: { engine_version: 'test' } },
+      }],
+    })
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/compare" element={<ComparisonPage />} />
+      </Routes>,
+      { route: '/analyses/7/compare' },
+    )
+    await user.click(await screen.findByRole('button', { name: 'Select for Simulation' }))
+    await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 1))
   })
 
   it('renders radar, utilization, servers, wait-time and waterfall charts', async () => {

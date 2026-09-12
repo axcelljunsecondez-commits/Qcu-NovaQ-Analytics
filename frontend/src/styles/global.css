@@ -1623,6 +1623,10 @@ button.btn-good:hover {
   margin-bottom: 1.5rem;
 }
 
+.kpi-row-summary {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .kpi-card {
   text-align: left;
   padding: 14px;
@@ -1650,6 +1654,23 @@ button.btn-good:hover {
   margin-top: 4px;
 }
 
+.kpi-group-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.kpi-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kpi-value-small {
+  font-size: 18px;
+}
+
 /* ===== Status Badges ===== */
 .status-badge {
   display: inline-block;
@@ -1663,6 +1684,52 @@ button.btn-good:hover {
   background: var(--success-bg, #e8f5e9);
   color: var(--success, #22c55e);
 }
+
+.status-badge.status-peak {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.status-badge.status-normal {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-badge.status-lean {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.status-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: -4px 0 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.status-legend-title {
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.status-legend span:not(.status-legend-title) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot-peak { background: #dc2626; }
+.status-dot-normal { background: #f59e0b; }
+.status-dot-lean { background: #22c55e; }
 
 .status-badge.status-warning {
   background: var(--warning-bg, #fff8e1);
@@ -2748,5 +2815,89 @@ button.btn-good:hover {
 
   .template-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Analysis Workflow Navigation ===== */
+.workflow-footer {
+  position: sticky;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.workflow-position {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.workflow-footer-actions,
+.decision-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+a.btn-primary,
+a.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+a.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.simulation-controls {
+  margin-top: 12px;
+}
+
+.decision-card {
+  text-align: left;
+}
+
+.decision-recommendation {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.decision-evidence {
+  padding-left: 20px;
+  text-align: left;
+}
+
+@media (max-width: 640px) {
+  .workflow-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workflow-footer-actions {
+    justify-content: stretch;
   }
 }

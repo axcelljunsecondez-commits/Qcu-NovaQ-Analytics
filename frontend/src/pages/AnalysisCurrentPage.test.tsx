@@ -1,0 +1,72 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { screen } from '@testing-library/react'
+import { renderWithProviders } from '../test/test-utils'
+import { AnalysisCurrentPage } from './AnalysisCurrentPage'
+
+const listDatasetsMock = vi.fn()
+const getCurrentMock = vi.fn()
+
+vi.mock('../api/analyses', () => ({
+  listAnalysisDatasets: (...args: unknown[]) => listDatasetsMock(...args),
+  getAnalysisCurrent: (...args: unknown[]) => getCurrentMock(...args),
+}))
+
+beforeEach(() => {
+  listDatasetsMock.mockReset()
+  getCurrentMock.mockReset()
+})
+
+describe('AnalysisCurrentPage', () => {
+  it('maps KPI fields to the backend contract and picks the true peak hour', async () => {
+    listDatasetsMock.mockResolvedValue({
+      datasets: [{ id: 99, analysis_id: 7, name: 'Dataset', source_filename: 'data.csv', source_format: 'csv', row_count: 3, validation: { ok: true, message: 'ok' }, normalized: null, created_at: '2026-09-01T00:00:00Z' }],
+    })
+
+    getCurrentMock.mockResolvedValue({
+      analysis: {
+        id: 7,
+        name: 'North checkout',
+        service_type: 'checkout',
+        location_label: 'North',
+        queue_setup: {
+          queue_structure: 'shared_queue',
+          fixed_server_count: 2,
+          staffing_varies_by_period: false,
+          capacity_mode: 'unlimited',
+          total_system_capacity: null,
+          abandonment_mode: 'not_modeled',
+          patience_rate_per_hour: null,
+        },
+        setup_status: 'ready',
+        archived_at: null,
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+      },
+      dataset: { id: 99, analysis_id: 7, name: 'Dataset', source_filename: 'data.csv', source_format: 'csv', row_count: 3, validation: { ok: true, message: 'ok' }, normalized: null, created_at: '2026-09-01T00:00:00Z' },
+      selected_model: 'M/M/c',
+      rows: [
+        { time: '09-10', lambda: 10, Wq: 0.1, rho: 0.3, model: 'M/M/c', status: 'Lean' },
+        { time: '11-12', lambda: 60, Wq: 0.5, rho: 0.9, model: 'M/M/c', status: 'Peak' },
+        { time: '17-18', lambda: 45, Wq: 0.3, rho: 0.8, model: 'M/M/c', status: 'Peak' },
+      ],
+      kpis: {
+        avg_waiting_time: 0.25,
+        avg_utilization: 0.74,
+      },
+      explanations: [],
+    })
+
+    renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
+
+    expect(await screen.findByText('15.0 min')).toBeInTheDocument()
+    expect(screen.getByText('30.0 min')).toBeInTheDocument()
+    expect(screen.getByText('74%')).toBeInTheDocument()
+    expect(screen.getByText('Utilization').parentElement).toHaveTextContent('74%')
+    expect(screen.getByText('Peak Hour').parentElement).toHaveTextContent('11-12')
+    expect(screen.getByText('Lean Hour').parentElement).toHaveTextContent('09-10')
+    expect(screen.getByText('Status Legend')).toBeInTheDocument()
+    expect(document.querySelector('.status-dot-peak')).toBeInTheDocument()
+    expect(document.querySelector('.status-dot-normal')).toBeInTheDocument()
+    expect(document.querySelector('.status-dot-lean')).toBeInTheDocument()
+  })
+})

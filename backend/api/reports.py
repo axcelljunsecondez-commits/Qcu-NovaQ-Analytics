@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from backend.api.deps import get_current_user, user_rate_limit
+from backend.api.workflow import current_decision_for_report
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
 from backend.queueing_engine.services.data_processing import compute_kpis, process_segments
@@ -84,6 +85,25 @@ def _scenario_payload(scenario: Scenario) -> tuple[pd.DataFrame, dict, list[str]
     return comparison_df, kpis, recommendations
 
 
+def _decision_recommendations(decision: dict | None) -> list[str]:
+    if decision is None:
+        return [
+            "Management recommendation unavailable: complete Decision for the "
+            "currently selected and simulated Scenario."
+        ]
+    messages = [
+        str(decision.get("headline", "Management recommendation unavailable.")),
+        str(decision.get("recommendation", "")),
+    ]
+    rationale = decision.get("rationale")
+    if isinstance(rationale, list):
+        messages.extend(str(item) for item in rationale)
+    warning = decision.get("provenance_warning")
+    if warning:
+        messages.append(str(warning))
+    return [message for message in messages if message]
+
+
 def _dataset_payload(dataset: Dataset) -> tuple[pd.DataFrame, dict, list[str]]:
     records = dataset.normalized_json or []
     results_df = process_segments(records)
@@ -124,6 +144,10 @@ def scenario_report(
 ) -> Response:
     scenario = _own_scenario(db, user, scenario_id, analysis_id)
     comparison_df, kpis, recommendations = _scenario_payload(scenario)
+    if analysis_id is not None:
+        recommendations = _decision_recommendations(
+            current_decision_for_report(db, user, analysis_id, scenario.id)
+        )
     return _build_report(format, {}, kpis, comparison_df, recommendations, f"novaq_scenarios_{scenario_id}")
 
 
@@ -149,7 +173,10 @@ def _build_report(
         )
     if format == "excel":
         buffer = generate_excel_report(
-            comparison_df, recommended_kpis, current_kpis=current_kpis
+            comparison_df,
+            recommended_kpis,
+            current_kpis=current_kpis,
+            recommendations=recommendations,
         )
         return Response(
             content=buffer.getvalue(),

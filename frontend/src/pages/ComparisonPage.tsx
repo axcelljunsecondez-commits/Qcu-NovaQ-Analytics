@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { listScenarios, type ScenarioOut } from '../api/scenarios'
 import type { OptimizationOut } from '../api/types'
@@ -21,6 +21,7 @@ import {
 import { NovaQInsights, generateOptimizationInsights } from '../components/insights/NovaQInsights'
 import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
+import { getWorkflow, selectWorkflowScenario } from '../api/workflow'
 
 function rowsOf(scenario?: ScenarioOut | null): OptimizationOut[] {
   if (!scenario) return []
@@ -51,18 +52,25 @@ export function ComparisonPage() {
   const { t } = useTranslation()
   const analysisParam = useParams().analysisId
   const analysisId = analysisParam ? Number(analysisParam) : undefined
+  const queryClient = useQueryClient()
   const { data, isLoading, isError } = useQuery({ queryKey: ['scenarios', analysisId], queryFn: () => listScenarios(analysisId) })
+  const workflow = useQuery({
+    queryKey: ['workflow', analysisId],
+    queryFn: () => getWorkflow(analysisId!),
+    enabled: Number.isInteger(analysisId),
+  })
   const scenarios = useMemo(() => data?.scenarios ?? [], [data])
 
   const [scenarioId, setScenarioId] = useState('')
   const [selectedScenarioIds, setSelectedScenarioIds] = useState<string[]>([])
   const [holidays, setHolidays] = useState(12)
   const [closedSundays, setClosedSundays] = useState(false)
+  const effectiveScenarioId = scenarioId
+    || String(workflow.data?.scenario?.id ?? scenarios[0]?.id ?? '')
 
   const selected = useMemo(() => {
-    const id = scenarioId || (scenarios[0] ? normalizeScenarioId(scenarios[0].id) : '')
-    return scenarios.find((s) => normalizeScenarioId(s.id) === id) ?? null
-  }, [scenarios, scenarioId])
+    return scenarios.find((s) => normalizeScenarioId(s.id) === effectiveScenarioId) ?? null
+  }, [scenarios, effectiveScenarioId])
 
   const rows = useMemo(() => rowsOf(selected), [selected])
 
@@ -93,6 +101,13 @@ export function ComparisonPage() {
 
   const totals = comparisonTotals(rows)
   const operationallyComparable = operationalComparisonComplete(rows)
+  const selection = useMutation({
+    mutationFn: () => selectWorkflowScenario(analysisId!, Number(selected!.id)),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
+    },
+  })
+  const selectedForSimulation = workflow.data?.scenario?.id === Number(selected?.id)
   const roi = totals
     ? computeRoi({ currentTotal: totals.current, optimalTotal: totals.optimal, holidays, closedSundays })
     : null
@@ -140,7 +155,7 @@ export function ComparisonPage() {
             <select
               id="compare-scenario"
               aria-label={t('compare.source_scenario')}
-              value={scenarioId || (scenarios[0] ? normalizeScenarioId(scenarios[0].id) : '')}
+              value={effectiveScenarioId}
               onChange={(e) => setScenarioId(e.target.value)}
               style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
             >
@@ -151,7 +166,30 @@ export function ComparisonPage() {
               ))}
             </select>
           </div>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={
+              !selected
+              || selected.provenance !== 'verified_snapshot'
+              || !operationallyComparable
+              || selection.isPending
+            }
+            onClick={() => selection.mutate()}
+          >
+            {selection.isPending ? t('common.loading') : t('compare.select_for_simulation')}
+          </button>
         </div>
+        {selectedForSimulation && (
+          <div className="alert alert-ok" style={{ marginTop: '10px' }}>
+            {t('compare.selected_for_simulation', { name: selected?.name })}
+          </div>
+        )}
+        {selection.isError && (
+          <div role="alert" className="alert alert-error" style={{ marginTop: '10px' }}>
+            {t('errors.server')}
+          </div>
+        )}
       </div>
 
       {!totals && <div role="alert" className="alert alert-warn" style={{ marginTop: '12px' }}>{t('integrity.incomplete')}</div>}

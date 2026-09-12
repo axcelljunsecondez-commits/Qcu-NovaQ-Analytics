@@ -3,7 +3,7 @@
  * Groups navigation items by section: OVERVIEW, OPERATION, DECISION SUPPORT, OUTPUT.
  * Matches the reference design with gradient background, nav icons, and footer.
  */
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth/useAuth'
 import { LanguageSelector } from './LanguageSelector'
@@ -19,6 +19,7 @@ interface NavItem {
   to: string
   icon: string
   adminOnly?: boolean
+  end?: boolean
 }
 
 const navSections: NavSection[] = [
@@ -31,7 +32,7 @@ const navSections: NavSection[] = [
   {
     title: 'nav.section_operation',
     items: [
-      { key: 'analyses', to: '/analyses', icon: '\u2699' },
+      { key: 'analyses', to: '/analyses', icon: '\u2699', end: true },
       { key: 'datasets', to: '/datasets', icon: '\u21E7' },
     ],
   },
@@ -39,15 +40,6 @@ const navSections: NavSection[] = [
     title: 'nav.section_decision',
     items: [
       { key: 'advanced_analysis', to: '/analysis', icon: '\u2197' },
-      { key: 'optimize', to: '/analyses/latest/optimize', icon: '\u2197' },
-      { key: 'simulate', to: '/analyses/latest/simulate', icon: '\u25B6' },
-      { key: 'compare', to: '/analyses/latest/compare', icon: '\u21C4' },
-    ],
-  },
-  {
-    title: 'nav.section_output',
-    items: [
-      { key: 'reports', to: '/analyses/latest/reports', icon: '\u25A4' },
     ],
   },
   {
@@ -63,6 +55,26 @@ export function Sidebar() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const analysisId = location.pathname.match(/^\/analyses\/(\d+)(?:\/|$)/)?.[1]
+  const sections: NavSection[] = analysisId
+    ? [
+        ...navSections.slice(0, 2),
+        {
+          title: 'nav.section_workflow',
+          items: [
+            { key: 'setup', to: `/analyses/${analysisId}/setup`, icon: '1' },
+            { key: 'current', to: `/analyses/${analysisId}/current`, icon: '2' },
+            { key: 'optimize', to: `/analyses/${analysisId}/optimize`, icon: '3' },
+            { key: 'compare', to: `/analyses/${analysisId}/compare`, icon: '4' },
+            { key: 'simulate', to: `/analyses/${analysisId}/simulate`, icon: '5' },
+            { key: 'decision', to: `/analyses/${analysisId}/decision`, icon: '6' },
+            { key: 'reports', to: `/analyses/${analysisId}/reports`, icon: '7' },
+          ],
+        },
+        ...navSections.slice(2),
+      ]
+    : navSections
 
   async function handleLogout() {
     await logout()
@@ -75,7 +87,7 @@ export function Sidebar() {
         Nova<b>Q</b>
       </div>
       <nav className="sidebar-nav">
-        {navSections.map((section) => (
+        {sections.map((section) => (
           <div key={section.title} className="nav-section">
             <div className="nav-section-title">{t(section.title)}</div>
             {section.items.map((item) => {
@@ -86,6 +98,7 @@ export function Sidebar() {
                 <NavLink
                   key={item.key}
                   to={item.to}
+                  end={item.end}
                   className={({ isActive }) => (isActive ? 'active' : undefined)}
                 >
                   <span className="nav-icon">{item.icon}</span>
