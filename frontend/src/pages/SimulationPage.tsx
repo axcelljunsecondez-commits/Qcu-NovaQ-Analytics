@@ -26,6 +26,7 @@ import {
 } from '../components/charts/Charts'
 import { fmt, fmtPct, fmtFrCi, downloadCsv } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
+import { LiveSimulationPlayback } from '../components/simulation/LiveSimulationPlayback'
 
 type Tab = 'des' | 'mc' | 'validate' | 'live'
 
@@ -192,174 +193,6 @@ function SimulationPlayback({ rows }: { rows: SimDesOut[] }) {
             <option value={100}>5x</option>
           </select>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function LiveTraceReplay({ trace }: { trace: SimulationTrace }) {
-  const { t } = useTranslation()
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentIndex, setCurrentIndex] = useState(-1)
-  const [speed, setSpeed] = useState(500)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    if (isPlaying && trace.trace.length > 0) {
-      intervalRef.current = setInterval(() => {
-        setCurrentIndex((previous) => {
-          if (previous >= trace.trace.length - 1) {
-            setIsPlaying(false)
-            return previous
-          }
-          return previous + 1
-        })
-      }, speed)
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [isPlaying, speed, trace.trace.length])
-
-  const visibleEvents = trace.trace.slice(0, currentIndex + 1)
-  const elapsed = visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].t : 0
-  const queueBySegment = new Map<number, number>()
-  trace.segments.forEach((segment) => queueBySegment.set(segment.segment_id, segment.initial_queue_depth))
-  const serverState = new Map<string, 'serving' | 'idle'>()
-  const waitingArrivals = new Map<number, number[]>()
-  const serviceStarts = new Map<string, number>()
-  let served = 0
-  let waitTotal = 0
-  let waitCount = 0
-  let busyTime = 0
-
-  visibleEvents.forEach((event) => {
-    queueBySegment.set(event.segment_id, event.queue_len_after)
-    if (event.type === 'arrival') {
-      const arrivals = waitingArrivals.get(event.segment_id) ?? []
-      arrivals.push(event.t)
-      waitingArrivals.set(event.segment_id, arrivals)
-    }
-    if (event.type === 'service_start' && event.server_id !== null) {
-      const key = `${event.segment_id}-${event.server_id}`
-      const arrivals = waitingArrivals.get(event.segment_id) ?? []
-      const arrival = arrivals.shift()
-      if (arrival !== undefined) {
-        waitTotal += event.t - arrival
-        waitCount += 1
-      }
-      waitingArrivals.set(event.segment_id, arrivals)
-      serviceStarts.set(key, event.t)
-      serverState.set(key, 'serving')
-    }
-    if (event.type === 'service_end' && event.server_id !== null) {
-      const key = `${event.segment_id}-${event.server_id}`
-      const start = serviceStarts.get(key)
-      if (start !== undefined) busyTime += Math.max(0, event.t - start)
-      serviceStarts.delete(key)
-      serverState.set(key, 'idle')
-      served += 1
-    }
-  })
-
-  serviceStarts.forEach((start) => {
-    busyTime += Math.max(0, elapsed - start)
-  })
-  const totalServers = trace.segments.reduce((total, segment) => total + segment.c, 0)
-  const utilization = elapsed > 0 && totalServers > 0
-    ? Math.min(1, busyTime / (elapsed * totalServers))
-    : null
-  const averageWaitMinutes = waitCount > 0 ? (waitTotal / waitCount) * 60 : null
-
-  function stopPlayback() {
-    setIsPlaying(false)
-  }
-
-  function play() {
-    if (currentIndex >= trace.trace.length - 1) setCurrentIndex(-1)
-    setIsPlaying(true)
-  }
-
-  function step() {
-    setIsPlaying(false)
-    setCurrentIndex((previous) => Math.min(trace.trace.length - 1, previous + 1))
-  }
-
-  function reset() {
-    setIsPlaying(false)
-    setCurrentIndex(-1)
-  }
-
-  return (
-    <div>
-      <div className="card-grid">
-        <MetricCard label={t('simulation.live_waiting')} value={[...queueBySegment.values()].reduce((sum, value) => sum + value, 0)} />
-        <MetricCard label={t('simulation.live_served')} value={served} />
-        <MetricCard label={t('simulation.live_average_wait')} value={averageWaitMinutes === null ? '—' : `${averageWaitMinutes.toFixed(2)} min`} />
-        <MetricCard label={t('simulation.live_utilization')} value={utilization === null ? '—' : `${Math.round(utilization * 100)}%`} />
-      </div>
-
-      <div className="card" style={{ marginTop: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div>
-            <h3 className="section-title">{t('simulation.live_floor_title')}</h3>
-            <p className="form-hint">{t('simulation.live_event_progress', { current: Math.max(0, currentIndex + 1), total: trace.event_count })}</p>
-          </div>
-          <span className={`badge ${trace.truncated ? 'badge-warn' : 'badge-ok'}`}>
-            {trace.truncated ? t('simulation.live_truncated') : t('simulation.live_complete')}
-          </span>
-        </div>
-
-        <div className="card-grid" style={{ marginTop: '12px' }}>
-          {trace.segments.flatMap((segment) => Array.from({ length: segment.c }, (_, serverId) => {
-            const key = `${segment.segment_id}-${serverId}`
-            return (
-              <div className="card" key={key}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                  <strong>{segment.time}</strong>
-                  <span className={`badge ${serverState.get(key) === 'serving' ? 'badge-ok' : 'badge-neutral'}`}>
-                    {serverState.get(key) === 'serving' ? t('simulation.live_serving') : t('simulation.live_idle')}
-                  </span>
-                </div>
-                <div style={{ marginTop: '14px', fontSize: '12px', color: '#76889e' }}>{t('simulation.live_queue_depth')}</div>
-                <div style={{ fontSize: '28px', fontWeight: 800 }}>{queueBySegment.get(segment.segment_id) ?? 0}</div>
-                <div style={{ marginTop: '4px', fontSize: '11px', color: '#76889e' }}>{t('simulation.live_server', { number: serverId + 1 })}</div>
-              </div>
-            )
-          }))}
-        </div>
-
-        <div className="playback-controls" style={{ marginTop: '16px' }}>
-          <button type="button" onClick={reset} className="btn-ghost">{t('simulation.playback_reset')}</button>
-          <button type="button" onClick={isPlaying ? stopPlayback : play} className="btn-primary">
-            {isPlaying ? t('simulation.playback_pause') : t('simulation.playback_play')}
-          </button>
-          <button type="button" onClick={step} className="btn-secondary">{t('simulation.live_step')}</button>
-          <div className="playback-progress">
-            <span>{t('simulation.live_elapsed', { hours: elapsed.toFixed(3) })}</span>
-            <input
-              aria-label={t('simulation.live_event_position')}
-              type="range"
-              min={-1}
-              max={Math.max(-1, trace.trace.length - 1)}
-              value={currentIndex}
-              onChange={(event) => {
-                setIsPlaying(false)
-                setCurrentIndex(Number(event.target.value))
-              }}
-            />
-          </div>
-          <div className="playback-speed">
-            <label htmlFor="live-speed">{t('simulation.playback_speed')}</label>
-            <select id="live-speed" value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
-              <option value={1000}>0.5x</option>
-              <option value={500}>1x</option>
-              <option value={250}>2x</option>
-              <option value={100}>5x</option>
-            </select>
-          </div>
-        </div>
-        <p className="form-hint" style={{ marginTop: '10px' }}>{t('simulation.live_real_trace')}</p>
       </div>
     </div>
   )
@@ -825,7 +658,9 @@ export function SimulationPage() {
             <p className="form-hint">{t('simulation.live_scope')}</p>
           </div>
 
-          {liveTrace && <LiveTraceReplay trace={liveTrace} />}
+          {liveTrace
+            ? <LiveSimulationPlayback trace={liveTrace} />
+            : <div className="card live-no-run" role="status">{t('simulation.live_run_prompt')}</div>}
         </div>
       )}
 
