@@ -211,6 +211,7 @@ export interface SimulationTraceEvent {
   t: number
   type: SimulationTraceEventType
   segment_id: number
+  customer_id: number
   server_id: number | null
   queue_len_after: number
 }
@@ -224,6 +225,7 @@ export interface SimulationTraceSegment {
   selected_model: string | null
   simulation_supported: boolean
   error: string | null
+  queue_structure: 'shared'
   initial_queue_depth: number
   final_queue_depth: number
 }
@@ -234,6 +236,7 @@ export interface SimulationTrace {
   total_hours: number
   event_count: number
   truncated: boolean
+  abandonment_supported: boolean
   segments: SimulationTraceSegment[]
 }
 

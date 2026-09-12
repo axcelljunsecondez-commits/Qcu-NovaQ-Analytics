@@ -1866,6 +1866,260 @@ button.btn-good:hover {
   opacity: 0.9;
 }
 
+.live-playback {
+  margin-top: 1rem;
+}
+
+.live-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.live-floor {
+  padding: 1.25rem;
+}
+
+.live-floor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.live-floor-eyebrow,
+.live-stage-label,
+.live-clock span {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.live-clock {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 120px;
+  text-align: center;
+}
+
+.live-clock strong {
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.live-flow {
+  display: grid;
+  gap: 0.55rem;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.live-stage {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  padding: 1rem;
+}
+
+.live-arrival-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-style: dashed;
+}
+
+.live-arrival-current {
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.live-flow-arrow {
+  color: var(--accent);
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+.live-stage-heading,
+.live-server-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.live-stage-heading > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.live-customer-list {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  min-height: 38px;
+  margin-top: 0.75rem;
+}
+
+.live-customer {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 0.35rem;
+  border: 2px solid var(--info);
+  border-radius: 999px;
+  background: var(--info-bg);
+  color: var(--text-primary);
+  font-size: 0.7rem;
+  font-weight: 800;
+  animation: live-customer-enter 180ms ease-out;
+}
+
+.live-customer-serving {
+  margin-top: 0.75rem;
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+
+.live-customer-more {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.live-empty {
+  display: block;
+  margin-top: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.live-server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.live-server {
+  min-height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  padding: 0.85rem;
+}
+
+.live-server.is-serving {
+  border-color: var(--success);
+  box-shadow: inset 0 0 0 1px var(--success-bg);
+}
+
+.live-exit-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.live-exit-grid.has-abandonment {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.live-served-stage {
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+
+.live-abandoned-stage {
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.live-accounting {
+  margin-top: 1rem;
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.live-accounting.is-valid {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.live-accounting.is-invalid {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.live-controls {
+  margin-top: 1rem;
+}
+
+.live-controls .playback-progress {
+  flex: 1;
+}
+
+.live-controls .playback-progress input {
+  width: 100%;
+  min-width: 180px;
+}
+
+.live-truth-note,
+.live-no-run {
+  margin-top: 1rem;
+}
+
+.live-no-run {
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+@keyframes live-customer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 700px) {
+  .live-exit-grid.has-abandonment {
+    grid-template-columns: 1fr;
+  }
+
+  .live-floor-header,
+  .live-arrival-stage {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .live-clock {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-customer {
+    animation: none;
+  }
+}
+
 /* ===== Report Sections Preview ===== */
 .report-sections {
   display: flex;

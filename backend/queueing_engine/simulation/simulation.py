@@ -287,12 +287,19 @@ class _TraceRecorder:
         self.events: list[dict[str, Any]] = []
         self.max_events = max_events
         self.truncated = False
+        self._next_customer_id = 1
+
+    def next_customer_id(self) -> int:
+        customer_id = self._next_customer_id
+        self._next_customer_id += 1
+        return customer_id
 
     def record(
         self,
         at: float,
         event_type: str,
         segment_id: int,
+        customer_id: int,
         server_id: int | None,
         queue_len_after: int,
         time_offset: float = 0.0,
@@ -304,6 +311,7 @@ class _TraceRecorder:
             "t": round(time_offset + at, 6),
             "type": event_type,
             "segment_id": segment_id,
+            "customer_id": customer_id,
             "server_id": server_id,
             "queue_len_after": queue_len_after,
         })
@@ -317,19 +325,25 @@ def _trace_customer_process(
     recorder: _TraceRecorder,
     rng: random.Random,
     segment_id: int,
+    customer_id: int,
     server_ids: dict[simpy.events.Event, int],
     time_offset: float,
 ):
     """Trace one real customer through arrival, service, and completion."""
     req = servers.request()
-    if not recorder.record(env.now, "arrival", segment_id, None, len(servers.queue), time_offset):
+    if not recorder.record(
+        env.now, "arrival", segment_id, customer_id, None, len(servers.queue), time_offset,
+    ):
         req.cancel()
         return
     yield req
 
     server_id = min(set(range(int(servers.capacity))) - set(server_ids.values()), default=0)
     server_ids[req] = server_id
-    if not recorder.record(env.now, "service_start", segment_id, server_id, len(servers.queue), time_offset):
+    if not recorder.record(
+        env.now, "service_start", segment_id, customer_id,
+        server_id, len(servers.queue), time_offset,
+    ):
         servers.release(req)
         server_ids.pop(req, None)
         return
@@ -337,7 +351,10 @@ def _trace_customer_process(
     yield env.timeout(_exponential(mu, rng))
     servers.release(req)
     server_ids.pop(req, None)
-    recorder.record(env.now, "service_end", segment_id, server_id, len(servers.queue), time_offset)
+    recorder.record(
+        env.now, "service_end", segment_id, customer_id,
+        server_id, len(servers.queue), time_offset,
+    )
 
 
 def _trace_arrival_process(
@@ -361,7 +378,8 @@ def _trace_arrival_process(
         if recorder.truncated:
             break
         env.process(_trace_customer_process(
-            env, servers, mu, recorder, rng, segment_id, server_ids, time_offset,
+            env, servers, mu, recorder, rng, segment_id,
+            recorder.next_customer_id(), server_ids, time_offset,
         ))
 
 
@@ -374,7 +392,11 @@ def trace_simulate_segments(
 ) -> dict[str, Any]:
     """Capture a bounded, deterministic event trace from the DES lifecycle."""
     if time_segments is None:
-        return {"trace": [], "trace_hours": trace_hours, "total_hours": 0.0, "event_count": 0, "truncated": False, "segments": []}
+        return {
+            "trace": [], "trace_hours": trace_hours, "total_hours": 0.0,
+            "event_count": 0, "truncated": False,
+            "abandonment_supported": False, "segments": [],
+        }
 
     recorder = _TraceRecorder(max_events)
     summaries: list[dict[str, Any]] = []
@@ -396,6 +418,7 @@ def trace_simulate_segments(
             "selected_model": selected_model,
             "simulation_supported": coverage_error is None,
             "error": error,
+            "queue_structure": "shared",
             "initial_queue_depth": carry,
             "final_queue_depth": carry,
         }
@@ -412,7 +435,7 @@ def trace_simulate_segments(
         for _ in range(max(0, int(carry))):
             env.process(_trace_customer_process(
                 env, servers, mu, recorder, segment_rng, segment_id,
-                server_ids, time_offset,
+                recorder.next_customer_id(), server_ids, time_offset,
             ))
         env.process(_trace_arrival_process(
             env, servers, lambda_, mu, trace_hours, recorder, segment_rng,
@@ -430,6 +453,7 @@ def trace_simulate_segments(
         "total_hours": time_offset,
         "event_count": len(recorder.events),
         "truncated": recorder.truncated,
+        "abandonment_supported": False,
         "segments": summaries,
     }
 

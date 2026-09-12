@@ -1,5 +1,14 @@
 ﻿# NovaQ Current Handoff
 
+## Simulation Playback (2026-09-12)
+
+- Upgraded the existing Live trace into customer-level playback without changing queueing mathematics or aggregate DES behavior.
+- Trace events now include stable recorder-assigned `customer_id` values; responses state `queue_structure: "shared"` and `abandonment_supported: false`.
+- The Live tab now shows one truthful shared FIFO queue, exactly the configured number of servers, customer/server assignments, served exits, bounded queue tokens, relative simulation time, event accounting, and play/pause/restart/step/speed controls.
+- Playback uses a pure event reducer and simulation-time conversion; it does not generate queueing or random values in React.
+- Full verification: backend **450 passed, 3 skipped, 3 subtests**; frontend **24 files / 140 tests passed**; typecheck, Ruff, mypy, lint, build, and locale symmetry passed. Existing chart canvas notices, Fast Refresh warnings, and large-chunk warning remain non-blocking.
+- Verified limitations: DES playback supports M/M/1 and M/M/c only, models a shared queue only, has no abandonment transition, and has count-based rather than identity-based cross-segment carryover.
+
 ## Current Development State
 
 NovaQ is being prepared as a pilot-deployable web-based capstone.

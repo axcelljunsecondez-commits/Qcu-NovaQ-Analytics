@@ -104,9 +104,60 @@ class SimulationTests(unittest.TestCase):
         )
         for event in first["trace"]:
             self.assertEqual(
-                set(event), {"t", "type", "segment_id", "server_id", "queue_len_after"}
+                set(event),
+                {"t", "type", "segment_id", "customer_id", "server_id", "queue_len_after"},
             )
+            self.assertGreater(event["customer_id"], 0)
             self.assertGreaterEqual(event["queue_len_after"], 0)
+
+    def test_trace_customer_lifecycle_and_accounting(self):
+        result = trace_simulate_segments(
+            [{"time": "test", "lambda": 12, "mu": 8, "c": 2}],
+            trace_hours=1,
+            seed=17,
+        )
+        events_by_customer: dict[int, list[dict]] = {}
+        for event in result["trace"]:
+            events_by_customer.setdefault(event["customer_id"], []).append(event)
+
+        for events in events_by_customer.values():
+            types = [event["type"] for event in events]
+            self.assertEqual(types[0], "arrival")
+            self.assertEqual(types.count("arrival"), 1)
+            if "service_end" in types:
+                self.assertIn("service_start", types)
+                self.assertLess(types.index("service_start"), types.index("service_end"))
+
+        arrived = set(events_by_customer)
+        started = {
+            event["customer_id"] for event in result["trace"]
+            if event["type"] == "service_start"
+        }
+        served = {
+            event["customer_id"] for event in result["trace"]
+            if event["type"] == "service_end"
+        }
+        waiting = arrived - started
+        serving = started - served
+        self.assertEqual(len(arrived), len(waiting) + len(serving) + len(served))
+        self.assertFalse(result["abandonment_supported"])
+        self.assertEqual(result["segments"][0]["queue_structure"], "shared")
+
+    def test_trace_uses_configured_server_count_for_one_three_and_five_servers(self):
+        for server_count in (1, 3, 5):
+            with self.subTest(server_count=server_count):
+                result = trace_simulate_segments(
+                    [{"time": "test", "lambda": 40, "mu": 10, "c": server_count}],
+                    trace_hours=0.5,
+                    seed=23,
+                )
+                self.assertEqual(result["segments"][0]["c"], server_count)
+                server_ids = {
+                    event["server_id"] for event in result["trace"]
+                    if event["server_id"] is not None
+                }
+                self.assertTrue(server_ids)
+                self.assertTrue(all(0 <= server_id < server_count for server_id in server_ids))
 
     def test_trace_respects_event_cap(self):
         result = trace_simulate_segments(

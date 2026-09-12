@@ -39,6 +39,9 @@ def test_des_trace_endpoint(db_engine, client):
     assert body["event_count"] == len(body["trace"])
     assert body["trace"]
     assert body["trace"][0]["type"] == "arrival"
+    assert isinstance(body["trace"][0]["customer_id"], int)
+    assert body["segments"][0]["queue_structure"] == "shared"
+    assert body["abandonment_supported"] is False
 
 
 def test_des_trace_requires_auth(client):
