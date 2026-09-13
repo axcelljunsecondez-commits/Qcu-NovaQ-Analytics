@@ -5,7 +5,8 @@ build-backend = "setuptools.backends._legacy:_Backend"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-exclude = [".venv", "__pycache__", ".git"]
+exclude = [".venv", "__pycache__", ".git", ".agents"]
+force-exclude = true
 
 [tool.ruff.lint]
 ignore = [

@@ -27,3 +27,4 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
         args: [--maxkb=500]
+        exclude: ^\.agents/skills/ui-ux-pro-max/data/(google-fonts\.csv|phosphor-icons-upstream\.json)$
