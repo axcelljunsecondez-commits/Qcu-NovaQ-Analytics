@@ -126,3 +126,11 @@ Implementation completed on 2026-09-14. Current unified DES aggregate/playback e
 - Prefer minimal regression-safe changes.
 - Investigate root cause before modifying code.
 - Validate frontend, backend, and relevant tests before claiming completion.
+
+## API Image Vulnerability Remediation (2026-09-14)
+
+- The current CI-equivalent finding for the former Debian API image was 44 HIGH and 0 CRITICAL; the older 51 HIGH/3 CRITICAL count is superseded.
+- `Dockerfile.api` now uses the verified official Python 3.11.16 Alpine 3.24 digest, applies `apk upgrade --no-cache`, preserves the exact dependency lock and UID/GID 10001, and retains the existing POSIX-shell entrypoint.
+- The unchanged strict Trivy 0.74.0 gate reports 0 HIGH and 0 CRITICAL for both OS and Python package targets on the rebuilt image. No suppression or policy weakening was used.
+- Full local regression and Compose smoke gates are green. See `docs/superpowers/reports/2026-09-14-api-image-vulnerability-remediation-report.md`.
+- This closes only the local API image defect. GitHub CI and Render public deployment verification remain required, while Supabase must remain unchanged because this remediation has no migration.

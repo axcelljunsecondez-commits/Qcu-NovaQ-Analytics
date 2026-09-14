@@ -179,8 +179,20 @@ def test_production_artifacts_encode_required_isolation_and_sequence():
     assert services["api"]["cap_drop"] == ["ALL"]
 
     dockerfile = (root / "Dockerfile.api").read_text(encoding="utf-8")
-    assert "requirements-production.lock" in dockerfile
-    assert "USER 10001:10001" in dockerfile
+    for required in (
+        "FROM python:3.11.16-alpine3.24@sha256:"
+        "0d55920083f1ce1e38ac292e2772f924b4f8bb4188d336c79bf66963039e6146",
+        "apk upgrade --no-cache",
+        "addgroup -S -g 10001 novaq",
+        "adduser -S -D -H -u 10001 -G novaq -s /sbin/nologin novaq",
+        "requirements-production.lock",
+        "pip install --no-cache-dir --no-deps -r requirements-production.lock",
+        "python -m pip check",
+        "pip uninstall --yes pip setuptools wheel",
+        "USER 10001:10001",
+    ):
+        assert required in dockerfile
+    assert "apt-get" not in dockerfile
     assert "alembic upgrade" not in (root / "backend/api/entrypoint.sh").read_text(encoding="utf-8")
 
     nginx = (root / "nginx/production.conf").read_text(encoding="utf-8")

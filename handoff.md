@@ -164,3 +164,20 @@ Current verified state:
 - Accessible responsive navigation, focus, reduced motion, table/chart alternatives, keyboard tabs, semantic states, and symmetric EN/TL copy are in place.
 - Backend: 466 passed, 3 skipped, 6 subtests. Frontend: 141 passed. Ruff, mypy, TypeScript, lint (0 warnings/errors), build, locale symmetry, diff hygiene, real-browser checks, Docker rebuild, and HTTP health checks passed.
 - No protected backend production logic or API contract changed. Separate-queue analytical/DES support remains unimplemented and is not claimed.
+
+## API Image Vulnerability Gate Remediated Locally (2026-09-14)
+
+The approved remediation is implemented and locally verified. See:
+
+- `docs/superpowers/specs/2026-09-14-api-image-vulnerability-remediation.md`
+- `docs/superpowers/plans/2026-09-14-api-image-vulnerability-remediation-plan.md`
+- `docs/superpowers/reports/2026-09-14-api-image-vulnerability-remediation-report.md`
+
+Current evidence:
+
+- API runtime changed from the blocking Debian base to the verified digest-pinned Python 3.11.16 Alpine 3.24 base; application and dependency-lock contents are unchanged.
+- Strict Trivy 0.74.0 result improved from 44 HIGH/0 CRITICAL to 0 HIGH/0 CRITICAL without ignores or policy changes.
+- Backend: 466 passed, 3 skipped, 6 subtests. Frontend: 141 passed. Ruff, mypy, TypeScript, lint, build, locale symmetry, production Compose preflight, Docker rebuild, migrations, bootstrap, and HTTP health/readiness checks passed.
+- Next: inspect diff, commit/pull/push, wait for green GitHub CI, then identify and verify the authenticated Render service/public URL.
+- Supabase is deliberately unchanged: this remediation contains no migration. Do not perform a hosted schema mutation for this work.
+- Overall production GO is still separate from this image fix; TLS, SMTP, backup/restore, monitoring, edge, and secret-permission evidence remain required.
