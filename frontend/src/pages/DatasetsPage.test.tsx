@@ -60,7 +60,7 @@ describe('DatasetsPage', () => {
     const user = userEvent.setup()
     renderWithProviders(<DatasetsPage />, { route: '/datasets' })
     const file = new File(['time,lambda,mu,c\n'], 'segments.csv', { type: 'text/csv' })
-    const input = screen.getByLabelText('file') as HTMLInputElement
+    const input = screen.getByLabelText('File') as HTMLInputElement
     await user.upload(input, file)
     await user.click(screen.getByRole('button', { name: 'Upload dataset' }))
     await waitFor(() => {
@@ -74,7 +74,7 @@ describe('DatasetsPage', () => {
     const user = userEvent.setup()
     renderWithProviders(<DatasetsPage />, { route: '/datasets' })
     const file = new File(['nope'], 'bad.csv', { type: 'text/csv' })
-    await user.upload(screen.getByLabelText('file'), file)
+    await user.upload(screen.getByLabelText('File'), file)
     await user.click(screen.getByRole('button', { name: 'Upload dataset' }))
     expect(
       await screen.findByText((content) => content.includes('Missing column: mu')),
@@ -86,7 +86,7 @@ describe('DatasetsPage', () => {
     const user = userEvent.setup()
     renderWithProviders(<DatasetsPage />, { route: '/datasets' })
     const file = new File(['nope'], 'bad.csv', { type: 'text/csv' })
-    await user.upload(screen.getByLabelText('file'), file)
+    await user.upload(screen.getByLabelText('File'), file)
     await user.click(screen.getByRole('button', { name: 'Upload dataset' }))
     expect(
       await screen.findByText((content) =>

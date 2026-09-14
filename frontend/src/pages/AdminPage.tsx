@@ -108,17 +108,17 @@ export function AdminPage() {
           <div className="form-field">
             <label htmlFor="admin-role">{t('admin.role')}</label>
             <select id="admin-role" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              <option value="analyst">analyst</option>
-              <option value="admin">admin</option>
+              <option value="analyst">{t('admin.role_analyst')}</option>
+              <option value="admin">{t('admin.role_admin')}</option>
             </select>
           </div>
           <button type="submit" disabled={createMutation.isPending}>
             {t('admin.create')}
           </button>
         </form>
-        {banner && <div className="alert alert-error">{banner}</div>}
+        {banner && <div role="alert" className="alert alert-error">{banner}</div>}
         {inlineErrors.length > 0 && (
-          <div className="alert alert-error">
+          <div role="alert" className="alert alert-error">
             {inlineErrors.map((message) => (
               <div key={message}>{message}</div>
             ))}
@@ -134,24 +134,26 @@ export function AdminPage() {
           <ApiState.Empty message={t('admin.no_users')} />
         ) : (
           <div className="card">
+            <div className="table-scroll" role="region" aria-label={t('admin.user_table_caption')} tabIndex={0}>
             <table>
+              <caption className="sr-only">{t('admin.user_table_caption')}</caption>
               <thead>
                 <tr>
-                  <th>{t('account.email')}</th>
-                  <th>{t('admin.role')}</th>
-                  <th>{t('admin.active')}</th>
-                  <th>{t('account.created')}</th>
-                  <th />
+                  <th scope="col">{t('account.email')}</th>
+                  <th scope="col">{t('admin.role')}</th>
+                  <th scope="col">{t('admin.active')}</th>
+                  <th scope="col">{t('account.created')}</th>
+                  <th scope="col"><span className="sr-only">{t('common.actions')}</span></th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id}>
-                    <td>{u.email}</td>
+                    <th scope="row">{u.email}</th>
                     <td>{u.role}</td>
                     <td>
                       <span className={`badge ${u.active ? 'badge-ok' : 'badge-bad'}`}>
-                        {u.active ? '✓' : '✗'}
+                        {u.active ? t('admin.status_active') : t('admin.status_inactive')}
                       </span>
                     </td>
                     <td>{new Date(u.created_at).toLocaleDateString()}</td>
@@ -169,6 +171,7 @@ export function AdminPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         ))}
     </div>

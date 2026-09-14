@@ -5,13 +5,16 @@
  * Below: staffing table, what-if, save scenario
  */
 import { useState, type ReactNode } from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
 import type { DatasetOut, OptimizationOut, SegmentRow } from '../api/types'
-import { NovaQInsights, generateOptimizationInsights } from '../components/insights/NovaQInsights'
+import { NovaQInsights } from '../components/insights/NovaQInsights'
+import { generateOptimizationInsights } from '../lib/insights'
 import {
+  completeFiniteAverage,
   comparisonComplete,
   comparisonTotals,
 } from '../lib/comparison'
@@ -110,10 +113,11 @@ function peakOptimizedCashiers(rows: OptimizationOut[] | null): number {
   return rows ? Math.max(...rows.map((r) => r.c_optimal ?? 0), 0) : 0
 }
 
-function formatStaffingChange(change: number): string {
+function formatStaffingChange(change: number, t: TFunction): string {
   const absChange = Math.abs(change)
-  const label = absChange === 1 ? 'cashier' : 'cashiers'
-  return change > 0 ? `Add ${absChange} ${label}` : `Reduce ${absChange} ${label}`
+  return t(change > 0 ? 'optimize.add_cashiers' : 'optimize.reduce_cashiers', {
+    count: absChange,
+  })
 }
 
 function mergeTimeRanges(times: string[]): string[] {
@@ -133,7 +137,7 @@ function mergeTimeRanges(times: string[]): string[] {
   return ranges
 }
 
-function staffingChangeLines(rows: OptimizationOut[]): string[] {
+function staffingChangeLines(rows: OptimizationOut[], t: TFunction): string[] {
   const grouped = new Map<number, string[]>()
   for (const row of rows) {
     const change = row.delta_c ?? 0
@@ -142,7 +146,7 @@ function staffingChangeLines(rows: OptimizationOut[]): string[] {
   }
   return [...grouped.entries()]
     .sort(([a], [b]) => b - a)
-    .map(([change, times]) => `${formatStaffingChange(change)}: ${mergeTimeRanges(times).join(', ')}`)
+    .map(([change, times]) => `${formatStaffingChange(change, t)}: ${mergeTimeRanges(times).join(', ')}`)
 }
 
 function staffingTotals(rows: OptimizationOut[]) {
@@ -254,20 +258,20 @@ export function OptimizePage() {
     availableCashiers.trim() !== '' &&
     Number.isInteger(availablePool) &&
     availablePool >= 0
-  const poolGap = poolIsProvided && availablePool > 0 ? availablePool - peakRequirement : null
-  const staffingLines = rows ? staffingChangeLines(rows) : []
+  const poolGap = poolIsProvided ? availablePool - peakRequirement : null
+  const staffingLines = rows ? staffingChangeLines(rows, t) : []
   const staffingTotalsValue = rows ? staffingTotals(rows) : null
   const staffingSummaryAvailable = rows !== null && rows.length > 0 && rows.every((row) => row.c_optimal !== null && row.c_optimal !== undefined)
   const warnings = rows?.filter((r) => r.warning) ?? []
 
   return (
-    <div>
+    <div className="optimize-page">
       {/* Topbar */}
       <div className="topbar">
         <div>
-          <div className="topbar-eyebrow">Optimization · Propose Ideal Staffing Plan</div>
+          <div className="topbar-eyebrow">{t('optimize.eyebrow')}</div>
           <h1 className="page-title">{t('optimize.title')}</h1>
-          <p className="page-caption">Propose the ideal staffing plan based on the observed data.</p>
+          <p className="page-caption">{t('optimize.description')}</p>
         </div>
       </div>
 
@@ -278,13 +282,13 @@ export function OptimizePage() {
       )}
       {rows && staffingSummaryAvailable && !totals && staffingTotalsValue && (
         <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
-          <div style={{ color: '#76889e', fontSize: '11px' }}>Net staffing reduction</div>
+          <div className="form-hint">{t('optimize.net_staffing_reduction')}</div>
           <div style={{ fontWeight: 800 }}>
             {staffingTotalsValue.net > 0
-              ? `${staffingTotalsValue.net} cashier-hours reduced`
+              ? t('optimize.net_reduced', { count: staffingTotalsValue.net })
               : staffingTotalsValue.net < 0
-              ? `${Math.abs(staffingTotalsValue.net)} cashier-hours added`
-              : 'No net staffing change'}
+              ? t('optimize.net_added', { count: Math.abs(staffingTotalsValue.net) })
+              : t('optimize.net_no_change')}
           </div>
         </div>
       )}
@@ -295,13 +299,14 @@ export function OptimizePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Goal Presets */}
           <div className="card" style={{ padding: '18px' }}>
-            <h3 className="section-title">Select Optimization Goal</h3>
+            <h3 className="section-title">{t('optimize.constraint_presets')}</h3>
             <div className="goal-presets">
               {GOAL_PRESETS.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
                   className={`goal-preset-btn ${options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes ? 'active' : ''}`}
+                  aria-pressed={options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes}
                   onClick={() => setOptions((o) => ({ ...o, ...preset.options }))}
                   style={{
                     width: '100%',
@@ -311,15 +316,15 @@ export function OptimizePage() {
                     padding: '12px',
                     cursor: 'pointer',
                     background: options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes
-                      ? '#e8f4fd' : '#fff',
+                      ? 'var(--state-current-bg)' : 'var(--primary-contrast)',
                     borderColor: options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes
                       ? 'var(--accent)' : 'var(--border)',
                   }}
                 >
-                  <span className="goal-preset-label" style={{ fontSize: '12px', fontWeight: 800 }}>
+                  <span className="goal-preset-label" style={{ fontSize: '14px', fontWeight: 800 }}>
                     {t(preset.label)}
                   </span>
-                  <span className="goal-preset-desc" style={{ display: 'block', fontSize: '11px', color: '#76889e', marginTop: '4px' }}>
+                  <span className="goal-preset-desc" style={{ display: 'block', fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>
                     {t(preset.description)}
                   </span>
                 </button>
@@ -332,13 +337,13 @@ export function OptimizePage() {
             <h3 className="section-title">{t('page1.data_source')}</h3>
             <div className="form-row">
               <div className="form-field" style={{ flex: 1 }}>
-                <label htmlFor="opt-dataset" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.source_dataset')}</label>
+                <label htmlFor="opt-dataset" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.source_dataset')}</label>
                 <select
                   id="opt-dataset"
                   aria-label={t('optimize.source_dataset')}
                   value={datasetId}
                   onChange={(e) => setDatasetId(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 >
                   <option value="">—</option>
                   {datasets.data?.datasets.map((d: DatasetOut) => (
@@ -356,7 +361,7 @@ export function OptimizePage() {
             <h3 className="section-title">{t('optimize.advanced_settings')}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div className="form-field">
-                <label htmlFor="opt-util" style={{ fontSize: '11px', fontWeight: 800 }}>{t('system.planning_target')}</label>
+                <label htmlFor="opt-util" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.planning_target')}</label>
                 <input
                   id="opt-util"
                   type="number"
@@ -365,23 +370,23 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, target_utilization: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 />
               </div>
               <div className="form-field">
-                <label htmlFor="opt-min" style={{ fontSize: '11px', fontWeight: 800 }}>{t('system.min_servers')}</label>
-                <input id="opt-min" type="number" min={1} max={256} value={options.min_servers ?? 1} onChange={(e) => setOptions((o) => ({ ...o, min_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }} />
+                <label htmlFor="opt-min" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.min_servers')}</label>
+                <input id="opt-min" type="number" min={1} max={256} value={options.min_servers ?? 1} onChange={(e) => setOptions((o) => ({ ...o, min_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }} />
               </div>
               <div className="form-field">
-                <label htmlFor="opt-max" style={{ fontSize: '11px', fontWeight: 800 }}>{t('system.max_servers')}</label>
-                <input id="opt-max" type="number" min={1} max={256} value={options.max_servers ?? 24} onChange={(e) => setOptions((o) => ({ ...o, max_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }} />
+                <label htmlFor="opt-max" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.max_servers')}</label>
+                <input id="opt-max" type="number" min={1} max={256} value={options.max_servers ?? 24} onChange={(e) => setOptions((o) => ({ ...o, max_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }} />
               </div>
               <div className="form-field">
-                <label htmlFor="opt-max-wait" style={{ fontSize: '11px', fontWeight: 800 }}>{t('system.max_wait')}</label>
-                <input id="opt-max-wait" type="number" min={0} step="any" value={options.max_wait_minutes ?? ''} onChange={(e) => setOptions((o) => ({ ...o, max_wait_minutes: e.target.value === '' ? null : Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }} />
+                <label htmlFor="opt-max-wait" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.max_wait')}</label>
+                <input id="opt-max-wait" type="number" min={0} step="any" value={options.max_wait_minutes ?? ''} onChange={(e) => setOptions((o) => ({ ...o, max_wait_minutes: e.target.value === '' ? null : Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }} />
               </div>
               <div className="form-field">
-                <label htmlFor="opt-cost" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.server_cost')}</label>
+                <label htmlFor="opt-cost" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.server_cost')}</label>
                 <input
                   id="opt-cost"
                   type="number"
@@ -390,11 +395,11 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, server_cost_per_hr: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 />
               </div>
               <div className="form-field">
-                <label htmlFor="opt-wait" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.waiting_cost')}</label>
+                <label htmlFor="opt-wait" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.waiting_cost')}</label>
                 <input
                   id="opt-wait"
                   type="number"
@@ -403,11 +408,11 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, customer_waiting_cost: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 />
               </div>
               <div className="form-field">
-                <label htmlFor="opt-available-cashiers" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.available_cashiers')}</label>
+                <label htmlFor="opt-available-cashiers" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.available_cashiers')}</label>
                 <input
                   id="opt-available-cashiers"
                   aria-label={t('optimize.available_cashiers')}
@@ -416,11 +421,12 @@ export function OptimizePage() {
                   min={0}
                   value={availableCashiers}
                   onChange={(e) => setAvailableCashiers(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 />
+                <span className="form-hint">{t('optimize.available_cashiers_help')}</span>
               </div>
               <div className="form-field">
-                <label htmlFor="opt-aband-cost" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.abandonment_cost')}</label>
+                <label htmlFor="opt-aband-cost" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.abandonment_cost')}</label>
                 <input
                   id="opt-aband-cost"
                   type="number"
@@ -429,11 +435,11 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, cost_per_abandonment: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 />
               </div>
               <div className="form-field">
-                <label htmlFor="opt-aband-rate" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.abandonment_rate')}</label>
+                <label htmlFor="opt-aband-rate" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.abandonment_rate')}</label>
                 <input
                   id="opt-aband-rate"
                   type="number"
@@ -442,7 +448,7 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, abandonment_rate: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 />
               </div>
             </div>
@@ -451,7 +457,7 @@ export function OptimizePage() {
               onClick={handleOptimize}
               disabled={running}
               className="button-primary"
-              style={{ width: '100%', marginTop: '14px', padding: '12px 24px', background: running ? '#9fb0c2' : 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 800, cursor: running ? 'not-allowed' : 'pointer' }}
+              style={{ width: '100%', marginTop: '14px', padding: '12px 24px', background: running ? 'var(--disabled-bg)' : 'var(--accent)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 800, cursor: running ? 'not-allowed' : 'pointer' }}
             >
               {running ? 'Optimizing...' : t('optimize.run')}
             </button>
@@ -467,24 +473,24 @@ export function OptimizePage() {
             borderRadius: '13px',
             padding: '18px',
           }}>
-            <h3 className="section-title">Optimized Staffing Plan</h3>
+            <h3 className="section-title">{t('optimize.candidate_plan')}</h3>
             {rows && totals ? (
               <>
                 <div style={{ display: 'flex', gap: '14px', marginTop: '8px' }}>
                   {/* Cost comparison */}
                   <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: '10px', color: '#76889e', fontWeight: 700 }}>Total Cost</div>
-                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#3d5875', marginTop: '3px' }}>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.current_period_cost')}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '3px' }}>
                       {fmt(totalCurrent)}
                     </div>
-                    <div style={{ fontSize: '10px', color: '#76889e', marginTop: '1px' }}>Current</div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '1px' }}>{t('compare.current')}</div>
                   </div>
                   <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: '10px', color: '#76889e', fontWeight: 700 }}>Optimized Cost</div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.candidate_period_cost')}</div>
                     <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--accent)', marginTop: '3px' }}>
                       {fmt(totalOptimal)}
                     </div>
-                    <div style={{ fontSize: '10px', color: '#76889e', marginTop: '1px' }}>After Changes</div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '1px' }}>{t('optimize.candidate_label')}</div>
                   </div>
                 </div>
 
@@ -495,10 +501,10 @@ export function OptimizePage() {
                     padding: '10px',
                     borderRadius: '8px',
                     background: deltaCost > 0 ? '#f0fdf4' : deltaCost < 0 ? '#fef3f2' : '#f8f9fa',
-                    border: `1px solid ${deltaCost > 0 ? '#bbf7d0' : deltaCost < 0 ? '#fecdd3' : '#e9ecef'}`,
+                    border: `1px solid ${deltaCost > 0 ? '#bbf7d0' : deltaCost < 0 ? '#fecdd3' : 'var(--border)'}`,
                     textAlign: 'center',
                   }}>
-                    <div style={{ fontSize: '10px', color: '#76889e', fontWeight: 700 }}>Estimated Cost Savings</div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.period_cost_difference')}</div>
                     <div style={{ fontSize: '18px', fontWeight: 800, color: deltaCost > 0 ? 'var(--success)' : 'var(--danger)', marginTop: '2px' }}>
                       {deltaCost > 0 ? '↓' : '↑'} {fmt(Math.abs(deltaCost))}
                     </div>
@@ -510,29 +516,38 @@ export function OptimizePage() {
                   <div style={{ marginTop: '12px', borderTop: '1px solid #e9ecef', paddingTop: '10px' }}>
                     {staffingTotalsValue && (
                       <div style={{ marginBottom: '8px' }}>
-                        <div style={{ color: '#76889e', fontSize: '11px' }}>Net staffing reduction</div>
+                        <div className="form-hint">{t('optimize.net_staffing_reduction')}</div>
                         <div style={{ fontWeight: 800 }}>
                           {staffingTotalsValue.net > 0
-                            ? `${staffingTotalsValue.net} cashier-hours reduced`
+                            ? t('optimize.net_reduced', { count: staffingTotalsValue.net })
                             : staffingTotalsValue.net < 0
-                            ? `${Math.abs(staffingTotalsValue.net)} cashier-hours added`
-                            : 'No net staffing change'}
+                            ? t('optimize.net_added', { count: Math.abs(staffingTotalsValue.net) })
+                            : t('optimize.net_no_change')}
                         </div>
-                        <div style={{ color: '#76889e', fontSize: '11px' }}>
-                          {staffingTotalsValue.removed} removed - {staffingTotalsValue.added} added
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                          {t('optimize.staffing_formula', {
+                            removed: staffingTotalsValue.removed,
+                            added: staffingTotalsValue.added,
+                          })}
                         </div>
                       </div>
                     )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
-                      <span style={{ color: '#76889e' }}>Peak requirement</span>
-                      <span style={{ fontWeight: 800 }}>{peakRequirement} cashiers</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{t('optimize.peak_requirement')}</span>
+                      <span style={{ fontWeight: 800 }}>
+                        {t(peakRequirement === 1 ? 'optimize.cashier_count' : 'optimize.cashier_count_plural', { count: peakRequirement })}
+                      </span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
-                      <span style={{ color: '#76889e' }}>Available pool</span>
-                      <span style={{ fontWeight: 800 }}>{poolIsProvided ? `${availablePool} cashiers` : '—'}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{t('optimize.available_pool')}</span>
+                      <span style={{ fontWeight: 800 }}>
+                        {poolIsProvided
+                          ? t(availablePool === 1 ? 'optimize.cashier_count' : 'optimize.cashier_count_plural', { count: availablePool })
+                          : '—'}
+                      </span>
                     </div>
                     {poolGap !== null && (
-                      <div className={`alert ${poolGap >= 0 ? 'alert-ok' : 'alert-warn'}`} style={{ marginTop: '8px', fontSize: '11px' }}>
+                      <div className={`alert ${poolGap >= 0 ? 'alert-ok' : 'alert-warn'}`} style={{ marginTop: '8px', fontSize: '14px' }}>
                         {poolGap >= 0
                           ? t('optimize.pool_can_cover')
                           : t(Math.abs(poolGap) === 1 ? 'optimize.pool_short' : 'optimize.pool_short_plural', {
@@ -543,14 +558,14 @@ export function OptimizePage() {
                     {staffingLines.length > 0 && (
                       <div style={{ marginTop: '8px' }}>
                         {staffingLines.map((line) => (
-                          <div key={line} style={{ fontSize: '11px', color: '#3d5875', padding: '3px 0' }}>{line}</div>
+                          <div key={line} style={{ fontSize: '14px', color: 'var(--text-primary)', padding: '3px 0' }}>{line}</div>
                         ))}
                       </div>
                     )}
                   </div>
                 )}
                 {!staffingSummaryAvailable && (
-                  <p style={{ marginTop: '12px', color: '#76889e', fontSize: '11px' }}>
+                  <p style={{ marginTop: '12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
                     {t('system.staffing_unavailable')}
                   </p>
                 )}
@@ -561,20 +576,20 @@ export function OptimizePage() {
                     marginTop: '12px',
                     padding: '12px',
                     borderRadius: '10px',
-                    background: '#f3f8ff',
+                    background: 'var(--info-bg)',
                     border: '1px solid #d6e5f3',
                   }}>
-                    <div style={{ fontSize: '11px', color: '#76889e', fontWeight: 700 }}>Recommendation</div>
-                    <p style={{ fontSize: '12px', color: '#3d5875', marginTop: '4px', lineHeight: 1.5 }}>
-                      {rows[0]?.explanation || rows[0]?.recommendation || 'Optimization complete. Review the staffing table below for detailed changes.'}
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.candidate_explanation')}</div>
+                    <p style={{ fontSize: '14px', color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.5 }}>
+                      {rows[0]?.explanation || rows[0]?.recommendation || t('optimize.review_candidate')}
                     </p>
                   </div>
                 )}
               </>
             ) : (
-              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#76889e', fontSize: '12px' }}>
-                <p style={{ margin: 0 }}>Run the optimizer to see results.</p>
-                <p style={{ margin: '4px 0 0', fontSize: '11px' }}>Select a goal, choose your dataset, and click Run.</p>
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>
+                <p style={{ margin: 0 }}>{t('optimize.empty_result')}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '14px' }}>{t('optimize.empty_result_help')}</p>
               </div>
             )}
           </div>
@@ -585,7 +600,7 @@ export function OptimizePage() {
               <h3 className="section-title">{t('page2.what_if')}</h3>
               <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
                 <div className="form-field" style={{ flex: 1 }}>
-                  <label htmlFor="opt-mult" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.lambda_multiplier')}</label>
+                  <label htmlFor="opt-mult" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.lambda_multiplier')}</label>
                   <input
                     id="opt-mult"
                     aria-label={t('optimize.lambda_multiplier')}
@@ -593,14 +608,14 @@ export function OptimizePage() {
                     step="any"
                     value={multiplier}
                     onChange={(e) => setMultiplier(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                   />
                 </div>
                 <button
                   type="button"
                   onClick={handleWhatIf}
                   disabled={running}
-                  style={{ padding: '8px 16px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: running ? 'not-allowed' : 'pointer', height: '35px' }}
+                  style={{ padding: '8px 16px', background: 'var(--accent)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: running ? 'not-allowed' : 'pointer', height: '35px' }}
                 >
                   {t('optimize.what_if')}
                 </button>
@@ -614,27 +629,27 @@ export function OptimizePage() {
               <h3 className="section-title">{t('page2.save_scenario')}</h3>
               <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
                 <div className="form-field" style={{ flex: 1 }}>
-                  <label htmlFor="opt-scenario" style={{ fontSize: '11px', fontWeight: 800 }}>{t('optimize.scenario_name')}</label>
+                  <label htmlFor="opt-scenario" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.scenario_name')}</label>
                   <input
                     id="opt-scenario"
                     aria-label={t('optimize.scenario_name')}
                     type="text"
                     value={scenarioName}
                     onChange={(e) => setScenarioName(e.target.value)}
-                    placeholder="e.g., Peak Season Plan"
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                    placeholder={t('optimize.scenario_placeholder')}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                   />
                 </div>
                 <button
                   type="button"
                   onClick={handleSave}
                   disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}
-                  style={{ padding: '8px 16px', background: '#1a2b4a', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: saving || running || stale ? 'not-allowed' : 'pointer', height: '35px' }}
+                  style={{ padding: '8px 16px', background: 'var(--primary)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: saving || running || stale ? 'not-allowed' : 'pointer', height: '35px' }}
                 >
                   {t('common.save')}
                 </button>
               </div>
-              {!stale && rows.length > 0 && !comparisonComplete(rows) && <p style={{ fontSize: '11px', color: '#76889e', marginTop: '6px' }}>{t('system.save_incomplete')}</p>}
+              {!stale && rows.length > 0 && !comparisonComplete(rows) && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>{t('system.save_incomplete')}</p>}
               {saved && !stale && <div className="alert alert-success" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
             </div>
           )}
@@ -653,9 +668,9 @@ export function OptimizePage() {
 
       {/* NovaQ Insights */}
       {rows && (() => {
-        const avgCurrentRho = rows.length > 0 ? rows.reduce((s, r) => s + (r.rho_current ?? 0), 0) / rows.length : null
-        const avgCurrentWq = rows.length > 0 ? rows.reduce((s, r) => s + (r.Wq_current ?? 0), 0) / rows.length : null
-        const avgOptWq = rows.length > 0 ? rows.reduce((s, r) => s + (r.Wq_optimal ?? 0), 0) / rows.length : null
+        const avgCurrentRho = completeFiniteAverage(rows.map((row) => row.rho_current))
+        const avgCurrentWq = completeFiniteAverage(rows.map((row) => row.Wq_current))
+        const avgOptWq = completeFiniteAverage(rows.map((row) => row.Wq_optimal))
         const insights = generateOptimizationInsights(
           rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.c_current, 0) / rows.length) : 0,
           peakRequirement,
@@ -683,28 +698,30 @@ export function OptimizePage() {
             <StatusBadge status="Unstable" />
             <span>{'> 100%'}</span>
           </div>
-          <div className="table-wrap">
+          <div className="table-scroll" role="region" aria-label={t('optimize.staffing_table')} tabIndex={0}>
             <table>
+              <caption className="sr-only">{t('optimize.staffing_table')}</caption>
               <thead>
                 <tr>
                   {COLUMNS.map((col) => (
-                    <th key={col.label}>{col.label}</th>
+                    <th scope="col" key={col.label}>{col.label}</th>
                   ))}
-                  <th>{t('optimize.recommendation')}</th>
+                  <th scope="col">{t('optimize.recommendation')}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.time}>
-                    {COLUMNS.map((col) => (
-                      <td key={col.label}>
-                        {col.render
-                          ? col.render(row)
-                          : col.label === 'segment'
-                          ? col.current(row)
-                          : `${col.current(row)} → ${col.optimized(row)}`}
-                      </td>
-                    ))}
+                    {COLUMNS.map((col) => {
+                      const content = col.render
+                        ? col.render(row)
+                        : col.label === 'segment'
+                        ? col.current(row)
+                        : `${col.current(row)} → ${col.optimized(row)}`
+                      return col.label === 'segment'
+                        ? <th scope="row" key={col.label}>{content}</th>
+                        : <td key={col.label}>{content}</td>
+                    })}
                     <td>
                       {row.explanation && row.explanation !== row.recommendation ? (
                         <>

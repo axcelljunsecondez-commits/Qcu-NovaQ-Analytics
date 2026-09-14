@@ -7,7 +7,7 @@
  * Returns '—' for null, undefined, or NaN values.
  */
 export function fmt(value: number | null | undefined, digits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
     return '—'
   }
   return value.toFixed(digits)
@@ -18,7 +18,7 @@ export function fmt(value: number | null | undefined, digits = 2): string {
  * Returns '—' for null, undefined, or NaN values.
  */
 export function fmtPct(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
     return '—'
   }
   return Math.round(value * 100) + '%'
@@ -29,7 +29,7 @@ export function fmtPct(value: number | null | undefined): string {
  * Returns '—' for null, undefined, or NaN values.
  */
 export function fmtFrCi(lower: number | null | undefined, upper: number | null | undefined): string {
-  if (lower === null || upper === null || lower === undefined || upper === undefined || Number.isNaN(lower) || Number.isNaN(upper)) {
+  if (lower === null || upper === null || lower === undefined || upper === undefined || !Number.isFinite(lower) || !Number.isFinite(upper)) {
     return '—'
   }
   return `${Math.round(lower * 100)}%–${Math.round(upper * 100)}%`

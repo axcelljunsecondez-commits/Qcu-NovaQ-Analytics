@@ -5,6 +5,12 @@ import tl from '../../public/locales/tl/translation.json'
 
 export const LANG_KEY = 'novaq_lang'
 
+export function syncDocumentLanguage(language: string): void {
+  document.documentElement.lang = language === 'tl' ? 'tl' : 'en'
+}
+
+i18n.on('languageChanged', syncDocumentLanguage)
+
 export function initI18n(): void {
   const saved = localStorage.getItem(LANG_KEY)
   void i18n.use(initReactI18next).init({
@@ -19,6 +25,7 @@ export function initI18n(): void {
 }
 
 export function setLang(lang: 'en' | 'tl'): void {
+  syncDocumentLanguage(lang)
   void i18n.changeLanguage(lang)
   localStorage.setItem(LANG_KEY, lang)
 }

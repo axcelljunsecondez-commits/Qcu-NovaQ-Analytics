@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { ComparisonPage } from './ComparisonPage'
@@ -100,7 +100,7 @@ describe('ComparisonPage', () => {
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
     expect((await screen.findAllByRole('checkbox', { name: 'Plan A' })).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('checkbox', { name: 'Plan B' }).length).toBeGreaterThan(0)
-    expect(await screen.findByTestId('chart-radar')).toBeInTheDocument()
+    expect(await screen.findByTestId('chart-utilization-compare')).toBeInTheDocument()
   })
 
   it('persists a verified, complete scenario as the simulation selection', async () => {
@@ -122,11 +122,12 @@ describe('ComparisonPage', () => {
     await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 1))
   })
 
-  it('renders radar, utilization, servers, wait-time and waterfall charts', async () => {
+  it('renders only authoritative utilization, server, wait-time and cost charts', async () => {
     const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="chart-radar"]')).toBeInTheDocument(),
+      expect(container.querySelector('[data-testid="chart-utilization-compare"]')).toBeInTheDocument(),
     )
+    expect(container.querySelector('[data-testid="chart-radar"]')).not.toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-utilization-compare"]')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-server-compare"]')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-wait-time-lines"]')).toBeInTheDocument()
@@ -284,28 +285,26 @@ describe('ComparisonPage', () => {
     expect(screen.queryByText('Choose at least two saved scenarios.')).not.toBeInTheDocument()
   })
 
-  it('shows the ROI projection from current vs optimized costs', async () => {
-    renderWithProviders(<ComparisonPage />, { route: '/compare' })
-    expect(await screen.findByText('ROI Projection')).toBeInTheDocument()
+  it('shows analyzed-period costs without radar scores, ROI, or calendar projections', async () => {
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    expect(await screen.findByText('Costs below apply only to the operating period represented by this scenario.')).toBeInTheDocument()
     expect(screen.getAllByText('₱300').length).toBeGreaterThan(0)
-    expect(screen.getByText('₱8,825')).toBeInTheDocument()
-    expect(screen.getByText('₱105,900')).toBeInTheDocument()
-    expect(screen.getByText('Operating Days')).toBeInTheDocument()
-    expect(screen.getByText('353')).toBeInTheDocument()
-    expect(screen.getByText('Annual savings are based on 353 operating days after excluding 12 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-radar"]')).not.toBeInTheDocument()
+    expect(screen.queryByText('ROI Projection')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Legal holidays per year')).not.toBeInTheDocument()
+    expect(screen.queryByText('Monthly Savings')).not.toBeInTheDocument()
+    expect(screen.queryByText('Annual Savings')).not.toBeInTheDocument()
   })
 
-  it('recomputes annual savings from the holiday count and Sunday closure', async () => {
-    const user = userEvent.setup()
+  it('keeps a genuine zero current cost distinct from an unavailable savings percentage', async () => {
+    listScenariosMock.mockResolvedValue({ scenarios: [{
+      ...scenarios[0],
+      results: { results: [{ ...rows[0], cost_current: 0, cost_optimal: 0, delta_cost: 0 }] },
+    }] })
     renderWithProviders(<ComparisonPage />, { route: '/compare' })
-    await screen.findByText('ROI Projection')
-    const input = screen.getByLabelText('Legal holidays per year')
-    fireEvent.change(input, { target: { value: '20' } })
-    expect(screen.getByText('₱103,500')).toBeInTheDocument()
-    await user.click(screen.getByRole('checkbox', { name: 'Closed on Sundays (no work, no pay)' }))
-    expect(screen.getByText('₱87,900')).toBeInTheDocument()
-    expect(screen.getByText('293')).toBeInTheDocument()
-    expect(screen.getByText('Annual savings are based on 293 operating days after excluding 20 legal holidays and the selected Sunday setting.')).toBeInTheDocument()
+    expect((await screen.findAllByText('₱0')).length).toBeGreaterThan(0)
+    expect(screen.getByText('Savings Percent').parentElement).toHaveTextContent('—')
   })
 
   it('shows the empty state when no scenarios are saved', async () => {

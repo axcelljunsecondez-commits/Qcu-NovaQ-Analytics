@@ -4,6 +4,20 @@ function finiteNonNegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+export function completeFiniteAverage(values: unknown[]): number | null {
+  if (values.length === 0 || !values.every(finiteNumber)) return null
+  return values.reduce<number>((sum, value) => sum + value, 0) / values.length
+}
+
+export function completeFiniteTotal(values: unknown[]): number | null {
+  if (values.length === 0 || !values.every(finiteNumber)) return null
+  return values.reduce<number>((sum, value) => sum + value, 0)
+}
+
 /** Operational fields needed to show the saved baseline and recommendation. */
 export function operationalComparisonComplete(rows: OptimizationOut[]): boolean {
   return rows.length > 0 && rows.every((row) =>

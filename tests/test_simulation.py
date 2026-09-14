@@ -169,11 +169,50 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(result["event_count"], 3)
         self.assertTrue(result["truncated"])
 
-    def test_trace_and_aggregate_results_come_from_same_execution(self):
-        segments = [{"time": "test", "lambda": 12, "mu": 8, "c": 2}]
-        traced = trace_simulate_segments(segments, trace_hours=2, seed=19)
-        aggregate = simulate_segments(segments, sim_hours=2, seed=19)
-        self.assertEqual(traced["results"], aggregate)
+    def test_trace_and_aggregate_results_match_across_configurations(self):
+        cases = [
+            (
+                [{"time": "single-server", "lambda": 6, "mu": 10, "c": 1}],
+                1.0,
+                3,
+                False,
+            ),
+            (
+                [
+                    {"time": "first", "lambda": 12, "mu": 8, "c": 2},
+                    {"time": "second", "lambda": 18, "mu": 7, "c": 3},
+                ],
+                2.0,
+                19,
+                True,
+            ),
+            (
+                [
+                    {"time": "first", "lambda": 20, "mu": 8, "c": 2},
+                    {"time": "second", "lambda": 4, "mu": 9, "c": 1},
+                ],
+                0.5,
+                101,
+                False,
+            ),
+        ]
+        for segments, hours, seed, carryover in cases:
+            with self.subTest(
+                segments=len(segments), seed=seed, carryover=carryover
+            ):
+                traced = trace_simulate_segments(
+                    segments,
+                    trace_hours=hours,
+                    seed=seed,
+                    carryover=carryover,
+                )
+                aggregate = simulate_segments(
+                    segments,
+                    sim_hours=hours,
+                    seed=seed,
+                    carryover=carryover,
+                )
+                self.assertEqual(traced["results"], aggregate)
 
     def test_trace_cap_does_not_truncate_aggregate_simulation(self):
         segments = [{"time": "test", "lambda": 20, "mu": 8, "c": 2}]

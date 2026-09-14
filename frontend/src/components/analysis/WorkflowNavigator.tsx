@@ -1,34 +1,35 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-
-const workflow = [
-  ['setup', 'nav.setup'],
-  ['current', 'nav.current'],
-  ['optimize', 'nav.optimize'],
-  ['compare', 'nav.compare'],
-  ['simulate', 'nav.simulate'],
-  ['decision', 'nav.decision'],
-  ['reports', 'nav.reports'],
-] as const
+import { analysisWorkflow } from '../../lib/workflow'
 
 export function WorkflowNavigator() {
   const { t } = useTranslation()
   const { analysisId } = useParams()
   const location = useLocation()
   const current = location.pathname.split('/').pop()
-  const index = workflow.findIndex(([path]) => path === current)
+  const index = analysisWorkflow.findIndex(([path]) => path === current)
   if (!analysisId || index < 0) return null
-  const previous = workflow[index - 1]
-  const next = workflow[index + 1]
+  const previous = analysisWorkflow[index - 1]
+  const next = analysisWorkflow[index + 1]
 
   return (
     <nav className="workflow-footer" aria-label={t('workflow.navigation')}>
-      <div>
+      <div className="workflow-summary">
         <span className="workflow-position">
-          {t('workflow.step', { current: index + 1, total: workflow.length })}
+          {t('workflow.step', { current: index + 1, total: analysisWorkflow.length })}
         </span>
-        <strong>{t(workflow[index][1])}</strong>
+        <strong>{t(analysisWorkflow[index][1])}</strong>
       </div>
+      <ol className="workflow-stepper">
+        {analysisWorkflow.map(([path, label], stepIndex) => (
+          <li key={path} className={stepIndex === index ? 'active' : undefined}>
+            <Link to={`/analyses/${analysisId}/${path}`} aria-current={stepIndex === index ? 'step' : undefined}>
+              <span aria-hidden="true">{stepIndex + 1}</span>
+              {t(label)}
+            </Link>
+          </li>
+        ))}
+      </ol>
       <div className="workflow-footer-actions">
         {previous && (
           <Link className="btn-ghost" to={`/analyses/${analysisId}/${previous[0]}`}>

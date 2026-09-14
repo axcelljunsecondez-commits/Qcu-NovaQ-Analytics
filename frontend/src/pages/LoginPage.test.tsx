@@ -19,6 +19,10 @@ vi.mock('../api/auth', () => ({
   googleNonce: vi.fn(),
 }))
 
+vi.mock('../api/onboarding', () => ({
+  getOnboardingStatus: vi.fn(async () => ({ completed: true, operation_type: 'retail', preferred_terminology: {} })),
+}))
+
 const adminUser = {
   id: 1,
   email: 'a@b.c',
@@ -42,6 +46,9 @@ describe('LoginPage', () => {
     expect(screen.getByText('Register')).toBeInTheDocument()
     expect(screen.getByText('Forgot password?')).toBeInTheDocument()
     expect(screen.getByText('Resend verification email')).toBeInTheDocument()
+    expect(screen.getByText('Authenticated workspace.')).toBeInTheDocument()
+    expect(screen.queryByText(/INDIVIDUAL QUEUES/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Authentication is not connected/i)).not.toBeInTheDocument()
   })
 
   it('submits credentials and shows the logged-in user email', async () => {

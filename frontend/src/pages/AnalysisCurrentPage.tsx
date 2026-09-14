@@ -1,14 +1,29 @@
-/**
- * AnalysisCurrentPage — Shows current queue performance matching reference design.
- * Topbar, 4-up KPI cards, two-column charts (bar + donut), alert note, table.
- */
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 import { getAnalysisCurrent, listAnalysisDatasets } from '../api/analyses'
 import { ApiState } from '../components/ui/ApiState'
-import { NovaQInsights, generateOptimizationInsights } from '../components/insights/NovaQInsights'
 import { fmtPct } from '../lib/format'
+
+function finiteValue(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string' || value.trim() === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function statusKind(status: unknown) {
+  const normalized = String(status ?? '').trim().toLowerCase()
+  if (normalized.includes('critical') || normalized.includes('unstable')) return 'critical'
+  if (normalized.includes('peak')) return 'peak'
+  if (normalized.includes('normal')) return 'normal'
+  if (normalized.includes('lean')) return 'lean'
+  return 'neutral'
+}
+
+function shown(value: unknown) {
+  return value === null || value === undefined || value === '' ? '—' : String(value)
+}
 
 export function AnalysisCurrentPage() {
   const { t } = useTranslation()
@@ -18,16 +33,15 @@ export function AnalysisCurrentPage() {
   const query = useQuery({ queryKey: ['current', id, datasetId], queryFn: () => getAnalysisCurrent(id), enabled: Boolean(datasetId), retry: false })
 
   if (datasets.isLoading || query.isLoading) return <ApiState.Loading />
+  if (datasets.isError) return <ApiState.ErrorState error={datasets.error} />
   if (query.isError || !query.data) {
     return (
-      <div>
-        <div className="topbar">
-          <div>
-            <div className="topbar-eyebrow">Analysis · Observed Baseline</div>
-            <h1 className="page-title">{t('nav.current')}</h1>
-            <p className="page-caption">{t('analyses.current_basis')}</p>
-          </div>
-        </div>
+      <div className="page-stack">
+        <header className="page-header">
+          <p className="topbar-eyebrow">{t('current.eyebrow')}</p>
+          <h1 className="page-title">{t('nav.current')}</h1>
+          <p className="page-caption">{t('analyses.current_basis')}</p>
+        </header>
         <ApiState.Empty message={t('analyses.no_dataset')} />
         <Link className="button-link" to="../setup">{t('analyses.go_setup')}</Link>
       </div>
@@ -35,310 +49,154 @@ export function AnalysisCurrentPage() {
   }
 
   const { selected_model, rows, kpis, explanations } = query.data
-  const avgRho = typeof kpis?.avg_utilization === 'number' ? kpis.avg_utilization : null
-  const avgWq = typeof kpis?.avg_waiting_time === 'number' ? kpis.avg_waiting_time : null
-  const numericWq = rows
-    .map((row) => typeof row.Wq === 'number' ? row.Wq : Number(row.Wq))
-    .filter((value) => Number.isFinite(value))
-  const numericRho = rows
-    .map((row) => typeof row.rho === 'number' ? row.rho : Number(row.rho))
-    .filter((value) => Number.isFinite(value))
+  const avgRho = finiteValue(kpis?.avg_utilization)
+  const avgWq = finiteValue(kpis?.avg_waiting_time)
+  const numericWq = rows.map((row) => finiteValue(row.Wq)).filter((value): value is number => value !== null)
+  const numericRho = rows.map((row) => finiteValue(row.rho)).filter((value): value is number => value !== null)
   const maxWq = numericWq.length > 0 ? Math.max(...numericWq) : null
   const maxRho = numericRho.length > 0 ? Math.max(...numericRho) : null
-
-  const insights = generateOptimizationInsights(
-    0, 0,
-    avgWq !== null ? avgWq * 60 : null,
-    null,
-    avgRho,
-    t,
-  )
-
-  // Compute arrival data for bar chart (group by time, count arrivals)
-  const arrivalsByTime: Record<string, number> = {}
-  rows.forEach((row) => {
-    const time = String(row.time || '')
-    const lambda = typeof row.lambda === 'number' ? row.lambda : Number(row.lambda) || 0
-    arrivalsByTime[time] = (arrivalsByTime[time] || 0) + lambda
-  })
-  const timeLabels = Object.keys(arrivalsByTime)
-  const arrivalValues = Object.values(arrivalsByTime)
-  const maxArrival = Math.max(...arrivalValues, 1)
-  const peakHourIndex = arrivalValues.length > 0 ? arrivalValues.indexOf(Math.max(...arrivalValues)) : -1
-  const peakHour = peakHourIndex >= 0 ? timeLabels[peakHourIndex] : null
-  const leanHourIndex = arrivalValues.length > 0 ? arrivalValues.indexOf(Math.min(...arrivalValues)) : -1
-  const leanHour = leanHourIndex >= 0 ? timeLabels[leanHourIndex] : null
-
-  // Model distribution for donut
-  const modelCounts: Record<string, number> = {}
-  rows.forEach((row) => {
-    const model = String(row.model || 'Unknown')
-    modelCounts[model] = (modelCounts[model] || 0) + 1
-  })
-  const modelEntries = Object.entries(modelCounts).sort((a, b) => b[1] - a[1])
-  const totalRows = rows.length || 1
+  const arrivalPoints = rows
+    .map((row, index) => ({ index, time: shown(row.time), value: finiteValue(row.lambda) }))
+    .filter((point): point is { index: number; time: string; value: number } => point.value !== null)
+  const maxArrival = arrivalPoints.length > 0 ? Math.max(...arrivalPoints.map((point) => point.value)) : null
+  const peakHour = arrivalPoints.length > 0
+    ? arrivalPoints.reduce((peak, point) => point.value > peak.value ? point : peak).time
+    : null
+  const leanHour = arrivalPoints.length > 0
+    ? arrivalPoints.reduce((lean, point) => point.value < lean.value ? point : lean).time
+    : null
+  const criticalCount = rows.filter((row) => statusKind(row.status) === 'critical').length
+  const modelCounts = rows.reduce<Record<string, number>>((counts, row) => {
+    const model = typeof row.model === 'string' && row.model.trim() ? row.model : t('common.not_available')
+    counts[model] = (counts[model] ?? 0) + 1
+    return counts
+  }, {})
+  const modelEntries = Object.entries(modelCounts).sort((left, right) => right[1] - left[1])
 
   return (
-    <div>
-      {/* Topbar */}
-      <div className="topbar">
-        <div>
-          <div className="topbar-eyebrow">Analysis · Observed Baseline</div>
-          <h1 className="page-title">{t('nav.current')}</h1>
-          <p className="page-caption">What is happening now, based on the uploaded observations. No optimization has been applied.</p>
-        </div>
-      </div>
+    <div className="page-stack">
+      <header className="page-header">
+        <p className="topbar-eyebrow">{t('current.eyebrow')}</p>
+        <h1 className="page-title">{t('nav.current')}</h1>
+        <p className="page-caption">{t('current.description')}</p>
+      </header>
 
-      {/* KPI Cards */}
       <div className="kpi-row kpi-row-summary">
-        <div className="card kpi-card">
-          <div className="kpi-group-title">{t('analyses.wait_summary')}</div>
+        <section className="card kpi-card" aria-labelledby="current-wait-title">
+          <h2 id="current-wait-title" className="kpi-group-title">{t('analyses.wait_summary')}</h2>
           <div className="kpi-pair">
-            <div>
-              <div className="kpi-label">{t('analyses.avg_wq')}</div>
-              <div className="kpi-value" style={{ color: 'var(--info)' }}>
-                {avgWq !== null ? `${(avgWq * 60).toFixed(1)} min` : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="kpi-label">{t('analyses.max_wq')}</div>
-              <div className="kpi-value" style={{ color: 'var(--info)' }}>
-                {maxWq !== null ? `${(maxWq * 60).toFixed(1)} min` : '—'}
-              </div>
-            </div>
+            <div><div className="kpi-label">{t('analyses.avg_wq')}</div><div className="kpi-value state-current">{avgWq !== null ? `${(avgWq * 60).toFixed(1)} ${t('analyses.minutes')}` : t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{t('analyses.max_wq')}</div><div className="kpi-value state-current">{maxWq !== null ? `${(maxWq * 60).toFixed(1)} ${t('analyses.minutes')}` : t('common.not_available')}</div></div>
           </div>
-          <div className="kpi-hint" style={{ color: 'var(--success)' }}>Observed baseline</div>
-        </div>
-        <div className="card kpi-card">
-          <div className="kpi-group-title">{t('analyses.utilization_summary')}</div>
+          <p className="kpi-hint">{t('current.persisted_baseline')}</p>
+        </section>
+        <section className="card kpi-card" aria-labelledby="current-util-title">
+          <h2 id="current-util-title" className="kpi-group-title">{t('analyses.utilization_summary')}</h2>
           <div className="kpi-pair">
-            <div>
-              <div className="kpi-label">{t('analyses.avg_rho')}</div>
-              <div className="kpi-value" style={{ color: 'var(--info)' }}>
-                {avgRho !== null ? fmtPct(avgRho) : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="kpi-label">{t('analyses.max_rho')}</div>
-              <div className="kpi-value" style={{ color: 'var(--warning)' }}>
-                {maxRho !== null ? fmtPct(maxRho) : '—'}
-              </div>
-            </div>
+            <div><div className="kpi-label">{t('analyses.avg_rho')}</div><div className="kpi-value state-current">{avgRho !== null ? fmtPct(avgRho) : t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{t('analyses.max_rho')}</div><div className="kpi-value state-current">{maxRho !== null ? fmtPct(maxRho) : t('common.not_available')}</div></div>
           </div>
-          <div className="kpi-hint" style={{ color: 'var(--warning)' }}>High during peak periods</div>
-        </div>
-        <div className="card kpi-card">
-          <div className="kpi-group-title">{t('analyses.hour_summary')}</div>
+          <p className="kpi-hint">{t('current.utilization_basis', { count: numericRho.length })}</p>
+        </section>
+        <section className="card kpi-card" aria-labelledby="current-hours-title">
+          <h2 id="current-hours-title" className="kpi-group-title">{t('analyses.hour_summary')}</h2>
           <div className="kpi-pair">
-            <div>
-              <div className="kpi-label">{t('analyses.peak_hour')}</div>
-              <div className="kpi-value kpi-value-small">{peakHour ?? '—'}</div>
-            </div>
-            <div>
-              <div className="kpi-label">{t('analyses.lean_hour')}</div>
-              <div className="kpi-value kpi-value-small">{leanHour ?? '—'}</div>
-            </div>
+            <div><div className="kpi-label">{t('analyses.peak_hour')}</div><div className="kpi-value kpi-value-small">{peakHour ?? t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{t('analyses.lean_hour')}</div><div className="kpi-value kpi-value-small">{leanHour ?? t('common.not_available')}</div></div>
           </div>
-          <div className="kpi-hint">{rows.filter((r) => String(r.status || '').includes('CRITICAL')).length} critical intervals</div>
-        </div>
+          <p className="kpi-hint">{t('current.critical_count', { count: criticalCount })}</p>
+        </section>
       </div>
 
-      {/* Two-column: Bar Chart + Donut */}
-      <div className="grid g2" style={{ marginTop: '12px' }}>
-        {/* Bar Chart — Arrivals by Time */}
-        <div className="card" style={{ padding: '18px' }}>
-          <h3 className="section-title">Customer Arrivals by Time</h3>
-          <div style={{
-            height: '210px',
-            border: '1px solid var(--border)',
-            borderRadius: '9px',
-            padding: '14px',
-            background: 'linear-gradient(#fff, #fbfdff)',
-          }}>
-            <div style={{
-              height: '150px',
-              display: 'flex',
-              alignItems: 'end',
-              gap: '8px',
-              padding: '10px 8px 0',
-              borderBottom: '1px solid #dfe8f1',
-            }}>
-              {arrivalValues.slice(0, 13).map((val, i) => (
-                <span
-                  key={i}
-                  style={{
-                    flex: 1,
-                    background: 'linear-gradient(180deg, #54adff, #1887f5)',
-                    borderRadius: '4px 4px 0 0',
-                    minHeight: '8px',
-                    height: `${(val / maxArrival) * 100}%`,
-                  }}
-                />
+      <div className="grid g2 current-visual-grid">
+        <section className="card" aria-labelledby="arrival-chart-title">
+          <h2 id="arrival-chart-title" className="section-title">{t('current.arrivals_title')}</h2>
+          <p id="arrival-chart-summary" className="chart-summary">
+            {arrivalPoints.length > 0 ? t('current.arrivals_summary', { count: arrivalPoints.length }) : t('current.arrivals_unavailable')}
+          </p>
+          {arrivalPoints.length > 0 ? (
+            <>
+              <figure className="arrival-figure" aria-labelledby="arrival-chart-title" aria-describedby="arrival-chart-summary">
+                <div className="arrival-bars" role="img">
+                  {arrivalPoints.map((point) => (
+                    <div className="arrival-bar-item" key={`${point.time}-${point.index}`}>
+                      <span className="arrival-value">{point.value}</span>
+                      <span className="arrival-bar-track"><span className="arrival-bar" style={{ height: maxArrival && maxArrival > 0 ? `${point.value / maxArrival * 100}%` : '0%' }} /></span>
+                      <span className="arrival-label">{point.time}</span>
+                    </div>
+                  ))}
+                </div>
+              </figure>
+              <div className="table-scroll chart-data-table" role="region" aria-label={t('current.arrivals_table')} tabIndex={0}>
+                <table><caption className="sr-only">{t('current.arrivals_table')}</caption><thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('current.arrival_rate')}</th></tr></thead><tbody>{arrivalPoints.map((point) => <tr key={`table-${point.time}-${point.index}`}><th scope="row">{point.time}</th><td>{point.value}</td></tr>)}</tbody></table>
+              </div>
+            </>
+          ) : <ApiState.Empty message={t('current.arrivals_unavailable')} />}
+        </section>
+
+        <section className="card" aria-labelledby="model-distribution-title">
+          <h2 id="model-distribution-title" className="section-title">{t('current.models_title')}</h2>
+          <p className="chart-summary">{selected_model ? t('current.selected_model', { model: selected_model }) : t('current.model_unavailable')}</p>
+          {modelEntries.length > 0 ? (
+            <ul className="model-distribution-list">
+              {modelEntries.map(([model, count]) => (
+                <li key={model}>
+                  <div><strong>{model}</strong><span>{t('current.interval_count', { count })}</span></div>
+                  <span className="model-bar-track" aria-hidden="true"><span className="model-bar" style={{ width: `${count / rows.length * 100}%` }} /></span>
+                </li>
               ))}
-            </div>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              color: '#8a9bad',
-              fontSize: '9px',
-              marginTop: '7px',
-            }}>
-              {timeLabels.slice(0, 13).filter((_, i) => i % 2 === 0).map((label, i) => (
-                <span key={i}>{label}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Donut — Model Distribution */}
-        <div className="card" style={{ padding: '18px' }}>
-          <h3 className="section-title">Queue Model Used</h3>
-          <div style={{
-            width: '138px',
-            height: '138px',
-            borderRadius: '50%',
-            background: `conic-gradient(var(--accent) 0 ${(modelEntries[0]?.[1] || 1) / totalRows * 100}%, var(--success) ${(modelEntries[0]?.[1] || 1) / totalRows * 100}% ${((modelEntries[0]?.[1] || 0) + (modelEntries[1]?.[1] || 0)) / totalRows * 100}%, var(--warning) ${((modelEntries[0]?.[1] || 0) + (modelEntries[1]?.[1] || 0)) / totalRows * 100}% 100%)`,
-            margin: '8px auto',
-            position: 'relative',
-          }}>
-            <div style={{
-              position: 'absolute',
-              inset: '27px',
-              borderRadius: '50%',
-              background: '#fff',
-              display: 'grid',
-              placeItems: 'center',
-              textAlign: 'center',
-              fontSize: '10px',
-              fontWeight: 800,
-              color: '#3d5875',
-            }}>
-              {selected_model || '—'}
-            </div>
-          </div>
-          {/* Model legend */}
-          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {modelEntries.map(([model, count]) => (
-              <div key={model} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-                <span style={{ color: 'var(--text-secondary)' }}>{model}</span>
-                <span style={{ fontWeight: 700, marginLeft: 'auto' }}>{Math.round(count / totalRows * 100)}%</span>
-              </div>
-            ))}
-          </div>
-          <div className="info" style={{ marginTop: '12px' }}>
-            <strong>General service-time behavior detected.</strong> NovaQ can use the observed service-time variability instead of assuming a purely exponential distribution.
-          </div>
-        </div>
+            </ul>
+          ) : <ApiState.Empty message={t('current.model_unavailable')} />}
+        </section>
       </div>
 
-      {/* Alert Note */}
-      <div className="note" style={{ marginTop: '12px' }}>
-        <strong>Queue pressure is concentrated in specific periods.</strong> The next step should propose staffing changes while keeping this baseline unchanged for comparison.
+      <div className={`alert ${criticalCount > 0 ? 'alert-warn' : 'alert-info'}`} role="status">
+        <strong>{criticalCount > 0 ? t('current.pressure_found_title') : t('current.pressure_clear_title')}</strong>{' '}
+        {criticalCount > 0 ? t('current.pressure_found', { count: criticalCount }) : t('current.pressure_clear')}
       </div>
 
-      {/* NovaQ Insights */}
-      {insights.length > 0 && <NovaQInsights insights={insights} />}
-
-      {/* Model Explanation */}
       {explanations.length > 0 && (
-        <div className="card" style={{ marginTop: '12px' }}>
-          <h3 className="section-title">{t('analyses.model_explanation')}</h3>
-          {explanations.map((exp, i) => (
-            <div key={i} className="explanation-block">
-              <h3 style={{ fontSize: '13px', fontWeight: 800 }}>{exp.selected_model}</h3>
-              <p className="explanation-reason">{exp.selection_reason}</p>
-              {exp.operational_facts.length > 0 && (
-                <div className="explanation-section">
-                  <strong style={{ fontSize: '11px' }}>{t('analyses.operational_facts')}</strong>
-                  <ul>{exp.operational_facts.map((f, j) => <li key={j} style={{ fontSize: '11px' }}>{f}</li>)}</ul>
-                </div>
-              )}
-              {exp.measured_characteristics.length > 0 && (
-                <div className="explanation-section">
-                  <strong style={{ fontSize: '11px' }}>{t('analyses.measured_characteristics')}</strong>
-                  <ul>{exp.measured_characteristics.map((c, j) => <li key={j} style={{ fontSize: '11px' }}>{c}</li>)}</ul>
-                </div>
-              )}
-              {exp.model_assumptions.length > 0 && (
-                <div className="explanation-section">
-                  <strong style={{ fontSize: '11px' }}>{t('analyses.model_assumptions')}</strong>
-                  <ul>{exp.model_assumptions.map((a, j) => <li key={j} style={{ fontSize: '11px' }}>{a}</li>)}</ul>
-                </div>
-              )}
-            </div>
+        <section className="card" aria-labelledby="model-explanation-title">
+          <h2 id="model-explanation-title" className="section-title">{t('analyses.model_explanation')}</h2>
+          {explanations.map((explanation) => (
+            <details key={`${explanation.time}-${explanation.selected_model}`} className="explanation-block">
+              <summary>{explanation.time}: {explanation.selected_model}</summary>
+              <p className="explanation-reason">{explanation.selection_reason}</p>
+              {explanation.operational_facts.length > 0 && <div className="explanation-section"><h3>{t('analyses.operational_facts')}</h3><ul>{explanation.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
+              {explanation.measured_characteristics.length > 0 && <div className="explanation-section"><h3>{t('analyses.measured_characteristics')}</h3><ul>{explanation.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
+              {explanation.model_assumptions.length > 0 && <div className="explanation-section"><h3>{t('analyses.model_assumptions')}</h3><ul>{explanation.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
+            </details>
           ))}
-        </div>
+        </section>
       )}
 
-      {/* Detailed Results Table */}
-      <div className="card" style={{ marginTop: '12px' }}>
-        <h3 className="section-title">{t('analyses.detailed_results')}</h3>
+      <section className="card" aria-labelledby="current-results-title">
+        <h2 id="current-results-title" className="section-title">{t('analyses.detailed_results')}</h2>
         <div className="status-legend" aria-label={t('analyses.status_legend')}>
           <span className="status-legend-title">{t('analyses.status_legend')}</span>
-          <span><i className="status-dot status-dot-peak" />Peak</span>
-          <span><i className="status-dot status-dot-normal" />Normal</span>
-          <span><i className="status-dot status-dot-lean" />Lean</span>
+          {['critical', 'peak', 'normal', 'lean'].map((kind) => <span key={kind}><i className={`status-dot status-dot-${kind}`} aria-hidden="true" />{t(`current.status.${kind}`)}</span>)}
         </div>
-        <div className="table-wrap">
+        <div className="table-scroll" role="region" aria-labelledby="current-results-title" tabIndex={0}>
           <table>
-            <thead>
-              <tr>
-                <th>{t('common.time')}</th>
-                <th>λ</th>
-                <th>μ</th>
-                <th>c</th>
-                <th>{t('analysis.model')}</th>
-                <th>ρ</th>
-                <th>Wq ({t('analyses.minutes')})</th>
-                <th>{t('analyses.status')}</th>
-              </tr>
-            </thead>
+            <caption className="sr-only">{t('current.results_caption')}</caption>
+            <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">λ/h</th><th scope="col">μ/h</th><th scope="col">c</th><th scope="col">{t('analysis.model')}</th><th scope="col">ρ</th><th scope="col">Wq ({t('analyses.minutes')})</th><th scope="col">{t('analyses.status')}</th></tr></thead>
             <tbody>
               {rows.map((row, index) => {
-                const rho = typeof row.rho === 'number' ? row.rho : null
-                const wq = typeof row.Wq === 'number' ? row.Wq : null
-                const status = String(row.status || '')
-                const normalizedStatus = status.toLowerCase()
-                const isCritical = normalizedStatus.includes('critical') || normalizedStatus.includes('unstable')
-                const statusClass = isCritical
-                  ? 'status-peak'
-                  : normalizedStatus.includes('peak')
-                    ? 'status-peak'
-                    : normalizedStatus.includes('normal')
-                      ? 'status-normal'
-                      : 'status-lean'
+                const rho = finiteValue(row.rho)
+                const wq = finiteValue(row.Wq)
+                const lambda = finiteValue(row.lambda)
+                const mu = finiteValue(row.mu)
+                const kind = statusKind(row.status)
                 return (
-                  <tr key={String(row.time ?? index)} className={isCritical ? 'row-warning' : undefined}>
-                    <td>{String(row.time)}</td>
-                    <td>{String(row.lambda)}</td>
-                    <td>{String(row.mu)}</td>
-                    <td>{String(row.c)}</td>
-                    <td>{String(row.model)}</td>
-                    <td>{rho !== null ? fmtPct(rho) : '—'}</td>
-                    <td>{wq !== null ? (wq * 60).toFixed(2) : '—'}</td>
-                    <td>
-                      <span className={`status-badge ${statusClass}`}>
-                        {status}
-                      </span>
-                    </td>
+                  <tr key={String(row.time ?? index)} className={kind === 'critical' ? 'row-warning' : undefined}>
+                    <th scope="row">{shown(row.time)}</th><td>{lambda ?? t('common.not_available')}</td><td>{mu ?? t('common.not_available')}</td><td>{shown(row.c)}</td><td>{shown(row.model)}</td><td>{rho !== null ? fmtPct(rho) : t('common.not_available')}</td><td>{wq !== null ? (wq * 60).toFixed(2) : t('common.not_available')}</td><td><span className={`status-badge status-${kind}`}>{shown(row.status)}</span></td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Navigation */}
-      <div className="btnrow" style={{ justifyContent: 'flex-start' }}>
-        <Link to="../setup" className="btn-ghost" style={{ textDecoration: 'none' }}>
-          ← {t('setup.back')}
-        </Link>
-        <Link to="../optimize" className="button-link">
-          Optimize Staffing →
-        </Link>
-      </div>
+      </section>
     </div>
   )
 }

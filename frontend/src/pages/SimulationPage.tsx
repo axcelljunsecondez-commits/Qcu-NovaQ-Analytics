@@ -1,5 +1,5 @@
 import simulationDefaults from '../api/simulation-defaults.json'
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -60,6 +60,15 @@ function validationPasses(row: SimValidateOut, cap: number): boolean {
   )
 }
 
+function storedNumberDiffers(raw: string, stored: unknown): boolean {
+  return typeof stored === 'number' && Number.isFinite(stored) && Number(raw) !== stored
+}
+
+function storedSeedDiffers(raw: string, stored: unknown): boolean {
+  if (stored === null) return parseSeed(raw) !== null
+  return typeof stored === 'number' && Number.isFinite(stored) && parseSeed(raw) !== stored
+}
+
 function PrecisionBadge({ level }: { level: SimMcOut['failure_rate_precision'] }) {
   if (!level) return <span className="badge badge-neutral">—</span>
   const style = level === 'high' ? 'badge-ok' : level === 'moderate' ? 'badge-warn' : 'badge-bad'
@@ -71,6 +80,7 @@ export function SimulationPage() {
   const analysisId = Number(useParams().analysisId)
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('des')
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ des: null, mc: null, validate: null })
   const [error, setError] = useState<string | null>(null)
   const [desHours, setDesHours] = useState('24')
   const [desThreshold, setDesThreshold] = useState('20')
@@ -148,17 +158,41 @@ export function SimulationPage() {
   const trace = desRun.data?.evidence.result ?? workflow.data.des?.result ?? null
   const desRows: SimDesOut[] = trace?.results ?? []
   const mcRows = mcRun.data?.evidence.result.results ?? workflow.data.mc?.result.results ?? []
-  const validationRows = validationRun.data?.evidence.result.results
-    ?? workflow.data.validation?.result.results
-    ?? []
+  const validationEvidence = validationRun.data?.evidence ?? workflow.data.validation
+  const validationRows = validationEvidence?.result.results ?? []
   const cap = Number(failureCap)
-  const validationPassed = validationRows.length > 0
-    && validationRows.every((row) => validationPasses(row, cap))
+  const savedCapValue = validationEvidence?.params.mc_failure_rate_cap
+  const savedFailureCap = typeof savedCapValue === 'number' && validProbability(savedCapValue)
+    ? savedCapValue
+    : null
+  const validationSettingsChanged = Boolean(validationEvidence) && (
+    storedNumberDiffers(validationHours, validationEvidence?.params.des_sim_hours)
+    || storedNumberDiffers(validationTrials, validationEvidence?.params.mc_trials)
+    || storedNumberDiffers(mcThreshold, validationEvidence?.params.mc_failure_threshold)
+    || storedNumberDiffers(failureCap, validationEvidence?.params.mc_failure_rate_cap)
+    || storedSeedDiffers(validationSeed, validationEvidence?.params.seed)
+  )
+  const validationPassed = savedFailureCap !== null
+    && validationRows.length > 0
+    && validationRows.every((row) => validationPasses(row, savedFailureCap))
   const running = desRun.isPending || mcRun.isPending || validationRun.isPending
 
   function begin(tabId: Tab) {
     setTab(tabId)
     setError(null)
+  }
+
+  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % TABS.length
+    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + TABS.length) % TABS.length
+    if (event.key === 'Home') nextIndex = 0
+    if (event.key === 'End') nextIndex = TABS.length - 1
+    if (nextIndex === null) return
+    event.preventDefault()
+    const next = TABS[nextIndex].id
+    begin(next)
+    tabRefs.current[next]?.focus()
   }
 
   function submitDes() {
@@ -224,14 +258,19 @@ export function SimulationPage() {
       {error && <div role="alert" className="alert alert-error">{error}</div>}
 
       <div className="tab-bar" role="tablist">
-        {TABS.map((item) => (
+        {TABS.map((item, index) => (
           <button
             key={item.id}
             type="button"
             role="tab"
+            id={`simulation-tab-${item.id}`}
+            aria-controls={`simulation-panel-${item.id}`}
             aria-selected={tab === item.id}
+            tabIndex={tab === item.id ? 0 : -1}
+            ref={(node) => { tabRefs.current[item.id] = node }}
             className={tab === item.id ? 'active' : ''}
             onClick={() => begin(item.id)}
+            onKeyDown={(event) => handleTabKey(event, index)}
           >
             {t(item.labelKey)}
           </button>
@@ -239,7 +278,7 @@ export function SimulationPage() {
       </div>
 
       {tab === 'des' && (
-        <>
+        <section id="simulation-panel-des" role="tabpanel" aria-labelledby="simulation-tab-des" tabIndex={0}>
           <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.unified_des_title')}</h3>
             <p className="form-hint">{t('simulation.unified_des_help')}</p>
@@ -274,6 +313,37 @@ export function SimulationPage() {
                 <MetricCard label={t('simulation.live_complete')} value={trace.event_count} />
               </div>
               <LiveSimulationPlayback trace={trace} />
+              <div className="card table-scroll" role="region" aria-label={t('simulation.des_table_caption')} tabIndex={0}>
+                <table>
+                  <caption className="sr-only">{t('simulation.des_table_caption')}</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('common.time')}</th>
+                      <th scope="col">{t('simulation.status')}</th>
+                      <th scope="col">ρ</th>
+                      <th scope="col">Lq</th>
+                      <th scope="col">{t('system.sim_wait_minutes')}</th>
+                      <th scope="col">{t('simulation.max_queue')}</th>
+                      <th scope="col">{t('simulation.served')}</th>
+                      <th scope="col">{t('simulation.dropped')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {desRows.map((row) => (
+                      <tr key={row.time}>
+                        <th scope="row">{row.time}</th>
+                        <td>{row.status}</td>
+                        <td>{fmt(row.rho_sim, 3)}</td>
+                        <td>{fmt(row.Lq_sim, 3)}</td>
+                        <td>{fmt(row.Wq_sim == null ? null : row.Wq_sim * 60, 2)}</td>
+                        <td>{row.max_queue}</td>
+                        <td>{row.served}</td>
+                        <td>{row.dropped}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <div className="card-grid">
                 <div className="card"><UtilizationHeatmap rows={desRows} /></div>
                 <div className="card"><RhoLqLines rows={desRows} /></div>
@@ -285,11 +355,11 @@ export function SimulationPage() {
               </button>
             </>
           )}
-        </>
+        </section>
       )}
 
       {tab === 'mc' && (
-        <>
+        <section id="simulation-panel-mc" role="tabpanel" aria-labelledby="simulation-tab-mc" tabIndex={0}>
           <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.tabs.mc')}</h3>
             <div className="form-row">
@@ -302,19 +372,19 @@ export function SimulationPage() {
           </div>
           {mcRows.length > 0 && (
             <>
-              <div className="card table-wrap">
-                <table><thead><tr><th>{t('common.time')}</th><th>{t('simulation.status')}</th><th>{t('simulation.rho_mean')}</th><th>{t('simulation.rho_p95_label')}</th><th>{t('simulation.failure_rate')}</th><th>{t('simulation.failure_rate_ci')}</th><th>{t('simulation.precision')}</th></tr></thead>
-                  <tbody>{mcRows.map((row) => <tr key={row.time}><td>{row.time}</td><td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmt(row.rho_mean, 3)}</td><td>{fmt(row.rho_p95, 3)}</td><td>{fmtPct(row.failure_rate)}</td><td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
+              <div className="card table-scroll" role="region" aria-label={t('simulation.mc_table_caption')} tabIndex={0}>
+                <table><caption className="sr-only">{t('simulation.mc_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.rho_mean')}</th><th scope="col">{t('simulation.rho_p95_label')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.failure_rate_ci')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
+                  <tbody>{mcRows.map((row) => <tr key={row.time}><th scope="row">{row.time}</th><td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmt(row.rho_mean, 3)}</td><td>{fmt(row.rho_p95, 3)}</td><td>{fmtPct(row.failure_rate)}</td><td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
                 </table>
               </div>
               <div className="card-grid"><div className="card"><RhoMeanP95Lines rows={mcRows} /></div><div className="card"><FailureRateBars rows={mcRows} /></div></div>
             </>
           )}
-        </>
+        </section>
       )}
 
       {tab === 'validate' && (
-        <>
+        <section id="simulation-panel-validate" role="tabpanel" aria-labelledby="simulation-tab-validate" tabIndex={0}>
           <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.tabs.validate')}</h3>
             <p className="form-hint">{t('simulation.validation_saved_scenario')}</p>
@@ -327,17 +397,27 @@ export function SimulationPage() {
           </div>
           {validationRows.length > 0 && (
             <>
-              <div className={`alert ${validationPassed ? 'alert-ok' : 'alert-warn'}`}>
-                {validationPassed ? t('simulation.passed') : t('simulation.failed')}
-              </div>
-              <div className="card table-wrap">
-                <table><thead><tr><th>{t('common.time')}</th><th>{t('simulation.status')}</th><th>{t('simulation.sim_wq')}</th><th>{t('simulation.failure_rate')}</th><th>{t('simulation.precision')}</th></tr></thead>
-                  <tbody>{validationRows.map((row) => <tr key={row.time}><td>{row.time}</td><td><span className={`badge ${validationPasses(row, cap) ? 'badge-ok' : 'badge-bad'}`}>{row.sim_status}</span></td><td>{fmt(row.sim_Wq == null ? null : row.sim_Wq * 60, 2)}</td><td>{fmtPct(row.mc_failure_rate)}</td><td><PrecisionBadge level={row.mc_failure_rate_precision} /></td></tr>)}</tbody>
+              {validationSettingsChanged && (
+                <div role="status" className="alert alert-warn">{t('simulation.validation_settings_changed')}</div>
+              )}
+              {savedFailureCap === null ? (
+                <div role="status" className="alert alert-warn">{t('simulation.validation_parameters_missing')}</div>
+              ) : (
+                <>
+                  <p className="form-hint">{t('simulation.validation_saved_cap', { cap: fmtPct(savedFailureCap) })}</p>
+                  <div role="status" className={`alert ${validationPassed ? 'alert-ok' : 'alert-warn'}`}>
+                    {validationPassed ? t('simulation.passed') : t('simulation.failed')}
+                  </div>
+                </>
+              )}
+              <div className="card table-scroll" role="region" aria-label={t('simulation.validation_table_caption')} tabIndex={0}>
+                <table><caption className="sr-only">{t('simulation.validation_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.sim_wq')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
+                  <tbody>{validationRows.map((row) => <tr key={row.time}><th scope="row">{row.time}</th><td><span className={`badge ${savedFailureCap === null ? 'badge-neutral' : validationPasses(row, savedFailureCap) ? 'badge-ok' : 'badge-bad'}`}>{row.sim_status}</span></td><td>{fmt(row.sim_Wq == null ? null : row.sim_Wq * 60, 2)}</td><td>{fmtPct(row.mc_failure_rate)}</td><td><PrecisionBadge level={row.mc_failure_rate_precision} /></td></tr>)}</tbody>
                 </table>
               </div>
             </>
           )}
-        </>
+        </section>
       )}
     </div>
   )

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
+import { RequireOnboarding } from './auth/RequireOnboarding'
 import { RequireRole } from './auth/RequireRole'
 import { AppLayout } from './components/layout/AppLayout'
 import { AnalysisWorkspace } from './components/analysis/AnalysisWorkspace'
@@ -39,6 +40,7 @@ const ReportsPage = lazy(() =>
 const AccountPage = lazy(() =>
   import('./pages/AccountPage').then((m) => ({ default: m.AccountPage })),
 )
+const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })))
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })))
 const AnalysesPage = lazy(() => import('./pages/AnalysesPage').then((m) => ({ default: m.AnalysesPage })))
 const NewAnalysisPage = lazy(() => import('./pages/NewAnalysisPage').then((m) => ({ default: m.NewAnalysisPage })))
@@ -71,58 +73,46 @@ export function createAppRouter() {
         { path: '/forgot-password', element: <ForgotPasswordPage /> },
         { path: '/reset-password', element: <ResetPasswordPage /> },
         {
-          path: '/onboarding',
-          element: <OnboardingPage />,
-        },
-        {
           element: <RequireAuth />,
           children: [
             {
-              element: <AppLayout />,
+              path: '/onboarding',
+              element: <OnboardingPage />,
+            },
+            {
+              element: <RequireOnboarding />,
               children: [
                 {
-                  path: '/analyses',
-                  element: <AnalysesPage />,
-                },
-                {
-                  path: '/analyses/new',
-                  element: <NewAnalysisPage />,
-                },
-                {
-                  path: '/analyses/:analysisId',
-                  element: <AnalysisWorkspace />,
+                  element: <AppLayout />,
                   children: [
-                    { index: true, element: <Navigate to="setup" replace /> },
-                    { path: 'setup', element: <AnalysisSetupPage /> },
-                    { path: 'guided-setup', element: <GuidedSetupPage /> },
-                    { path: 'current', element: <AnalysisCurrentPage /> },
-                    { path: 'optimize', element: <OptimizePage /> },
-                    { path: 'compare', element: <ComparisonPage /> },
-                    { path: 'simulate', element: <SimulationPage /> },
-                    { path: 'decision', element: <DecisionEndpointPage /> },
-                    { path: 'reports', element: <ReportsPage /> },
+                    { path: '/analyses', element: <AnalysesPage /> },
+                    { path: '/analyses/new', element: <NewAnalysisPage /> },
+                    {
+                      path: '/analyses/:analysisId',
+                      element: <AnalysisWorkspace />,
+                      children: [
+                        { index: true, element: <Navigate to="setup" replace /> },
+                        { path: 'setup', element: <AnalysisSetupPage /> },
+                        { path: 'guided-setup', element: <GuidedSetupPage /> },
+                        { path: 'current', element: <AnalysisCurrentPage /> },
+                        { path: 'optimize', element: <OptimizePage /> },
+                        { path: 'compare', element: <ComparisonPage /> },
+                        { path: 'simulate', element: <SimulationPage /> },
+                        { path: 'decision', element: <DecisionEndpointPage /> },
+                        { path: 'reports', element: <ReportsPage /> },
+                      ],
+                    },
+                    { path: '/dashboard', element: <DashboardPage /> },
+                    { path: '/datasets', element: <DatasetsPage /> },
+                    { path: '/analysis', element: <AnalysisPage /> },
+                    { path: '/help', element: <HelpPage /> },
+                    { path: '/account', element: <AccountPage /> },
+                    {
+                      path: '/admin',
+                      element: <RequireRole role="admin" />,
+                      children: [{ index: true, element: <AdminPage /> }],
+                    },
                   ],
-                },
-                {
-                  path: '/dashboard',
-                  element: <DashboardPage />,
-                },
-                {
-                  path: '/datasets',
-                  element: <DatasetsPage />,
-                },
-                {
-                  path: '/analysis',
-                  element: <AnalysisPage />,
-                },
-                {
-                  path: '/account',
-                  element: <AccountPage />,
-                },
-                {
-                  path: '/admin',
-                  element: <RequireRole role="admin" />,
-                  children: [{ index: true, element: <AdminPage /> }],
                 },
               ],
             },

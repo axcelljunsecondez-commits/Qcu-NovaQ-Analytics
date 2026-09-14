@@ -7,6 +7,7 @@ import io
 import openpyxl
 import pandas as pd
 
+import backend.reports.report_export as report_export
 from backend.reports.report_export import (
     _exec_summary_bullets,
     generate_excel_report,
@@ -63,6 +64,53 @@ def test_excel_report_api_positional_call_without_segment_df() -> None:
     buf = generate_excel_report(_comparison_df(), _kpis())
     assert isinstance(buf, io.BytesIO)
     assert buf.getvalue().startswith(b"PK\x03\x04")
+    assert openpyxl.load_workbook(buf).sheetnames == ["Summary", "Segments"]
+
+
+def test_pdf_export_has_exact_previewed_section_headings(monkeypatch) -> None:
+    headings: list[str] = []
+    original_paragraph = report_export.Paragraph
+
+    def recording_paragraph(text, *args, **kwargs):
+        headings.append(text)
+        return original_paragraph(text, *args, **kwargs)
+
+    monkeypatch.setattr(report_export, "Paragraph", recording_paragraph)
+    report_export.generate_pdf_report(
+        _kpis(), _kpis(), _comparison_df(), ["Add a server."]
+    )
+
+    expected = [
+        "QCU Queue Analysis Report",
+        "Executive Summary",
+        "Segment Comparison",
+        "Recommendations",
+    ]
+    assert [heading for heading in headings if heading in expected] == expected
+    assert not {
+        "Simulation Validation",
+        "ROI Analysis",
+        "Methodology",
+        "Appendix",
+    }.intersection(headings)
+
+
+def test_excel_recommendations_sheet_is_conditional_and_exact() -> None:
+    without_recommendations = openpyxl.load_workbook(
+        generate_excel_report(_comparison_df(), _kpis())
+    )
+    assert without_recommendations.sheetnames == ["Summary", "Segments"]
+
+    with_recommendations = openpyxl.load_workbook(
+        generate_excel_report(
+            _comparison_df(), _kpis(), recommendations=["Add a server."]
+        )
+    )
+    assert with_recommendations.sheetnames == [
+        "Summary",
+        "Segments",
+        "Recommendations",
+    ]
 
 
 def test_excel_report_includes_staffing_summary_and_status_columns() -> None:

@@ -1,5 +1,10 @@
 # NovaQ workflow restructure — repository audit and stop report
 
+> **Historical baseline:** This report describes the pre-integration state at
+> commit `5646f6cc`. The DES-equivalence and Decision-evidence gaps recorded
+> below were remediated by `bb7b138c`. Current proof is recorded in
+> `docs/superpowers/reports/2026-09-13-workflow-integration-verification-report.md`.
+
 Date: 2026-09-13
 
 ## Requested workflow

@@ -4,9 +4,14 @@ import { renderWithProviders } from '../test/test-utils'
 import { DashboardPage } from './DashboardPage'
 
 const listDatasetsMock = vi.fn()
+const listAnalysesMock = vi.fn()
 
 vi.mock('../api/datasets', () => ({
   listDatasets: (...args: unknown[]) => listDatasetsMock(...args),
+}))
+
+vi.mock('../api/analyses', () => ({
+  listAnalyses: (...args: unknown[]) => listAnalysesMock(...args),
 }))
 
 vi.mock('../api/auth', () => ({
@@ -30,6 +35,7 @@ const dataset = {
 
 beforeEach(() => {
   listDatasetsMock.mockReset()
+  listAnalysesMock.mockReset().mockResolvedValue({ analyses: [] })
 })
 
 describe('DashboardPage', () => {
@@ -66,12 +72,27 @@ describe('DashboardPage', () => {
     }
   })
 
-  it('points simulate and compare quick actions at valid routes', async () => {
+  it('routes workflow quick actions through the canonical analysis selector', async () => {
     listDatasetsMock.mockResolvedValue({ datasets: [] })
     renderWithProviders(<DashboardPage />, { route: '/dashboard' })
     const simulateLink = (await screen.findAllByRole('link', { name: 'Simulate' }))[0]
     const compareLink = (await screen.findAllByRole('link', { name: 'Compare' }))[0]
-    expect(simulateLink.getAttribute('href')).toBe('/simulate')
-    expect(compareLink.getAttribute('href')).toBe('/compare')
+    const optimizeLink = (await screen.findAllByRole('link', { name: 'Optimize' }))[0]
+    expect(optimizeLink.getAttribute('href')).toBe('/analyses')
+    expect(simulateLink.getAttribute('href')).toBe('/analyses')
+    expect(compareLink.getAttribute('href')).toBe('/analyses')
+  })
+
+  it('routes workflow actions to the most recently updated analysis when one exists', async () => {
+    listDatasetsMock.mockResolvedValue({ datasets: [] })
+    listAnalysesMock.mockResolvedValue({ analyses: [
+      { id: 3, name: 'Older', updated_at: '2026-08-01T00:00:00Z' },
+      { id: 9, name: 'Newest', updated_at: '2026-09-01T00:00:00Z' },
+    ] })
+    renderWithProviders(<DashboardPage />, { route: '/dashboard' })
+    expect(await screen.findByText(/Newest/)).toBeInTheDocument()
+    expect((await screen.findAllByRole('link', { name: 'Optimize' }))[0]).toHaveAttribute('href', '/analyses/9/optimize')
+    expect((await screen.findAllByRole('link', { name: 'Compare' }))[0]).toHaveAttribute('href', '/analyses/9/compare')
+    expect((await screen.findAllByRole('link', { name: 'Simulate' }))[0]).toHaveAttribute('href', '/analyses/9/simulate')
   })
 })

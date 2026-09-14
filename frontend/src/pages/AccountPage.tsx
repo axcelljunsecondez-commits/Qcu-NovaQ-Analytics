@@ -96,7 +96,7 @@ export function AccountPage() {
       {user.has_password === false ? <div className="card">
         <h2 className="page-title">{t('auth.set_password')}</h2>
         <p className="page-caption">{t('auth.set_password_help')}</p>
-        {resetSent && <div className="alert alert-ok">{t('auth.reset_sent')}</div>}
+        {resetSent && <div role="status" className="alert alert-ok">{t('auth.reset_sent')}</div>}
         <button type="button" onClick={() => void forgotPassword(user.email).then(() => setResetSent(true))}>
           {t('auth.send_reset')}
         </button>
@@ -140,8 +140,8 @@ export function AccountPage() {
               autoComplete="new-password"
             />
           </div>
-          {error && <div className="alert alert-error">{error}</div>}
-          {success && <div className="alert alert-ok">{t('account.password_changed')}</div>}
+          {error && <div role="alert" className="alert alert-error">{error}</div>}
+          {success && <div role="status" className="alert alert-ok">{t('account.password_changed')}</div>}
           <button type="submit" disabled={submitting}>
             {t('account.change_password')}
           </button>
@@ -151,7 +151,7 @@ export function AccountPage() {
       {!user.auth_methods?.includes('google') && <div className="card">
         <h2 className="page-title">{t('auth.link_google')}</h2>
         <p className="page-caption">{t('auth.link_google_help')}</p>
-        {googleLinked && <div className="alert alert-ok">{t('auth.google_linked')}</div>}
+        {googleLinked && <div role="status" className="alert alert-ok">{t('auth.google_linked')}</div>}
         <GoogleSignInButton onCredential={async (credential) => {
           const response = await linkGoogle(credential)
           queryClient.setQueryData(['me'], response.user)

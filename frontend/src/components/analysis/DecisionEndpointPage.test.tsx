@@ -104,4 +104,29 @@ describe('DecisionEndpointPage', () => {
     renderPage()
     expect(await screen.findByText(/prior Decision is stale/)).toBeInTheDocument()
   })
+
+  it('does not present stale persisted evidence as the current Decision', async () => {
+    getWorkflowMock.mockResolvedValue({
+      analysis_id: 7,
+      selection: null,
+      scenario: null,
+      des: null,
+      mc: null,
+      validation: null,
+      decision: {
+        id: 5,
+        kind: 'workflow_decision',
+        status: 'completed',
+        params: {},
+        result: insufficient,
+        created_at: '2026-09-13T00:00:00Z',
+        finished_at: '2026-09-13T00:01:00Z',
+      },
+      decision_stale: true,
+    })
+    renderPage()
+    expect(await screen.findByText(/prior Decision is stale/)).toBeInTheDocument()
+    expect(screen.queryByText(insufficient.headline)).not.toBeInTheDocument()
+    expect(screen.getByText('No current Decision')).toBeInTheDocument()
+  })
 })

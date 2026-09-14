@@ -1,4 +1,13 @@
 :root {
+  /* Primitive palette */
+  --navy-950: #061a33;
+  --navy-900: #08213f;
+  --navy-800: #0a2d52;
+  --blue-700: #0b66c3;
+  --blue-100: #dceeff;
+  --gold-500: #e8a838;
+  --purple-700: #6842b8;
+
   /* Backgrounds */
   --bg-page: #f4f8fc;
   --bg-card: #ffffff;
@@ -32,6 +41,19 @@
   --danger-bg: #fff0f3;
   --info: #2e86ab;
   --info-bg: #eef7ff;
+
+  /* Workflow and interaction semantics */
+  --primary: var(--blue-700);
+  --primary-contrast: #ffffff;
+  --focus-ring: #0b66c3;
+  --disabled-bg: #e5eaf0;
+  --disabled-text: #5e6f82;
+  --state-stale: #8a4b08;
+  --state-stale-bg: #fff4df;
+  --state-current: #0b66c3;
+  --state-current-bg: #e6f2ff;
+  --state-optimized: #6842b8;
+  --state-optimized-bg: #f0eaff;
 
   /* Model badge colors */
   --badge-mmc: #5dade2;
@@ -84,6 +106,18 @@
   --danger-bg: rgba(231, 76, 60, 0.12);
   --info: #3498db;
   --info-bg: rgba(52, 152, 219, 0.12);
+
+  --primary: #72bfff;
+  --primary-contrast: #07111f;
+  --focus-ring: #72bfff;
+  --disabled-bg: #263449;
+  --disabled-text: #9aa9bb;
+  --state-stale: #f2bd68;
+  --state-stale-bg: #3b2b16;
+  --state-current: #72bfff;
+  --state-current-bg: #132f4b;
+  --state-optimized: #c4a7ff;
+  --state-optimized-bg: #2f2449;
 
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.3);

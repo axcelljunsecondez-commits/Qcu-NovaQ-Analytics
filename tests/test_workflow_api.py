@@ -187,6 +187,7 @@ def test_workflow_persists_selection_simulation_validation_and_decision(db_engin
         json={"scenario_id": scenario_id},
     )
     assert selection.status_code == 200
+    selection_id = selection.json()["selection"]["id"]
 
     insufficient = client.post(
         f"/analyses/{analysis_id}/workflow/decision", headers=headers
@@ -200,7 +201,8 @@ def test_workflow_persists_selection_simulation_validation_and_decision(db_engin
         json={"sim_hours": 2, "max_events": 100, "seed": 7},
     )
     assert des.status_code == 200
-    des_result = des.json()["evidence"]["result"]
+    des_evidence = des.json()["evidence"]
+    des_result = des_evidence["result"]
     assert des_result["trace"]
     assert des_result["results"][0]["time"] == "08:00-09:00"
 
@@ -216,14 +218,22 @@ def test_workflow_persists_selection_simulation_validation_and_decision(db_engin
         },
     )
     assert validation.status_code == 200
+    validation_id = validation.json()["evidence"]["id"]
 
     decision = client.post(
         f"/analyses/{analysis_id}/workflow/decision", headers=headers
     )
     assert decision.status_code == 200
-    assert decision.json()["persisted"] is True
-    assert decision.json()["decision"]["status"] == "adopt"
-    assert "Lean plan" in decision.json()["decision"]["headline"]
+    decision_body = decision.json()
+    assert decision_body["persisted"] is True
+    assert decision_body["decision"]["status"] == "adopt"
+    assert "Lean plan" in decision_body["decision"]["headline"]
+    assert decision_body["decision"]["evidence_ids"] == {
+        "selection": selection_id,
+        "des": des_evidence["id"],
+        "mc": None,
+        "validation": validation_id,
+    }
 
     evidence = client.get(f"/analyses/{analysis_id}/workflow")
     assert evidence.status_code == 200
@@ -231,6 +241,10 @@ def test_workflow_persists_selection_simulation_validation_and_decision(db_engin
     assert body["scenario"]["id"] == scenario_id
     assert body["des"]["result"]["results"] == des_result["results"]
     assert body["decision"]["result"]["status"] == "adopt"
+    assert body["decision"]["result"]["evidence_ids"] == (
+        decision_body["decision"]["evidence_ids"]
+    )
+    assert body["decision_stale"] is False
 
 
 def test_workflow_selection_is_owner_scoped(db_engine, client):
@@ -289,3 +303,63 @@ def test_new_simulation_makes_saved_decision_stale(db_engine, client):
     evidence = client.get(f"/analyses/{analysis_id}/workflow").json()
     assert evidence["decision"] is None
     assert evidence["decision_stale"] is True
+
+
+def test_switching_scenario_hides_prior_scenario_evidence(db_engine, client):
+    analysis_id, first_scenario_id = _workspace(db_engine)
+    with make_sessionmaker(db_engine)() as db:
+        first = db.get(Scenario, first_scenario_id)
+        assert first is not None
+        second = Scenario(
+            user_id=first.user_id,
+            analysis_id=first.analysis_id,
+            dataset_id=first.dataset_id,
+            name="Alternative plan",
+            settings_json=first.settings_json,
+            results_json=first.results_json,
+            tenant_id=first.tenant_id,
+        )
+        db.add(second)
+        db.commit()
+        second_scenario_id = second.id
+
+    login(client, "owner@example.com", "pw")
+    headers = csrf_header(client)
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/selection",
+        headers=headers,
+        json={"scenario_id": first_scenario_id},
+    ).status_code == 200
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/des",
+        headers=headers,
+        json={"sim_hours": 1, "max_events": 50},
+    ).status_code == 200
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/validation",
+        headers=headers,
+        json={
+            "des_sim_hours": 1,
+            "mc_trials": 20,
+            "mc_failure_threshold": 1,
+            "mc_failure_rate_cap": 1,
+        },
+    ).status_code == 200
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/decision", headers=headers
+    ).json()["persisted"] is True
+
+    selected = client.post(
+        f"/analyses/{analysis_id}/workflow/selection",
+        headers=headers,
+        json={"scenario_id": second_scenario_id},
+    )
+    assert selected.status_code == 200
+    evidence = client.get(f"/analyses/{analysis_id}/workflow").json()
+    assert evidence["scenario"]["id"] == second_scenario_id
+    assert evidence["selection"]["params"]["scenario_id"] == second_scenario_id
+    assert evidence["des"] is None
+    assert evidence["mc"] is None
+    assert evidence["validation"] is None
+    assert evidence["decision"] is None
+    assert evidence["decision_stale"] is False

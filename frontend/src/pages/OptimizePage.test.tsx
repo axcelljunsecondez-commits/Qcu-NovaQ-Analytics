@@ -156,6 +156,29 @@ describe('calculation integrity', () => {
 })
 
 describe('OptimizePage', () => {
+  it.each([
+    ['Cost-focused constraints', 'Target utilization 85%; no maximum-wait constraint. Minimizes configured total cost within these constraints.', 0.85, null],
+    ['Low-wait constraints', 'Target utilization 65%; maximum analytical wait 2 minutes. Minimizes configured total cost within these constraints.', 0.65, 2],
+    ['Balanced constraints', 'Target utilization 75%; maximum analytical wait 5 minutes. Minimizes configured total cost within these constraints.', 0.75, 5],
+  ])('binds %s copy to the exact submitted constraints', async (label, description, targetUtilization, maxWaitMinutes) => {
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    const preset = screen.getByRole('button', { name: new RegExp(label) })
+    expect(preset).toHaveTextContent(description)
+    await user.click(preset)
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await waitFor(() => expect(optimizeBatchMock).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({
+        target_utilization: targetUtilization,
+        max_wait_minutes: maxWaitMinutes,
+      }),
+    ))
+    expect(screen.queryByText('Minimize Wait Time')).not.toBeInTheDocument()
+  })
+
   it('keeps operational staffing visible when the current baseline is unstable', async () => {
     optimizeBatchMock.mockResolvedValue({
       results: [{ ...row, c_current: 2, rho_current: 1.0107, current_stable: false,
@@ -268,7 +291,7 @@ describe('OptimizePage', () => {
     ).toBeInTheDocument()
   })
 
-  it('allows zero available cashiers without blocking optimization or showing a coverage verdict', async () => {
+  it('treats an explicit zero available pool as a real shortage without blocking optimization', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })
     await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
@@ -277,7 +300,15 @@ describe('OptimizePage', () => {
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     expect(await screen.findByText('0 cashiers')).toBeInTheDocument()
     expect(screen.queryByText('Available pool can cover the optimized schedule.')).not.toBeInTheDocument()
-    expect(screen.queryByText(/Available pool is short by/)).not.toBeInTheDocument()
+    expect(screen.getByText('Available pool is short by 4 cashiers during peak optimized demand.')).toBeInTheDocument()
+    expect(optimizeBatchMock).toHaveBeenCalled()
+  })
+
+  it('describes every preset as constraints over the configured total-cost objective', async () => {
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    expect(await screen.findByText('Constraint presets')).toBeInTheDocument()
+    expect(screen.queryByText(/Ideal Staffing/i)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/Minimizes configured total cost within these constraints/)).toHaveLength(3)
   })
 
   it('renders the staffing table with recommendation text', async () => {

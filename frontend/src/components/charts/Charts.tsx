@@ -1,18 +1,19 @@
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import Plotly from 'plotly.js'
 import createPlotlyComponent from 'react-plotly.js/factory'
 import type { OptimizationOut, SimDesOut, SimMcOut } from '../../api/types'
-import { RADAR_THETA } from '../../lib/radar'
+import { completeFiniteTotal } from '../../lib/comparison'
 
 const Plot = createPlotlyComponent(Plotly)
 const MARGIN = { l: 40, r: 40, t: 25, b: 40 }
 const LINE_WIDTH = 2
 
 function ChartFrame({ testId, title, children }: { testId: string; title?: string; children: React.ReactNode }) {
+  const titleId = useId()
   return (
-    <div className="plotly-wrap" data-testid={testId}>
-      {title && <h4>{title}</h4>}
+    <div className="plotly-wrap" data-testid={testId} role="figure" aria-labelledby={title ? titleId : undefined}>
+      {title && <h4 id={titleId}>{title}</h4>}
       {children}
     </div>
   )
@@ -238,48 +239,6 @@ export function FailureRateBars({ rows }: { rows: SimMcOut[] }) {
   )
 }
 
-function total(rows: OptimizationOut[], pick: (row: OptimizationOut) => number | null): number {
-  return rows.reduce((acc, row) => acc + (pick(row) ?? 0), 0)
-}
-
-export function RadarChart({ current, optimized }: { current: number[]; optimized: number[] }) {
-  const { t } = useTranslation()
-  return (
-    <ChartFrame testId="chart-radar" title={t('compare.radar')}>
-      <Plot
-        data={[
-          {
-            type: 'bar',
-            x: RADAR_THETA,
-            y: current,
-            name: t('compare.current'),
-            marker_color: '#E74C3C',
-          },
-          {
-            type: 'bar',
-            x: RADAR_THETA,
-            y: optimized,
-            name: t('compare.optimized'),
-            marker_color: '#27AE60',
-          },
-        ]}
-        layout={{
-          autosize: true,
-          barmode: 'group',
-          yaxis: { range: [0, 100], title: 'Score', automargin: true },
-          xaxis: { automargin: true },
-          title: '',
-          height: 400,
-          legend: { orientation: 'h', yanchor: 'bottom', y: 1.08, xanchor: 'center', x: 0.5 },
-          margin: { t: 30, b: 20 },
-        }}
-        style={{ width: '100%' }}
-        useResizeHandler={true}
-      />
-    </ChartFrame>
-  )
-}
-
 export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   return (
@@ -291,14 +250,14 @@ export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
             name: t('compare.current'),
             x: rows.map((r) => r.time),
             y: rows.map((r) => r.rho_current === null ? null : r.rho_current * 100),
-            marker_color: '#E74C3C',
+            marker_color: '#0B66C3',
           },
           {
             type: 'bar',
             name: t('compare.optimized'),
             x: rows.map((r) => r.time),
             y: rows.map((r) => r.rho_optimal === null ? null : r.rho_optimal * 100),
-            marker_color: '#27AE60',
+            marker_color: '#6842B8',
           },
         ]}
         layout={{
@@ -329,14 +288,14 @@ export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
             name: t('compare.current'),
             x: rows.map((r) => r.time),
             y: rows.map((r) => r.c_current),
-            marker_color: '#E74C3C',
+            marker_color: '#0B66C3',
           },
           {
             type: 'bar',
             name: t('compare.optimized'),
             x: rows.map((r) => r.time),
             y: rows.map((r) => r.c_optimal),
-            marker_color: '#27AE60',
+            marker_color: '#6842B8',
           },
         ]}
         layout={{
@@ -368,7 +327,7 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
             x: rows.map((r) => r.time),
             y: rows.map((r) => r.Wq_current === null ? null : r.Wq_current * 60),
             mode: 'lines+markers',
-            line: { color: '#E74C3C', width: LINE_WIDTH },
+            line: { color: '#0B66C3', width: LINE_WIDTH },
             marker: { size: 4 },
           },
           {
@@ -377,7 +336,7 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
             x: rows.map((r) => r.time),
             y: rows.map((r) => r.Wq_optimal === null ? null : r.Wq_optimal * 60),
             mode: 'lines+markers',
-            line: { color: '#27AE60', width: LINE_WIDTH },
+            line: { color: '#6842B8', width: LINE_WIDTH },
             marker: { size: 4 },
           },
         ]}
@@ -399,14 +358,14 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
 
 export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
-  const curServer = total(rows, (r) => (r.cost_per_server ?? 0) * r.c_current)
-  const optServer = total(rows, (r) => (r.cost_per_server ?? 0) * (r.c_optimal ?? 0))
-  const curWait = total(rows, (r) => r.waiting_cost_current)
-  const optWait = total(rows, (r) => r.waiting_cost_optimal)
-  const curAbandon = total(rows, (r) => r.abandonment_cost_current)
-  const optAbandon = total(rows, (r) => r.abandonment_cost_optimal)
-  const curTotal = total(rows, (r) => r.cost_current)
-  const optTotal = total(rows, (r) => r.cost_optimal)
+  const curServer = completeFiniteTotal(rows.map((r) => r.cost_per_server == null ? null : r.cost_per_server * r.c_current))
+  const optServer = completeFiniteTotal(rows.map((r) => r.cost_per_server == null || r.c_optimal == null ? null : r.cost_per_server * r.c_optimal))
+  const curWait = completeFiniteTotal(rows.map((r) => r.waiting_cost_current))
+  const optWait = completeFiniteTotal(rows.map((r) => r.waiting_cost_optimal))
+  const curAbandon = completeFiniteTotal(rows.map((r) => r.abandonment_cost_current))
+  const optAbandon = completeFiniteTotal(rows.map((r) => r.abandonment_cost_optimal))
+  const curTotal = completeFiniteTotal(rows.map((r) => r.cost_current))
+  const optTotal = completeFiniteTotal(rows.map((r) => r.cost_optimal))
   return (
     <ChartFrame testId="chart-cost-waterfall" title={t('compare.waterfall')}>
       <Plot
@@ -416,14 +375,14 @@ export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
             name: t('compare.current'),
             x: ['Server', 'Wait', 'Abandonment', 'Total'],
             y: [curServer, curWait, curAbandon, curTotal],
-            marker_color: '#E74C3C',
+            marker_color: '#0B66C3',
           },
           {
             type: 'bar',
             name: t('compare.optimized'),
             x: ['Server', 'Wait', 'Abandonment', 'Total'],
             y: [optServer, optWait, optAbandon, optTotal],
-            marker_color: '#27AE60',
+            marker_color: '#6842B8',
           },
         ]}
         layout={{

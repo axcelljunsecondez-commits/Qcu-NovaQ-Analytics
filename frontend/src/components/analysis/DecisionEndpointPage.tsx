@@ -28,7 +28,6 @@ export function DecisionEndpointPage() {
   const decision = derive.data?.decision ?? workflow.data.decision?.result ?? null
   return (
     <DecisionEndpoint
-      analysisId={id}
       decision={decision}
       decisionStale={workflow.data.decision_stale}
       isPending={derive.isPending}

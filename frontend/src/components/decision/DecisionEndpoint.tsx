@@ -1,9 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
 import type { WorkflowDecision } from '../../api/workflow'
 
 interface DecisionEndpointProps {
-  analysisId: number
   decision: WorkflowDecision | null
   decisionStale: boolean
   isPending: boolean
@@ -19,7 +17,6 @@ const statusClasses: Record<WorkflowDecision['status'], string> = {
 }
 
 export function DecisionEndpoint({
-  analysisId,
   decision,
   decisionStale,
   isPending,
@@ -42,13 +39,13 @@ export function DecisionEndpoint({
 
       {decisionStale && <div className="alert alert-warn">{t('decision.stale')}</div>}
       {error && <div role="alert" className="alert alert-error">{error}</div>}
-      {!decision && (
+      {(!decision || decisionStale) && (
         <div className="card">
           <h2 className="card-title">{t('decision.no_decision')}</h2>
           <p className="form-hint">{t('decision.no_decision_help')}</p>
         </div>
       )}
-      {decision && (
+      {decision && !decisionStale && (
         <div className="card decision-card">
           <span className={`badge ${statusClasses[decision.status]}`}>
             {t(`decision.status.${decision.status}`)}
@@ -73,11 +70,6 @@ export function DecisionEndpoint({
         </div>
       )}
 
-      <div className="decision-actions">
-        <Link className="btn-ghost" to={`/analyses/${analysisId}/compare`}>{t('decision.back_compare')}</Link>
-        <Link className="btn-ghost" to={`/analyses/${analysisId}/simulate`}>{t('decision.back_simulation')}</Link>
-        <Link className="btn-primary" to={`/analyses/${analysisId}/reports`}>{t('decision.continue_reports')}</Link>
-      </div>
     </div>
   )
 }

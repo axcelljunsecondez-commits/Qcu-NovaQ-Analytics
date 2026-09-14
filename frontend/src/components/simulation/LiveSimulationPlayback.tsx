@@ -202,7 +202,7 @@ export function LiveSimulationPlayback({ trace }: { trace: SimulationTrace }) {
           <div className={`live-exit-grid ${showAbandonment ? 'has-abandonment' : ''}`}>
             <section className="live-stage live-served-stage">
               <div className="live-stage-heading">
-                <span className="live-stage-label">✓ {t('simulation.live_served_exit')}</span>
+                <span className="live-stage-label">{t('simulation.live_served_exit')}</span>
                 <strong>{servedIds.length}</strong>
               </div>
               <CustomerTokens ids={servedIds} empty={t('simulation.live_none_yet')} />
@@ -210,7 +210,7 @@ export function LiveSimulationPlayback({ trace }: { trace: SimulationTrace }) {
             {showAbandonment && (
               <section className="live-stage live-abandoned-stage">
                 <div className="live-stage-heading">
-                  <span className="live-stage-label">↩ {t('simulation.live_abandoned_exit')}</span>
+                  <span className="live-stage-label">{t('simulation.live_abandoned_exit')}</span>
                   <strong>{abandonedIds.length}</strong>
                 </div>
                 <CustomerTokens ids={abandonedIds} empty={t('simulation.live_none_yet')} />

@@ -58,8 +58,8 @@ describe('AnalysisCurrentPage', () => {
 
     renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
 
-    expect(await screen.findByText('15.0 min')).toBeInTheDocument()
-    expect(screen.getByText('30.0 min')).toBeInTheDocument()
+    expect(await screen.findByText('15.0 minutes')).toBeInTheDocument()
+    expect(screen.getByText('30.0 minutes')).toBeInTheDocument()
     expect(screen.getByText('74%')).toBeInTheDocument()
     expect(screen.getByText('Utilization').parentElement).toHaveTextContent('74%')
     expect(screen.getByText('Peak Hour').parentElement).toHaveTextContent('11-12')
@@ -68,5 +68,7 @@ describe('AnalysisCurrentPage', () => {
     expect(document.querySelector('.status-dot-peak')).toBeInTheDocument()
     expect(document.querySelector('.status-dot-normal')).toBeInTheDocument()
     expect(document.querySelector('.status-dot-lean')).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Arrival-rate data for every computed interval' })).toBeInTheDocument()
+    expect(screen.queryByText(/High during peak periods/)).not.toBeInTheDocument()
   })
 })

@@ -1,14 +1,17 @@
-/**
- * LoginPage — Split layout matching the NovaQ reference design.
- * Left: navy gradient hero with branding, queue visualization, and checkmarks.
- * Right: auth card with Google SSO, email/password, and links.
- */
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { GoogleSignInButton } from '../auth/GoogleSignInButton'
 import { apiErrorCode } from '../auth/fragmentToken'
 import { useAuth } from '../auth/useAuth'
+
+function CheckIcon() {
+  return (
+    <svg className="login-check" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  )
+}
 
 export function LoginPage() {
   const { t } = useTranslation()
@@ -20,7 +23,6 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [loginComplete, setLoginComplete] = useState(false)
-
   const from = (location.state as { from?: string } | null)?.from ?? '/analyses'
 
   useEffect(() => {
@@ -35,11 +37,7 @@ export function LoginPage() {
       await login(email, password)
       setLoginComplete(true)
     } catch (err) {
-      setError(
-        apiErrorCode(err) === 'email_not_verified'
-          ? t('auth.email_not_verified')
-          : t('login.error'),
-      )
+      setError(apiErrorCode(err) === 'email_not_verified' ? t('auth.email_not_verified') : t('login.error'))
     } finally {
       setSubmitting(false)
     }
@@ -47,108 +45,66 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      {/* Left — Brand Hero */}
-      <section className="login-brand">
+      <a className="skip-link" href="#login-form">{t('common.skip_to_content')}</a>
+      <section className="login-brand" aria-labelledby="login-hero-title">
         <div className="login-brand-logo">
           <div className="logo">Nova<b>Q</b></div>
-          <div className="login-brand-tagline">An Integrated Queueing Analytics and Simulation System</div>
+          <div className="login-brand-tagline">{t('login.brand_tagline')}</div>
         </div>
 
         <div className="login-hero">
-          <h1>Smarter Queue Decisions<br /><span>for Real Operations.</span></h1>
-          <h2>Understand queues. Optimize operations.</h2>
-          <p>Analyze observed data, improve staffing, simulate scenarios, compare alternatives, and produce decision-ready reports.</p>
-          <div className="login-checks">
-            <div><span className="login-check">✓</span>Reduce customer waiting</div>
-            <div><span className="login-check">✓</span>Optimize staffing decisions</div>
-            <div><span className="login-check">✓</span>Simulate real queue behavior</div>
-            <div><span className="login-check">✓</span>Make evidence-based recommendations</div>
-          </div>
-          <div className="login-mini-viz">
-            <div className="login-viz-head">
-              <span>ARRIVALS → INDIVIDUAL QUEUES → CASHIERS</span>
-              <span>LIVE OPERATION VIEW</span>
-            </div>
+          <h1 id="login-hero-title">{t('login.hero_title')}<br /><span>{t('login.hero_accent')}</span></h1>
+          <h2>{t('login.hero_subtitle')}</h2>
+          <p>{t('login.hero_desc')}</p>
+          <ul className="login-checks">
+            {['current', 'optimize', 'simulate', 'decision'].map((benefit) => (
+              <li key={benefit}><CheckIcon />{t(`login.benefit_${benefit}`)}</li>
+            ))}
+          </ul>
+          <div className="login-mini-viz" aria-label={t('login.workflow_preview')}>
+            <div className="login-viz-head"><span>{t('login.workflow_preview')}</span></div>
             <div className="login-queue">
-              <span className="login-person" />
-              <span className="login-arrow">→</span>
-              <div className="login-stations">
-                <div className="login-station">Cashier 1</div>
-                <div className="login-station">Cashier 2</div>
-                <div className="login-station">Cashier 3</div>
-              </div>
+              {['observed', 'analysis', 'plan'].map((step, index) => (
+                <div className="login-workflow-node" key={step}>
+                  {index > 0 && <span className="login-arrow" aria-hidden="true">→</span>}
+                  <span>{t(`login.workflow_${step}`)}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="login-brand-foot">
-          <span>NovaQ v1.0 · Capstone Prototype</span>
-          <span>Real Data. Better Decisions.</span>
-        </div>
+        <div className="login-brand-foot"><span>NovaQ v1.0 · {t('nav.capstone')}</span><span>{t('nav.motto')}</span></div>
       </section>
 
-      {/* Right — Auth Card */}
-      <main className="login-auth">
+      <main className="login-auth" id="login-form">
         <div className="login-card">
           <div className="login-mobile-logo">Nova<b>Q</b></div>
           <h2>{t('login.title')}</h2>
-          <p className="sub">{t('login.subtitle', 'Sign in to continue to your queue analysis workspace.')}</p>
+          <p className="sub">{t('login.subtitle')}</p>
 
           <GoogleSignInButton onSuccess={() => navigate(from, { replace: true })} />
-
           <div className="auth-divider"><span>{t('auth.or')}</span></div>
 
           <form onSubmit={handleSubmit}>
             <div className="form-field">
               <label htmlFor="login-email">{t('login.email')}</label>
-              <input
-                id="login-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@school.edu.ph"
-                required
-                autoComplete="username"
-              />
+              <input id="login-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={t('login.email_placeholder')} required autoComplete="username" />
             </div>
             <div className="form-field">
               <label htmlFor="login-password">{t('login.password')}</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  id="login-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t('login.password_placeholder', 'Enter your password')}
-                  required
-                  autoComplete="current-password"
-                  style={{ width: '100%', paddingRight: '2.5rem' }}
-                />
-              </div>
+              <input id="login-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={t('login.password_placeholder')} required autoComplete="current-password" />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '-4px 0 18px' }}>
-              <Link to="/forgot-password" className="link" style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>
-                {t('auth.forgot')}
-              </Link>
+            <div className="login-auth-links">
+              <Link to="/forgot-password" className="link">{t('auth.forgot')}</Link>
+              <Link to="/verify-email" className="link">{t('auth.resend')}</Link>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '-10px 0 18px' }}>
-              <Link to="/verify-email" className="link" style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>
-                {t('auth.resend')}
-              </Link>
-            </div>
-            {error && <div className="alert alert-error">{error}</div>}
-            <button type="submit" disabled={submitting || isLoading} style={{ width: '100%' }}>
-              {t('login.submit')}
-            </button>
+            {error && <div className="alert alert-error" role="alert">{error}</div>}
+            <button type="submit" disabled={submitting || isLoading} className="button-full">{t('login.submit')}</button>
           </form>
 
-          <div className="login-new">
-            {t('auth.no_account')} <Link to="/register" style={{ color: 'var(--accent)', fontWeight: 700 }}>{t('auth.register')}</Link>
-          </div>
-
-          <div className="login-badge">
-            <strong>Prototype behavior:</strong> Sign in continues directly to the NovaQ onboarding flow. Authentication is not connected to a production backend in this mockup.
-          </div>
+          <div className="login-new">{t('auth.no_account')} <Link to="/register">{t('auth.register')}</Link></div>
+          <div className="login-badge"><strong>{t('login.secure_title')}</strong> {t('login.secure_desc')}</div>
         </div>
       </main>
     </div>

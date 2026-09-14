@@ -8,7 +8,7 @@ export function MetricCard({
   sub?: string
 }) {
   return (
-    <div className="metric-card">
+    <div className="metric-card" role="group" aria-label={label}>
       <div className="label">{label}</div>
       <div className="value">{value}</div>
       {sub && <div className="sub">{sub}</div>}

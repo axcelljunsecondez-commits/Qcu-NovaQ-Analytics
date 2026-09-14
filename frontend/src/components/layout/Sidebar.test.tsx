@@ -11,26 +11,16 @@ vi.mock('../../api/auth', () => ({
   logout: vi.fn(async () => ({})),
 }))
 
-describe('Sidebar analysis workflow', () => {
-  it('uses the numeric analysis id and presents one ordered workflow', async () => {
-    const { container } = renderWithProviders(<Sidebar />, {
-      route: '/analyses/7/current',
-    })
-    expect(await screen.findByText('ANALYSIS WORKFLOW')).toBeInTheDocument()
-    const workflowLinks = Array.from(
-      container.querySelectorAll<HTMLAnchorElement>('.sidebar-nav a'),
-    )
+describe('Sidebar global navigation', () => {
+  it('keeps workflow navigation out of the global sidebar and provides Help', async () => {
+    const { container } = renderWithProviders(<Sidebar />, { route: '/analyses/7/current' })
+    expect(await screen.findByText('Help')).toBeInTheDocument()
+    const workflowLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>('.sidebar-nav a'))
       .map((link) => link.getAttribute('href'))
       .filter((href) => href?.startsWith('/analyses/7/'))
-    expect(workflowLinks).toEqual([
-      '/analyses/7/setup',
-      '/analyses/7/current',
-      '/analyses/7/optimize',
-      '/analyses/7/compare',
-      '/analyses/7/simulate',
-      '/analyses/7/decision',
-      '/analyses/7/reports',
-    ])
+    expect(workflowLinks).toEqual([])
+    expect(container.querySelector('a[href="/help"]')).toBeInTheDocument()
+    expect(screen.queryByText('ANALYSIS WORKFLOW')).not.toBeInTheDocument()
     expect(container.querySelector('a[href*="/latest/"]')).not.toBeInTheDocument()
   })
 })

@@ -118,12 +118,12 @@ const validationRow = {
   mc_failure_rate_adequate: true,
 }
 
-function job(kind: string, result: unknown) {
+function job(kind: string, result: unknown, params: Record<string, unknown> = {}) {
   return {
     id: 10,
     kind,
     status: 'completed',
-    params: { analysis_id: 7, scenario_id: 3 },
+    params: { analysis_id: 7, scenario_id: 3, ...params },
     result,
     created_at: '2026-09-13T00:00:00Z',
     finished_at: '2026-09-13T00:01:00Z',
@@ -158,11 +158,34 @@ beforeEach(() => {
   runDesMock.mockReset().mockResolvedValue({ evidence: job('workflow_des', trace) })
   runMcMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc', { results: [mcRow] }) })
   runValidationMock.mockReset().mockResolvedValue({
-    evidence: job('workflow_validation', { results: [validationRow] }),
+    evidence: job('workflow_validation', { results: [validationRow] }, {
+      des_sim_hours: 24,
+      mc_trials: 10000,
+      mc_failure_threshold: 0.75,
+      mc_failure_rate_cap: 0.05,
+      seed: null,
+    }),
   })
 })
 
 describe('SimulationPage workflow', () => {
+  it('supports Arrow, Home, and End keyboard navigation across simulation tabs', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const des = await screen.findByRole('tab', { name: 'DES & Live Playback' })
+    const mc = screen.getByRole('tab', { name: 'Monte Carlo' })
+    const validate = screen.getByRole('tab', { name: 'Validate' })
+    des.focus()
+    await user.keyboard('{ArrowRight}')
+    expect(mc).toHaveFocus()
+    expect(mc).toHaveAttribute('aria-selected', 'true')
+    await user.keyboard('{End}')
+    expect(validate).toHaveFocus()
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'simulation-tab-validate')
+    await user.keyboard('{Home}')
+    expect(des).toHaveFocus()
+  })
+
   it('requires a scenario selected in Compare', async () => {
     getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null }))
     renderPage()
@@ -191,7 +214,8 @@ describe('SimulationPage workflow', () => {
     }))
     expect(await screen.findByText('Live queue floor')).toBeInTheDocument()
     expect(screen.getByText('Stable segments')).toBeInTheDocument()
-    expect(screen.getByText('600')).toBeInTheDocument()
+    expect(screen.getAllByText('600')).toHaveLength(2)
+    expect(screen.getByRole('region', { name: 'Discrete-event simulation results by interval' })).toBeInTheDocument()
   })
 
   it('persists Monte Carlo evidence for the selected scenario', async () => {
@@ -222,6 +246,36 @@ describe('SimulationPage workflow', () => {
       seed: null,
     }))
     expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
+    expect(screen.getByText('Saved validation failure-rate cap: 5%.')).toBeInTheDocument()
+  })
+
+  it('keeps a persisted validation verdict bound to its saved cap when next-run settings change', async () => {
+    const user = userEvent.setup()
+    const failedAtSavedCap = { ...validationRow, mc_failure_rate: 0.1 }
+    getWorkflowMock.mockResolvedValue(workflow({
+      validation: job('workflow_validation', { results: [failedAtSavedCap] }, {
+        des_sim_hours: 24,
+        mc_trials: 10000,
+        mc_failure_threshold: 0.75,
+        mc_failure_rate_cap: 0.05,
+        seed: null,
+      }),
+    }))
+    renderPage()
+
+    await user.click(await screen.findByRole('tab', { name: 'Validate' }))
+    expect(await screen.findByText('Simulation validation found issues.')).toBeInTheDocument()
+    expect(screen.getByText('Saved validation failure-rate cap: 5%.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Monte Carlo' }))
+    const capInput = screen.getByLabelText('Failure rate cap')
+    await user.clear(capInput)
+    await user.type(capInput, '0.2')
+    await user.click(screen.getByRole('tab', { name: 'Validate' }))
+
+    expect(screen.getByText('Simulation validation found issues.')).toBeInTheDocument()
+    expect(screen.queryByText('Simulation validation passed.')).not.toBeInTheDocument()
+    expect(screen.getByText(/Run settings changed/)).toHaveTextContent('result below still uses the saved run parameters')
   })
 
   it('blocks invalid failure-rate settings before execution', async () => {

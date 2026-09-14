@@ -24,6 +24,7 @@ export function AnalysesPage() {
         </div>
         <Link className="button-link" to="/analyses/new">{t('analyses.new')}</Link>
       </div>
+      {archive.isError && <div role="alert" className="alert alert-error">{t('errors.server')}</div>}
       {analyses.length === 0 ? (
         <div className="card">
           <ApiState.Empty message={t('analyses.empty')} />

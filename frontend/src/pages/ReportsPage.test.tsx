@@ -129,6 +129,26 @@ afterEach(() => {
 })
 
 describe('ReportsPage', () => {
+  it('previews only the sections and sheets produced by the current exporters', async () => {
+    renderWithProviders(<ReportsPage />, { route: '/reports' })
+    const preview = await screen.findByTestId('report-preview')
+    const pdf = within(preview).getByRole('region', { name: 'PDF sections' })
+    const excel = within(preview).getByRole('region', { name: 'Excel sheets' })
+
+    expect(within(pdf).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'QCU Queue Analysis Report',
+      'Executive Summary',
+      'Segment Comparison',
+      'Recommendations',
+    ])
+    expect(within(excel).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Summary',
+      'Segments',
+      'Recommendations — Included when recommendation evidence is available.',
+    ])
+    expect(within(preview).queryByText(/Simulation Validation|ROI|Methodology|Appendix/i)).not.toBeInTheDocument()
+  })
+
   it('shows dataset and scenario source cards with PDF/Excel buttons', async () => {
     renderWithProviders(<ReportsPage />, { route: '/reports' })
     const datasetCard = await screen.findByTestId('report-card-datasets')
@@ -189,6 +209,16 @@ describe('ReportsPage', () => {
     getWorkflowMock.mockResolvedValue(workflow(null))
     renderAnalysisReports()
     expect(await screen.findByText(/Generate a Decision before exporting/)).toBeInTheDocument()
+    const card = await screen.findByTestId('report-card-scenarios')
+    expect(within(card).getByRole('button', { name: 'Download PDF' })).toBeDisabled()
+    expect(within(card).getByRole('button', { name: 'Download Excel' })).toBeDisabled()
+  })
+
+  it('does not present or export a stale Decision as current', async () => {
+    getWorkflowMock.mockResolvedValue({ ...workflow(decision), decision_stale: true })
+    renderAnalysisReports()
+    expect(await screen.findByText(/Decision is stale/)).toBeInTheDocument()
+    expect(screen.queryByTestId('report-decision')).not.toBeInTheDocument()
     const card = await screen.findByTestId('report-card-scenarios')
     expect(within(card).getByRole('button', { name: 'Download PDF' })).toBeDisabled()
     expect(within(card).getByRole('button', { name: 'Download Excel' })).toBeDisabled()

@@ -52,6 +52,7 @@ const FIELD_SETS: Record<AnalysisModel, FieldDef[]> = {
 }
 
 function ModelExtras({ result }: { result: AnalysisOut }) {
+  const { t } = useTranslation()
   const extras: Array<[string, string]> = []
   if (result.blocking_probability !== undefined) {
     extras.push(['P(block)', fmt(result.blocking_probability * 100) + '%'])
@@ -82,17 +83,20 @@ function ModelExtras({ result }: { result: AnalysisOut }) {
   }
   return (
     <div className="card">
-      <h2 className="card-title">Model metrics</h2>
+      <h2 className="card-title">{t('analysis.model_metrics')}</h2>
+      <div className="table-scroll" role="region" aria-label={t('analysis.model_metrics')} tabIndex={0}>
       <table>
+        <caption className="sr-only">{t('analysis.model_metrics')}</caption>
         <tbody>
           {extras.map(([label, value]) => (
             <tr key={label}>
-              <td>{label}</td>
+              <th scope="row">{label}</th>
               <td>{value}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
