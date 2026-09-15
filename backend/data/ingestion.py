@@ -15,6 +15,53 @@ from backend.queueing_engine.config import (
 REQUIRED_COLUMNS = ["time", "lambda", "mu", "c"]
 OPTIONAL_COLUMNS = ["variance", "K", "theta", "server_cost", "regular_hours", "ot_hours", "total_hours"]
 
+# Alternate business headers accepted for the matching canonical field.
+# Matching is case-insensitive on stripped values. A canonical header that is
+# already present always wins; collisions are left for validation to explain.
+HEADER_ALIASES: dict[str, list[str]] = {
+    "time": ["period", "interval", "time period", "time slot", "segment"],
+    "lambda": ["arrival rate", "arrivals per hour", "arrival_rate"],
+    "mu": ["service rate", "service_rate"],
+    "c": ["servers", "cashiers", "server count", "server_count", "staff"],
+    "variance": ["service variance", "service_variance"],
+    "arrival_time": ["arrival", "arrived", "arrival timestamp", "arrival_timestamp", "joined", "joined at"],
+    "service_start": ["start", "started", "service began", "service begin", "begin"],
+    "service_end": ["finish", "finished", "end", "completed", "done", "service finish"],
+    "queue_id": ["queue id", "lane", "line", "cashier", "queue", "service line", "service_line"],
+}
+
+
+def normalize_header_aliases(columns: list[str]) -> tuple[list[str], dict[str, str]]:
+    """Map alternate business headers to canonical fields.
+
+    Returns the renamed column list plus {original: canonical} for applied
+    aliases. Canonical headers already present always win; an alias that would
+    collide with an existing column is left untouched for validation to explain.
+    """
+    lookup: dict[str, str] = {}
+    for target, aliases in HEADER_ALIASES.items():
+        for alias in aliases:
+            lookup[alias.strip().lower()] = target
+    present = {str(column).strip() for column in columns}
+    renamed: list[str] = []
+    mapping: dict[str, str] = {}
+    claimed: set[str] = set()
+    for column in columns:
+        text = str(column).strip()
+        canonical = lookup.get(text.lower())
+        if (
+            canonical is not None
+            and text != canonical
+            and canonical not in present
+            and canonical not in claimed
+        ):
+            renamed.append(canonical)
+            mapping[text] = canonical
+            claimed.add(canonical)
+        else:
+            renamed.append(text)
+    return renamed, mapping
+
 
 def sample_segments() -> pd.DataFrame:
     """Return sample data matching the current four-column input contract."""
@@ -47,6 +94,8 @@ def validate_and_normalize(df: pd.DataFrame) -> tuple[bool, str, pd.DataFrame]:
 
     normalized = df.copy()
     normalized.columns = [str(column).strip() for column in normalized.columns]
+    renamed, _ = normalize_header_aliases(list(normalized.columns))
+    normalized.columns = renamed
 
     missing = [column for column in REQUIRED_COLUMNS if column not in normalized.columns]
     if missing:
@@ -105,8 +154,10 @@ __all__ = [
     "DEFAULT_ABANDONMENT_COST",
     "DEFAULT_SERVER_COST_HR",
     "DEFAULT_WAIT_COST_HR",
+    "HEADER_ALIASES",
     "OPTIONAL_COLUMNS",
     "REQUIRED_COLUMNS",
+    "normalize_header_aliases",
     "read_uploaded_table",
     "sample_segments",
     "to_segment_records",

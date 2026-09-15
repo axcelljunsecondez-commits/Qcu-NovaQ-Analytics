@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, uploadAnalysisDataset } from '../api/analyses'
 import type { QueueSetup } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
+import { SetupDataTemplates } from '../components/analysis/SetupDataTemplates'
 import { messageOf } from '../lib/format'
 
 const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null, segments: [], separate_queue_closure_policy: 'drain_existing', queue_ids: [] }
@@ -152,6 +153,7 @@ export function AnalysisSetupPage() {
         <button type="button" disabled={!file || upload.isPending} onClick={() => file && upload.mutate(file)}>{t('analyses.process')}</button>
         {notice && <div className={`alert ${upload.isError ? 'alert-error' : 'alert-ok'}`} role={upload.isError ? 'alert' : 'status'}>{notice}</div>}
       </div>
+      <SetupDataTemplates queueStructure={setup.queue_structure} />
       {current.data && <div className="card"><h2 className="card-title">{t('analyses.why_model')}</h2><p><strong>{current.data.selected_model}</strong></p>{current.data.explanations.map((item) => <details key={item.time}><summary>{item.time}: {item.selected_model}</summary><p>{item.selection_reason}</p><h3>{t('analyses.operational_facts')}</h3><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h3>{t('analyses.measured')}</h3><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h3>{t('analyses.assumptions')}</h3><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}<Link className="button-link" to="../current">{t('analyses.view_current')}</Link></div>}
     </div>
   )
