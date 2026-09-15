@@ -21,6 +21,24 @@ def test_separate_optimizer_blocked_no_fake_evidence():
     assert "Parallel M/G/1" in (res.get("warning") or "")
 
 
+def test_decision_never_adopts_from_current_des_only():
+    from types import SimpleNamespace
+
+    from backend.api.workflow import _derive_decision
+
+    analysis = SimpleNamespace(setup_status="ready")
+    evidence = {
+        "selection": None,
+        "des": {"id": 99, "params": {}, "result": {"provenance": "CURRENT", "results": []}},
+        "mc": None,
+        "validation": None,
+    }
+    d = _derive_decision(analysis, None, evidence)  # type: ignore[arg-type]
+    assert d["status"] in ("insufficient_evidence", "revise")
+    assert d["status"] != "adopt"
+    assert "optimiz" not in d.get("recommendation", "").lower() or "not available" in d.get("recommendation", "").lower()
+
+
 def test_current_des_fallback_provenance(db_engine, client):
     from backend.db.models import AnalysisProject, Dataset
     from tests.helpers import create_user, csrf_header, login, make_sessionmaker

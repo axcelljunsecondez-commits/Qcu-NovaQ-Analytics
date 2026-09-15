@@ -40,6 +40,9 @@ export function DecisionEndpoint({
       {decisionStale && <div className="alert alert-warn">{t('decision.stale')}</div>}
       {error && <div role="alert" className="alert alert-error">{error}</div>}
       {(!decision || decisionStale) && (
+        <div role="alert" className="alert alert-warn">{t('decision.gatedNoOptimization')}</div>
+      )}
+      {(!decision || decisionStale) && (
         <div className="card">
           <h2 className="card-title">{t('decision.no_decision')}</h2>
           <p className="form-hint">{t('decision.no_decision_help')}</p>

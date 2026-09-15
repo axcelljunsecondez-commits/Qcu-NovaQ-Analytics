@@ -88,6 +88,10 @@ export function ComparisonPage() {
 
   const totals = comparisonTotals(rows)
   const operationallyComparable = operationalComparisonComplete(rows)
+  const hasVerifiedOptimizedScenario = useMemo(
+    () => scenarios.some((scenario) => scenario.provenance === 'verified_snapshot' && operationalComparisonComplete(rowsOf(scenario))),
+    [scenarios],
+  )
   const selection = useMutation({
     mutationFn: () => selectWorkflowScenario(analysisId!, Number(selected!.id)),
     onSuccess: async () => {
@@ -125,6 +129,11 @@ export function ComparisonPage() {
         </div>
       </div>
       {selected && !selected.settings.calculation && <p className="alert alert-warn" style={{ marginTop: '8px' }}>{t('integrity.legacy')}</p>}
+      {!hasVerifiedOptimizedScenario && (
+        <div className="alert alert-warn" data-testid="compare-not-applicable" style={{ marginTop: '12px' }}>
+          {t('compare.notApplicableNoOptimizedScenario')}
+        </div>
+      )}
 
       {/* Scenario Selector */}
       <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
@@ -151,6 +160,7 @@ export function ComparisonPage() {
             className="btn-primary"
             disabled={
               !selected
+              || !hasVerifiedOptimizedScenario
               || selected.provenance !== 'verified_snapshot'
               || !operationallyComparable
               || selection.isPending
