@@ -112,6 +112,14 @@ export interface DatasetOut {
 export type QueueStructure = 'shared_queue' | 'single_server' | 'separate_queues' | 'unknown'
 export type CapacityMode = 'unlimited' | 'finite' | 'unknown'
 export type AbandonmentMode = 'not_modeled' | 'modeled' | 'unknown'
+export type SeparateQueueClosurePolicy = 'drain_existing'
+
+export interface AnalysisSegment {
+  id: string | null
+  start_time: string
+  end_time: string
+  active_queue_ids: string[] | null
+}
 
 export interface QueueSetup {
   queue_structure: QueueStructure
@@ -121,6 +129,9 @@ export interface QueueSetup {
   total_system_capacity: number | null
   abandonment_mode: AbandonmentMode
   patience_rate_per_hour: number | null
+  segments: AnalysisSegment[]
+  separate_queue_closure_policy: SeparateQueueClosurePolicy
+  queue_ids: string[]
 }
 
 export interface AnalysisProjectOut {
@@ -210,14 +221,16 @@ export type SimulationTraceEventType = 'arrival' | 'service_start' | 'service_en
 export interface SimulationTraceEvent {
   t: number
   type: SimulationTraceEventType
-  segment_id: number
+  segment_id: string | number
   customer_id: number
-  server_id: number | null
+  server_id: string | number | null
   queue_len_after: number
+  queue_id?: string | number | null
+  service_time_hours?: number
 }
 
 export interface SimulationTraceSegment {
-  segment_id: number
+  segment_id: string | number
   time: string
   lambda: number | null
   mu: number | null
@@ -225,7 +238,7 @@ export interface SimulationTraceSegment {
   selected_model: string | null
   simulation_supported: boolean
   error: string | null
-  queue_structure: 'shared'
+  queue_structure: 'shared' | 'separate'
   initial_queue_depth: number
   final_queue_depth: number
 }

@@ -3,11 +3,11 @@ import type { SimulationTrace } from '../api/types'
 const TIME_EPSILON = 1e-9
 
 export interface PlaybackSnapshot {
-  segmentId: number
+  segmentId: string | number
   eventCount: number
   arrived: number
   waitingCustomerIds: number[]
-  servingByServer: Record<number, number>
+  servingByServer: Record<string, number>
   servedCustomerIds: number[]
   abandonedCustomerIds: number[]
   latestArrivalId: number | null
@@ -16,16 +16,17 @@ export interface PlaybackSnapshot {
   accountingMatches: boolean
 }
 
-function activeSegmentId(trace: SimulationTrace, simulationTime: number): number {
+function activeSegmentId(trace: SimulationTrace, simulationTime: number): string | number {
   if (trace.segments.length === 0) return 0
   const candidate = trace.trace_hours > 0
     ? Math.floor((Math.max(0, simulationTime) + TIME_EPSILON) / trace.trace_hours)
     : 0
-  return trace.segments.reduce((active, segment) => (
-    segment.segment_id <= candidate && segment.segment_id >= active
+  return trace.segments.reduce<string | number>((active, segment) => {
+    if (typeof segment.segment_id !== 'number' || typeof active !== 'number') return active
+    return segment.segment_id <= candidate && segment.segment_id >= active
       ? segment.segment_id
       : active
-  ), trace.segments[0].segment_id)
+  }, trace.segments[0].segment_id)
 }
 
 export function derivePlaybackSnapshot(
@@ -37,7 +38,7 @@ export function derivePlaybackSnapshot(
   const events = processed.filter((event) => event.segment_id === segmentId)
   const arrivedIds = new Set<number>()
   const waitingCustomerIds: number[] = []
-  const servingByServer: Record<number, number> = {}
+  const servingByServer: Record<string, number> = {}
   const serviceStarts = new Map<number, number>()
   const arrivalTimes = new Map<number, number>()
   const servedCustomerIds: number[] = []
@@ -92,7 +93,7 @@ export function derivePlaybackSnapshot(
   })
 
   const segment = trace.segments.find((item) => item.segment_id === segmentId)
-  const segmentStart = segmentId * trace.trace_hours
+  const segmentStart = typeof segmentId === 'number' ? segmentId * trace.trace_hours : 0
   const elapsedInSegment = Math.max(0, simulationTime - segmentStart)
   let busyHours = completedBusyHours
   serviceStarts.forEach((start) => {
