@@ -30,6 +30,7 @@ ENGINE_VERSION = "novaq-2026-09-unified-des-v1"
 WORKFLOW_KINDS = {
     "workflow_selection",
     "workflow_des",
+    "workflow_des_current",
     "workflow_mc",
     "workflow_validation",
     "workflow_decision",
@@ -129,7 +130,7 @@ def _own_verified_scenario(
     return scenario
 
 
-def _segments_for(scenario: Scenario) -> list[dict[str, Any]]:
+def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[dict[str, Any]]:
     rows = _scenario_rows(scenario)
     snapshot = (scenario.settings_json or {}).get("calculation") or {}
     source = snapshot.get("input_segments")
@@ -142,7 +143,84 @@ def _segments_for(scenario: Scenario) -> list[dict[str, Any]]:
         segment = dict(source_row)
         segment["time"] = str(result_row.get("time", source_row.get("time", "Unknown")))
         segment["c"] = int(result_row["c_optimal"])
+        if source_row.get("model_id") == "parallel_mg1" or source_row.get("queue_structure") == "separate_queues":
+            if dataset is None:
+                raise HTTPException(status_code=422, detail="Parallel M/G/1 DES source Dataset is unavailable.")
+            segment_id = str(source_row.get("segment_id", ""))
+            queue_id = str(source_row.get("queue_id", ""))
+            evidence = next(
+                (
+                    row for row in (dataset.normalized_json or [])
+                    if str(row.get("segment_id", "")) == segment_id
+                    and str(row.get("queue_id", "")) == queue_id
+                ),
+                None,
+            )
+            if evidence is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Missing persisted empirical service evidence for {segment_id}/{queue_id}.",
+                )
+            for field in (
+                "segment_id",
+                "queue_id",
+                "queue_structure",
+                "model_id",
+                "server_id",
+                "service_time_source",
+                "service_samples_hours",
+            ):
+                if field in evidence:
+                    segment[field] = evidence[field]
+            if segment.get("c") != 1:
+                raise HTTPException(status_code=422, detail="Parallel M/G/1 DES requires one dedicated server per queue.")
         segments.append(segment)
+    return segments
+
+
+def _current_dataset(db: Session, user: User, analysis: AnalysisProject) -> Dataset:
+    candidates = db.execute(
+        select(Dataset)
+        .where(Dataset.user_id == user.id, Dataset.analysis_id == analysis.id)
+        .order_by(Dataset.id.desc())
+    ).scalars()
+    dataset = next(
+        (item for item in candidates if (item.validation_report_json or {}).get("ok")),
+        None,
+    )
+    if dataset is None:
+        raise HTTPException(
+            status_code=404,
+            detail="This Analysis has no successfully processed dataset.",
+        )
+    return dataset
+
+
+def _current_segments_for(
+    analysis: AnalysisProject, dataset: Dataset
+) -> list[dict[str, Any]]:
+    records = dataset.normalized_json or []
+    if not isinstance(records, list) or not records:
+        raise HTTPException(status_code=422, detail="This Analysis has no Current evidence.")
+    segments: list[dict[str, Any]] = []
+    for row in records:
+        if not isinstance(row, dict):
+            raise HTTPException(status_code=422, detail="Current dataset records are invalid.")
+        segment = dict(row)
+        segment["time"] = str(row.get("time", row.get("segment_id", "Unknown")))
+        if segment.get("model_id") == "parallel_mg1" or segment.get("queue_structure") == "separate_queues":
+            try:
+                c_value = int(segment.get("c", 1))
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Parallel M/G/1 DES requires one dedicated server per queue.",
+                ) from None
+            segment["c"] = c_value
+            if segment.get("c") != 1:
+                raise HTTPException(status_code=422, detail="Parallel M/G/1 DES requires one dedicated server per queue.")
+        segments.append(segment)
+    _ = analysis
     return segments
 
 
@@ -190,10 +268,11 @@ def _save_job(
     user: User,
     kind: str,
     analysis: AnalysisProject,
-    scenario: Scenario,
+    scenario: Scenario | None,
     params: dict[str, Any],
     result: dict[str, Any],
     settings: Settings,
+    dataset_id: int | None = None,
 ) -> Job:
     if kind not in WORKFLOW_KINDS:
         raise ValueError("Unknown workflow evidence kind.")
@@ -204,14 +283,20 @@ def _save_job(
             detail="Workflow evidence is too large. Reduce the playback event cap.",
         )
     now = datetime.now(timezone.utc)
+    if scenario is None:
+        scenario_id: int | None = None
+        resolved_dataset_id: int | None = dataset_id
+    else:
+        scenario_id = scenario.id
+        resolved_dataset_id = scenario.dataset_id
     job = Job(
         user_id=user.id,
         kind=kind,
         status="completed",
         params_json={
             "analysis_id": analysis.id,
-            "scenario_id": scenario.id,
-            "dataset_id": scenario.dataset_id,
+            "scenario_id": scenario_id,
+            "dataset_id": resolved_dataset_id,
             "engine_version": ENGINE_VERSION,
             **params,
         },
@@ -345,17 +430,50 @@ def run_des(
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
     scenario = _require_selection(db, user, analysis)
+    dataset = db.get(Dataset, scenario.dataset_id) if scenario.dataset_id is not None else None
     result = simulate_segments_with_trace(
-        _segments_for(scenario),
+        _segments_for(scenario, dataset),
         sim_hours=payload.sim_hours,
         queue_overload_threshold=payload.queue_overload_threshold,
         max_events=payload.max_events,
         seed=payload.seed,
         carryover=payload.carryover,
+        queue_setup=analysis.queue_setup_json,
     )
     job = _save_job(
         db, user, "workflow_des", analysis, scenario,
         payload.model_dump(), result, settings,
+    )
+    return {"evidence": _job_out(job)}
+
+
+@router.post(
+    "/{analysis_id}/workflow/simulation/des/current",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_des_current(
+    analysis_id: int,
+    payload: WorkflowDesRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    analysis = own_analysis(db, user, analysis_id)
+    dataset = _current_dataset(db, user, analysis)
+    segments = _current_segments_for(analysis, dataset)
+    result = simulate_segments_with_trace(
+        segments,
+        sim_hours=payload.sim_hours,
+        queue_overload_threshold=payload.queue_overload_threshold,
+        max_events=payload.max_events,
+        seed=payload.seed,
+        carryover=payload.carryover,
+        queue_setup=analysis.queue_setup_json,
+    )
+    result["provenance"] = "CURRENT"
+    job = _save_job(
+        db, user, "workflow_des_current", analysis, None,
+        payload.model_dump(), result, settings, dataset_id=dataset.id,
     )
     return {"evidence": _job_out(job)}
 
