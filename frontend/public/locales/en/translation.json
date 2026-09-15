@@ -741,6 +741,7 @@
   "setup.canonical_eyebrow": "Setup · Analysis inputs",
   "setup.canonical_description": "Describe the implemented queue structure and known operating conditions. Unknown values remain unknown until you provide them.",
   "setup.queue_structure_help": "Choose the structure that matches the observed operation. Priority-class queueing is not supported.",
+  "setup.queue_structure_locked_help": "Confirmed when the analysis was created. Changing it would invalidate existing evidence.",
   "analyses.theta_positive": "Patience rate must be greater than zero when abandonment is modeled.",
   "reports.eyebrow": "Reports · Implemented exports",
   "reports.description": "Preview the sections implemented by each generator, then export the selected dataset or current scenario evidence.",

@@ -22,6 +22,13 @@ function queueIdsForCount(existing: string[], count: number): string[] {
   return Array.from({ length: count }, (_, index) => existing[index] ?? `queue_${index + 1}`)
 }
 
+function structureDisplayKey(structure: QueueSetup['queue_structure']): string {
+  if (structure === 'shared_queue') return 'analyses.shared'
+  if (structure === 'single_server') return 'analyses.single'
+  if (structure === 'separate_queues') return 'analyses.separate'
+  return 'analyses.unknown'
+}
+
 function nextSegmentId(segments: QueueSetup['segments']): string {
   const used = new Set(segments.map((segment) => segment.id))
   let index = segments.length + 1
@@ -121,7 +128,11 @@ export function AnalysisSetupPage() {
       )}
       <form className="card" onSubmit={submit}>
         <h2 className="card-title">{t('analyses.queue_setup')}</h2>
-        <div className="form-field"><label htmlFor="queue-structure">{t('analyses.queue_structure')}</label><select id="queue-structure" aria-describedby="queue-structure-help" value={setup.queue_structure} onChange={(e) => changeQueueStructure(e.target.value as QueueSetup['queue_structure'])}><option value="unknown">{t('analyses.unknown')}</option><option value="shared_queue">{t('analyses.shared')}</option><option value="single_server">{t('analyses.single')}</option><option value="separate_queues">{t('analyses.separate')}</option></select><span id="queue-structure-help" className="form-hint">{t('setup.queue_structure_help')}</span></div>
+        {setup.queue_structure === 'unknown' ? (
+          <div className="form-field"><label htmlFor="queue-structure">{t('analyses.queue_structure')}</label><select id="queue-structure" aria-describedby="queue-structure-help" value={setup.queue_structure} onChange={(e) => changeQueueStructure(e.target.value as QueueSetup['queue_structure'])}><option value="unknown">{t('analyses.unknown')}</option><option value="shared_queue">{t('analyses.shared')}</option><option value="single_server">{t('analyses.single')}</option><option value="separate_queues">{t('analyses.separate')}</option></select><span id="queue-structure-help" className="form-hint">{t('setup.queue_structure_help')}</span></div>
+        ) : (
+          <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
+        )}
         {setup.queue_structure === 'separate_queues' && <div className="card"><div className="form-field"><label htmlFor="separate-queue-count">{t('analyses.separate_line_count')}</label><input id="separate-queue-count" type="number" min="1" max="100000" value={queueCountInput} onChange={(e) => { setQueueCountInput(e.target.value); if (e.target.value) changeQueueCount(Number(e.target.value)) }} /><span className="form-hint">{t('analyses.separate_line_count_help')}</span></div><p className="form-hint">{setup.staffing_varies_by_period ? t('analyses.variable_lines_help') : t('analyses.fixed_lines_help')}</p></div>}
         <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
         <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>

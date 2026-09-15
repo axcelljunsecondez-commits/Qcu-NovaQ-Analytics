@@ -742,6 +742,7 @@
   "setup.canonical_eyebrow": "Setup · Mga input ng analysis",
   "setup.canonical_description": "Ilarawan ang implemented queue structure at mga kilalang operating condition. Mananatiling unknown ang mga value hanggang ibigay mo ang mga ito.",
   "setup.queue_structure_help": "Piliin ang structure na tumutugma sa naobserbahang operasyon. Hindi sinusuportahan ang priority-class queueing.",
+  "setup.queue_structure_locked_help": "Nakumpirma noong ginawa ang analysis. Ang pagpapalit nito ay magpapawalang-bisa sa umiiral na ebidensya.",
   "analyses.theta_positive": "Dapat mas mataas sa zero ang patience rate kapag modeled ang abandonment.",
   "reports.eyebrow": "Reports · Mga implemented export",
   "reports.description": "I-preview ang mga section na implemented ng bawat generator, pagkatapos i-export ang napiling dataset o current scenario evidence.",

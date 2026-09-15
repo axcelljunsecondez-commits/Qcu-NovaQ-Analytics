@@ -201,15 +201,16 @@ describe('setup semantic contracts', () => {
     expect(screen.getAllByRole('button', { name: 'Remove time segment' })).toHaveLength(2)
   })
 
-  it('does not leak separate queue semantics into pooled mode', async () => {
-    const user = userEvent.setup()
+  it('locks queue structure read-only for established analyses without leaking semantics', async () => {
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'separate_queues', queue_ids: ['queue_1', 'queue_2'] } } })
+    const { unmount } = renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
+    expect(await screen.findByTestId('queue-structure-readonly')).toHaveTextContent('Separate queues')
+    expect(screen.queryByRole('combobox', { name: 'Queue structure' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Number of separate service lines')).toBeInTheDocument()
+    unmount()
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'shared_queue', fixed_server_count: 5 } } })
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
-    await user.selectOptions(await screen.findByLabelText('Queue structure'), 'shared_queue')
+    expect(await screen.findByTestId('queue-structure-readonly')).toHaveTextContent('One shared queue')
     expect(screen.queryByLabelText('Number of separate service lines')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
-      queue_setup: expect.objectContaining({ queue_structure: 'shared_queue', queue_ids: [], segments: [] }),
-    }))
   })
 })
