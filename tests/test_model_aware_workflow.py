@@ -161,3 +161,105 @@ def test_current_des_fallback_provenance(db_engine, client):
     assert r.status_code == 200, r.text
     assert r.json()["evidence"]["result"]["provenance"] == "CURRENT"
     assert "c_optimal" not in r.json()["evidence"]["result"]
+
+
+def _seed_separate_current_analysis(db_engine, email="des-current-evidence@example.com"):
+    from backend.db.models import AnalysisProject, Dataset
+    from tests.helpers import create_user, make_sessionmaker
+
+    user = create_user(db_engine, email, "pw")
+    with make_sessionmaker(db_engine)() as db:
+        analysis = AnalysisProject(
+            user_id=user.id,
+            name="Current DES evidence",
+            queue_setup_json={
+                "queue_structure": "separate_queues",
+                "queue_ids": ["queue_a"],
+                "fixed_server_count": 1,
+                "staffing_varies_by_period": False,
+                "capacity_mode": "unlimited",
+                "total_system_capacity": None,
+                "abandonment_mode": "not_modeled",
+                "patience_rate_per_hour": None,
+                "segments": [{"id": "s1", "start_time": "07:00:00", "end_time": "08:00:00", "active_queue_ids": None}],
+                "separate_queue_closure_policy": "drain_existing",
+            },
+            setup_status="ready",
+        )
+        db.add(analysis)
+        db.flush()
+        dataset = Dataset(
+            user_id=user.id,
+            analysis_id=analysis.id,
+            name="Current empirical",
+            source_filename="events.csv",
+            source_format="csv",
+            row_count=1,
+            normalized_json=[{
+                "time": "s1",
+                "segment_id": "s1",
+                "queue_id": "queue_a",
+                "queue_structure": "separate_queues",
+                "model_id": "parallel_mg1",
+                "server_id": "server:queue_a",
+                "lambda": 4.0,
+                "mu": 4.0,
+                "c": 1,
+                "variance": 0.0025,
+                "service_time_source": "empirical",
+                "service_samples_hours": [0.05, 0.1],
+            }],
+            validation_report_json={"ok": True, "message": "Input data is valid."},
+        )
+        db.add(dataset)
+        db.commit()
+        return analysis.id
+
+
+def test_des_current_exposed_in_workflow_evidence_separate_from_des(db_engine, client):
+    from tests.helpers import csrf_header, login
+
+    analysis_id = _seed_separate_current_analysis(db_engine)
+    login(client, "des-current-evidence@example.com", "pw")
+    run = client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/des/current",
+        headers=csrf_header(client),
+        json={"sim_hours": 1, "max_events": 100},
+    )
+    assert run.status_code == 200, run.text
+    job_id = run.json()["evidence"]["id"]
+    evidence = client.get(f"/analyses/{analysis_id}/workflow").json()
+    assert evidence["scenario"] is None
+    assert evidence["des"] is None
+    assert evidence["des_current"] is not None
+    assert evidence["des_current"]["id"] == job_id
+    assert evidence["des_current"]["kind"] == "workflow_des_current"
+    assert evidence["des_current"]["result"]["provenance"] == "CURRENT"
+
+
+def test_missing_des_current_stays_null_not_fabricated(db_engine, client):
+    from tests.helpers import login
+
+    analysis_id = _seed_separate_current_analysis(db_engine, "des-current-absent@example.com")
+    login(client, "des-current-absent@example.com", "pw")
+    evidence = client.get(f"/analyses/{analysis_id}/workflow").json()
+    assert evidence["des"] is None
+    assert evidence["des_current"] is None
+
+
+def test_decision_ignores_des_current_key():
+    from types import SimpleNamespace
+
+    from backend.api.workflow import _derive_decision
+
+    analysis = SimpleNamespace(setup_status="ready")
+    evidence = {
+        "selection": None,
+        "des": None,
+        "des_current": {"id": 7, "params": {}, "result": {"provenance": "CURRENT", "results": []}},
+        "mc": None,
+        "validation": None,
+    }
+    d = _derive_decision(analysis, None, evidence)  # type: ignore[arg-type]
+    assert d["status"] == "insufficient_evidence"
+    assert d["evidence_ids"]["des"] is None

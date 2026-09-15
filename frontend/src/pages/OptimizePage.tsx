@@ -22,7 +22,7 @@ import { fmt } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 
 interface GoalPreset {
   id: string
@@ -663,6 +663,12 @@ export function OptimizePage() {
       {warnings.length > 0 && (
         <div className="alert alert-warn" style={{ marginTop: '12px' }}>
           {warnings.map((w) => w.feasibility_status === 'NO_FEASIBLE_CONFIGURATION' ? t('system.no_feasible') : w.warning).join(' ')}
+        </div>
+      )}
+      {warnings.some((w) => w.feasibility_status === 'INVALID_INPUT') && (
+        <div className="alert alert-warn" style={{ marginTop: '12px' }}>
+          {t('optimize.blocked_continue_simulate')}{' '}
+          <Link to={`/analyses/${analysisId}/simulate`}>{t('nav.simulate')}</Link>
         </div>
       )}
 

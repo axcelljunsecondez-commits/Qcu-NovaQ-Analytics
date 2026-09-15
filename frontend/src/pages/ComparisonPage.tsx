@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { listScenarios, type ScenarioOut } from '../api/scenarios'
 import type { OptimizationOut } from '../api/types'
 import {
@@ -131,7 +131,10 @@ export function ComparisonPage() {
       {selected && !selected.settings.calculation && <p className="alert alert-warn" style={{ marginTop: '8px' }}>{t('integrity.legacy')}</p>}
       {!hasVerifiedOptimizedScenario && (
         <div className="alert alert-warn" data-testid="compare-not-applicable" style={{ marginTop: '12px' }}>
-          {t('compare.notApplicableNoOptimizedScenario')}
+          {t('compare.notApplicableNoOptimizedScenario')}{' '}
+          <Link to={`/analyses/${analysisId}/simulate`}>{t('nav.simulate')}</Link>
+          {' · '}
+          <Link to={`/analyses/${analysisId}/reports`}>{t('nav.reports')}</Link>
         </div>
       )}
 

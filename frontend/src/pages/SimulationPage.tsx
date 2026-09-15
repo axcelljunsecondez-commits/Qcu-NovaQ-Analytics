@@ -7,9 +7,11 @@ import type { SimDesOut, SimMcOut, SimValidateOut } from '../api/types'
 import {
   getWorkflow,
   runWorkflowDes,
+  runWorkflowDesCurrent,
   runWorkflowMc,
   runWorkflowValidation,
 } from '../api/workflow'
+import { getAnalysis } from '../api/analyses'
 import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
 import { LiveSimulationPlayback } from '../components/simulation/LiveSimulationPlayback'
@@ -101,6 +103,11 @@ export function SimulationPage() {
     queryFn: () => getWorkflow(analysisId),
     enabled: Number.isInteger(analysisId),
   })
+  const analysis = useQuery({
+    queryKey: ['analysis', analysisId],
+    queryFn: () => getAnalysis(analysisId),
+    enabled: Number.isInteger(analysisId),
+  })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
   const desRun = useMutation({
     mutationFn: () => runWorkflowDes(analysisId, {
@@ -123,6 +130,17 @@ export function SimulationPage() {
     onSuccess: refresh,
     onError: (err) => setError(requestError(err, t('errors.server'))),
   })
+  const desCurrentRun = useMutation({
+    mutationFn: () => runWorkflowDesCurrent(analysisId, {
+      sim_hours: Number(desHours),
+      queue_overload_threshold: Number(desThreshold),
+      max_events: Number(maxEvents),
+      seed: parseSeed(desSeed),
+      carryover: true,
+    }),
+    onSuccess: refresh,
+    onError: (err) => setError(requestError(err, t('errors.server'))),
+  })
   const validationRun = useMutation({
     mutationFn: () => runWorkflowValidation(analysisId, {
       des_sim_hours: Number(validationHours),
@@ -136,11 +154,13 @@ export function SimulationPage() {
   })
 
   if (!Number.isInteger(analysisId)) return <ApiState.ErrorState />
-  if (workflow.isLoading) return <ApiState.Loading />
+  if (workflow.isLoading || analysis.isLoading) return <ApiState.Loading />
   if (workflow.isError || !workflow.data) return <ApiState.ErrorState />
 
   const scenario = workflow.data.scenario
-  if (!scenario) {
+  const queueStructure = analysis.data?.analysis.queue_setup.queue_structure
+  const isCurrentMode = !scenario && queueStructure === 'separate_queues'
+  if (!scenario && !isCurrentMode) {
     return (
       <div>
         <div className="topbar">
@@ -157,7 +177,9 @@ export function SimulationPage() {
     )
   }
 
-  const trace = desRun.data?.evidence.result ?? workflow.data.des?.result ?? null
+  const trace = isCurrentMode
+    ? desCurrentRun.data?.evidence.result ?? workflow.data.des_current?.result ?? null
+    : desRun.data?.evidence.result ?? workflow.data.des?.result ?? null
   const desRows: SimDesOut[] = trace?.results ?? []
   const activePlaybackSegment = trace?.segments.find(
     (item) => item.simulation_supported && !item.error,
@@ -183,7 +205,7 @@ export function SimulationPage() {
   const validationPassed = savedFailureCap !== null
     && validationRows.length > 0
     && validationRows.every((row) => validationPasses(row, savedFailureCap))
-  const running = desRun.isPending || mcRun.isPending || validationRun.isPending
+  const running = desRun.isPending || desCurrentRun.isPending || mcRun.isPending || validationRun.isPending
 
   function begin(tabId: Tab) {
     setTab(tabId)
@@ -215,7 +237,8 @@ export function SimulationPage() {
       setError(t('simulation.workflow_events_range_error'))
     } else {
       setError(null)
-      desRun.mutate()
+      if (isCurrentMode) desCurrentRun.mutate()
+      else desRun.mutate()
     }
   }
 
@@ -255,16 +278,24 @@ export function SimulationPage() {
     <div>
       <div className="topbar">
         <div>
-          <div className="topbar-eyebrow">{t('simulation.workflow_eyebrow')}</div>
-          <h1 className="page-title">{t('simulation.title')}</h1>
+          <div className="topbar-eyebrow">{t(isCurrentMode ? 'simulation.current_mode_eyebrow' : 'simulation.workflow_eyebrow')}</div>
+          <h1 className="page-title">{t(isCurrentMode ? 'simulation.simulate_current_title' : 'simulation.title')}</h1>
           <p className="page-caption">
-            {t('simulation.selected_scenario', { name: scenario.name })}
+            {isCurrentMode
+              ? t('simulation.current_mode_help')
+              : t('simulation.selected_scenario', { name: scenario?.name ?? '' })}
           </p>
         </div>
       </div>
+      {isCurrentMode && trace && (
+        <p className="form-hint">
+          <span className="badge badge-ok">{t('simulation.current_badge')}</span>
+        </p>
+      )}
       <p className="form-hint">{t('integrity.simulation_coverage')}</p>
       {error && <div role="alert" className="alert alert-error">{error}</div>}
 
+      {!isCurrentMode && (
       <div className="tab-bar" role="tablist">
         {TABS.map((item, index) => (
           <button
@@ -284,8 +315,9 @@ export function SimulationPage() {
           </button>
         ))}
       </div>
+      )}
 
-      {tab === 'des' && (
+      {(tab === 'des' || isCurrentMode) && (
         <section id="simulation-panel-des" role="tabpanel" aria-labelledby="simulation-tab-des" tabIndex={0}>
           <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.unified_des_title')}</h3>
@@ -308,7 +340,7 @@ export function SimulationPage() {
                 <input id="des-seed" type="number" value={desSeed} onChange={(e) => setDesSeed(e.target.value)} />
               </div>
               <button type="button" className="btn-primary" disabled={running} onClick={submitDes}>
-                {running ? t('common.loading') : t('simulation.run_unified_des')}
+                {running ? t('common.loading') : t(isCurrentMode ? 'simulation.run_current_des' : 'simulation.run_unified_des')}
               </button>
             </div>
           </div>
@@ -375,7 +407,7 @@ export function SimulationPage() {
         </section>
       )}
 
-      {tab === 'mc' && (
+      {!isCurrentMode && tab === 'mc' && (
         <section id="simulation-panel-mc" role="tabpanel" aria-labelledby="simulation-tab-mc" tabIndex={0}>
           <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.tabs.mc')}</h3>
@@ -400,7 +432,7 @@ export function SimulationPage() {
         </section>
       )}
 
-      {tab === 'validate' && (
+      {!isCurrentMode && tab === 'validate' && (
         <section id="simulation-panel-validate" role="tabpanel" aria-labelledby="simulation-tab-validate" tabIndex={0}>
           <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.tabs.validate')}</h3>
@@ -435,6 +467,18 @@ export function SimulationPage() {
             </>
           )}
         </section>
+      )}
+      {isCurrentMode && (
+        <>
+          <div className="card simulation-controls" aria-disabled="true">
+            <h3 className="section-title">{t('simulation.tabs.mc')}</h3>
+            <p className="form-hint">{t('simulation.mc_disabled_current')}</p>
+          </div>
+          <div className="card simulation-controls" aria-disabled="true">
+            <h3 className="section-title">{t('simulation.tabs.validate')}</h3>
+            <p className="form-hint">{t('simulation.validate_disabled_current')}</p>
+          </div>
+        </>
       )}
     </div>
   )

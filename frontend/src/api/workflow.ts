@@ -37,6 +37,7 @@ export interface WorkflowEvidence {
   selection: WorkflowJob | null
   scenario: WorkflowScenario | null
   des: WorkflowJob<SimulationTrace> | null
+  des_current: WorkflowJob<SimulationTrace> | null
   mc: WorkflowJob<{ results: SimMcOut[] }> | null
   validation: WorkflowJob<{ results: SimValidateOut[] }> | null
   decision: WorkflowJob<WorkflowDecision> | null
@@ -71,6 +72,23 @@ export async function runWorkflowDes(
 ): Promise<{ evidence: WorkflowJob<SimulationTrace> }> {
   const { data } = await http.post<{ evidence: WorkflowJob<SimulationTrace> }>(
     `/analyses/${analysisId}/workflow/simulation/des`,
+    options,
+  )
+  return data
+}
+
+export async function runWorkflowDesCurrent(
+  analysisId: number,
+  options: {
+    sim_hours: number
+    queue_overload_threshold: number
+    max_events: number
+    seed: number | null
+    carryover: boolean
+  },
+): Promise<{ evidence: WorkflowJob<SimulationTrace> }> {
+  const { data } = await http.post<{ evidence: WorkflowJob<SimulationTrace> }>(
+    `/analyses/${analysisId}/workflow/simulation/des/current`,
     options,
   )
   return data

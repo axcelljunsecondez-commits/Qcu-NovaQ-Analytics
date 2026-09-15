@@ -331,6 +331,7 @@ def _current_evidence(
     scenario, selection = _selected_scenario(db, user, analysis)
     scenario_id = scenario.id if scenario is not None else None
     des = _latest_job(db, user, "workflow_des", analysis.id, scenario_id) if scenario_id else None
+    des_current = _latest_job(db, user, "workflow_des_current", analysis.id)
     mc = _latest_job(db, user, "workflow_mc", analysis.id, scenario_id) if scenario_id else None
     validation = (
         _latest_job(db, user, "workflow_validation", analysis.id, scenario_id)
@@ -362,6 +363,7 @@ def _current_evidence(
             "provenance": "verified_snapshot",
         } if scenario else None,
         "des": _job_out(des),
+        "des_current": _job_out(des_current),
         "mc": _job_out(mc),
         "validation": _job_out(validation),
         "decision": _job_out(decision),

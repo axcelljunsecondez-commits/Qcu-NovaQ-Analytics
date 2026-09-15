@@ -7,14 +7,21 @@ import { SimulationPage } from './SimulationPage'
 
 const getWorkflowMock = vi.fn()
 const runDesMock = vi.fn()
+const runDesCurrentMock = vi.fn()
 const runMcMock = vi.fn()
 const runValidationMock = vi.fn()
+const getAnalysisMock = vi.fn()
 
 vi.mock('../api/workflow', () => ({
   getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
   runWorkflowDes: (...args: unknown[]) => runDesMock(...args),
+  runWorkflowDesCurrent: (...args: unknown[]) => runDesCurrentMock(...args),
   runWorkflowMc: (...args: unknown[]) => runMcMock(...args),
   runWorkflowValidation: (...args: unknown[]) => runValidationMock(...args),
+}))
+
+vi.mock('../api/analyses', () => ({
+  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
 }))
 
 vi.mock('../api/auth', () => ({
@@ -155,6 +162,9 @@ function renderPage() {
 
 beforeEach(() => {
   getWorkflowMock.mockReset().mockResolvedValue(workflow())
+  getAnalysisMock.mockReset().mockResolvedValue({
+    analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue' } },
+  })
   runDesMock.mockReset().mockResolvedValue({ evidence: job('workflow_des', trace) })
   runMcMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc', { results: [mcRow] }) })
   runValidationMock.mockReset().mockResolvedValue({
@@ -166,7 +176,37 @@ beforeEach(() => {
       seed: null,
     }),
   })
+  runDesCurrentMock.mockReset().mockResolvedValue({ evidence: job('workflow_des_current', trace, { scenario_id: null }) })
 })
+
+function separateSetup() {
+  getAnalysisMock.mockResolvedValue({
+    analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues' } },
+  })
+}
+
+const separateTrace = {
+  ...trace,
+  results: [{ ...desRow, c: 1 }],
+  trace: [
+    { t: 0.1, type: 'arrival', segment_id: 's1', customer_id: 1, server_id: null, queue_id: 'queue_1', queue_len_after: 1 },
+    { t: 0.2, type: 'service_start', segment_id: 's1', customer_id: 1, server_id: 'server:queue_1', queue_id: 'queue_1', queue_len_after: 0 },
+    { t: 0.4, type: 'service_end', segment_id: 's1', customer_id: 1, server_id: 'server:queue_1', queue_id: 'queue_1', queue_len_after: 0 },
+  ],
+  segments: [{
+    segment_id: 's1',
+    time: '07:00-08:00',
+    lambda: 4,
+    mu: 4,
+    c: 1,
+    selected_model: 'Parallel M/G/1',
+    simulation_supported: true,
+    error: null,
+    queue_structure: 'separate',
+    initial_queue_depth: 0,
+    final_queue_depth: 0,
+  }],
+}
 
 describe('SimulationPage workflow', () => {
   it('supports Arrow, Home, and End keyboard navigation across simulation tabs', async () => {
@@ -288,5 +328,75 @@ describe('SimulationPage workflow', () => {
     await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Failure rate cap must be between 0 and 1.')
     expect(runMcMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('SimulationPage Simulate Current mode', () => {
+  it('shows Simulate Current for separate queues with no scenario', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null, des_current: null }))
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Simulate Current' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Current DES' })).toBeInTheDocument()
+    expect(screen.queryByText(/Select a verified scenario in Compare/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the scenario-first stop for pooled analyses with no scenario', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null }))
+    renderPage()
+    expect(await screen.findByText(/Select a verified scenario in Compare/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run Current DES' })).not.toBeInTheDocument()
+  })
+
+  it('runs Current DES, shows CURRENT provenance, and never claims optimized', async () => {
+    const user = userEvent.setup()
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null, des_current: null }))
+    runDesCurrentMock.mockResolvedValue({ evidence: job('workflow_des_current', { ...separateTrace, provenance: 'CURRENT' }, { scenario_id: null }) })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run Current DES' }))
+    await waitFor(() => expect(runDesCurrentMock).toHaveBeenCalledWith(7, {
+      sim_hours: 24,
+      queue_overload_threshold: 20,
+      max_events: 3000,
+      seed: null,
+      carryover: true,
+    }))
+    expect(runDesMock).not.toHaveBeenCalled()
+    expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
+    expect(screen.queryByText(/Verified scenario|Recommended|Plan A/)).not.toBeInTheDocument()
+  })
+
+  it('restores persisted des_current on load without rerunning', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: job('workflow_des_current', { ...separateTrace, provenance: 'CURRENT' }, { scenario_id: null }),
+    }))
+    renderPage()
+    expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
+    expect(runDesCurrentMock).not.toHaveBeenCalled()
+  })
+
+  it('routes a separate Current-DES trace to the separate playback layout', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: job('workflow_des_current', { ...separateTrace, provenance: 'CURRENT' }, { scenario_id: null }),
+    }))
+    renderPage()
+    expect(await screen.findByTestId('lane-queue_1')).toBeInTheDocument()
+  })
+
+  it('disables Monte Carlo and Validate in Current-only mode', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null, des_current: null }))
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Run Current DES' })).toBeInTheDocument()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.getByText(/Monte Carlo requires a verified scenario/)).toBeInTheDocument()
+    expect(screen.getByText(/Scenario validation requires a verified scenario/)).toBeInTheDocument()
   })
 })
