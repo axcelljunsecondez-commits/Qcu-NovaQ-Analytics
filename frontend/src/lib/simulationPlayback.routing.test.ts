@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { selectPlaybackLayout } from './simulationPlayback'
 import type { SimulationTraceEvent, SimulationTraceSegment } from '../api/types'
 
 describe('trace identity (Task 4 widening)', () => {
@@ -77,5 +78,17 @@ describe('trace identity (Task 4 widening)', () => {
       final_queue_depth: 0,
     }
     expect(s.queue_structure).toBe('shared')
+  })
+})
+
+describe('playback routing (Task 5)', () => {
+  it('routes by queue_structure not model_id', () => {
+    expect(selectPlaybackLayout('separate')).toBe('separate')
+    expect(selectPlaybackLayout('shared')).toBe('shared')
+  })
+
+  it('defaults unknown structures to the shared renderer', () => {
+    expect(selectPlaybackLayout('unknown')).toBe('shared')
+    expect(selectPlaybackLayout('')).toBe('shared')
   })
 })

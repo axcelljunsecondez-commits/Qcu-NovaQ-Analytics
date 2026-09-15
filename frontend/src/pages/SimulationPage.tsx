@@ -13,6 +13,8 @@ import {
 import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
 import { LiveSimulationPlayback } from '../components/simulation/LiveSimulationPlayback'
+import { SeparateSimulationPlayback } from '../components/simulation/SeparateSimulationPlayback'
+import { selectPlaybackLayout } from '../lib/simulationPlayback'
 import {
   FailureRateBars,
   LqHistogram,
@@ -157,6 +159,12 @@ export function SimulationPage() {
 
   const trace = desRun.data?.evidence.result ?? workflow.data.des?.result ?? null
   const desRows: SimDesOut[] = trace?.results ?? []
+  const activePlaybackSegment = trace?.segments.find(
+    (item) => item.simulation_supported && !item.error,
+  ) ?? trace?.segments[0] ?? null
+  const playbackLayout = activePlaybackSegment
+    ? selectPlaybackLayout(activePlaybackSegment.queue_structure)
+    : 'shared'
   const mcRows = mcRun.data?.evidence.result.results ?? workflow.data.mc?.result.results ?? []
   const validationEvidence = validationRun.data?.evidence ?? workflow.data.validation
   const validationRows = validationEvidence?.result.results ?? []
@@ -312,7 +320,16 @@ export function SimulationPage() {
                 <MetricCard label={t('simulation.served')} value={desRows.reduce((sum, row) => sum + row.served, 0)} />
                 <MetricCard label={t('simulation.live_complete')} value={trace.event_count} />
               </div>
-              <LiveSimulationPlayback trace={trace} />
+              <p className="form-hint">
+                <span className="badge badge-neutral">
+                  {t(playbackLayout === 'separate'
+                    ? 'simulation.playback_view_separate'
+                    : 'simulation.playback_view_shared')}
+                </span>
+              </p>
+              {playbackLayout === 'separate'
+                ? <SeparateSimulationPlayback trace={trace} />
+                : <LiveSimulationPlayback trace={trace} />}
               <div className="card table-scroll" role="region" aria-label={t('simulation.des_table_caption')} tabIndex={0}>
                 <table>
                   <caption className="sr-only">{t('simulation.des_table_caption')}</caption>

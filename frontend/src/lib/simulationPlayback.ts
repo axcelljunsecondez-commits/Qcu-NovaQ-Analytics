@@ -2,6 +2,107 @@ import type { SimulationTrace } from '../api/types'
 
 const TIME_EPSILON = 1e-9
 
+export type PlaybackLayout = 'shared' | 'separate'
+
+/**
+ * Route playback rendering by queue structure, never by model id.
+ * Trace-level `shared` maps to the pooled renderer; trace-level `separate`
+ * (setup-level `separate_queues`) maps to the separate renderer.
+ * Unknown values fall back to the shared renderer.
+ */
+export function selectPlaybackLayout(queueStructure: string): PlaybackLayout {
+  return queueStructure === 'separate' || queueStructure === 'separate_queues'
+    ? 'separate'
+    : 'shared'
+}
+
+export interface SeparateLaneSnapshot {
+  queueId: string
+  serverId: string | number | null
+  arrived: number
+  waitingCustomerIds: number[]
+  servingByServer: Record<string, number>
+  servedCustomerIds: number[]
+  abandonedCustomerIds: number[]
+}
+
+function laneKeyFor(queueId: string | number | null | undefined, serverId: string | number | null): string {
+  if (queueId !== null && queueId !== undefined) return String(queueId)
+  if (serverId !== null) return String(serverId)
+  return 'unassigned'
+}
+
+/**
+ * Pure per-queue reducer over the authoritative backend trace.
+ * Presentation-only: filters by simulation time and groups by traced
+ * queue_id/server_id. Never regenerates arrivals, never reroutes customers.
+ */
+export function deriveSeparateLaneSnapshots(
+  trace: SimulationTrace,
+  simulationTime: number,
+): SeparateLaneSnapshot[] {
+  const laneOrder: string[] = []
+  const serverByLane = new Map<string, string | number | null>()
+  trace.trace.forEach((event) => {
+    const key = laneKeyFor(event.queue_id, event.server_id)
+    if (!laneOrder.includes(key)) laneOrder.push(key)
+    if (!serverByLane.has(key) || serverByLane.get(key) === null) {
+      if (event.server_id !== null) serverByLane.set(key, event.server_id)
+      else if (!serverByLane.has(key)) serverByLane.set(key, null)
+    }
+  })
+
+  const processed = trace.trace.filter((event) => event.t <= simulationTime + TIME_EPSILON)
+  return laneOrder.map((laneKey) => {
+    const laneEvents = processed.filter(
+      (event) => laneKeyFor(event.queue_id, event.server_id) === laneKey,
+    )
+    const arrivedIds = new Set<number>()
+    const waitingCustomerIds: number[] = []
+    const servingByServer: Record<string, number> = {}
+    const servedCustomerIds: number[] = []
+    const abandonedCustomerIds: number[] = []
+
+    laneEvents.forEach((event) => {
+      if (event.type === 'arrival') {
+        arrivedIds.add(event.customer_id)
+        waitingCustomerIds.push(event.customer_id)
+        return
+      }
+      if (event.type === 'service_start' && event.server_id !== null) {
+        const waitingIndex = waitingCustomerIds.indexOf(event.customer_id)
+        if (waitingIndex >= 0) waitingCustomerIds.splice(waitingIndex, 1)
+        servingByServer[event.server_id] = event.customer_id
+        return
+      }
+      if (event.type === 'service_end') {
+        const waitingIndex = waitingCustomerIds.indexOf(event.customer_id)
+        if (waitingIndex >= 0) waitingCustomerIds.splice(waitingIndex, 1)
+        if (event.server_id !== null && servingByServer[event.server_id] === event.customer_id) {
+          delete servingByServer[event.server_id]
+        }
+        servedCustomerIds.push(event.customer_id)
+        return
+      }
+      if (event.type === 'abandon') {
+        const waitingIndex = waitingCustomerIds.indexOf(event.customer_id)
+        if (waitingIndex >= 0) waitingCustomerIds.splice(waitingIndex, 1)
+        abandonedCustomerIds.push(event.customer_id)
+      }
+    })
+
+    return {
+      queueId: laneKey,
+      serverId: serverByLane.get(laneKey) ?? null,
+      arrived: arrivedIds.size,
+      waitingCustomerIds,
+      servingByServer,
+      servedCustomerIds,
+      abandonedCustomerIds,
+    }
+  })
+}
+
 export interface PlaybackSnapshot {
   segmentId: string | number
   eventCount: number
