@@ -155,6 +155,23 @@ STATUS_LEGEND = [
     ("Unstable", "> 100%"),
 ]
 
+SEPARATE_OPTIMIZATION_BLOCKED_REASON = "BLOCKED — DEMAND ALLOCATION POLICY NOT DEFINED"
+
+
+def current_only_blocked_lines() -> list[str]:
+    """Current-only status lines for verified separate analyses.
+
+    One adaptive framework: callers reuse the existing minute conversion
+    (Wq*60) and staffing helpers (_staffing_summary/_staffing_change_lines);
+    this helper only supplies BLOCKED / N-A wording so no c_optimal,
+    savings, or ROI is fabricated. Missing values remain N/A, never zero.
+    """
+    return [
+        f"Optimization: {SEPARATE_OPTIMIZATION_BLOCKED_REASON}",
+        "Compare: NOT APPLICABLE (no verified optimized scenario)",
+        "Decision: NOT AVAILABLE FOR OPTIMIZATION RECOMMENDATION",
+    ]
+
 # ──────────────────────────────────────────────────────────────────────────────
 # PDF Report
 # ──────────────────────────────────────────────────────────────────────────────

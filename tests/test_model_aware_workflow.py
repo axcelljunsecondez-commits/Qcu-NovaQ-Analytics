@@ -39,6 +39,68 @@ def test_decision_never_adopts_from_current_des_only():
     assert "optimiz" not in d.get("recommendation", "").lower() or "not available" in d.get("recommendation", "").lower()
 
 
+def test_current_only_report_marks_blocked_not_zero(db_engine, client):
+    import io
+
+    import openpyxl
+
+    from backend.api.reports import _separate_current_payload
+    from backend.db.models import Dataset
+    from tests.helpers import create_user, login, make_sessionmaker
+
+    user = create_user(db_engine, "current-only-reports@example.com", "pw")
+    with make_sessionmaker(db_engine)() as db:
+        dataset = Dataset(
+            user_id=user.id,
+            analysis_id=None,
+            name="Separate current",
+            source_filename="segments.csv",
+            source_format="csv",
+            row_count=1,
+            normalized_json=[{
+                "time": "08:00",
+                "queue_id": "Q1",
+                "queue_structure": "separate_queues",
+                "model_id": "parallel_mg1",
+                "lambda": 5.0,
+                "mu": 4.0,
+                "c": 1,
+                "variance": 0.0625,
+            }],
+            validation_report_json={"ok": True, "message": "Input data is valid."},
+        )
+        db.add(dataset)
+        db.commit()
+        dataset_id = dataset.id
+        comparison_df, kpis, recommendations = _separate_current_payload(dataset)
+    joined = "\n".join(recommendations)
+    assert "BLOCKED" in joined and "DEMAND ALLOCATION POLICY NOT DEFINED" in joined
+    assert "NOT APPLICABLE" in joined
+    assert "NOT AVAILABLE" in joined
+    assert "N/A" in joined
+    assert "c_optimal" not in comparison_df.columns
+    assert "c_optimal" not in kpis
+    assert "total_savings" not in kpis
+    assert "roi" not in " ".join(str(k).lower() for k in kpis)
+    login(client, "current-only-reports@example.com", "pw")
+    pdf = client.get(f"/reports/datasets/{dataset_id}/pdf")
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.content[:4] == b"%PDF"
+    excel = client.get(f"/reports/datasets/{dataset_id}/excel")
+    assert excel.status_code == 200, excel.text
+    wb = openpyxl.load_workbook(io.BytesIO(excel.content))
+    rec_text = " ".join(
+        str(cell.value or "") for row in wb["Recommendations"].iter_rows() for cell in row
+    )
+    assert "BLOCKED" in rec_text
+    assert "DEMAND ALLOCATION POLICY NOT DEFINED" in rec_text
+    assert "NOT APPLICABLE" in rec_text
+    assert "NOT AVAILABLE" in rec_text
+    headers = [cell.value for cell in wb["Segments"][1]]
+    assert "c_optimal" not in headers
+    assert "total_savings" not in headers
+
+
 def test_current_des_fallback_provenance(db_engine, client):
     from backend.db.models import AnalysisProject, Dataset
     from tests.helpers import create_user, csrf_header, login, make_sessionmaker

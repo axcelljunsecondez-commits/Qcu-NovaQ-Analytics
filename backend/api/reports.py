@@ -12,7 +12,7 @@ from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
 from backend.queueing_engine.services.data_processing import compute_kpis, process_segments
 from backend.queueing_engine.services.optimization import build_recommendations, summarize_optimization
-from backend.reports.report_export import generate_excel_report, generate_pdf_report
+from backend.reports.report_export import current_only_blocked_lines, generate_excel_report, generate_pdf_report
 
 router = APIRouter(
     prefix="/reports",
@@ -104,8 +104,41 @@ def _decision_recommendations(decision: dict | None) -> list[str]:
     return [message for message in messages if message]
 
 
+def _separate_current_payload(dataset: Dataset) -> tuple[pd.DataFrame, dict, list[str]]:
+    """Current-only payload for verified separate-queue analyses.
+
+    Returns Current analytical (process_segments + compute_kpis) with optional
+    Current-DES noted separately; optimization is BLOCKED, compare/decision
+    are N/A, missing values are N/A never zero. No c_optimal, savings, or ROI
+    is fabricated. Reuses the same minute conversion (Wq*60 at display) and
+    staffing helpers via report_export; pooled path below is unchanged.
+    """
+    records = dataset.normalized_json or []
+    results_df = process_segments(records)
+    kpis = compute_kpis(results_df)
+    comparison_df = pd.DataFrame(
+        {
+            "time": results_df["time"],
+            "c_current": results_df["c"],
+            "rho_current": results_df["rho"],
+            "Wq_current": results_df["Wq"],
+            "metric_provenance": "analytical",
+            "selected_model": results_df["model"],
+        }
+    )
+    recommendations = [
+        "Analytical estimates from supplied aggregate rates, not observed waiting times or externally validated outcomes.",
+        *current_only_blocked_lines(),
+        "Current-DES: available via the Current-DES fallback when supported; never counted as optimized evidence.",
+        "Missing values are N/A, never zero.",
+    ]
+    return comparison_df, kpis, recommendations
+
+
 def _dataset_payload(dataset: Dataset) -> tuple[pd.DataFrame, dict, list[str]]:
     records = dataset.normalized_json or []
+    if any(record.get("queue_structure") == "separate_queues" for record in records if isinstance(record, dict)):
+        return _separate_current_payload(dataset)
     results_df = process_segments(records)
     kpis = compute_kpis(results_df)
     comparison_df = pd.DataFrame(
