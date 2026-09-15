@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Route, Routes } from 'react-router-dom'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
@@ -9,6 +10,7 @@ const getDatasetMock = vi.fn()
 const optimizeBatchMock = vi.fn()
 const createScenarioMock = vi.fn()
 const listScenariosMock = vi.fn()
+const getAnalysisMock = vi.fn()
 
 vi.mock('../api/datasets', () => ({
   listDatasets: (...args: unknown[]) => listDatasetsMock(...args),
@@ -35,6 +37,11 @@ vi.mock('../api/scenarios', () => ({
   createScenario: (...args: unknown[]) => createScenarioMock(...args),
   updateScenario: vi.fn(),
   deleteScenario: vi.fn(),
+}))
+
+vi.mock('../api/analyses', () => ({
+  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+  patchAnalysis: vi.fn(),
 }))
 
 vi.mock('../api/auth', () => ({
@@ -94,10 +101,14 @@ beforeEach(() => {
   optimizeBatchMock.mockReset()
   createScenarioMock.mockReset()
   listScenariosMock.mockReset()
+  getAnalysisMock.mockReset()
   listDatasetsMock.mockResolvedValue({ datasets: [dataset] })
   getDatasetMock.mockResolvedValue({ dataset })
   optimizeBatchMock.mockResolvedValue({ results: [row] })
   listScenariosMock.mockResolvedValue({ scenarios: [] })
+  getAnalysisMock.mockResolvedValue({
+    analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue', queue_ids: [] } },
+  })
 })
 
 describe('calculation integrity', () => {
@@ -430,5 +441,42 @@ describe('OptimizePage', () => {
     expect(
       await screen.findByText('Segment unstable under current staffing.'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('separate staffing optimization is blocked', () => {
+  function renderSeparate() {
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['queue_1'] } },
+    })
+    return renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} />
+      </Routes>,
+      { route: '/analyses/7/optimize' },
+    )
+  }
+
+  it('identifies the page as staffing schedule optimization with a blocked banner', async () => {
+    renderSeparate()
+    expect(await screen.findByRole('heading', { name: 'Optimize Staffing Schedule' })).toBeInTheDocument()
+    expect(await screen.findByTestId('optimize-staffing-blocked')).toHaveTextContent(/demand allocation policy not defined/)
+    expect(screen.getByRole('link', { name: 'Simulate' })).toHaveAttribute('href', '/analyses/7/simulate')
+  })
+
+  it('disables saving so no fake scenario can be produced', async () => {
+    const user = userEvent.setup()
+    optimizeBatchMock.mockResolvedValue({
+      results: [{ ...row, c_optimal: null, optimized_stable: false, feasibility_status: 'INVALID_INPUT', warning: 'Optimization is not supported.' }],
+    })
+    renderSeparate()
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('Optimization is not supported.')
+    await user.type(screen.getByLabelText('Scenario name'), 'fake plan')
+    const save = screen.getByRole('button', { name: 'Save' })
+    expect(save).toBeDisabled()
+    expect(createScenarioMock).not.toHaveBeenCalled()
   })
 })

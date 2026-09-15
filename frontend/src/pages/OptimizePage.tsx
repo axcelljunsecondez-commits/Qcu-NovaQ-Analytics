@@ -8,6 +8,7 @@ import { useState, type ReactNode } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
+import { getAnalysis } from '../api/analyses'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
 import type { DatasetOut, OptimizationOut, SegmentRow } from '../api/types'
@@ -178,6 +179,12 @@ export function OptimizePage() {
     queryKey: ['datasets', analysisId],
     queryFn: () => listDatasets(analysisId),
   })
+  const analysis = useQuery({
+    queryKey: ['analysis', analysisId],
+    queryFn: () => getAnalysis(analysisId!),
+    enabled: Number.isInteger(analysisId),
+  })
+  const isSeparateStaffing = analysis.data?.analysis.queue_setup.queue_structure === 'separate_queues'
 
   async function run(dataset: DatasetOut, factor = 1) {
     setError(null)
@@ -221,7 +228,7 @@ export function OptimizePage() {
   }
 
   async function handleSave() {
-    if (!rows?.length || !snapshot || stale || running || !scenarioName.trim()) {
+    if (!rows?.length || !snapshot || stale || running || !scenarioName.trim() || isSeparateStaffing) {
       return
     }
     setSaving(true)
@@ -269,11 +276,18 @@ export function OptimizePage() {
       {/* Topbar */}
       <div className="topbar">
         <div>
-          <div className="topbar-eyebrow">{t('optimize.eyebrow')}</div>
-          <h1 className="page-title">{t('optimize.title')}</h1>
-          <p className="page-caption">{t('optimize.description')}</p>
+          <div className="topbar-eyebrow">{t(isSeparateStaffing ? 'optimize.staffing_eyebrow' : 'optimize.eyebrow')}</div>
+          <h1 className="page-title">{t(isSeparateStaffing ? 'optimize.staffing_title' : 'optimize.title')}</h1>
+          <p className="page-caption">{t(isSeparateStaffing ? 'optimize.staffing_description' : 'optimize.description')}</p>
         </div>
       </div>
+
+      {isSeparateStaffing && (
+        <div className="alert alert-warn" data-testid="optimize-staffing-blocked" style={{ marginTop: '12px' }}>
+          <strong>{t('optimize.staffing_blocked')}</strong>{' '}{t('optimize.staffing_blocked_reason')}{' '}
+          <Link to={`/analyses/${analysisId}/simulate`}>{t('nav.simulate')}</Link>
+        </div>
+      )}
 
       {stale && <div role="alert" className="alert alert-warn">{t('integrity.stale')}</div>}
       {rows && !comparisonComplete(rows) && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
@@ -643,12 +657,13 @@ export function OptimizePage() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}
+                  disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim() || isSeparateStaffing}
                   style={{ padding: '8px 16px', background: 'var(--primary)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: saving || running || stale ? 'not-allowed' : 'pointer', height: '35px' }}
                 >
                   {t('common.save')}
                 </button>
               </div>
+              {isSeparateStaffing && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>{t('optimize.save_blocked_separate')}</p>}
               {!stale && rows.length > 0 && !comparisonComplete(rows) && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>{t('system.save_incomplete')}</p>}
               {saved && !stale && <div className="alert alert-success" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
             </div>
