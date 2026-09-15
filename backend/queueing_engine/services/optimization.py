@@ -235,6 +235,12 @@ def optimize_segment(
     if not isinstance(segment, Mapping):
         return empty_result
 
+    if segment.get("queue_structure") == "separate_queues" or segment.get("model_id") == "parallel_mg1":
+        empty_result["warning"] = (
+            "Optimization is not supported for Parallel M/G/1 separate FIFO queues in Phase A."
+        )
+        return empty_result
+
     time_label = str(segment.get("time", "Unknown"))
     lambda_ = segment.get("lambda")
     mu = segment.get("mu")
