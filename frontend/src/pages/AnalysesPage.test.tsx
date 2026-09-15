@@ -67,4 +67,59 @@ describe('AnalysesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Archive' }))
     expect(archiveMock.mock.calls[0][0]).toBe(7)
   })
+
+  it('offers guided structure choice for unknown-structure analyses', async () => {
+    listMock.mockResolvedValue({ analyses: [{ ...analysis, queue_setup: { ...analysis.queue_setup, queue_structure: 'unknown' } }] })
+    renderWithProviders(<AnalysesPage />, { route: '/analyses' })
+    expect(await screen.findByText('North checkout')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Choose queue structure' })).toHaveAttribute(
+      'href',
+      '/analyses/7/guided-setup',
+    )
+  })
+
+  it('hides guided structure choice once structure is known', async () => {
+    listMock.mockResolvedValue({ analyses: [analysis] })
+    renderWithProviders(<AnalysesPage />, { route: '/analyses' })
+    expect(await screen.findByText('North checkout')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Choose queue structure' })).not.toBeInTheDocument()
+  })
+
+  it('badges each analysis with its queue structure', async () => {
+    listMock.mockResolvedValue({ analyses: [
+      analysis,
+      { ...analysis, id: 8, name: 'South lines', queue_setup: { ...analysis.queue_setup, queue_structure: 'separate_queues' } },
+    ] })
+    renderWithProviders(<AnalysesPage />, { route: '/analyses' })
+    expect(await screen.findByText('North checkout')).toBeInTheDocument()
+    const badges = screen.getAllByTestId('analysis-structure-badge')
+    expect(badges.map((badge) => badge.textContent)).toEqual(['One shared queue', 'Separate queues'])
+  })
+
+  it('filters analyses by queue structure', async () => {
+    const user = userEvent.setup()
+    listMock.mockResolvedValue({ analyses: [
+      analysis,
+      { ...analysis, id: 8, name: 'South lines', queue_setup: { ...analysis.queue_setup, queue_structure: 'separate_queues' } },
+    ] })
+    renderWithProviders(<AnalysesPage />, { route: '/analyses' })
+    expect(await screen.findByText('North checkout')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Separate queues' }))
+    expect(screen.queryByText('North checkout')).not.toBeInTheDocument()
+    expect(screen.getByText('South lines')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Shared queue' }))
+    expect(screen.getByText('North checkout')).toBeInTheDocument()
+    expect(screen.queryByText('South lines')).not.toBeInTheDocument()
+  })
+
+  it('initializes the filter from the sidebar structure link', async () => {
+    listMock.mockResolvedValue({ analyses: [
+      analysis,
+      { ...analysis, id: 8, name: 'South lines', queue_setup: { ...analysis.queue_setup, queue_structure: 'separate_queues' } },
+    ] })
+    renderWithProviders(<AnalysesPage />, { route: '/analyses?structure=separate_queues' })
+    expect(await screen.findByText('South lines')).toBeInTheDocument()
+    expect(screen.queryByText('North checkout')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Separate queues' })).toHaveAttribute('aria-pressed', 'true')
+  })
 })

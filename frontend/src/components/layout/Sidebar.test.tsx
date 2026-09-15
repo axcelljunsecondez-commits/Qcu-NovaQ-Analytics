@@ -23,4 +23,12 @@ describe('Sidebar global navigation', () => {
     expect(screen.queryByText('ANALYSIS WORKFLOW')).not.toBeInTheDocument()
     expect(container.querySelector('a[href*="/latest/"]')).not.toBeInTheDocument()
   })
+
+  it('links My Analyses filtered by queue structure', async () => {
+    const { container } = renderWithProviders(<Sidebar />, { route: '/dashboard' })
+    expect(await screen.findByText('Help')).toBeInTheDocument()
+    expect(container.querySelector('a[href="/analyses"]')).toBeInTheDocument()
+    expect(container.querySelector('a[href="/analyses?structure=shared_queue"]')).toBeInTheDocument()
+    expect(container.querySelector('a[href="/analyses?structure=separate_queues"]')).toBeInTheDocument()
+  })
 })

@@ -13,6 +13,7 @@ interface NavItem {
   icon: IconName
   adminOnly?: boolean
   end?: boolean
+  matchSearch?: string
 }
 
 interface NavSection {
@@ -26,6 +27,8 @@ const navSections: NavSection[] = [
     title: 'nav.section_operation',
     items: [
       { key: 'analyses', to: '/analyses', icon: 'analyses', end: true },
+      { key: 'shared_analyses', to: '/analyses?structure=shared_queue', icon: 'analyses', matchSearch: 'structure=shared_queue' },
+      { key: 'separate_analyses', to: '/analyses?structure=separate_queues', icon: 'analyses', matchSearch: 'structure=separate_queues' },
       { key: 'datasets', to: '/datasets', icon: 'datasets' },
     ],
   },
@@ -101,6 +104,15 @@ export function Sidebar() {
               <div className="nav-section-title">{t(section.title)}</div>
               {section.items.map((item) => {
                 if (item.adminOnly && user?.role !== 'admin') return null
+                if (item.matchSearch !== undefined) {
+                  const active = location.pathname === '/analyses' && location.search.includes(item.matchSearch)
+                  return (
+                    <NavLink key={item.key} to={item.to} className={active ? 'active' : undefined}>
+                      <NavIcon name={item.icon} />
+                      <span>{t(`nav.${item.key}`)}</span>
+                    </NavLink>
+                  )
+                }
                 return (
                   <NavLink key={item.key} to={item.to} end={item.end} className={({ isActive }) => (isActive ? 'active' : undefined)}>
                     <NavIcon name={item.icon} />
