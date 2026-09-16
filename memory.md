@@ -141,3 +141,7 @@ Refines (does not rewrite) the 2026-09-13 separate-queue conflict note. Tree-ver
 
 - SUPPORTED: configurable separate queue IDs; Current Analysis processes separate queues independently by (time, queue_id); each queue uses centralized model selection independently.
 - STILL LIMITED: separate-queue staffing optimization remains blocked where demand redistribution is undefined; separate-queue DES/playback remains unsupported unless current source proves otherwise.
+
+## Problem 6B Freeze - Separate-Queue MC/Validation Semantics
+
+Separate MC/Validation stay unavailable until proven. Frozen contract: `docs/superpowers/specs/2026-09-17-separate-mc-validation-semantics.md` — per-row `(time, queue_id)` execution, existing math/CI/failure definition reused unchanged, no pooled failure rates, missing stays missing, Decision taxonomy unchanged.
