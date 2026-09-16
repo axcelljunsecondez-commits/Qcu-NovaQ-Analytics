@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { getAnalysisCurrent, listAnalysisDatasets } from '../api/analyses'
 import { ApiState } from '../components/ui/ApiState'
 import { fmtPct } from '../lib/format'
+import { groupPeriodDemand, pickLeanPeriod, pickPeakPeriod } from '../lib/periodDemand'
 
 function finiteValue(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -60,12 +61,16 @@ export function AnalysisCurrentPage() {
     .map((row, index) => ({ index, time: shown(row.time), value: finiteValue(row.lambda) }))
     .filter((point): point is { index: number; time: string; value: number } => point.value !== null)
   const maxArrival = arrivalPoints.length > 0 ? Math.max(...arrivalPoints.map((point) => point.value)) : null
-  const peakHour = arrivalPoints.length > 0
-    ? arrivalPoints.reduce((peak, point) => point.value > peak.value ? point : peak).time
-    : null
-  const leanHour = arrivalPoints.length > 0
-    ? arrivalPoints.reduce((lean, point) => point.value < lean.value ? point : lean).time
-    : null
+  // Separate scope: compare combined arrival rates per period; shared scope
+  // keeps the long-standing single-row extremum so shared results are byte-identical.
+  const separateScope = rows.length > 0 && rows.every((row) => row.queue_structure === 'separate_queues')
+  const periodDemands = separateScope ? groupPeriodDemand(arrivalPoints) : []
+  const peakPeriod = separateScope
+    ? (pickPeakPeriod(periodDemands)?.time ?? null)
+    : (arrivalPoints.length > 0 ? arrivalPoints.reduce((peak, point) => point.value > peak.value ? point : peak).time : null)
+  const leanPeriod = separateScope
+    ? (pickLeanPeriod(periodDemands)?.time ?? null)
+    : (arrivalPoints.length > 0 ? arrivalPoints.reduce((lean, point) => point.value < lean.value ? point : lean).time : null)
   const criticalCount = rows.filter((row) => statusKind(row.status) === 'critical').length
   const modelCounts = rows.reduce<Record<string, number>>((counts, row) => {
     const model = typeof row.model === 'string' && row.model.trim() ? row.model : t('common.not_available')
@@ -102,8 +107,8 @@ export function AnalysisCurrentPage() {
         <section className="card kpi-card" aria-labelledby="current-hours-title">
           <h2 id="current-hours-title" className="kpi-group-title">{t('analyses.hour_summary')}</h2>
           <div className="kpi-pair">
-            <div><div className="kpi-label">{t('analyses.peak_hour')}</div><div className="kpi-value kpi-value-small">{peakHour ?? t('common.not_available')}</div></div>
-            <div><div className="kpi-label">{t('analyses.lean_hour')}</div><div className="kpi-value kpi-value-small">{leanHour ?? t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{t('analyses.peak_hour')}</div><div className="kpi-value kpi-value-small">{peakPeriod ?? t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{t('analyses.lean_hour')}</div><div className="kpi-value kpi-value-small">{leanPeriod ?? t('common.not_available')}</div></div>
           </div>
           <p className="kpi-hint">{t('current.critical_count', { count: criticalCount })}</p>
         </section>

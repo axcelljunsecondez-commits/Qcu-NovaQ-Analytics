@@ -62,8 +62,8 @@ describe('AnalysisCurrentPage', () => {
     expect(screen.getByText('30.0 minutes')).toBeInTheDocument()
     expect(screen.getByText('74%')).toBeInTheDocument()
     expect(screen.getByText('Utilization').parentElement).toHaveTextContent('74%')
-    expect(screen.getByText('Peak Hour').parentElement).toHaveTextContent('11-12')
-    expect(screen.getByText('Lean Hour').parentElement).toHaveTextContent('09-10')
+    expect(screen.getByText('Busiest Period').parentElement).toHaveTextContent('11-12')
+    expect(screen.getByText('Leanest Period').parentElement).toHaveTextContent('09-10')
     expect(screen.getByText('Status Legend')).toBeInTheDocument()
     expect(document.querySelector('.status-dot-peak')).toBeInTheDocument()
     expect(document.querySelector('.status-dot-normal')).toBeInTheDocument()
@@ -111,5 +111,27 @@ describe('AnalysisCurrentPage', () => {
     renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
     const table = await screen.findByRole('table', { name: 'Complete current-state analytical results by interval' })
     expect(table).not.toHaveTextContent('Service line')
+  })
+
+  it('names the busiest period by combined arrival rate, not the loudest single queue', async () => {
+    listDatasetsMock.mockResolvedValue({
+      datasets: [{ id: 99, analysis_id: 7, name: 'Dataset', source_filename: 'data.csv', source_format: 'csv', row_count: 3, validation: { ok: true, message: 'ok' }, normalized: null, created_at: '2026-09-01T00:00:00Z' }],
+    })
+    getCurrentMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues' } },
+      dataset: { id: 99 },
+      selected_model: 'Parallel M/G/1',
+      rows: [
+        { time: '05:00-06:00', queue_id: 'Q1', queue_structure: 'separate_queues', lambda: 10, mu: 12, c: 1, Wq: 0.2, rho: 0.83, model: 'Parallel M/G/1', status: 'Peak' },
+        { time: '06:00-07:00', queue_id: 'Q1', queue_structure: 'separate_queues', lambda: 6, mu: 12, c: 1, Wq: 0.05, rho: 0.5, model: 'Parallel M/G/1', status: 'Lean' },
+        { time: '06:00-07:00', queue_id: 'Q2', queue_structure: 'separate_queues', lambda: 6, mu: 12, c: 1, Wq: 0.05, rho: 0.5, model: 'Parallel M/G/1', status: 'Lean' },
+      ],
+      kpis: { avg_waiting_time: 0.1, avg_utilization: 0.6 },
+      explanations: [],
+    })
+    renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
+    expect(await screen.findByText('Busiest Period')).toBeInTheDocument()
+    expect(screen.getByText('Busiest Period').parentElement).toHaveTextContent('06:00-07:00')
+    expect(screen.getByText('Leanest Period').parentElement).toHaveTextContent('05:00-06:00')
   })
 })
