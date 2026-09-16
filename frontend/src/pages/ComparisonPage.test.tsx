@@ -307,6 +307,50 @@ describe('ComparisonPage', () => {
     expect(screen.getByText('Savings Percent').parentElement).toHaveTextContent('—')
   })
 
+  it('renders a blocked INVALID_INPUT scenario as unavailable without charts or staffing insights', async () => {
+    const blockedRow: OptimizationOut = {
+      ...rows[0],
+      lambda_: 5,
+      mu: 4,
+      c_current: null,
+      c_optimal: null,
+      rho_current: null,
+      rho_optimal: null,
+      Wq_current: null,
+      Wq_optimal: null,
+      Lq_current: null,
+      Lq_optimal: null,
+      cost_current: null,
+      cost_optimal: null,
+      delta_cost: null,
+      delta_Wq: null,
+      delta_Lq: null,
+      delta_c: null,
+      delta_rho: null,
+      waiting_cost_current: null,
+      waiting_cost_optimal: null,
+      abandonment_cost_current: null,
+      abandonment_cost_optimal: null,
+      cost_per_server: null,
+      current_stable: false,
+      optimized_stable: false,
+    }
+    listScenariosMock.mockResolvedValue({ scenarios: [{
+      ...scenarios[0],
+      results: { results: [blockedRow] },
+    }] })
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    const table = await screen.findByRole('table')
+    const dataRow = within(table).getAllByRole('row')[1]
+    // Missing staffing endpoints render as unavailable, never as zero.
+    expect(within(dataRow).getAllByText('—').length).toBeGreaterThan(0)
+    expect(within(dataRow).queryByText('0')).not.toBeInTheDocument()
+    expect(screen.queryByText(/service points/)).not.toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-server-compare"]')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-utilization-compare"]')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).not.toBeInTheDocument()
+  })
+
   it('shows the empty state when no scenarios are saved', async () => {
     listScenariosMock.mockResolvedValue({ scenarios: [] })
     renderWithProviders(<ComparisonPage />, { route: '/compare' })

@@ -21,6 +21,132 @@ def test_separate_optimizer_blocked_no_fake_evidence():
     assert "Parallel M/G/1" in (res.get("warning") or "")
 
 
+def test_optimize_batch_separate_identity_gates_invalid_input(db_engine, client):
+    """Separate rows carrying their identity must hit the gate, never M/G/c math."""
+    from tests.helpers import create_user, csrf_header, login
+
+    create_user(db_engine, "sep-gate-batch@example.com", "pw")
+    login(client, "sep-gate-batch@example.com", "pw")
+    segment = {
+        "time": "08:00", "lambda": 5.0, "mu": 4.0, "c": 1, "variance": 0.0025,
+        "queue_structure": "separate_queues", "model_id": "parallel_mg1",
+    }
+    r = client.post("/optimize/batch", headers=csrf_header(client), json={"segments": [segment]})
+    assert r.status_code == 200, r.text
+    row = r.json()["results"][0]
+    assert row["feasibility_status"] == "INVALID_INPUT"
+    assert row["c_optimal"] is None
+    assert row["optimized_stable"] is False
+    assert "Parallel M/G/1" in (row.get("warning") or "")
+    assert row.get("selected_model") != "M/G/c"
+    # Gate echoes legitimate input metadata without fabricating analytics.
+    assert row["lambda_"] == 5.0
+    assert row["mu"] == 4.0
+    assert row["c_current"] == 1
+    assert row["rho_current"] is None
+    assert row["rho_optimal"] is None
+    assert row["Wq_optimal"] is None
+    assert row["Lq_optimal"] is None
+    assert row["cost_optimal"] is None
+
+
+def test_fabricated_separate_scenario_rejected_and_unselectable(db_engine, client):
+    """A fake c_optimal for separate queues fails verification; honest
+    INVALID_INPUT rows verify but can never become a selected scenario."""
+    import copy
+
+    from backend.db.models import AnalysisProject, Dataset
+    from tests.helpers import create_user, csrf_header, login, make_sessionmaker
+
+    owner = create_user(db_engine, "sep-forge@example.com", "pw")
+    with make_sessionmaker(db_engine)() as db:
+        analysis = AnalysisProject(
+            user_id=owner.id,
+            name="Separate forge",
+            queue_setup_json={
+                "queue_structure": "separate_queues",
+                "queue_ids": ["queue_1"],
+                "fixed_server_count": 1,
+                "staffing_varies_by_period": False,
+                "capacity_mode": "unlimited",
+                "total_system_capacity": None,
+                "abandonment_mode": "not_modeled",
+                "patience_rate_per_hour": None,
+                "segments": [],
+                "separate_queue_closure_policy": "drain_existing",
+            },
+            setup_status="ready",
+        )
+        db.add(analysis)
+        db.flush()
+        dataset = Dataset(
+            user_id=analysis.user_id,
+            analysis_id=analysis.id,
+            name="Separate data",
+            source_filename="segments.csv",
+            source_format="csv",
+            row_count=1,
+            normalized_json=[{
+                "time": "08:00",
+                "queue_id": "queue_1",
+                "queue_structure": "separate_queues",
+                "model_id": "parallel_mg1",
+                "lambda": 5.0,
+                "mu": 4.0,
+                "c": 1,
+                "variance": 0.0025,
+            }],
+            validation_report_json={"ok": True, "message": "Input data is valid."},
+        )
+        db.add(dataset)
+        db.commit()
+        analysis_id, dataset_id = analysis.id, dataset.id
+    login(client, "sep-forge@example.com", "pw")
+
+    segment = {
+        "time": "08:00", "lambda": 5.0, "mu": 4.0, "c": 1, "variance": 0.0025,
+        "queue_structure": "separate_queues", "model_id": "parallel_mg1",
+    }
+    honest = client.post("/optimize/batch", headers=csrf_header(client), json={"segments": [segment]})
+    assert honest.status_code == 200, honest.text
+    honest_rows = honest.json()["results"]
+    assert honest_rows[0]["c_optimal"] is None
+
+    def payload(results):
+        return {
+            "name": "forged separate",
+            "analysis_id": analysis_id,
+            "dataset_id": dataset_id,
+            "settings": {
+                "calculation": {
+                    "schema_version": 1,
+                    "engine_version": "novaq-2026-09-system-v2",
+                    "input_segments": [segment],
+                    "options": {},
+                    "what_if_multiplier": 1,
+                    "calculated_at": "2026-09-16T00:00:00Z",
+                }
+            },
+            "results": {"results": results},
+        }
+
+    forged_rows = copy.deepcopy(honest_rows)
+    forged_rows[0]["c_optimal"] = 3
+    forged_rows[0]["optimized_stable"] = True
+    forged = client.post("/scenarios", headers=csrf_header(client), json=payload(forged_rows))
+    assert forged.status_code == 422, forged.text
+
+    saved = client.post("/scenarios", headers=csrf_header(client), json=payload(honest_rows))
+    assert saved.status_code == 201, saved.text
+    scenario_id = saved.json()["scenario"]["id"]
+    selected = client.post(
+        f"/analyses/{analysis_id}/workflow/selection",
+        headers=csrf_header(client),
+        json={"scenario_id": scenario_id},
+    )
+    assert selected.status_code == 422, selected.text
+
+
 def test_decision_never_adopts_from_current_des_only():
     from types import SimpleNamespace
 

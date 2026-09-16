@@ -239,6 +239,14 @@ def optimize_segment(
         empty_result["warning"] = (
             "Optimization is not supported for Parallel M/G/1 separate FIFO queues in Phase A."
         )
+        empty_result["time"] = str(segment.get("time", "Unknown"))
+        for key in ("lambda", "mu"):
+            value = segment.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)):
+                empty_result[key] = value
+        current_c = segment.get("c", 1)
+        if isinstance(current_c, int) and not isinstance(current_c, bool) and 1 <= current_c <= 100000:
+            empty_result["c_current"] = current_c
         return empty_result
 
     time_label = str(segment.get("time", "Unknown"))

@@ -13,6 +13,8 @@ export function segmentsOf(dataset: DatasetOut): SegmentRow[] {
     const K = typeof row.K === 'number' && Number.isInteger(row.K) && row.K >= 1 ? row.K : undefined
     const theta = typeof row.theta === 'number' && Number.isFinite(row.theta) ? row.theta : undefined
     const serverCost = typeof row.server_cost === 'number' && Number.isFinite(row.server_cost) ? row.server_cost : undefined
+    const queueStructure = typeof row.queue_structure === 'string' && row.queue_structure ? row.queue_structure : undefined
+    const modelId = typeof row.model_id === 'string' && row.model_id ? row.model_id : undefined
     return {
       time: String(row.time),
       lambda: Number(row.lambda),
@@ -22,6 +24,8 @@ export function segmentsOf(dataset: DatasetOut): SegmentRow[] {
       ...(K !== undefined ? { K } : {}),
       ...(theta !== undefined && theta >= 0 ? { theta } : {}),
       ...(serverCost !== undefined ? { server_cost: serverCost } : {}),
+      ...(queueStructure !== undefined ? { queue_structure: queueStructure } : {}),
+      ...(modelId !== undefined ? { model_id: modelId } : {}),
     }
   })
 }

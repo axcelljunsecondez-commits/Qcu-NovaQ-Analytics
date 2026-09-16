@@ -21,7 +21,7 @@ export function completeFiniteTotal(values: unknown[]): number | null {
 /** Operational fields needed to show the saved baseline and recommendation. */
 export function operationalComparisonComplete(rows: OptimizationOut[]): boolean {
   return rows.length > 0 && rows.every((row) =>
-    Number.isInteger(row.c_current) && row.c_current > 0 &&
+    typeof row.c_current === 'number' && Number.isInteger(row.c_current) && row.c_current > 0 &&
     finiteNonNegative(row.rho_current) &&
     row.optimized_stable === true &&
     row.c_optimal !== null && Number.isInteger(row.c_optimal) && row.c_optimal > 0 &&

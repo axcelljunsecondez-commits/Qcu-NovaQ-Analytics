@@ -103,7 +103,7 @@ const COLUMNS: Column[] = [
       </div>
     ),
   },
-  { label: 'c', current: (r) => String(r.c_current), optimized: (r) => fmt(r.c_optimal, 0) },
+  { label: 'c', current: (r) => (r.c_current === null ? '—' : String(r.c_current)), optimized: (r) => fmt(r.c_optimal, 0) },
   { label: 'Lq', current: (r) => fmt(r.Lq_current), optimized: (r) => fmt(r.Lq_optimal) },
   { label: 'Wq (min)', current: (r) => fmt(r.Wq_current == null ? null : r.Wq_current * 60), optimized: (r) => fmt(r.Wq_optimal == null ? null : r.Wq_optimal * 60) },
   { label: 'Abandon', current: (r) => fmt(r.abandonment_cost_current), optimized: (r) => fmt(r.abandonment_cost_optimal) },
@@ -692,9 +692,12 @@ export function OptimizePage() {
         const avgCurrentRho = completeFiniteAverage(rows.map((row) => row.rho_current))
         const avgCurrentWq = completeFiniteAverage(rows.map((row) => row.Wq_current))
         const avgOptWq = completeFiniteAverage(rows.map((row) => row.Wq_optimal))
+        // Staffing endpoints stay unavailable unless every required source value
+        // is present: a blocked (INVALID_INPUT) plan must never read as "0".
+        const avgCurrentC = completeFiniteAverage(rows.map((row) => row.c_current))
         const insights = generateOptimizationInsights(
-          rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.c_current, 0) / rows.length) : 0,
-          peakRequirement,
+          avgCurrentC !== null ? Math.round(avgCurrentC) : null,
+          staffingSummaryAvailable ? peakRequirement : null,
           avgCurrentWq !== null ? avgCurrentWq * 60 : null,
           avgOptWq !== null ? avgOptWq * 60 : null,
           avgCurrentRho,

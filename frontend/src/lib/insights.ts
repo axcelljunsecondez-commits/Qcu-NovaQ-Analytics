@@ -9,8 +9,8 @@ export interface Insight {
 }
 
 export function generateOptimizationInsights(
-  currentCashiers: number,
-  optimizedCashiers: number,
+  currentCashiers: number | null,
+  optimizedCashiers: number | null,
   currentWait: number | null,
   optimizedWait: number | null,
   currentUtilization: number | null,
@@ -18,26 +18,31 @@ export function generateOptimizationInsights(
 ): Insight[] {
   const insights: Insight[] = []
 
-  if (optimizedCashiers > currentCashiers) {
-    insights.push({
-      type: 'recommendation',
-      title: t('insights.staffing_increase_title'),
-      message: t('insights.staffing_increase_message', {
-        current: currentCashiers,
-        recommended: optimizedCashiers,
-      }),
-    })
-  }
+  // Staffing comparisons require both endpoints: a missing (null) endpoint means
+  // the plan was never evaluated, so no increase/reduction may be inferred.
+  // A genuine numeric zero remains a valid endpoint.
+  if (currentCashiers !== null && optimizedCashiers !== null) {
+    if (optimizedCashiers > currentCashiers) {
+      insights.push({
+        type: 'recommendation',
+        title: t('insights.staffing_increase_title'),
+        message: t('insights.staffing_increase_message', {
+          current: currentCashiers,
+          recommended: optimizedCashiers,
+        }),
+      })
+    }
 
-  if (optimizedCashiers < currentCashiers) {
-    insights.push({
-      type: 'success',
-      title: t('insights.staffing_reduction_title'),
-      message: t('insights.staffing_reduction_message', {
-        current: currentCashiers,
-        recommended: optimizedCashiers,
-      }),
-    })
+    if (optimizedCashiers < currentCashiers) {
+      insights.push({
+        type: 'success',
+        title: t('insights.staffing_reduction_title'),
+        message: t('insights.staffing_reduction_message', {
+          current: currentCashiers,
+          recommended: optimizedCashiers,
+        }),
+      })
+    }
   }
 
   if (currentWait !== null && currentWait > 0 && optimizedWait !== null) {

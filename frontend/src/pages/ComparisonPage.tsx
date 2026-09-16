@@ -201,7 +201,7 @@ export function ComparisonPage() {
             const avgCurrentRho = completeFiniteAverage(rows.map((row) => row.rho_current))
             const avgCurrentWq = completeFiniteAverage(rows.map((row) => row.Wq_current))
             const avgOptWq = completeFiniteAverage(rows.map((row) => row.Wq_optimal))
-            const peakCurrent = rows.length > 0 ? Math.max(...rows.map((r) => r.c_current)) : 0
+            const peakCurrent = rows.length > 0 ? Math.max(...rows.map((r) => r.c_current ?? 0)) : 0
             const peakOptimal = rows.length > 0 ? Math.max(...rows.map((r) => r.c_optimal!)) : 0
             const insights = generateOptimizationInsights(
               peakCurrent,
@@ -240,7 +240,7 @@ export function ComparisonPage() {
                 {rows.map((row) => (
                   <tr key={row.time}>
                     <th scope="row">{row.time}</th>
-                    <td>{row.c_current}</td>
+                    <td>{row.c_current ?? '—'}</td>
                     <td>{formatPercent(row.rho_current)}</td>
                     <td>{t(statusKey(row.current_stable, row.rho_current))}</td>
                     <td>{formatMetric(row.Wq_current, 60)}</td>

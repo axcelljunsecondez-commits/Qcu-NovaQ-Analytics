@@ -28,6 +28,8 @@ export interface SegmentInput {
   K?: number
   theta?: number
   server_cost?: number
+  queue_structure?: string | null
+  model_id?: string | null
 }
 
 /**
@@ -45,9 +47,9 @@ export interface OptimizationOut {
   effective_costs?: Record<string, unknown>
   explanation?: string
   time: string
-  lambda_: number
-  mu: number
-  c_current: number
+  lambda_: number | null
+  mu: number | null
+  c_current: number | null
   c_optimal: number | null
   rho_current: number | null
   rho_optimal: number | null

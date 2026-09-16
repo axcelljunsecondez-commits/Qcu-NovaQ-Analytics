@@ -358,7 +358,7 @@ export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
 
 export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
-  const curServer = completeFiniteTotal(rows.map((r) => r.cost_per_server == null ? null : r.cost_per_server * r.c_current))
+  const curServer = completeFiniteTotal(rows.map((r) => r.cost_per_server == null || r.c_current == null ? null : r.cost_per_server * r.c_current))
   const optServer = completeFiniteTotal(rows.map((r) => r.cost_per_server == null || r.c_optimal == null ? null : r.cost_per_server * r.c_optimal))
   const curWait = completeFiniteTotal(rows.map((r) => r.waiting_cost_current))
   const optWait = completeFiniteTotal(rows.map((r) => r.waiting_cost_optimal))

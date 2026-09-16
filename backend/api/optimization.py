@@ -32,6 +32,8 @@ class SegmentInput(BaseModel):
     K: int | None = Field(default=None, ge=1)
     theta: float | None = Field(default=None, ge=0)
     server_cost: float | None = Field(default=None, ge=0)
+    queue_structure: str | None = None
+    model_id: str | None = None
 
     model_config = ConfigDict(populate_by_name=True, allow_inf_nan=False)
 
@@ -44,6 +46,8 @@ class SegmentInput(BaseModel):
             "variance": self.variance,
             "K": self.K,
             "theta": self.theta,
+            "queue_structure": self.queue_structure,
+            "model_id": self.model_id,
         }
         if self.server_cost is not None:
             mapping["server_cost"] = self.server_cost
@@ -96,6 +100,16 @@ def _finite(value) -> float | None:
     return number
 
 
+def _safe_int(value) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
 class OptimizationOut(BaseModel):
     feasibility_status: str = "INVALID_INPUT"
     constraints_passed: bool = False
@@ -110,9 +124,9 @@ class OptimizationOut(BaseModel):
     explanation: str = ""
 
     time: str
-    lambda_: float
-    mu: float
-    c_current: int
+    lambda_: float | None = None
+    mu: float | None = None
+    c_current: int | None = None
     c_optimal: int | None
     rho_current: float | None
     rho_optimal: float | None
@@ -144,9 +158,9 @@ def _to_out(result: dict) -> dict:
     return OptimizationOut(
         **{key: result[key] for key in ("feasibility_status", "constraints_passed", "violated_constraints", "selected_model", "model_selection_reason", "model_assumptions", "service_cv", "metric_provenance", "effective_constraints", "effective_costs", "explanation") if key in result},
         time=str(result.get("time", "")),
-        lambda_=float(result.get("lambda", 0.0)),
-        mu=float(result.get("mu", 0.0)),
-        c_current=int(result.get("c_current", 0)),
+        lambda_=_finite(result.get("lambda")),
+        mu=_finite(result.get("mu")),
+        c_current=_safe_int(result.get("c_current")),
         c_optimal=result.get("c_optimal"),
         rho_current=_finite(result.get("rho_current")),
         rho_optimal=_finite(result.get("rho_optimal")),

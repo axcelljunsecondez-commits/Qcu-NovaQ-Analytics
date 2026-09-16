@@ -164,6 +164,38 @@ describe('calculation integrity', () => {
       settings: expect.objectContaining({ calculation: expect.objectContaining({ engine_version: 'novaq-2026-09-system-v2' }) }),
     }))
   })
+
+  it('does not fabricate a staffing insight from INVALID_INPUT rows', async () => {
+    optimizeBatchMock.mockResolvedValue({ results: [{ ...row,
+      lambda_: 5, mu: 4, c_current: 1, c_optimal: null,
+      rho_current: null, rho_optimal: null, Wq_current: null, Wq_optimal: null,
+      Lq_current: null, Lq_optimal: null, cost_current: null, cost_optimal: null,
+      delta_cost: null, delta_Wq: null, delta_Lq: null, delta_c: null, delta_rho: null,
+      waiting_cost_current: null, waiting_cost_optimal: null,
+      abandonment_cost_current: null, abandonment_cost_optimal: null,
+      cost_per_server: null, current_stable: false, optimized_stable: false,
+      feasibility_status: 'INVALID_INPUT', warning: 'Optimization is not supported.' }] })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText('Optimization is not supported.')).toBeInTheDocument()
+    expect(screen.queryByText('Staffing Reduction Possible')).not.toBeInTheDocument()
+    expect(screen.queryByText('Staffing Increase Recommended')).not.toBeInTheDocument()
+    expect(screen.queryByText(/service points/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the genuine staffing insight for complete rows', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('401.31')
+    expect(screen.getByText('Staffing Increase Recommended')).toBeInTheDocument()
+    expect(screen.getByText(/increasing from 3 to 4 service points/)).toBeInTheDocument()
+  })
 })
 
 describe('OptimizePage', () => {
