@@ -190,7 +190,7 @@ export function ComparisonPage() {
       {/* Quick Summary */}
       {totals && operationallyComparable && (
         <>
-          <p className="alert alert-info">{t('compare.period_cost_note')}</p>
+          <p role="status" className="alert alert-info">{t('compare.period_cost_note')}</p>
           <div className="card-grid" style={{ marginTop: '12px' }}>
             <MetricCard label={t('compare.current_total_cost')} value={`₱${totals.current.toLocaleString()}`} />
             <MetricCard label={t('compare.optimized_total_cost')} value={`₱${totals.optimal.toLocaleString()}`} />

@@ -561,7 +561,7 @@ export function OptimizePage() {
                       </span>
                     </div>
                     {poolGap !== null && (
-                      <div className={`alert ${poolGap >= 0 ? 'alert-ok' : 'alert-warn'}`} style={{ marginTop: '8px', fontSize: '14px' }}>
+                      <div role="status" className={`alert ${poolGap >= 0 ? 'alert-ok' : 'alert-warn'}`} style={{ marginTop: '8px', fontSize: '14px' }}>
                         {poolGap >= 0
                           ? t('optimize.pool_can_cover')
                           : t(Math.abs(poolGap) === 1 ? 'optimize.pool_short' : 'optimize.pool_short_plural', {

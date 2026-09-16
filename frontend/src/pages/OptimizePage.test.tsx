@@ -196,6 +196,18 @@ describe('calculation integrity', () => {
     expect(screen.getByText('Staffing Increase Recommended')).toBeInTheDocument()
     expect(screen.getByText(/increasing from 3 to 4 service points/)).toBeInTheDocument()
   })
+
+  it('announces the available-pool coverage notice as a live status', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('401.31')
+    await user.type(screen.getByLabelText('Available cashiers today'), '10')
+    const notice = await screen.findByText('Available pool can cover the optimized schedule.')
+    expect(notice.closest('[role="status"]')).not.toBeNull()
+  })
 })
 
 describe('OptimizePage', () => {

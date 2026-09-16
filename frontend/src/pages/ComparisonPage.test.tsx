@@ -297,6 +297,12 @@ describe('ComparisonPage', () => {
     expect(screen.queryByText('Annual Savings')).not.toBeInTheDocument()
   })
 
+  it('announces the operating-period cost note as a live status', async () => {
+    renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    const note = await screen.findByText('Costs below apply only to the operating period represented by this scenario.')
+    expect(note.closest('[role="status"]')).not.toBeNull()
+  })
+
   it('keeps a genuine zero current cost distinct from an unavailable savings percentage', async () => {
     listScenariosMock.mockResolvedValue({ scenarios: [{
       ...scenarios[0],

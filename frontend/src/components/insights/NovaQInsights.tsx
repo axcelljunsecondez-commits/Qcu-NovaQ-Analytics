@@ -42,7 +42,7 @@ export function NovaQInsights({ insights }: NovaQInsightsProps) {
   }
 
   return (
-    <div className="novaq-insights">
+    <div className="novaq-insights" role="status">
       <h2 className="insights-title">{t('insights.title')}</h2>
       <div className="insights-list">
         {insights.map((insight, index) => (
