@@ -42,6 +42,7 @@ import math
 import random
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import time as datetime_time
 from typing import Any
 
 import numpy as np
@@ -52,6 +53,13 @@ from backend.data.ingestion import validate_and_normalize
 from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.models import mm1, mmc
 from backend.queueing_engine.services.model_selection import select_model
+from backend.queueing_engine.simulation.queue_lifecycle import (
+    DedicatedQueueLifecycle,
+    DedicatedQueueState,
+    QueueReactivationPolicyError,
+    dedicated_server_id,
+    scheduled_active_queue_ids,
+)
 from backend.queueing_engine.statistics.proportions import (
     ADEQUATE_MAX_HW,
     failure_rate_precision,
@@ -298,23 +306,30 @@ class _TraceRecorder:
         self,
         at: float,
         event_type: str,
-        segment_id: int,
+        segment_id: int | str,
         customer_id: int,
         server_id: int | None,
         queue_len_after: int,
         time_offset: float = 0.0,
+        queue_id: str | None = None,
+        service_time_hours: float | None = None,
     ) -> bool:
         if len(self.events) >= self.max_events:
             self.truncated = True
             return False
-        self.events.append({
+        event = {
             "t": round(time_offset + at, 6),
             "type": event_type,
             "segment_id": segment_id,
             "customer_id": customer_id,
             "server_id": server_id,
             "queue_len_after": queue_len_after,
-        })
+        }
+        if queue_id is not None:
+            event["queue_id"] = queue_id
+        if service_time_hours is not None:
+            event["service_time_hours"] = round(service_time_hours, 12)
+        self.events.append(event)
         return True
 
 
@@ -325,6 +340,7 @@ def trace_simulate_segments(
     max_events: int = 10000,
     seed: int | None = RANDOM_SEED,
     carryover: bool = True,
+    queue_setup: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compatibility wrapper for the single instrumented DES lifecycle."""
     return simulate_segments_with_trace(
@@ -334,6 +350,7 @@ def trace_simulate_segments(
         max_events=max_events,
         seed=seed,
         carryover=carryover,
+        queue_setup=queue_setup,
     )
 
 
@@ -577,6 +594,247 @@ def simulate_segment(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Parallel M/G/1 execution
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _parallel_time_minutes(value: str) -> float:
+    parsed = datetime_time.fromisoformat(str(value))
+    return parsed.hour * 60 + parsed.minute + parsed.second / 60
+
+
+def _parallel_capability_error(message: str, segments: list[Mapping[str, Any]]) -> tuple[list[dict], list[dict]]:
+    rows = [
+        {
+            "time": str(segment.get("time", "Unknown")),
+            "queue_structure": "separate",
+            "simulation_supported": False,
+            "selected_model": "Parallel M/G/1",
+            "error": message,
+        }
+        for segment in segments
+    ]
+    return rows, []
+
+
+def _parallel_schedule(
+    records: list[Mapping[str, Any]], queue_setup: Mapping[str, Any] | None, sim_hours: float
+) -> tuple[list[dict], dict[str, dict]] | str:
+    if not isinstance(queue_setup, Mapping) or queue_setup.get("queue_structure") != "separate_queues":
+        return "Parallel M/G/1 DES requires a separate-queue QueueSetup schedule."
+    if queue_setup.get("separate_queue_closure_policy", "drain_existing") != "drain_existing":
+        return "Parallel M/G/1 DES requires the drain_existing queue closure policy."
+    queue_ids = [str(queue_id) for queue_id in queue_setup.get("queue_ids", [])]
+    if not queue_ids:
+        return "Parallel M/G/1 DES requires configured queue_ids."
+    schedule = list(queue_setup.get("segments") or [])
+    if not schedule:
+        return "Parallel M/G/1 DES requires structured QueueSetup.segments."
+    contexts: dict[str, dict] = {}
+    output: list[dict] = []
+    elapsed = 0.0
+    for index, segment in enumerate(schedule):
+        start = str(segment.get("start_time"))
+        end = str(segment.get("end_time"))
+        duration = (_parallel_time_minutes(end) - _parallel_time_minutes(start)) / 60.0
+        if duration <= 0:
+            return f"Invalid Parallel M/G/1 segment duration for {segment.get('id', index)}."
+        segment_id = str(segment.get("id") or f"segment_{index + 1}")
+        active = set(scheduled_active_queue_ids(queue_setup, segment))
+        for queue_id in queue_ids:
+            match = next(
+                (
+                    row for row in records
+                    if str(row.get("segment_id")) == segment_id and str(row.get("queue_id")) == queue_id
+                ),
+                None,
+            )
+            if match is None and queue_id in active:
+                return f"Missing empirical segment/queue record for {segment_id}/{queue_id}."
+            if match is None:
+                match = {
+                    "lambda": 0.0,
+                    "time": segment_id,
+                    "segment_id": segment_id,
+                    "queue_id": queue_id,
+                    "model_id": "parallel_mg1",
+                    "service_time_source": "empirical",
+                    "service_samples_hours": [],
+                }
+            if match is not None:
+                if match.get("model_id") != "parallel_mg1" or match.get("service_time_source") != "empirical":
+                    return f"Parallel M/G/1 DES requires empirical service data for {segment_id}/{queue_id}."
+                samples = match.get("service_samples_hours")
+                if not isinstance(samples, list) or (queue_id in active and not samples):
+                    return f"Missing empirical service samples for {segment_id}/{queue_id}."
+                try:
+                    lambda_value = float(match.get("lambda", 0.0))
+                    if not math.isfinite(lambda_value) or lambda_value < 0:
+                        raise ValueError
+                    samples = [float(sample) for sample in samples]
+                    if any(not math.isfinite(sample) or sample <= 0 for sample in samples):
+                        raise ValueError
+                except (TypeError, ValueError):
+                    return f"Invalid empirical service data for {segment_id}/{queue_id}."
+                contexts[f"{segment_id}:{queue_id}"] = {
+                    "segment_id": segment_id,
+                    "queue_id": queue_id,
+                    "lambda": lambda_value,
+                    "samples": tuple(samples),
+                    "start": elapsed,
+                    "end": elapsed + duration,
+                    "active": queue_id in active,
+                    "time": str(match.get("time", segment_id)),
+                }
+                output.append(contexts[f"{segment_id}:{queue_id}"])
+        elapsed += duration
+    return output, {queue_id: {"queue_id": queue_id, "server_id": dedicated_server_id(queue_id)} for queue_id in queue_ids}
+
+
+def _simulate_parallel_segments_core(
+    time_segments: Iterable[Mapping[str, Any]],
+    queue_setup: Mapping[str, Any] | None,
+    sim_hours: float,
+    seed: int | None,
+    recorder: _TraceRecorder | None = None,
+    max_events: int | None = None,
+) -> tuple[list[dict], list[dict]]:
+    records = [segment for segment in time_segments if isinstance(segment, Mapping)]
+    schedule_result = _parallel_schedule(records, queue_setup, sim_hours)
+    if isinstance(schedule_result, str):
+        return _parallel_capability_error(schedule_result, records)
+    contexts, queue_metadata = schedule_result
+    if not contexts:
+        return _parallel_capability_error("No Parallel M/G/1 simulation contexts were supplied.", records)
+    horizon = max(context["end"] for context in contexts)
+    env = simpy.Environment()
+    resources = {queue_id: simpy.Resource(env, capacity=1) for queue_id in queue_metadata}
+    lifecycles = {
+        queue_id: DedicatedQueueLifecycle(queue_id, metadata["server_id"], state=DedicatedQueueState.INACTIVE)
+        for queue_id, metadata in queue_metadata.items()
+    }
+    rng = random.Random(seed)
+    customer_counter = 0
+    stats = {
+        (context["segment_id"], context["queue_id"]): {
+            "time": context["time"], "segment_id": context["segment_id"], "queue_id": context["queue_id"],
+            "server_id": queue_metadata[context["queue_id"]]["server_id"], "lambda": context["lambda"],
+            "mu": 1.0 / (sum(context["samples"]) / len(context["samples"])) if context["samples"] else None, "c": 1,
+            "selected_model": "Parallel M/G/1", "simulation_supported": True, "error": None,
+            "arrivals": 0, "served": 0, "wait_sum": 0.0, "max_queue": 0, "busy_time": 0.0,
+            "waiting": 0, "in_service": 0, "duration_hours": context["end"] - context["start"],
+        }
+        for context in contexts
+    }
+    intervals: list[tuple[str, str, float, float]] = []
+    for context in contexts:
+        intervals.append((context["segment_id"], context["queue_id"], context["start"], context["end"]))
+    busy_intervals: list[tuple[str, str, float, float]] = []
+
+    def segment_at(moment: float) -> int:
+        return next((index for index, (_, _, start, end) in enumerate(intervals) if start <= moment < end), 0)
+
+    def transition_process():
+        points = sorted({point for _, _, start, end in intervals for point in (start, end) if point > 0})
+        for point in points:
+            yield env.timeout(point - env.now)
+            for segment_id, queue_id, start, end in intervals:
+                if math.isclose(start, point):
+                    context = next(item for item in contexts if item["segment_id"] == segment_id and item["queue_id"] == queue_id)
+                    lifecycles[queue_id].transition_for_segment(context["active"])
+
+    def customer_process(queue_id: str, customer_id: int, segment_id: str, arrival: float):
+        lifecycle = lifecycles[queue_id]
+        resource = resources[queue_id]
+        key = (segment_id, queue_id)
+        row = stats[key]
+        lifecycle.waiting_customer_ids.append(str(customer_id))
+        row["arrivals"] += 1
+        row["max_queue"] = max(row["max_queue"], len(lifecycle.waiting_customer_ids))
+        if recorder:
+            recorder.record(env.now, "arrival", segment_id, customer_id, None, len(lifecycle.waiting_customer_ids), queue_id=queue_id)
+        with resource.request() as request:
+            yield request
+            if lifecycle.waiting_customer_ids:
+                lifecycle.waiting_customer_ids.popleft()
+            lifecycle.in_service_customer_id = str(customer_id)
+            service_start = env.now
+            row["wait_sum"] += service_start - arrival
+            if recorder:
+                recorder.record(env.now, "service_start", segment_id, customer_id, queue_metadata[queue_id]["server_id"], len(lifecycle.waiting_customer_ids), queue_id=queue_id)
+            context = next(item for item in contexts if item["segment_id"] == segment_id and item["queue_id"] == queue_id)
+            service_time = rng.choice(context["samples"])
+            yield env.timeout(service_time)
+            service_end = env.now
+            busy_intervals.append((segment_id, queue_id, service_start, min(service_end, horizon)))
+            lifecycle.in_service_customer_id = None
+            row["served"] += 1
+            if recorder:
+                recorder.record(
+                    env.now,
+                    "service_end",
+                    segment_id,
+                    customer_id,
+                    queue_metadata[queue_id]["server_id"],
+                    len(lifecycle.waiting_customer_ids),
+                    queue_id=queue_id,
+                    service_time_hours=service_time,
+                )
+            if lifecycle.state == DedicatedQueueState.DRAINING and not lifecycle.waiting_customer_ids:
+                lifecycle.state = DedicatedQueueState.INACTIVE
+
+    def arrival_process(context: dict):
+        nonlocal customer_counter
+        yield env.timeout(context["start"])
+        while env.now < context["end"]:
+            if context["active"] and context["lambda"] > 0:
+                interval = _exponential(context["lambda"], rng)
+                if env.now + interval >= context["end"]:
+                    break
+                yield env.timeout(interval)
+                if not lifecycles[context["queue_id"]].accepts_arrivals:
+                    continue
+                customer_counter += 1
+                env.process(customer_process(context["queue_id"], customer_counter, context["segment_id"], env.now))
+            else:
+                yield env.timeout(max(0.0, context["end"] - env.now))
+    env.process(transition_process())
+    first_active = {
+        context["queue_id"] for context in contexts if math.isclose(context["start"], 0.0) and context["active"]
+    }
+    for queue_id in queue_metadata:
+        lifecycles[queue_id].transition_for_segment(queue_id in first_active)
+    for context in contexts:
+        env.process(arrival_process(context))
+    try:
+        env.run(until=horizon)
+    except QueueReactivationPolicyError as exc:
+        return _parallel_capability_error(str(exc), records)
+    for key, row in stats.items():
+        segment_id, queue_id = key
+        context = next(item for item in contexts if item["segment_id"] == segment_id and item["queue_id"] == queue_id)
+        row["waiting"] = len(lifecycles[queue_id].waiting_customer_ids) if context["end"] == horizon else 0
+        row["in_service"] = int(lifecycles[queue_id].in_service_customer_id is not None) if context["end"] == horizon else 0
+        row["Wq_sim"] = row["wait_sum"] / row["served"] if row["served"] else 0.0
+        row["rho_sim"] = min(1.0, sum(max(0.0, min(end, context["end"]) - max(start, context["start"])) for sid, qid, start, end in busy_intervals if sid == segment_id and qid == queue_id) / max(context["end"] - context["start"], 1e-12))
+        row["busy_time"] = sum(max(0.0, min(end, context["end"]) - max(start, context["start"])) for sid, qid, start, end in busy_intervals if sid == segment_id and qid == queue_id)
+        row["Lq_sim"] = None
+        row["final_Lq"] = row["waiting"]
+        row["metric_provenance"] = "simulated"
+        row["queue_structure"] = "separate"
+        row["server_id"] = queue_metadata[queue_id]["server_id"]
+        row["customer_conservation"] = row["arrivals"] == row["served"] + row["waiting"] + row["in_service"]
+        row["throughput"] = row["served"] / max(context["end"] - context["start"], 1e-12)
+    for queue_id in queue_metadata:
+        queue_rows = [row for row in stats.values() if row["queue_id"] == queue_id]
+        final_waiting = len(lifecycles[queue_id].waiting_customer_ids)
+        final_in_service = int(lifecycles[queue_id].in_service_customer_id is not None)
+        conserved = sum(row["arrivals"] for row in queue_rows) == sum(row["served"] for row in queue_rows) + final_waiting + final_in_service
+        for row in queue_rows:
+            row["customer_conservation"] = conserved
+    return list(stats.values()), [{"segment_id": context["segment_id"], "time": context["time"], "queue_structure": "separate", "queue_id": context["queue_id"], "server_id": queue_metadata[context["queue_id"]]["server_id"], "simulation_supported": True, "error": None} for context in contexts]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Public API — multi-segment simulation
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -586,6 +844,7 @@ def simulate_segments(
     queue_overload_threshold: int = DEFAULT_QUEUE_OVERLOAD,
     seed: int | None = RANDOM_SEED,
     carryover: bool = True,
+    queue_setup: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Simulate a sequence of time segments and return a list of result dicts.
@@ -618,8 +877,12 @@ def simulate_segments(
     list[dict]
         One dict per segment, matching SegmentResult.to_dict() schema.
     """
+    segments = list(time_segments or [])
+    if any(segment.get("queue_structure") == "separate_queues" or segment.get("model_id") == "parallel_mg1" for segment in segments):
+        results, _ = _simulate_parallel_segments_core(segments, queue_setup, sim_hours, seed)
+        return results
     results, _ = _simulate_segments_core(
-        time_segments,
+        segments,
         sim_hours=sim_hours,
         queue_overload_threshold=queue_overload_threshold,
         seed=seed,
@@ -683,11 +946,27 @@ def simulate_segments_with_trace(
     max_events: int = 10000,
     seed: int | None = RANDOM_SEED,
     carryover: bool = True,
+    queue_setup: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return aggregate metrics and bounded playback events from one DES run."""
     recorder = _TraceRecorder(max_events)
+    segments = list(time_segments or [])
+    if any(segment.get("queue_structure") == "separate_queues" or segment.get("model_id") == "parallel_mg1" for segment in segments):
+        results, summaries = _simulate_parallel_segments_core(segments, queue_setup, sim_hours, seed, recorder, max_events)
+        return {
+            "results": results,
+            "trace": recorder.events,
+            "trace_hours": sim_hours,
+            "total_hours": sum(
+                {str(row.get("segment_id")): float(row.get("duration_hours", 0.0)) for row in results}.values()
+            ),
+            "event_count": len(recorder.events),
+            "truncated": recorder.truncated,
+            "abandonment_supported": False,
+            "segments": summaries,
+        }
     results, summaries = _simulate_segments_core(
-        time_segments,
+        segments,
         sim_hours=sim_hours,
         queue_overload_threshold=queue_overload_threshold,
         seed=seed,
@@ -735,6 +1014,41 @@ def summarize_simulation(sim_rows: list[dict[str, Any]]) -> dict[str, Any]:
             "busy_count": 0,
             "normal_count": 0,
             "avg_max_queue": None,
+        }
+
+    if any(row.get("queue_structure") == "separate" for row in sim_rows):
+        arrivals = sum(int(row.get("arrivals", 0)) for row in sim_rows)
+        served = sum(int(row.get("served", 0)) for row in sim_rows)
+        waiting = sum(int(row.get("waiting", 0)) for row in sim_rows if row.get("final_Lq") == row.get("waiting"))
+        in_service = sum(int(row.get("in_service", 0)) for row in sim_rows if row.get("final_Lq") == row.get("waiting"))
+        wait_numerator = sum(float(row.get("Wq_sim", 0.0)) * int(row.get("served", 0)) for row in sim_rows)
+        busy_time = sum(float(row.get("busy_time", 0.0)) for row in sim_rows)
+        available_time = sum(float(row.get("duration_hours", 0.0)) for row in sim_rows)
+        max_rho_row = max(
+            (row for row in sim_rows if row.get("rho_sim") is not None),
+            key=lambda row: float(row["rho_sim"]),
+            default={"time": None},
+        )
+        max_rho_value = max_rho_row.get("rho_sim")
+        return {
+            "avg_rho": busy_time / available_time if available_time else None,
+            "max_rho": float(max_rho_value) if isinstance(max_rho_value, (int, float)) else None,
+            "max_rho_time": max_rho_row["time"],
+            "avg_Lq": None,
+            "avg_Wq": wait_numerator / served if served else None,
+            "total_served": served,
+            "total_dropped": 0,
+            "total_arrivals": arrivals,
+            "total_waiting": waiting,
+            "total_in_service": in_service,
+            "customer_conservation": arrivals == served + waiting + in_service,
+            "per_queue": {
+                queue_id: {
+                    "arrivals": sum(int(row.get("arrivals", 0)) for row in sim_rows if row.get("queue_id") == queue_id),
+                    "served": sum(int(row.get("served", 0)) for row in sim_rows if row.get("queue_id") == queue_id),
+                }
+                for queue_id in sorted({str(row.get("queue_id")) for row in sim_rows})
+            },
         }
 
     valid = [r for r in sim_rows if r.get("rho_sim") is not None]

@@ -46,6 +46,38 @@ def test_des_trace_endpoint(db_engine, client):
     assert body["results"][0]["time"] == SEGMENTS[0]["time"]
 
 
+def test_parallel_des_endpoint_accepts_empirical_separate_queues(db_engine, client):
+    create_user(db_engine, "u@example.com", "pw")
+    login(client, "u@example.com", "pw")
+    setup = {
+        "queue_structure": "separate_queues",
+        "queue_ids": ["queue_a"],
+        "staffing_varies_by_period": False,
+        "segments": [{"id": "s1", "start_time": "07:00:00", "end_time": "08:00:00"}],
+    }
+    segment = {
+        "segment_id": "s1",
+        "time": "s1",
+        "queue_id": "queue_a",
+        "queue_structure": "separate_queues",
+        "model_id": "parallel_mg1",
+        "lambda": 2.0,
+        "mu": 5.0,
+        "c": 1,
+        "service_time_source": "empirical",
+        "service_samples_hours": [0.1, 0.2],
+    }
+    response = client.post(
+        "/simulation/des/trace",
+        json={"segments": [segment], "queue_setup": setup, "trace_hours": 1, "seed": 4},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["segments"][0]["queue_structure"] == "separate"
+    assert body["trace"]
+    assert body["trace"][0]["queue_id"] == "queue_a"
+
+
 def test_des_trace_requires_auth(client):
     assert client.post("/simulation/des/trace", json={"segments": SEGMENTS}).status_code == 401
 

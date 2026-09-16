@@ -29,6 +29,7 @@ class DesRequest(BaseModel):
     queue_overload_threshold: int = Field(default=20, ge=1)
     seed: int | None = Field(default=42)
     carryover: bool = True
+    queue_setup: dict | None = None
 
 
 class TraceRequest(BaseModel):
@@ -39,6 +40,7 @@ class TraceRequest(BaseModel):
     max_events: int = Field(default=10000, ge=1, le=10000)
     seed: int | None = Field(default=42)
     carryover: bool = True
+    queue_setup: dict | None = None
 
 
 class McRequest(BaseModel):
@@ -73,6 +75,7 @@ def des(
         queue_overload_threshold=payload.queue_overload_threshold,
         seed=payload.seed,
         carryover=payload.carryover,
+        queue_setup=payload.queue_setup,
     )
     return {"results": results}
 
@@ -89,6 +92,7 @@ def des_trace(
         max_events=payload.max_events,
         seed=payload.seed,
         carryover=payload.carryover,
+        queue_setup=payload.queue_setup,
     )
 
 

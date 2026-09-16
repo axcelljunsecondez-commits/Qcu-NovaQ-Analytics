@@ -247,6 +247,108 @@ def test_workflow_persists_selection_simulation_validation_and_decision(db_engin
     assert body["decision_stale"] is False
 
 
+def test_parallel_workflow_des_uses_persisted_queue_setup_and_empirical_samples(db_engine, client):
+    user = create_user(db_engine, "parallel-owner@example.com", "pw")
+    with make_sessionmaker(db_engine)() as db:
+        analysis = AnalysisProject(
+            user_id=user.id,
+            name="Parallel branch",
+            queue_setup_json={
+                "queue_structure": "separate_queues",
+                "queue_ids": ["queue_a"],
+                "fixed_server_count": 1,
+                "staffing_varies_by_period": False,
+                "capacity_mode": "unlimited",
+                "total_system_capacity": None,
+                "abandonment_mode": "not_modeled",
+                "patience_rate_per_hour": None,
+                "segments": [{"id": "s1", "start_time": "07:00:00", "end_time": "08:00:00", "active_queue_ids": None}],
+                "separate_queue_closure_policy": "drain_existing",
+            },
+            setup_status="ready",
+        )
+        db.add(analysis)
+        db.flush()
+        dataset = Dataset(
+            user_id=user.id,
+            analysis_id=analysis.id,
+            name="Parallel empirical",
+            source_filename="events.csv",
+            source_format="csv",
+            row_count=2,
+            normalized_json=[{
+                "time": "s1",
+                "segment_id": "s1",
+                "queue_id": "queue_a",
+                "queue_structure": "separate_queues",
+                "model_id": "parallel_mg1",
+                "server_id": "server:queue_a",
+                "lambda": 4.0,
+                "mu": 4.0,
+                "c": 1,
+                "variance": 0.0025,
+                "service_time_source": "empirical",
+                "service_samples_hours": [0.05, 0.1],
+            }],
+            validation_report_json={"ok": True, "message": "Input data is valid."},
+        )
+        db.add(dataset)
+        db.flush()
+        scenario = Scenario(
+            user_id=user.id,
+            analysis_id=analysis.id,
+            dataset_id=dataset.id,
+            name="Parallel plan",
+            settings_json={"calculation": {
+                "schema_version": 1,
+                "engine_version": "novaq-2026-09-system-v2",
+                "input_segments": [{
+                    "time": "s1",
+                    "segment_id": "s1",
+                    "queue_id": "queue_a",
+                    "queue_structure": "separate_queues",
+                    "model_id": "parallel_mg1",
+                    "lambda": 4.0,
+                    "mu": 4.0,
+                    "c": 1,
+                    "variance": 0.0025,
+                }],
+                "options": {},
+                "what_if_multiplier": 1,
+                "calculated_at": "2026-09-13T00:00:00+00:00",
+            }},
+            results_json={"results": [{
+                "time": "s1", "lambda_": 4.0, "mu": 4.0, "c_current": 1, "c_optimal": 1,
+                "rho_current": 0.5, "rho_optimal": 0.5, "Wq_current": 0.1, "Wq_optimal": 0.1,
+                "Lq_current": 0.4, "Lq_optimal": 0.4, "cost_current": 1, "cost_optimal": 1,
+                "current_stable": True, "optimized_stable": True,
+            }]},
+        )
+        db.add(scenario)
+        db.commit()
+        analysis_id = analysis.id
+        scenario_id = scenario.id
+    login(client, "parallel-owner@example.com", "pw")
+    headers = csrf_header(client)
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/selection",
+        headers=headers,
+        json={"scenario_id": scenario_id},
+    ).status_code == 200
+    response = client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/des",
+        headers=headers,
+        json={"sim_hours": 1, "max_events": 100, "seed": 7},
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()["evidence"]["result"]
+    assert result["segments"][0]["queue_id"] == "queue_a"
+    assert result["trace"]
+    assert {event["queue_id"] for event in result["trace"]} == {"queue_a"}
+    service_events = [event for event in result["trace"] if event["type"] == "service_end"]
+    assert all(event["service_time_hours"] in {0.05, 0.1} for event in service_events)
+
+
 def test_workflow_selection_is_owner_scoped(db_engine, client):
     alice_analysis, alice_scenario = _workspace(db_engine, "alice@example.com")
     login(client, "alice@example.com", "pw")
