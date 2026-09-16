@@ -1,4 +1,4 @@
-"""Core M/M/1, M/M/c, M/G/c, M/M/c/K, and M/G/c/K queueing formulas."""
+"""Core M/M/1, M/G/1, M/M/c, M/G/c, M/M/c/K, and M/G/c/K formulas."""
 
 from __future__ import annotations
 
@@ -80,6 +80,62 @@ def mm1(lambda_: float, mu: float) -> dict[str, Any]:
             rho=rho,
             stable=False,
             error="Calculation failed because the service margin reached zero.",
+        )
+
+
+def mg1(lambda_: float, mu: float, service_variance: float) -> dict[str, Any]:
+    """Compute exact steady-state metrics for an M/G/1 queue."""
+    if (
+        not _is_valid_rate(lambda_)
+        or not _is_valid_rate(mu)
+        or not _is_valid_rate(service_variance)
+    ):
+        return _result(
+            error="Invalid input: lambda, mu, and service_variance must be finite numbers."
+        )
+
+    lambda_ = float(lambda_)
+    mu = float(mu)
+    service_variance = float(service_variance)
+    if lambda_ < 0 or mu <= 0 or service_variance < 0:
+        return _result(
+            error=(
+                "Invalid input: lambda must be >= 0, mu > 0, "
+                "and service_variance must be >= 0."
+            )
+        )
+
+    service_mean = 1.0 / mu
+    rho = lambda_ * service_mean
+    if rho >= 1.0:
+        return _result(
+            rho=rho,
+            stable=False,
+            error="Unstable system: rho must be less than 1 for M/G/1.",
+        )
+
+    try:
+        second_moment = service_variance + service_mean**2
+        Wq = 0.0 if lambda_ == 0 else lambda_ * second_moment / (2.0 * (1.0 - rho))
+        W = Wq + service_mean
+        Lq = lambda_ * Wq
+        L = lambda_ * W
+        return _result(
+            rho=rho,
+            L=L,
+            Lq=Lq,
+            W=W,
+            Wq=Wq,
+            stable=True,
+            service_mean=service_mean,
+            service_variance=service_variance,
+            service_second_moment=second_moment,
+        )
+    except (OverflowError, ZeroDivisionError, ValueError):
+        return _result(
+            rho=rho,
+            stable=False,
+            error="M/G/1 calculation failed due to numerical instability.",
         )
 
 

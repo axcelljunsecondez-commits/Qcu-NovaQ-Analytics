@@ -17,6 +17,9 @@ from backend.queueing_engine.services.model_selection import select_model
 
 CURRENT_COLUMNS = [
     "time",
+    "queue_id",
+    "queue_structure",
+    "model_id",
     "lambda",
     "mu",
     "c",
@@ -62,7 +65,7 @@ def _classify_utilization_status(rho) -> str:
     return "Lean"
 
 
-def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None) -> dict:
+def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None, model_id=None, queue_structure=None) -> dict:
     """Build one normalized current-system result row."""
     stable = bool(metrics.get("stable"))
     rho = metrics.get("rho")
@@ -70,6 +73,9 @@ def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None) ->
 
     return {
         "time": str(time_label),
+        "queue_id": None,
+        "queue_structure": queue_structure,
+        "model_id": model_id,
         "lambda": lambda_,
         "mu": mu,
         "c": c,
@@ -88,13 +94,60 @@ def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None) ->
     }
 
 
+def group_separate_queue_segments(time_segments: Iterable[Mapping]) -> list[Mapping]:
+    """Group separate-queue rows by segment and queue without pooling queues."""
+    grouped: dict[tuple[str, str], dict] = {}
+    output: list[Mapping] = []
+    for segment in time_segments:
+        if not isinstance(segment, Mapping):
+            output.append(segment)
+            continue
+        structure = segment.get("queue_structure")
+        if structure != "separate_queues" and segment.get("queue_id") is None:
+            output.append(segment)
+            continue
+        queue_id = str(segment.get("queue_id", "")).strip()
+        key = (str(segment.get("time", "")), queue_id)
+        current = grouped.get(key)
+        if current is None:
+            current = dict(segment)
+            current["queue_structure"] = "separate_queues"
+            current["queue_id"] = queue_id
+            current["lambda"] = 0.0
+            current["_lambda_weighted_service"] = 0.0
+            current["_lambda_weighted_second_moment"] = 0.0
+            grouped[key] = current
+            output.append(current)
+        lambda_value = float(segment.get("lambda", 0.0))
+        mu_value = float(segment.get("mu", 0.0))
+        variance = segment.get("variance")
+        if lambda_value < 0 or mu_value <= 0 or variance is None:
+            continue
+        current["lambda"] = float(current.get("lambda", 0.0)) + lambda_value
+        service_mean = 1.0 / mu_value
+        current["_lambda_weighted_service"] += lambda_value * service_mean
+        current["_lambda_weighted_second_moment"] += lambda_value * (float(variance) + service_mean**2)
+    for current in grouped.values():
+        if current.get("queue_structure") != "separate_queues":
+            continue
+        lambda_value = float(current.get("lambda", 0.0))
+        if lambda_value > 0:
+            service_mean = current["_lambda_weighted_service"] / lambda_value
+            second_moment = current["_lambda_weighted_second_moment"] / lambda_value
+            current["mu"] = 1.0 / service_mean
+            current["variance"] = max(0.0, second_moment - service_mean**2)
+        current.pop("_lambda_weighted_service", None)
+        current.pop("_lambda_weighted_second_moment", None)
+    return output
+
+
 def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
     """Process Page 1 current-system segments into a DataFrame."""
     if time_segments is None:
         logger.info("process_segments: no input (None)")
         return _empty_frame(CURRENT_COLUMNS)
 
-    seg_list = list(time_segments)
+    seg_list = group_separate_queue_segments(list(time_segments))
     logger.info("process_segments: %d segments", len(seg_list))
 
     rows = []
@@ -121,6 +174,8 @@ def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
             continue
 
         time_label = segment.get("time", f"Segment {index}")
+        queue_id = segment.get("queue_id")
+        queue_structure = segment.get("queue_structure")
         lambda_ = segment.get("lambda")
         mu = segment.get("mu")
         c = segment.get("c", 1)
@@ -131,21 +186,30 @@ def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
         if lambda_ is None or mu is None:
             continue
 
-        selection = select_model(lambda_, mu, c, variance=variance, K=capacity, theta=theta)
-        rows.append(
-            _current_row(
-                time_label,
-                lambda_,
-                mu,
-                selection["servers"],
-                selection["name"],
-                selection["metrics"],
-                theta=selection["theta"],
-            )
+        selection = select_model(
+            lambda_,
+            mu,
+            c,
+            variance=variance,
+            K=capacity,
+            theta=theta,
+            queue_structure=queue_structure or ("separate_queues" if queue_id is not None else None),
         )
+        row = _current_row(
+            time_label,
+            lambda_,
+            mu,
+            selection["servers"],
+            selection["name"],
+            selection["metrics"],
+            theta=selection["theta"],
+        )
+        row["queue_id"] = queue_id
+        row["queue_structure"] = queue_structure or ("separate_queues" if queue_id is not None else None)
+        row["model_id"] = selection["model_id"]
+        rows.append(row)
 
     return pd.DataFrame(rows, columns=CURRENT_COLUMNS) if rows else _empty_frame(CURRENT_COLUMNS)
-
 
 
 def _is_separate_frame(results_df: pd.DataFrame) -> bool:

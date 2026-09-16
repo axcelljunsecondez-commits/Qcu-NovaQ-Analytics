@@ -9,7 +9,7 @@ from backend.api.workflow import _derive_decision
 from backend.db.models import AnalysisProject, Scenario
 from tests.helpers import create_user, csrf_header, login
 
-UNKNOWN_SETUP = {
+UNKNOWN_SETUP: dict[str, Any] = {
     "queue_structure": "unknown",
     "fixed_server_count": None,
     "staffing_varies_by_period": False,
@@ -17,6 +17,9 @@ UNKNOWN_SETUP = {
     "total_system_capacity": None,
     "abandonment_mode": "unknown",
     "patience_rate_per_hour": None,
+    "segments": [],
+    "separate_queue_closure_policy": "drain_existing",
+    "queue_ids": [],
 }
 
 

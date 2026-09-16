@@ -6,11 +6,17 @@ from collections.abc import Mapping
 
 import pandas as pd
 
-from backend.queueing_engine.services.data_processing import CURRENT_COLUMNS, _current_row
+from backend.queueing_engine.services.data_processing import (
+    CURRENT_COLUMNS,
+    _current_row,
+    group_separate_queue_segments,
+)
 from backend.queueing_engine.services.model_selection import select_model
 
 MODEL_ASSUMPTIONS = {
     "M/M/1": ["Poisson arrivals", "Exponential service times", "One server", "Unlimited queue capacity"],
+    "Parallel M/G/1": ["Independent queue per cashier", "One dedicated server per queue", "General service-time variation supplied", "Separate FIFO discipline"],
+    "Separate FIFO Queues (unsupported)": ["Separate queue structure detected", "Analytical capability requirements were not met"],
     "M/M/c": ["Poisson arrivals", "Exponential service times", "Shared queue", "Multiple parallel servers"],
     "M/G/c": ["Poisson arrivals", "General service-time variability supplied by the data", "Shared queue", "Approximation"],
     "M/M/c/K": ["Poisson arrivals", "Exponential service times", "Finite total system capacity K"],
@@ -49,7 +55,7 @@ def analyze_segments(
     rows: list[dict] = []
     explanations: list[dict] = []
     field_sources = (provenance or {}).get("field_provenance", {})
-    for index, segment in enumerate(segments, start=1):
+    for index, segment in enumerate(group_separate_queue_segments(segments), start=1):
         if segment.get("lambda") is None or segment.get("mu") is None:
             continue
         selection = select_model(
@@ -59,19 +65,22 @@ def analyze_segments(
             variance=segment.get("variance"),
             K=segment.get("K"),
             theta=segment.get("theta"),
+            queue_structure=segment.get("queue_structure") or setup.get("queue_structure"),
         )
         time_label = str(segment.get("time", f"Segment {index}"))
-        rows.append(
-            _current_row(
-                time_label,
-                segment["lambda"],
-                segment["mu"],
-                selection["servers"],
-                selection["name"],
-                selection["metrics"],
-                theta=selection["theta"],
-            )
+        row = _current_row(
+            time_label,
+            segment["lambda"],
+            segment["mu"],
+            selection["servers"],
+            selection["name"],
+            selection["metrics"],
+            theta=selection["theta"],
         )
+        row["queue_id"] = segment.get("queue_id")
+        row["queue_structure"] = segment.get("queue_structure") or setup.get("queue_structure")
+        row["model_id"] = selection["model_id"]
+        rows.append(row)
         measured = []
         for field in ("lambda", "mu", "variance", "K", "theta", "c"):
             if segment.get(field) is not None and field_sources.get(field) == "data_derived":

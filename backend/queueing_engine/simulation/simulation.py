@@ -159,8 +159,15 @@ def simulation_coverage(segment: Mapping) -> tuple[str | None, str | None]:
     if not ok:
         return None, message
     row = frame.astype(object).where(pd.notna(frame), None).to_dict("records")[0]
-    selected = select_model(row.get("lambda"), row.get("mu"), row.get("c"),
-                            row.get("variance"), row.get("K"), row.get("theta"))
+    selected = select_model(
+        row.get("lambda"),
+        row.get("mu"),
+        row.get("c"),
+        row.get("variance"),
+        row.get("K"),
+        row.get("theta"),
+        row.get("queue_structure"),
+    )
     name = selected["name"]
     if name not in ("M/M/1", "M/M/c"):
         return name, f"Unsupported simulation model: {name}. DES/Monte Carlo cover M/M/1 and M/M/c only."

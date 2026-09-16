@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import time as datetime_time
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -26,6 +27,25 @@ class AbandonmentMode(str, Enum):
     unknown = "unknown"
 
 
+class SeparateQueueClosurePolicy(str, Enum):
+    drain_existing = "drain_existing"
+
+
+class AnalysisSegment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = Field(default=None, min_length=1, max_length=100)
+    start_time: datetime_time
+    end_time: datetime_time
+    active_queue_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> AnalysisSegment:
+        if self.end_time <= self.start_time:
+            raise ValueError("Analysis segment end_time must be after start_time.")
+        return self
+
+
 class QueueSetup(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -36,6 +56,9 @@ class QueueSetup(BaseModel):
     total_system_capacity: int | None = Field(default=None, ge=1, le=100000)
     abandonment_mode: AbandonmentMode = AbandonmentMode.unknown
     patience_rate_per_hour: float | None = Field(default=None, gt=0)
+    segments: list[AnalysisSegment] = Field(default_factory=list)
+    separate_queue_closure_policy: SeparateQueueClosurePolicy = SeparateQueueClosurePolicy.drain_existing
+    queue_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_dependencies(self) -> QueueSetup:
@@ -56,12 +79,57 @@ class QueueSetup(BaseModel):
             raise ValueError("Total system capacity must include and be at least the server count.")
         if self.abandonment_mode != AbandonmentMode.modeled and self.patience_rate_per_hour is not None:
             raise ValueError("Patience rate is only valid when abandonment is modeled.")
+        cleaned_queue_ids = [queue_id.strip() for queue_id in self.queue_ids]
+        if any(not queue_id for queue_id in cleaned_queue_ids):
+            raise ValueError("Configured queue IDs must be non-empty.")
+        if len(set(cleaned_queue_ids)) != len(cleaned_queue_ids):
+            raise ValueError("Configured queue IDs must be unique.")
+        self.queue_ids = cleaned_queue_ids
+        if self.queue_structure == QueueStructure.separate_queues and not self.queue_ids:
+            raise ValueError("Separate-queue analysis requires at least one configured queue ID.")
+        configured = set(self.queue_ids)
+        ordered = sorted(self.segments, key=lambda segment: segment.start_time)
+        for previous, current in zip(ordered, ordered[1:]):
+            if current.start_time < previous.end_time:
+                raise ValueError("Analysis segments must not overlap.")
+        for segment in self.segments:
+            if segment.active_queue_ids is None:
+                continue
+            active_ids = [queue_id.strip() for queue_id in segment.active_queue_ids]
+            if len(set(active_ids)) != len(active_ids):
+                raise ValueError(f"Segment {segment.id or 'unnamed'} active_queue_ids must be unique.")
+            unknown = sorted(set(active_ids) - configured)
+            if unknown:
+                raise ValueError(
+                    f"Segment {segment.id or 'unnamed'} contains unknown active queue IDs: {', '.join(unknown)}."
+                )
+            if any(not queue_id for queue_id in active_ids):
+                raise ValueError(f"Segment {segment.id or 'unnamed'} active_queue_ids must be non-empty values.")
+            segment.active_queue_ids = active_ids
+        if self.queue_structure == QueueStructure.separate_queues and self.staffing_varies_by_period:
+            missing = [segment.id or "unnamed" for segment in self.segments if segment.active_queue_ids is None]
+            if missing:
+                raise ValueError(
+                    "Variable separate-queue staffing requires active_queue_ids for every configured segment: "
+                    + ", ".join(missing)
+                )
+            if any(not segment.active_queue_ids for segment in self.segments):
+                raise ValueError("Variable separate-queue staffing requires at least one active queue per segment.")
+        if self.queue_structure == QueueStructure.separate_queues and not self.staffing_varies_by_period:
+            conflicting = [
+                segment.id or "unnamed"
+                for segment in self.segments
+                if segment.active_queue_ids is not None and set(segment.active_queue_ids) != configured
+            ]
+            if conflicting:
+                raise ValueError(
+                    "Fixed separate-queue staffing keeps all configured queues active; "
+                    "active_queue_ids must match queue_ids for: " + ", ".join(conflicting)
+                )
         return self
 
 
 def setup_status(setup: QueueSetup) -> str:
-    if setup.queue_structure == QueueStructure.separate_queues:
-        return "unsupported"
     if setup.queue_structure == QueueStructure.unknown:
         return "incomplete"
     if setup.capacity_mode == CapacityMode.finite and setup.total_system_capacity is None:
