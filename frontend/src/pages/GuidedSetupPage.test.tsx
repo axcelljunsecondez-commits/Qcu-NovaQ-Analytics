@@ -64,7 +64,7 @@ describe('GuidedSetupPage chooser', () => {
     expect(await screen.findByText('Canonical setup')).toBeInTheDocument()
   })
 
-  it('reveals the second question on No and confirms separate with a count', async () => {
+  it('reveals the second question on No and confirms separate with named queues', async () => {
     const user = userEvent.setup()
     renderPage()
     await screen.findByText('Help me choose')
@@ -73,11 +73,13 @@ describe('GuidedSetupPage chooser', () => {
     expect(await screen.findByText('Recommended structure:')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Use Separate Queues' }))
     expect(patchAnalysisMock).not.toHaveBeenCalled()
-    await user.type(screen.getByLabelText('Number of separate service lines'), '2')
+    await user.type(screen.getByLabelText('Queue ID 1'), 'north')
+    await user.click(screen.getByRole('button', { name: 'Add queue' }))
+    await user.type(screen.getByLabelText('Queue ID 2'), 'south')
     await user.click(screen.getByRole('button', { name: 'Use Separate Queues' }))
     await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(
       7,
-      { queue_setup: expect.objectContaining({ queue_structure: 'separate_queues', queue_ids: ['queue_1', 'queue_2'] }) },
+      { queue_setup: expect.objectContaining({ queue_structure: 'separate_queues', queue_ids: ['north', 'south'] }) },
     ))
   })
 

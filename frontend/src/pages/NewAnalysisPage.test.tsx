@@ -51,20 +51,22 @@ describe('NewAnalysisPage structure selection', () => {
     expect(await screen.findByText('Canonical setup')).toBeInTheDocument()
   })
 
-  it('requires a queue count for separate and persists queue ids', async () => {
+  it('requires named queues for separate and persists queue ids', async () => {
     const user = userEvent.setup()
     renderPage()
     await user.type(await screen.findByLabelText('Analysis name'), 'separate shop')
     await user.click(screen.getByRole('radio', { name: /Separate Queues/ }))
     expect(screen.getByRole('button', { name: 'Continue to queue setup' })).toBeDisabled()
-    await user.type(screen.getByLabelText('Number of separate service lines'), '3')
+    await user.type(screen.getByLabelText('Queue ID 1'), 'cashier_a')
+    await user.click(screen.getByRole('button', { name: 'Add queue' }))
+    await user.type(screen.getByLabelText('Queue ID 2'), 'cashier_b')
     await user.click(screen.getByRole('button', { name: 'Continue to queue setup' }))
     await waitFor(() => expect(createAnalysisMock).toHaveBeenCalled())
     expect(createAnalysisMock.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         queue_setup: expect.objectContaining({
           queue_structure: 'separate_queues',
-          queue_ids: ['queue_1', 'queue_2', 'queue_3'],
+          queue_ids: ['cashier_a', 'cashier_b'],
         }),
       }),
     )

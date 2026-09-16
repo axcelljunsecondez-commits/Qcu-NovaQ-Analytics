@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, uploadAnalysisDataset } from '../api/analyses'
 import type { QueueSetup } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
+import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { SetupDataTemplates } from '../components/analysis/SetupDataTemplates'
 import { messageOf } from '../lib/format'
 
@@ -17,10 +18,6 @@ function normalizeSetup(value: QueueSetup): QueueSetup {
     queue_ids: value.queue_ids ?? [],
     segments: (value.segments ?? []).map((segment) => ({ ...segment, active_queue_ids: segment.active_queue_ids ?? null })),
   }
-}
-
-function queueIdsForCount(existing: string[], count: number): string[] {
-  return Array.from({ length: count }, (_, index) => existing[index] ?? `queue_${index + 1}`)
 }
 
 function structureDisplayKey(structure: QueueSetup['queue_structure']): string {
@@ -45,11 +42,10 @@ export function AnalysisSetupPage() {
   const datasets = useQuery({ queryKey: ['datasets', id], queryFn: () => listAnalysisDatasets(id) })
   const current = useQuery({ queryKey: ['current', id, datasets.data?.datasets[0]?.id], queryFn: () => getAnalysisCurrent(id), enabled: Boolean(datasets.data?.datasets.length), retry: false })
   const [setup, setSetup] = useState<QueueSetup>(emptySetup)
-  const [queueCountInput, setQueueCountInput] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
-  useEffect(() => { if (analysis.data) { const next = normalizeSetup(analysis.data.analysis.queue_setup); setSetup(next); setQueueCountInput(String(next.queue_ids.length || '')) } }, [analysis.data])
+  useEffect(() => { if (analysis.data) { setSetup(normalizeSetup(analysis.data.analysis.queue_setup)) } }, [analysis.data])
   const save = useMutation({
     mutationFn: () => patchAnalysis(id, { queue_setup: setup }),
     onSuccess: () => { setFormError(null); setNotice(t('analyses.setup_saved')); void client.invalidateQueries({ queryKey: ['analysis', id] }) },
@@ -64,25 +60,20 @@ export function AnalysisSetupPage() {
   function set<K extends keyof QueueSetup>(key: K, value: QueueSetup[K]) { setSetup((old) => ({ ...old, [key]: value })) }
   function changeQueueStructure(value: QueueSetup['queue_structure']) {
     if (value === 'separate_queues') {
-      setQueueCountInput('')
       setSetup((old) => ({ ...old, queue_structure: value, queue_ids: [], segments: old.segments.map((segment) => ({ ...segment, active_queue_ids: null })) }))
       return
     }
-    setQueueCountInput('')
     setSetup((old) => ({ ...old, queue_structure: value, queue_ids: [], segments: old.segments.map((segment) => ({ ...segment, active_queue_ids: null })) }))
   }
-  function changeQueueCount(value: number) {
-    const count = Math.max(1, Math.min(100000, Math.trunc(value)))
-    const nextIds = queueIdsForCount(setup.queue_ids, count)
-    const removed = new Set(setup.queue_ids.slice(count))
-    const referenced = setup.segments.some((segment) => (segment.active_queue_ids ?? []).some((queueId) => removed.has(queueId)))
+  function changeQueueIds(next: string[]) {
+    const removed = setup.queue_ids.filter((queueId) => !next.includes(queueId))
+    const referenced = setup.segments.some((segment) => (segment.active_queue_ids ?? []).some((queueId) => removed.includes(queueId)))
     if (referenced) {
-      setFormError(t('analyses.queue_count_reduce_error'))
-      setQueueCountInput(String(setup.queue_ids.length || ''))
+      setFormError(t('analyses.queue_remove_referenced'))
       return
     }
     setFormError(null)
-    set('queue_ids', nextIds)
+    set('queue_ids', next)
   }
   function updateSegment(index: number, update: Partial<QueueSetup['segments'][number]>) {
     set('segments', setup.segments.map((segment, segmentIndex) => segmentIndex === index ? { ...segment, ...update } : segment))
@@ -95,7 +86,12 @@ export function AnalysisSetupPage() {
     updateSegment(index, { active_queue_ids: [...selected] })
   }
   function validateSetup(): string | null {
-    if (setup.queue_structure === 'separate_queues' && setup.queue_ids.length === 0) return t('analyses.queue_count_required')
+    if (setup.queue_structure === 'separate_queues' && setup.queue_ids.length === 0) return t('analyses.queue_ids_required')
+    if (setup.queue_structure === 'separate_queues') {
+      const trimmed = setup.queue_ids.map((queueId) => queueId.trim())
+      if (trimmed.some((queueId) => queueId === '')) return t('analyses.queue_id_blank')
+      if (new Set(trimmed).size !== trimmed.length) return t('analyses.queue_id_duplicate')
+    }
     if (setup.queue_structure === 'separate_queues' && setup.staffing_varies_by_period && setup.segments.some((segment) => !segment.active_queue_ids?.length)) return t('analyses.active_queue_required')
     const ordered = [...setup.segments].sort((left, right) => left.start_time.localeCompare(right.start_time))
     if (ordered.some((segment) => !segment.start_time || !segment.end_time || segment.end_time <= segment.start_time)) return t('analyses.segment_time_error')
@@ -134,10 +130,10 @@ export function AnalysisSetupPage() {
         ) : (
           <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
         )}
-        {setup.queue_structure === 'separate_queues' && <div className="card"><div className="form-field"><label htmlFor="separate-queue-count">{t('analyses.separate_line_count')}</label><input id="separate-queue-count" type="number" min="1" max="100000" value={queueCountInput} onChange={(e) => { setQueueCountInput(e.target.value); if (e.target.value) changeQueueCount(Number(e.target.value)) }} /><span className="form-hint">{t('analyses.separate_line_count_help')}</span></div><p className="form-hint">{setup.staffing_varies_by_period ? t('analyses.variable_lines_help') : t('analyses.fixed_lines_help')}</p></div>}
+        {setup.queue_structure === 'separate_queues' && <QueueIdEditor ids={setup.queue_ids} onChange={changeQueueIds} />}
         <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
         <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>
-        {setup.queue_structure === 'separate_queues' && <div className="card"><h3 className="card-title">{t('analyses.segments')}</h3>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId, queueIndex) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {t('analyses.service_line')} {queueIndex + 1}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
+        {setup.queue_structure === 'separate_queues' && <div className="card"><h3 className="card-title">{t('analyses.segments')}</h3>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
         <div className="form-field"><label htmlFor="capacity-mode">{t('analyses.capacity')}</label><select id="capacity-mode" value={setup.capacity_mode} onChange={(e) => { const value = e.target.value as QueueSetup['capacity_mode']; setSetup((old) => ({ ...old, capacity_mode: value, ...(value !== 'finite' ? { total_system_capacity: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="unlimited">{t('analyses.unlimited')}</option><option value="finite">{t('analyses.finite')}</option></select></div>
         {setup.capacity_mode === 'finite' && <div className="form-field"><label htmlFor="capacity-total">{t('analyses.total_capacity')}</label><input id="capacity-total" type="number" min="1" value={setup.total_system_capacity ?? ''} onChange={(e) => set('total_system_capacity', e.target.value ? Number(e.target.value) : null)} /></div>}
         <div className="form-field"><label htmlFor="abandonment-mode">{t('analyses.abandonment')}</label><select id="abandonment-mode" value={setup.abandonment_mode} onChange={(e) => { const value = e.target.value as QueueSetup['abandonment_mode']; setSetup((old) => ({ ...old, abandonment_mode: value, ...(value !== 'modeled' ? { patience_rate_per_hour: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="not_modeled">{t('analyses.not_modeled')}</option><option value="modeled">{t('analyses.modeled')}</option></select></div>

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { createAnalysis } from '../api/analyses'
 import type { QueueSetup, QueueStructure } from '../api/types'
-import { queueIdsForCount } from '../lib/queue'
+import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 
 const baseSetup: QueueSetup = {
   queue_structure: 'unknown',
@@ -29,7 +29,7 @@ export function NewAnalysisPage() {
   const [serviceType, setServiceType] = useState('')
   const [location, setLocation] = useState('')
   const [choice, setChoice] = useState<Choice>('shared_queue')
-  const [queueCount, setQueueCount] = useState('')
+  const [queueIds, setQueueIds] = useState<string[]>([''])
   const create = useMutation({
     mutationFn: createAnalysis,
     onSuccess: ({ analysis }) => {
@@ -46,7 +46,7 @@ export function NewAnalysisPage() {
   })
   function setupFor(structure: QueueStructure): QueueSetup {
     if (structure === 'separate_queues') {
-      return { ...baseSetup, queue_structure: structure, queue_ids: queueIdsForCount([], Number(queueCount)) }
+      return { ...baseSetup, queue_structure: structure, queue_ids: queueIds.map((queueId) => queueId.trim()) }
     }
     return { ...baseSetup, queue_structure: structure }
   }
@@ -60,8 +60,9 @@ export function NewAnalysisPage() {
   function helpMeChoose() {
     help.mutate({ ...details(), queue_setup: setupFor('unknown') })
   }
-  const count = Number(queueCount)
-  const countValid = choice === 'shared_queue' || (Number.isInteger(count) && count >= 1)
+  const trimmedIds = queueIds.map((queueId) => queueId.trim())
+  const idsValid = choice === 'shared_queue'
+    || (trimmedIds.length > 0 && trimmedIds.every((queueId) => queueId !== '') && new Set(trimmedIds).size === trimmedIds.length)
   const pending = create.isPending || help.isPending
   return (
     <div>
@@ -90,14 +91,11 @@ export function NewAnalysisPage() {
           </div>
         </fieldset>
         {choice === 'separate_queues' && (
-          <div className="form-field">
-            <label htmlFor="separate-queue-count">{t('analyses.separate_line_count')}</label>
-            <input id="separate-queue-count" type="number" min={1} required value={queueCount} onChange={(e) => setQueueCount(e.target.value)} />
-          </div>
+          <QueueIdEditor ids={queueIds} onChange={setQueueIds} inputIdPrefix="new-queue-id" />
         )}
         {(create.isError || help.isError) && <div role="alert" className="alert alert-error">{t('errors.server')}</div>}
         <div className="form-row">
-          <button type="submit" className="btn-primary" disabled={!name.trim() || !countValid || pending}>{t('analyses.continue')}</button>
+          <button type="submit" className="btn-primary" disabled={!name.trim() || !idsValid || pending}>{t('analyses.continue')}</button>
           <button type="button" className="btn-ghost" disabled={!name.trim() || pending} onClick={helpMeChoose}>{t('analyses.structure_help_choose')}</button>
         </div>
       </form>

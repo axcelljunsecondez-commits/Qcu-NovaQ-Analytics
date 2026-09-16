@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getAnalysis, patchAnalysis } from '../api/analyses'
 import type { QueueSetup } from '../api/types'
-import { queueIdsForCount } from '../lib/queue'
+import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { ApiState } from '../components/ui/ApiState'
 
 type Answer = 'yes' | 'no' | 'unsure'
@@ -31,7 +31,7 @@ export function GuidedSetupPage() {
   const queryClient = useQueryClient()
   const [q1, setQ1] = useState<Answer | null>(null)
   const [q2, setQ2] = useState<Answer | null>(null)
-  const [queueCount, setQueueCount] = useState('')
+  const [queueIds, setQueueIds] = useState<string[]>([''])
   const [error, setError] = useState<string | null>(null)
 
   const analysis = useQuery({
@@ -74,17 +74,19 @@ export function GuidedSetupPage() {
 
   const answered = q1 !== null && (q1 === 'yes' || q2 !== null)
   const recommendation = answered ? recommend(q1, q2) : null
-  const count = Number(queueCount)
-  const countValid = Number.isInteger(count) && count >= 1
+  const trimmedIds = queueIds.map((queueId) => queueId.trim())
+  const idsValid = trimmedIds.length > 0
+    && trimmedIds.every((queueId) => queueId !== '')
+    && new Set(trimmedIds).size === trimmedIds.length
 
   function choose(structure: Structure) {
     setError(null)
     if (structure === 'separate_queues') {
-      if (!countValid) {
-        setError(t('analyses.queue_count_required'))
+      if (!idsValid) {
+        setError(t('analyses.queue_ids_required'))
         return
       }
-      save.mutate({ ...setup, queue_structure: structure, queue_ids: queueIdsForCount(setup.queue_ids ?? [], count) })
+      save.mutate({ ...setup, queue_structure: structure, queue_ids: trimmedIds })
     } else {
       save.mutate({ ...setup, queue_structure: structure })
     }
@@ -157,7 +159,7 @@ export function GuidedSetupPage() {
                   type="button"
                   className="btn-primary"
                   onClick={() => choose(recommendation)}
-                  disabled={save.isPending || (recommendation === 'separate_queues' && !countValid)}
+                  disabled={save.isPending || (recommendation === 'separate_queues' && !idsValid)}
                 >
                   {t('guided.use_structure', {
                     structure: t(recommendation === 'separate_queues' ? 'analyses.structure_separate' : 'analyses.structure_shared'),
@@ -177,7 +179,7 @@ export function GuidedSetupPage() {
                     type="button"
                     className="btn-secondary"
                     onClick={() => choose('separate_queues')}
-                    disabled={save.isPending || !countValid}
+                    disabled={save.isPending || !idsValid}
                   >
                     {t('guided.use_structure', { structure: t('analyses.structure_separate') })}
                   </button>
@@ -185,18 +187,7 @@ export function GuidedSetupPage() {
               )}
               <button type="button" className="btn-ghost" onClick={askAgain}>{t('guided.review')}</button>
             </div>
-            <div className="form-field">
-              <label htmlFor="guided-queue-count">{t('analyses.separate_line_count')}</label>
-              <input
-                id="guided-queue-count"
-                type="number"
-                min={1}
-                max={100000}
-                value={queueCount}
-                onChange={(e) => setQueueCount(e.target.value)}
-              />
-              <span className="form-hint">{t('analyses.separate_line_count_help')}</span>
-            </div>
+            <QueueIdEditor ids={queueIds} onChange={setQueueIds} inputIdPrefix="guided-queue-id" />
           </>
         )}
         {error && <div role="alert" className="alert alert-error">{error}</div>}

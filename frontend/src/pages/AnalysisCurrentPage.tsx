@@ -49,6 +49,7 @@ export function AnalysisCurrentPage() {
   }
 
   const { selected_model, rows, kpis, explanations } = query.data
+  const showQueueColumn = rows.some((row) => typeof row.queue_id === 'string' && row.queue_id.trim() !== '')
   const avgRho = finiteValue(kpis?.avg_utilization)
   const avgWq = finiteValue(kpis?.avg_waiting_time)
   const numericWq = rows.map((row) => finiteValue(row.Wq)).filter((value): value is number => value !== null)
@@ -158,9 +159,9 @@ export function AnalysisCurrentPage() {
       {explanations.length > 0 && (
         <section className="card" aria-labelledby="model-explanation-title">
           <h2 id="model-explanation-title" className="section-title">{t('analyses.model_explanation')}</h2>
-          {explanations.map((explanation) => (
-            <details key={`${explanation.time}-${explanation.selected_model}`} className="explanation-block">
-              <summary>{explanation.time}: {explanation.selected_model}</summary>
+          {explanations.map((explanation, index) => (
+            <details key={`${explanation.time}-${explanation.selected_model}-${typeof explanation.queue_id === 'string' ? explanation.queue_id : ''}-${index}`} className="explanation-block">
+              <summary>{explanation.time}{typeof explanation.queue_id === 'string' && explanation.queue_id.trim() !== '' ? ` · ${explanation.queue_id}` : ''}: {explanation.selected_model}</summary>
               <p className="explanation-reason">{explanation.selection_reason}</p>
               {explanation.operational_facts.length > 0 && <div className="explanation-section"><h3>{t('analyses.operational_facts')}</h3><ul>{explanation.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
               {explanation.measured_characteristics.length > 0 && <div className="explanation-section"><h3>{t('analyses.measured_characteristics')}</h3><ul>{explanation.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
@@ -179,7 +180,7 @@ export function AnalysisCurrentPage() {
         <div className="table-scroll" role="region" aria-labelledby="current-results-title" tabIndex={0}>
           <table>
             <caption className="sr-only">{t('current.results_caption')}</caption>
-            <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">λ/h</th><th scope="col">μ/h</th><th scope="col">c</th><th scope="col">{t('analysis.model')}</th><th scope="col">ρ</th><th scope="col">Wq ({t('analyses.minutes')})</th><th scope="col">{t('analyses.status')}</th></tr></thead>
+            <thead><tr><th scope="col">{t('common.time')}</th>{showQueueColumn && <th scope="col">{t('analyses.service_line')}</th>}<th scope="col">λ/h</th><th scope="col">μ/h</th><th scope="col">c</th><th scope="col">{t('analysis.model')}</th><th scope="col">ρ</th><th scope="col">Wq ({t('analyses.minutes')})</th><th scope="col">{t('analyses.status')}</th></tr></thead>
             <tbody>
               {rows.map((row, index) => {
                 const rho = finiteValue(row.rho)
@@ -188,8 +189,8 @@ export function AnalysisCurrentPage() {
                 const mu = finiteValue(row.mu)
                 const kind = statusKind(row.status)
                 return (
-                  <tr key={String(row.time ?? index)} className={kind === 'critical' ? 'row-warning' : undefined}>
-                    <th scope="row">{shown(row.time)}</th><td>{lambda ?? t('common.not_available')}</td><td>{mu ?? t('common.not_available')}</td><td>{shown(row.c)}</td><td>{shown(row.model)}</td><td>{rho !== null ? fmtPct(rho) : t('common.not_available')}</td><td>{wq !== null ? (wq * 60).toFixed(2) : t('common.not_available')}</td><td><span className={`status-badge status-${kind}`}>{shown(row.status)}</span></td>
+                  <tr key={`${String(row.time ?? index)}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`} className={kind === 'critical' ? 'row-warning' : undefined}>
+                    <th scope="row">{shown(row.time)}</th>{showQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : t('common.not_available')}</td>}<td>{lambda ?? t('common.not_available')}</td><td>{mu ?? t('common.not_available')}</td><td>{shown(row.c)}</td><td>{shown(row.model)}</td><td>{rho !== null ? fmtPct(rho) : t('common.not_available')}</td><td>{wq !== null ? (wq * 60).toFixed(2) : t('common.not_available')}</td><td><span className={`status-badge status-${kind}`}>{shown(row.status)}</span></td>
                   </tr>
                 )
               })}

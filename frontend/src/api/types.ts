@@ -151,6 +151,7 @@ export interface AnalysisProjectOut {
 export interface ModelExplanation {
   time: string
   selected_model: string
+  queue_id?: string | null
   operational_facts: string[]
   measured_characteristics: string[]
   model_assumptions: string[]

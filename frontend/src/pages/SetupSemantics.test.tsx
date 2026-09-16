@@ -97,10 +97,12 @@ describe('setup semantic contracts', () => {
     await user.click((await screen.findAllByRole('radio', { name: 'Yes' }))[1])
     expect(await screen.findByText('Recommended structure:')).toBeInTheDocument()
     expect(patchAnalysisMock).not.toHaveBeenCalled()
-    await user.type(screen.getByLabelText('Number of separate service lines'), '2')
+    await user.type(screen.getByLabelText('Queue ID 1'), 'north')
+    await user.click(screen.getByRole('button', { name: 'Add queue' }))
+    await user.type(screen.getByLabelText('Queue ID 2'), 'south')
     await user.click(screen.getByRole('button', { name: /Use Separate Queues/ }))
     await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
-      queue_setup: expect.objectContaining({ queue_structure: 'separate_queues', queue_ids: ['queue_1', 'queue_2'] }),
+      queue_setup: expect.objectContaining({ queue_structure: 'separate_queues', queue_ids: ['north', 'south'] }),
     }))
     expect(await screen.findByText('Canonical setup')).toBeInTheDocument()
   })
@@ -134,47 +136,70 @@ describe('setup semantic contracts', () => {
     expect(patchAnalysisMock).not.toHaveBeenCalled()
   })
 
-  it('generates stable queue IDs and renders the separate-line control', async () => {
+  it('configures arbitrary queue names through the dynamic editor', async () => {
     const user = userEvent.setup()
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
     await user.selectOptions(await screen.findByLabelText('Queue structure'), 'separate_queues')
-    const count = screen.getByLabelText('Number of separate service lines')
-    await user.clear(count)
-    await user.type(count, '3')
-    expect(count).toHaveValue(3)
+    expect(screen.getByText('Configured physical queues')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Add queue' }))
+    await user.type(screen.getByLabelText('Queue ID 1'), 'north')
+    await user.click(screen.getByRole('button', { name: 'Add queue' }))
+    await user.type(screen.getByLabelText('Queue ID 2'), 'south')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
-      queue_setup: expect.objectContaining({ queue_ids: ['queue_1', 'queue_2', 'queue_3'] }),
+      queue_setup: expect.objectContaining({ queue_ids: ['north', 'south'] }),
     }))
+  })
+
+  it('reloads persisted arbitrary queue IDs into the editor', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'separate_queues', queue_ids: ['cashier_a', 'Lane-A'] } } })
+    renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
+    expect(await screen.findByDisplayValue('cashier_a')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Lane-A')).toBeInTheDocument()
+  })
+
+  it('rejects blank and duplicate queue IDs before saving', async () => {
+    const user = userEvent.setup()
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'separate_queues', queue_ids: ['north'] } } })
+    renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
+    await screen.findByDisplayValue('north')
+    await user.click(screen.getByRole('button', { name: 'Add queue' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('non-empty')
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText('Queue ID 2'), 'north')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('unique')
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
   })
 
   it('shows active service-line controls only for variable separate staffing', async () => {
     const user = userEvent.setup()
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'separate_queues', queue_ids: ['queue_1', 'queue_2'], staffing_varies_by_period: false } } })
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
-    expect(await screen.findByLabelText('Number of separate service lines')).toHaveValue(2)
+    expect(await screen.findByDisplayValue('queue_1')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('queue_2')).toBeInTheDocument()
     expect(screen.getByText('Add time segment')).toBeInTheDocument()
-    expect(screen.queryByText('Service line 1')).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'queue_1' })).not.toBeInTheDocument()
     await user.click(screen.getByLabelText('Staffing varies by period'))
     expect(screen.getByText('Add time segment')).toBeInTheDocument()
   })
 
-  it('blocks reducing the queue set while a removed line is selected in a segment', async () => {
+  it('blocks removing a queue set while a removed line is selected in a segment', async () => {
     const user = userEvent.setup()
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'separate_queues', queue_ids: ['queue_1', 'queue_2'], staffing_varies_by_period: true, segments: [{ id: 'segment_1', start_time: '07:00:00', end_time: '08:00:00', active_queue_ids: ['queue_1', 'queue_2'] }] } } })
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
-    const count = await screen.findByLabelText('Number of separate service lines')
-    await user.clear(count)
-    await user.type(count, '1')
-    expect(await screen.findByRole('alert')).toHaveTextContent('Remove those service lines')
-    expect(count).toHaveValue(2)
+    await screen.findByDisplayValue('queue_2')
+    await user.click(screen.getByRole('button', { name: 'Remove queue_2' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Remove that queue from time segment activity')
+    expect(screen.getByDisplayValue('queue_2')).toBeInTheDocument()
   })
 
   it('serializes active lines and preserves mixed segment edits on save and reload', async () => {
     const user = userEvent.setup()
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'separate_queues', queue_ids: ['queue_1', 'queue_2'], staffing_varies_by_period: true, segments: [] } } })
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
-    await screen.findByLabelText('Number of separate service lines')
+    await screen.findByText('Configured physical queues')
     await user.click(screen.getByText('Add time segment'))
     const start = screen.getByLabelText('Start time')
     const end = screen.getByLabelText('End time')
@@ -182,7 +207,7 @@ describe('setup semantic contracts', () => {
     await user.type(start, '07:00')
     await user.clear(end)
     await user.type(end, '07:15')
-    await user.click(screen.getByLabelText('Service line 2'))
+    await user.click(screen.getByRole('checkbox', { name: 'queue_2' }))
     await user.click(screen.getByRole('button', { name: 'Add time segment' }))
     expect(screen.getAllByLabelText('Start time')).toHaveLength(2)
     const starts = screen.getAllByLabelText('Start time')
@@ -206,11 +231,11 @@ describe('setup semantic contracts', () => {
     const { unmount } = renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
     expect(await screen.findByTestId('queue-structure-readonly')).toHaveTextContent('Separate queues')
     expect(screen.queryByRole('combobox', { name: 'Queue structure' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Number of separate service lines')).toBeInTheDocument()
+    expect(screen.getByText('Configured physical queues')).toBeInTheDocument()
     unmount()
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: { ...unknownSetup, queue_structure: 'shared_queue', fixed_server_count: 5 } } })
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
     expect(await screen.findByTestId('queue-structure-readonly')).toHaveTextContent('One shared queue')
-    expect(screen.queryByLabelText('Number of separate service lines')).not.toBeInTheDocument()
+    expect(screen.queryByText('Configured physical queues')).not.toBeInTheDocument()
   })
 })
