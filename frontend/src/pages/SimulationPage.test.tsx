@@ -390,6 +390,26 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(await screen.findByTestId('lane-queue_1')).toBeInTheDocument()
   })
 
+  it('renders opaque queue IDs as separate playback lanes', async () => {
+    separateSetup()
+    const eastTrace = {
+      ...separateTrace,
+      trace: [
+        { t: 0.1, type: 'arrival', segment_id: 's1', customer_id: 1, server_id: null, queue_id: 'cashier-east', queue_len_after: 1 },
+        { t: 0.2, type: 'service_start', segment_id: 's1', customer_id: 1, server_id: 'server:cashier-east', queue_id: 'cashier-east', queue_len_after: 0 },
+        { t: 0.4, type: 'service_end', segment_id: 's1', customer_id: 1, server_id: 'server:cashier-east', queue_id: 'cashier-east', queue_len_after: 0 },
+      ],
+    }
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: job('workflow_des_current', { ...eastTrace, provenance: 'CURRENT' }, { scenario_id: null }),
+    }))
+    renderPage()
+    expect(await screen.findByTestId('lane-cashier-east')).toBeInTheDocument()
+    expect(screen.queryByTestId('lane-queue_1')).not.toBeInTheDocument()
+  })
+
   it('disables Monte Carlo and Validate in Current-only mode', async () => {
     separateSetup()
     getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null, des_current: null }))

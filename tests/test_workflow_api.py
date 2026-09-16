@@ -465,3 +465,58 @@ def test_switching_scenario_hides_prior_scenario_evidence(db_engine, client):
     assert evidence["validation"] is None
     assert evidence["decision"] is None
     assert evidence["decision_stale"] is False
+
+
+def test_separate_current_des_end_to_end_with_arbitrary_ids(db_engine, client):
+    """Problem 5 integration: setup -> event upload -> Current-DES keeps
+    arbitrary queue identities with no selection and no shared fallback."""
+    create_user(db_engine, "east@example.com", "pw")
+    login(client, "east@example.com", "pw")
+    headers = csrf_header(client)
+    analysis_id = client.post(
+        "/analyses",
+        headers=headers,
+        json={
+            "name": "East lanes",
+            "queue_setup": {
+                "queue_structure": "separate_queues",
+                "fixed_server_count": 1,
+                "staffing_varies_by_period": False,
+                "capacity_mode": "unlimited",
+                "total_system_capacity": None,
+                "abandonment_mode": "not_modeled",
+                "patience_rate_per_hour": None,
+                "segments": [{"id": "s1", "start_time": "07:00:00", "end_time": "08:00:00", "active_queue_ids": None}],
+                "separate_queue_closure_policy": "drain_existing",
+                "queue_ids": ["cashier-east", "express"],
+            },
+        },
+    ).json()["analysis"]["id"]
+    events = (
+        b"arrival_time,service_start,service_end,queue_id\n"
+        b"2026-09-08T07:05:00Z,2026-09-08T07:06:00Z,2026-09-08T07:12:00Z,cashier-east\n"
+        b"2026-09-08T07:20:00Z,2026-09-08T07:21:00Z,2026-09-08T07:26:00Z,cashier-east\n"
+        b"2026-09-08T07:10:00Z,2026-09-08T07:11:00Z,2026-09-08T07:15:00Z,express\n"
+    )
+    uploaded = client.post(
+        f"/analyses/{analysis_id}/datasets",
+        headers=headers,
+        files={"file": ("events.csv", events, "text/csv")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    run = client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/des/current",
+        headers=headers,
+        json={"sim_hours": 1, "max_events": 1000, "seed": 7},
+    )
+    assert run.status_code == 200, run.text
+    result = run.json()["evidence"]["result"]
+    assert result["provenance"] == "CURRENT"
+    rows = result["results"]
+    assert {row["queue_id"] for row in rows} == {"cashier-east", "express"}
+    for row in rows:
+        assert row["server_id"] == f"server:{row['queue_id']}"
+        assert row["simulation_supported"] is True
+        assert row.get("queue_structure") == "separate"
+    arrivals = {event.get("queue_id") for event in result["trace"] if event["type"] == "arrival"}
+    assert arrivals == {"cashier-east", "express"}
