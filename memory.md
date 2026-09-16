@@ -134,3 +134,10 @@ Implementation completed on 2026-09-14. Current unified DES aggregate/playback e
 - The unchanged strict Trivy 0.74.0 gate reports 0 HIGH and 0 CRITICAL for both OS and Python package targets on the rebuilt image. No suppression or policy weakening was used.
 - Full local regression and Compose smoke gates are green. See `docs/superpowers/reports/2026-09-14-api-image-vulnerability-remediation-report.md`.
 - This closes only the local API image defect. GitHub CI and Render public deployment verification remain required, while Supabase must remain unchanged because this remediation has no migration.
+
+## Problem 1 Closure — Separate-Queue Current Independence
+
+Refines (does not rewrite) the 2026-09-13 separate-queue conflict note. Tree-verified by `tests/test_current_independence.py`:
+
+- SUPPORTED: configurable separate queue IDs; Current Analysis processes separate queues independently by (time, queue_id); each queue uses centralized model selection independently.
+- STILL LIMITED: separate-queue staffing optimization remains blocked where demand redistribution is undefined; separate-queue DES/playback remains unsupported unless current source proves otherwise.
