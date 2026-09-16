@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -146,6 +147,51 @@ def process_segments(time_segments: Iterable[Mapping]) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=CURRENT_COLUMNS) if rows else _empty_frame(CURRENT_COLUMNS)
 
 
+
+def _is_separate_frame(results_df: pd.DataFrame) -> bool:
+    """True only when every row belongs to an explicitly separate queue."""
+    if results_df is None or results_df.empty or "queue_structure" not in results_df.columns:
+        return False
+    structures = {
+        None if value is None or pd.isna(value) else str(value)
+        for value in results_df["queue_structure"]
+    }
+    return structures == {"separate_queues"}
+
+
+def _weighted_wait(results_df: pd.DataFrame) -> float | None:
+    """Arrival-rate-weighted mean wait across separate queue-period rows.
+
+    Each stable separate queue serves its own arrivals at rate lambda with no
+    blocking or abandonment under the supported contract, so throughput equals
+    lambda and sum(lambda * Wq) / sum(lambda) is the expected wait of a random
+    arrival. Any non-finite lambda or wait makes the aggregate unavailable;
+    an all-idle frame has no arrivals to average over. Never zero-filled.
+    """
+    weighted = 0.0
+    total_weight = 0.0
+    for _, row in results_df.iterrows():
+        arrival = row.get("lambda")
+        wait = row.get("Wq")
+        try:
+            arrival_value = float(arrival)
+            wait_value = float(wait)
+        except (TypeError, ValueError):
+            return None
+        if (
+            not math.isfinite(arrival_value)
+            or not math.isfinite(wait_value)
+            or arrival_value < 0
+            or wait_value < 0
+        ):
+            return None
+        total_weight += arrival_value
+        weighted += arrival_value * wait_value
+    if total_weight <= 0:
+        return None
+    return weighted / total_weight
+
+
 def compute_kpis(results_df: pd.DataFrame, customer_waiting_cost: float | None = None) -> dict[str, Any]:
     """Compute Page 1 KPI summary values including waiting costs.
     
@@ -195,6 +241,8 @@ def compute_kpis(results_df: pd.DataFrame, customer_waiting_cost: float | None =
     count_unstable = count_total - count_stable
     avg_cost = total_wait_cost / count_total if count_total > 0 else 0.0
     avg_wait_time: float | None = total_waits / count_stable if count_stable > 0 else None
+    if _is_separate_frame(results_df):
+        avg_wait_time = _weighted_wait(results_df)
 
     # Find worst utilization (from stable segments only)
     stable_df = results_df[results_df["stable"]].copy()
