@@ -160,6 +160,38 @@ def test_scenario_without_comparison_results_422(db_engine, client):
     assert client.get(f"/reports/scenarios/{scenario_id}/pdf").status_code == 422
 
 
+def test_blocked_scenario_reports_stay_unavailable(db_engine, client):
+    """Honest INVALID_INPUT rows export as 200s whose evidence stays N/A/incomplete."""
+    create_user(db_engine, "blocked@example.com", "pw")
+    login(client, "blocked@example.com", "pw")
+    batch = client.post(
+        "/optimize/batch",
+        json={"segments": [{
+            "time": "08:00", "lambda": 5.0, "mu": 4.0, "c": 1, "variance": 0.0025,
+            "queue_structure": "separate_queues", "model_id": "parallel_mg1",
+        }]},
+    ).json()["results"]
+    assert batch[0]["c_optimal"] is None
+    scenario_id = client.post(
+        "/scenarios",
+        headers=csrf_header(client),
+        json={"name": "blocked", "settings": {"target_utilization": 0.7}, "results": {"results": batch}},
+    ).json()["scenario"]["id"]
+
+    pdf = client.get(f"/reports/scenarios/{scenario_id}/pdf")
+    assert pdf.status_code == 200
+    assert pdf.content[:4] == b"%PDF"
+
+    excel = client.get(f"/reports/scenarios/{scenario_id}/excel")
+    assert excel.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(excel.content))
+    cells = {wb["Summary"].cell(r, 1).value: wb["Summary"].cell(r, 2).value for r in range(1, 25)}
+    assert cells["Total Savings"] == "N/A"
+    assert cells["Total Server Change"] == "N/A"
+    recs = [wb["Recommendations"].cell(r, 1).value for r in range(2, 6)]
+    assert any(isinstance(rec, str) and "Comparison incomplete" in rec for rec in recs)
+
+
 def test_unknown_format_404(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")

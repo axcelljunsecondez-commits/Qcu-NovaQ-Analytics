@@ -1,5 +1,6 @@
 /**
- * ReportsPage - Shows report preview with 10 sections and download options.
+ * ReportsPage - Shows the report preview (PDF/Excel sections) with download options.
+ * Preview entries must stay exactly aligned with the backend generators.
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

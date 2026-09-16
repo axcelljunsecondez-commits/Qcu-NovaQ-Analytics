@@ -45,6 +45,24 @@ def _money(value: object) -> str:
     return f"₱{number:,.2f}" if number is not None else "N/A"
 
 
+def _staff_count(value: object) -> str:
+    """Render a staffing endpoint for report tables.
+
+    Integers (including integral floats from mixed pandas columns) render
+    exactly; missing values render N/A, never zero-filled and never the
+    literal strings 'None'/'nan'. A genuine zero renders as '0'.
+    """
+    if isinstance(value, bool):
+        return "N/A"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, str) and value.strip().isdigit():
+        return value.strip()
+    return "N/A"
+
+
 def _utilization_status(rho: object) -> str:
     value = _number(rho)
     if value is None:
@@ -322,7 +340,7 @@ def generate_pdf_report(
         table_data.append(
             [
                 Paragraph(escape(str(row.get("time", ""))), cell_style),
-                Paragraph(escape(str(row.get("c_current", ""))), cell_style),
+                Paragraph(_staff_count(row.get("c_current")), cell_style),
                 Paragraph(
                     f"{row['rho_current']:.1%}" if pd.notna(row.get("rho_current")) else "N/A",
                     cell_style,
@@ -332,7 +350,7 @@ def generate_pdf_report(
                     f"{row['Wq_current'] * 60:.2f}" if pd.notna(row.get("Wq_current")) else "N/A",
                     cell_style,
                 ),
-                Paragraph(escape(str(row.get("c_optimal", ""))), cell_style),
+                Paragraph(_staff_count(row.get("c_optimal")), cell_style),
                 Paragraph(
                     f"{row['rho_optimal']:.1%}" if pd.notna(row.get("rho_optimal")) else "N/A",
                     cell_style,
@@ -453,12 +471,13 @@ def generate_excel_report(
     labels_values: list[tuple[str, str]] = []
 
     if recommended_kpis:
+        server_change = recommended_kpis.get("total_server_change")
         labels_values = [
             ("Metric", "Value"),
             ("Total Current Cost", _money(recommended_kpis.get("total_current_cost"))),
             ("Total Optimized Cost", _money(recommended_kpis.get("total_optimized_cost"))),
             ("Total Savings", _money(recommended_kpis.get("total_savings"))),
-            ("Total Server Change", str(recommended_kpis.get("total_server_change", 0))),
+            ("Total Server Change", str(server_change) if server_change is not None else "N/A"),
         ]
 
         avg_w_cur = recommended_kpis.get("avg_waiting_current")
