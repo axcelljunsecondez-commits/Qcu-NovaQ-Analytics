@@ -237,8 +237,8 @@ export function ComparisonPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.time}>
+                {rows.map((row, index) => (
+                  <tr key={`${row.time}-${index}`}>
                     <th scope="row">{row.time}</th>
                     <td>{row.c_current ?? '—'}</td>
                     <td>{formatPercent(row.rho_current)}</td>

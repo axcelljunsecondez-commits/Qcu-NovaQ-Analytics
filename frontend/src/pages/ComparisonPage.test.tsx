@@ -221,6 +221,29 @@ describe('ComparisonPage', () => {
     expect(container.querySelector('[data-testid="chart-scenario-compare"]')).not.toBeInTheDocument()
   })
 
+  it('renders same-time queues as distinct comparison rows without key collisions', async () => {
+    const errors: unknown[][] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args) })
+    try {
+      listScenariosMock.mockResolvedValue({
+        scenarios: [{
+          ...scenarios[0],
+          results: { results: [
+            { ...rows[0], c_current: 3, rho_current: 0.9 },
+            { ...rows[0], c_current: 2, rho_current: 0.5 },
+          ] },
+        }],
+      })
+      renderWithProviders(<ComparisonPage />, { route: '/compare' })
+      const table = await screen.findByRole('table')
+      expect(within(table).getByText('90.00%')).toBeInTheDocument()
+      expect(within(table).getByText('50.00%')).toBeInTheDocument()
+      expect(errors.flat().join(' ')).not.toMatch(/same key/)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('shows unstable Current plus one valid optimized plan without fabricating finance', async () => {
     const unstableRow: OptimizationOut = {
       ...rows[0],

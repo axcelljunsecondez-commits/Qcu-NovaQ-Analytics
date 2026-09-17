@@ -734,8 +734,8 @@ export function OptimizePage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.time}>
+                {rows.map((row, index) => (
+                  <tr key={`${row.time}-${index}`}>
                     {COLUMNS.map((col) => {
                       const content = col.render
                         ? col.render(row)

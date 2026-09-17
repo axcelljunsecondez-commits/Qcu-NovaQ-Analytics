@@ -202,6 +202,7 @@ export interface SimDesOut {
   selected_model?: string
   simulation_supported?: boolean
   time: string
+  queue_id?: string | null
   lambda: number
   mu: number
   c: number

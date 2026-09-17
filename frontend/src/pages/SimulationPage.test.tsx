@@ -402,6 +402,32 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(await screen.findByTestId('lane-queue_1')).toBeInTheDocument()
   })
 
+  it('renders same-time queues as distinct DES rows without key collisions', async () => {
+    const errors: unknown[][] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args) })
+    try {
+      separateSetup()
+      getWorkflowMock.mockResolvedValue(workflow({
+        selection: null,
+        scenario: null,
+        des_current: job('workflow_des_current', {
+          ...separateTrace,
+          results: [
+            { ...desRow, queue_id: 'north' },
+            { ...desRow, queue_id: 'south' },
+          ],
+          provenance: 'CURRENT',
+        }, { scenario_id: null }),
+      }))
+      renderPage()
+      expect(await screen.findByText('north')).toBeInTheDocument()
+      expect(screen.getByText('south')).toBeInTheDocument()
+      expect(errors.flat().join(' ')).not.toMatch(/same key/)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('renders opaque queue IDs as separate playback lanes', async () => {
     separateSetup()
     const eastTrace = {

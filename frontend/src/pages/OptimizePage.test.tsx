@@ -186,6 +186,27 @@ describe('calculation integrity', () => {
     expect(screen.queryByText(/service points/)).not.toBeInTheDocument()
   })
 
+  it('renders same-time queues as distinct rows without key collisions', async () => {
+    const errors: unknown[][] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args) })
+    try {
+      optimizeBatchMock.mockResolvedValue({ results: [
+        { ...row, lambda_: 5, c_optimal: null, rho_optimal: null, cost_optimal: null, delta_c: null },
+        { ...row, lambda_: 9, c_optimal: null, rho_optimal: null, cost_optimal: null, delta_c: null },
+      ] })
+      const user = userEvent.setup()
+      renderWithProviders(<OptimizePage />, { route: '/optimize' })
+      await screen.findByRole('option', { name: 'sample' })
+      await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+      await user.click(screen.getByRole('button', { name: 'Optimize' }))
+      expect(await screen.findByText('5.00 → 5.00')).toBeInTheDocument()
+      expect(screen.getByText('9.00 → 9.00')).toBeInTheDocument()
+      expect(errors.flat().join(' ')).not.toMatch(/same key/)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('keeps the genuine staffing insight for complete rows', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OptimizePage />, { route: '/optimize' })

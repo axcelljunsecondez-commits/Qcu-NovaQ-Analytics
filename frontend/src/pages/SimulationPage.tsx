@@ -198,6 +198,7 @@ export function SimulationPage() {
     ? desCurrentRun.data?.evidence.result ?? workflow.data.des_current?.result ?? null
     : desRun.data?.evidence.result ?? workflow.data.des?.result ?? null
   const desRows: SimDesOut[] = trace?.results ?? []
+  const showDesQueueColumn = desRows.some((row) => typeof row.queue_id === 'string' && row.queue_id.trim() !== '')
   const activePlaybackSegment = trace?.segments.find(
     (item) => item.simulation_supported && !item.error,
   ) ?? trace?.segments[0] ?? null
@@ -394,6 +395,7 @@ export function SimulationPage() {
                   <thead>
                     <tr>
                       <th scope="col">{t('common.time')}</th>
+                      {showDesQueueColumn && <th scope="col">{t('analyses.service_line')}</th>}
                       <th scope="col">{t('simulation.status')}</th>
                       <th scope="col">ρ</th>
                       <th scope="col">Lq</th>
@@ -404,9 +406,10 @@ export function SimulationPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {desRows.map((row) => (
-                      <tr key={row.time}>
+                    {desRows.map((row, index) => (
+                      <tr key={`${row.time}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`}>
                         <th scope="row">{row.time}</th>
+                        {showDesQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}
                         <td>{row.status}</td>
                         <td>{fmt(row.rho_sim, 3)}</td>
                         <td>{fmt(row.Lq_sim, 3)}</td>
