@@ -18,6 +18,7 @@ from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
 from backend.db.session import get_db
+from backend.queueing_engine.config import MC_DEFAULT_FAILURE_THRESHOLD
 from backend.queueing_engine.services.model_explanations import analyze_segments
 from backend.queueing_engine.simulation.simulation import (
     mc_simulate_segments,
@@ -58,7 +59,7 @@ class WorkflowMcRequest(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
 
     num_trials: int = Field(default=2000, ge=1, le=100000)
-    failure_threshold: float = Field(default=0.8, gt=0, le=1)
+    failure_threshold: float = Field(default=MC_DEFAULT_FAILURE_THRESHOLD, gt=0, le=1)
     failure_rate_cap: float = Field(default=0.05, gt=0, le=1)
     seed: int | None = 42
 
@@ -68,7 +69,7 @@ class WorkflowValidationRequest(BaseModel):
 
     des_sim_hours: float = Field(default=24.0, gt=0, le=168)
     mc_trials: int = Field(default=2000, ge=1, le=100000)
-    mc_failure_threshold: float = Field(default=0.8, gt=0, le=1)
+    mc_failure_threshold: float = Field(default=MC_DEFAULT_FAILURE_THRESHOLD, gt=0, le=1)
     mc_failure_rate_cap: float = Field(default=0.05, gt=0, le=1)
     seed: int | None = 42
 

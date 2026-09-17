@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
-from backend.api.workflow import _derive_decision
+from backend.api.workflow import (
+    WorkflowMcRequest,
+    WorkflowValidationRequest,
+    _derive_decision,
+)
 from backend.db.models import AnalysisProject, Dataset, Scenario
+from backend.queueing_engine.config import MC_DEFAULT_FAILURE_THRESHOLD
+from backend.queueing_engine.simulation.simulation import mc_simulate_segment
 from tests.helpers import clear_cookies, create_user, csrf_header, login, make_sessionmaker
 
 
@@ -520,3 +526,21 @@ def test_separate_current_des_end_to_end_with_arbitrary_ids(db_engine, client):
         assert row.get("queue_structure") == "separate"
     arrivals = {event.get("queue_id") for event in result["trace"] if event["type"] == "arrival"}
     assert arrivals == {"cashier-east", "express"}
+
+
+def test_workflow_mc_request_defaults_to_engine_failure_threshold():
+    assert WorkflowMcRequest().failure_threshold == MC_DEFAULT_FAILURE_THRESHOLD
+
+
+def test_workflow_validation_request_defaults_to_engine_failure_threshold():
+    assert WorkflowValidationRequest().mc_failure_threshold == MC_DEFAULT_FAILURE_THRESHOLD
+
+
+def test_threshold_gap_between_075_and_080_is_behaviorally_meaningful():
+    """rho ~0.775 trials straddle both candidate thresholds deterministically."""
+    segment = {"time": "08:00", "lambda": 9.3, "mu": 12.0, "c": 1}
+    low = mc_simulate_segment(segment, num_trials=2000, failure_threshold=0.75, seed=7)
+    high = mc_simulate_segment(segment, num_trials=2000, failure_threshold=0.80, seed=7)
+    assert 0.0 < low["failure_rate"] < 1.0
+    assert 0.0 <= high["failure_rate"] < 1.0
+    assert low["failure_rate"] > high["failure_rate"]
