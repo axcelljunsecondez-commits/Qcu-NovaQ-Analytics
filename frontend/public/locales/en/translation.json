@@ -610,7 +610,6 @@
   "simulation.current_mode_help": "Optimization is unavailable for this analysis, so there is no optimized scenario. DES validates the current configured operation; results are CURRENT evidence, never an optimized recommendation.",
   "simulation.current_badge": "CURRENT configuration",
   "simulation.run_current_des": "Run Current DES",
-  "simulation.mc_disabled_current": "Monte Carlo requires a verified scenario and stays disabled in Simulate Current mode.",
   "simulation.validate_disabled_current": "Scenario validation requires a verified scenario and stays disabled in Simulate Current mode.",
   "optimize.blocked_continue_simulate": "Optimization cannot produce a scenario for this analysis. You can still validate the current operation in Simulate.",
   "simulation.validation_saved_scenario": "Validation uses the optimized staffing already saved in the selected scenario; it does not run the optimizer again.",

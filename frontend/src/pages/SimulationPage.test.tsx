@@ -9,6 +9,7 @@ const getWorkflowMock = vi.fn()
 const runDesMock = vi.fn()
 const runDesCurrentMock = vi.fn()
 const runMcMock = vi.fn()
+const runMcCurrentMock = vi.fn()
 const runValidationMock = vi.fn()
 const getAnalysisMock = vi.fn()
 
@@ -17,6 +18,7 @@ vi.mock('../api/workflow', () => ({
   runWorkflowDes: (...args: unknown[]) => runDesMock(...args),
   runWorkflowDesCurrent: (...args: unknown[]) => runDesCurrentMock(...args),
   runWorkflowMc: (...args: unknown[]) => runMcMock(...args),
+  runWorkflowMcCurrent: (...args: unknown[]) => runMcCurrentMock(...args),
   runWorkflowValidation: (...args: unknown[]) => runValidationMock(...args),
 }))
 
@@ -177,6 +179,7 @@ beforeEach(() => {
     }),
   })
   runDesCurrentMock.mockReset().mockResolvedValue({ evidence: job('workflow_des_current', trace, { scenario_id: null }) })
+  runMcCurrentMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc_current', { results: [mcRow] }, { scenario_id: null }) })
 })
 
 function separateSetup() {
@@ -410,13 +413,33 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(screen.queryByTestId('lane-queue_1')).not.toBeInTheDocument()
   })
 
-  it('disables Monte Carlo and Validate in Current-only mode', async () => {
+  it('keeps Validate disabled in Current-only mode while Monte Carlo runs per queue', async () => {
+    const user = userEvent.setup()
     separateSetup()
     getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null, des_current: null }))
     renderPage()
     expect(await screen.findByRole('button', { name: 'Run Current DES' })).toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-    expect(screen.getByText(/Monte Carlo requires a verified scenario/)).toBeInTheDocument()
+    expect(screen.queryByText(/Monte Carlo requires a verified scenario/)).not.toBeInTheDocument()
     expect(screen.getByText(/Scenario validation requires a verified scenario/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await waitFor(() => expect(runMcCurrentMock).toHaveBeenCalledWith(7, expect.objectContaining({
+      num_trials: 2000,
+    })))
+    expect(runMcMock).not.toHaveBeenCalled()
+  })
+
+  it('restores persisted Current-MC with per-queue identity without rerunning', async () => {
+    separateSetup()
+    const queuedRow = { ...mcRow, queue_id: 'cashier-east' }
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: null,
+      mc_current: job('workflow_mc_current', { results: [queuedRow] }, { scenario_id: null }),
+    }))
+    renderPage()
+    expect(await screen.findByText('cashier-east')).toBeInTheDocument()
+    expect(runMcCurrentMock).not.toHaveBeenCalled()
   })
 })

@@ -9,6 +9,7 @@ import {
   runWorkflowDes,
   runWorkflowDesCurrent,
   runWorkflowMc,
+  runWorkflowMcCurrent,
   runWorkflowValidation,
 } from '../api/workflow'
 import { getAnalysis } from '../api/analyses'
@@ -130,6 +131,16 @@ export function SimulationPage() {
     onSuccess: refresh,
     onError: (err) => setError(requestError(err, t('errors.server'))),
   })
+  const mcCurrentRun = useMutation({
+    mutationFn: () => runWorkflowMcCurrent(analysisId, {
+      num_trials: Number(mcTrials),
+      failure_threshold: Number(mcThreshold),
+      failure_rate_cap: Number(failureCap),
+      seed: parseSeed(mcSeed),
+    }),
+    onSuccess: refresh,
+    onError: (err) => setError(requestError(err, t('errors.server'))),
+  })
   const desCurrentRun = useMutation({
     mutationFn: () => runWorkflowDesCurrent(analysisId, {
       sim_hours: Number(desHours),
@@ -187,7 +198,10 @@ export function SimulationPage() {
   const playbackLayout = activePlaybackSegment
     ? selectPlaybackLayout(activePlaybackSegment.queue_structure)
     : 'shared'
-  const mcRows = mcRun.data?.evidence.result.results ?? workflow.data.mc?.result.results ?? []
+  const mcRows = isCurrentMode
+    ? mcCurrentRun.data?.evidence.result.results ?? workflow.data.mc_current?.result.results ?? []
+    : mcRun.data?.evidence.result.results ?? workflow.data.mc?.result.results ?? []
+  const showMcQueueColumn = mcRows.some((row) => typeof row.queue_id === 'string' && row.queue_id.trim() !== '')
   const validationEvidence = validationRun.data?.evidence ?? workflow.data.validation
   const validationRows = validationEvidence?.result.results ?? []
   const cap = Number(failureCap)
@@ -205,7 +219,7 @@ export function SimulationPage() {
   const validationPassed = savedFailureCap !== null
     && validationRows.length > 0
     && validationRows.every((row) => validationPasses(row, savedFailureCap))
-  const running = desRun.isPending || desCurrentRun.isPending || mcRun.isPending || validationRun.isPending
+  const running = desRun.isPending || desCurrentRun.isPending || mcRun.isPending || mcCurrentRun.isPending || validationRun.isPending
 
   function begin(tabId: Tab) {
     setTab(tabId)
@@ -253,7 +267,8 @@ export function SimulationPage() {
       setError(t('simulation.cap_range_error'))
     } else {
       setError(null)
-      mcRun.mutate()
+      if (isCurrentMode) mcCurrentRun.mutate()
+      else mcRun.mutate()
     }
   }
 
@@ -407,7 +422,7 @@ export function SimulationPage() {
         </section>
       )}
 
-      {!isCurrentMode && tab === 'mc' && (
+      {((!isCurrentMode && tab === 'mc') || isCurrentMode) && (
         <section id="simulation-panel-mc" role="tabpanel" aria-labelledby="simulation-tab-mc" tabIndex={0}>
           <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.tabs.mc')}</h3>
@@ -422,8 +437,8 @@ export function SimulationPage() {
           {mcRows.length > 0 && (
             <>
               <div className="card table-scroll" role="region" aria-label={t('simulation.mc_table_caption')} tabIndex={0}>
-                <table><caption className="sr-only">{t('simulation.mc_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.rho_mean')}</th><th scope="col">{t('simulation.rho_p95_label')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.failure_rate_ci')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
-                  <tbody>{mcRows.map((row) => <tr key={row.time}><th scope="row">{row.time}</th><td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmt(row.rho_mean, 3)}</td><td>{fmt(row.rho_p95, 3)}</td><td>{fmtPct(row.failure_rate)}</td><td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
+                <table><caption className="sr-only">{t('simulation.mc_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th>{showMcQueueColumn && <th scope="col">{t('analyses.service_line')}</th>}<th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.rho_mean')}</th><th scope="col">{t('simulation.rho_p95_label')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.failure_rate_ci')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
+                  <tbody>{mcRows.map((row, index) => <tr key={`${row.time}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`}><th scope="row">{row.time}</th>{showMcQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}<td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmt(row.rho_mean, 3)}</td><td>{fmt(row.rho_p95, 3)}</td><td>{fmtPct(row.failure_rate)}</td><td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
                 </table>
               </div>
               <div className="card-grid"><div className="card"><RhoMeanP95Lines rows={mcRows} /></div><div className="card"><FailureRateBars rows={mcRows} /></div></div>
@@ -470,10 +485,6 @@ export function SimulationPage() {
       )}
       {isCurrentMode && (
         <>
-          <div className="card simulation-controls" aria-disabled="true">
-            <h3 className="section-title">{t('simulation.tabs.mc')}</h3>
-            <p className="form-hint">{t('simulation.mc_disabled_current')}</p>
-          </div>
           <div className="card simulation-controls" aria-disabled="true">
             <h3 className="section-title">{t('simulation.tabs.validate')}</h3>
             <p className="form-hint">{t('simulation.validate_disabled_current')}</p>

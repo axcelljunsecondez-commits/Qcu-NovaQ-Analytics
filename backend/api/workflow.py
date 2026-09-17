@@ -32,6 +32,7 @@ WORKFLOW_KINDS = {
     "workflow_des",
     "workflow_des_current",
     "workflow_mc",
+    "workflow_mc_current",
     "workflow_validation",
     "workflow_decision",
 }
@@ -332,6 +333,7 @@ def _current_evidence(
     scenario_id = scenario.id if scenario is not None else None
     des = _latest_job(db, user, "workflow_des", analysis.id, scenario_id) if scenario_id else None
     des_current = _latest_job(db, user, "workflow_des_current", analysis.id)
+    mc_current = _latest_job(db, user, "workflow_mc_current", analysis.id)
     mc = _latest_job(db, user, "workflow_mc", analysis.id, scenario_id) if scenario_id else None
     validation = (
         _latest_job(db, user, "workflow_validation", analysis.id, scenario_id)
@@ -365,6 +367,7 @@ def _current_evidence(
         "des": _job_out(des),
         "des_current": _job_out(des_current),
         "mc": _job_out(mc),
+        "mc_current": _job_out(mc_current),
         "validation": _job_out(validation),
         "decision": _job_out(decision),
         "decision_stale": decision_stale,
@@ -510,6 +513,37 @@ def run_mc(
 
 
 @router.post(
+    "/{analysis_id}/workflow/simulation/mc/current",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_mc_current(
+    analysis_id: int,
+    payload: WorkflowMcRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    analysis = own_analysis(db, user, analysis_id)
+    dataset = _current_dataset(db, user, analysis)
+    segments = _current_segments_for(analysis, dataset)
+    result: dict[str, Any] = {
+        "results": mc_simulate_segments(
+            segments,
+            num_trials=payload.num_trials,
+            failure_threshold=payload.failure_threshold,
+            failure_rate_cap=payload.failure_rate_cap,
+            seed=payload.seed,
+        )
+    }
+    result["provenance"] = "CURRENT"
+    job = _save_job(
+        db, user, "workflow_mc_current", analysis, None,
+        payload.model_dump(), result, settings, dataset_id=dataset.id,
+    )
+    return {"evidence": _job_out(job)}
+
+
+@router.post(
     "/{analysis_id}/workflow/simulation/validation",
     dependencies=[Depends(user_rate_limit("compute"))],
 )
@@ -581,8 +615,16 @@ def _derive_decision(
         missing.append("supported, error-free DES evidence for every interval")
 
     validation_rows = ((validation or {}).get("result") or {}).get("results", [])
+
+    def _evidence_key(row: dict[str, Any]) -> tuple[str, str | None]:
+        queue_id = row.get("queue_id")
+        return (
+            str(row.get("time", "")),
+            queue_id if isinstance(queue_id, str) else None,
+        )
+
     if validation is not None and (
-        [str(row.get("time", "")) for row in validation_rows] != expected_times
+        [_evidence_key(row) for row in validation_rows] != [_evidence_key(row) for row in rows]
     ):
         missing.append("validation evidence for every interval")
 

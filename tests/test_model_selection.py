@@ -157,7 +157,12 @@ def test_parallel_downstream_paths_are_gated():
     assert result["feasibility_status"] == "INVALID_INPUT"
     assert "not supported" in result["warning"]
     assert selected == "Parallel M/G/1"
-    assert "Unsupported simulation model" in error
+    assert error is None
+    # Unsupported separate rows still fail closed at the coverage gate.
+    bad, bad_error = simulation_coverage(
+        {"time": "a", "queue_structure": "separate_queues", "lambda": 2.0, "mu": 5.0, "c": 1}
+    )
+    assert bad_error is not None and "Unsupported simulation model" in bad_error
 
 
 def test_select_model_matches_optimization_queue_metrics():

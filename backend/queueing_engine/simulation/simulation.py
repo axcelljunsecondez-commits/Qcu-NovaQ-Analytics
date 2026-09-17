@@ -51,7 +51,7 @@ import simpy
 
 from backend.data.ingestion import validate_and_normalize
 from backend.queueing_engine.log import get_logger
-from backend.queueing_engine.models import mm1, mmc
+from backend.queueing_engine.models import mg1, mm1, mmc
 from backend.queueing_engine.services.model_selection import select_model
 from backend.queueing_engine.simulation.queue_lifecycle import (
     DedicatedQueueLifecycle,
@@ -153,7 +153,7 @@ class SegmentResult:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def simulation_coverage(segment: Mapping) -> tuple[str | None, str | None]:
-    """Identify the model using the shared dispatcher; only M/M families are simulated."""
+    """Identify the model using the shared dispatcher; M/M families and supported separate M/G/1 are simulated."""
     row = {"time": "segment", "c": 1, **segment}
     ok, message, frame = validate_and_normalize(pd.DataFrame([row]))
     if not ok:
@@ -169,8 +169,8 @@ def simulation_coverage(segment: Mapping) -> tuple[str | None, str | None]:
         row.get("queue_structure"),
     )
     name = selected["name"]
-    if name not in ("M/M/1", "M/M/c"):
-        return name, f"Unsupported simulation model: {name}. DES/Monte Carlo cover M/M/1 and M/M/c only."
+    if name not in ("M/M/1", "M/M/c", "Parallel M/G/1"):
+        return name, f"Unsupported simulation model: {name}. DES/Monte Carlo cover M/M/1, M/M/c, and supported separate M/G/1 only."
     return name, None
 
 
@@ -1171,7 +1171,8 @@ def mc_simulate_segment(
         logger.warning("mc_simulate_segment(time=%s) validation error: %s", time_label, error)
         return {
             **metadata, "failure_count": None, "trials_completed": 0,
-            "time": time_label, "lambda": lambda_, "mu": mu, "c": c,
+            "time": time_label, "queue_id": segment.get("queue_id"),
+            "lambda": lambda_, "mu": mu, "c": c,
             "rho_mean": None, "rho_std": None, "rho_p95": None,
             "Lq_mean": None, "Wq_mean": None,
             "failure_rate": None, "status": "ERROR",
@@ -1189,6 +1190,8 @@ def mc_simulate_segment(
     rng = np.random.default_rng(seed)
 
     def _pick_model(lam: float, m: float, c_: int) -> dict[str, Any]:
+        if selected_model == "Parallel M/G/1":
+            return mg1(lam, m, float(segment.get("variance", 0.0)))
         return mmc(lam, m, c_) if c_ > 1 else mm1(lam, m)
 
     rho_samples = np.empty(num_trials)
@@ -1252,6 +1255,7 @@ def mc_simulate_segment(
     return {
         **metadata,
         "time": time_label,
+        "queue_id": segment.get("queue_id"),
         "lambda": lambda_,
         "mu": mu,
         "c": c,
@@ -1390,6 +1394,7 @@ def validate_with_simulation(
             continue
         sim_records.append({
             "time": str(index),
+            "queue_id": row.get("queue_id"),
             "lambda": row.get("lambda", row.get("lambda_")),
             "mu": row.get("mu"),
             "c": c_opt,
