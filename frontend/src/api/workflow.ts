@@ -18,6 +18,27 @@ export interface WorkflowScenario {
   provenance: 'verified_snapshot'
 }
 
+export interface WorkflowValidationCurrentRow {
+  time: string
+  queue_id: string
+  mc_failure_rate: number | null
+  mc_failure_rate_adequate: boolean | null
+  failure_rate_cap: number
+  validation_verdict: 'pass' | 'fail' | 'inadequate' | 'missing'
+}
+
+export interface WorkflowValidationCurrentResult {
+  results: WorkflowValidationCurrentRow[]
+  verdict: {
+    status: 'pass' | 'fail' | 'insufficient'
+    failed: Array<{ time: string; queue_id: string } | [string, string]>
+    inadequate: Array<{ time: string; queue_id: string } | [string, string]>
+    total: number
+  }
+  mc_job_id: number
+  provenance: string
+}
+
 export interface WorkflowDecision {
   status: 'insufficient_evidence' | 'revise' | 'adopt' | 'conditional'
   headline: string
@@ -41,6 +62,7 @@ export interface WorkflowEvidence {
   mc: WorkflowJob<{ results: SimMcOut[] }> | null
   mc_current: WorkflowJob<{ results: SimMcOut[] }> | null
   validation: WorkflowJob<{ results: SimValidateOut[] }> | null
+  validation_current: WorkflowJob<WorkflowValidationCurrentResult> | null
   decision: WorkflowJob<WorkflowDecision> | null
   decision_stale: boolean
 }
@@ -140,6 +162,15 @@ export async function runWorkflowValidation(
   const { data } = await http.post<{ evidence: WorkflowJob<{ results: SimValidateOut[] }> }>(
     `/analyses/${analysisId}/workflow/simulation/validation`,
     options,
+  )
+  return data
+}
+
+export async function runWorkflowValidationCurrent(
+  analysisId: number,
+): Promise<{ evidence: WorkflowJob<WorkflowValidationCurrentResult> }> {
+  const { data } = await http.post<{ evidence: WorkflowJob<WorkflowValidationCurrentResult> }>(
+    `/analyses/${analysisId}/workflow/simulation/validation/current`,
   )
   return data
 }

@@ -18,6 +18,7 @@ from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
 from backend.db.session import get_db
+from backend.queueing_engine.services.model_explanations import analyze_segments
 from backend.queueing_engine.simulation.simulation import (
     mc_simulate_segments,
     simulate_segments_with_trace,
@@ -34,6 +35,7 @@ WORKFLOW_KINDS = {
     "workflow_mc",
     "workflow_mc_current",
     "workflow_validation",
+    "workflow_validation_current",
     "workflow_decision",
 }
 
@@ -340,6 +342,7 @@ def _current_evidence(
         if scenario_id
         else None
     )
+    validation_current = _latest_job(db, user, "workflow_validation_current", analysis.id)
     decision = (
         _latest_job(db, user, "workflow_decision", analysis.id, scenario_id)
         if scenario_id
@@ -369,6 +372,7 @@ def _current_evidence(
         "mc": _job_out(mc),
         "mc_current": _job_out(mc_current),
         "validation": _job_out(validation),
+        "validation_current": _job_out(validation_current),
         "decision": _job_out(decision),
         "decision_stale": decision_stale,
     }
@@ -394,6 +398,58 @@ def get_workflow(
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     return _current_evidence(db, user, own_analysis(db, user, analysis_id))
+
+
+def _separate_validation_verdict(
+    required_pairs: list[tuple[str, str]],
+    mc_rows_by_pair: dict[tuple[str, str], dict[str, Any]],
+    failure_cap: float,
+) -> dict[str, Any]:
+    """Aggregate per-queue validation verdicts with FAIL > insufficient > PASS.
+
+    Each required (time, queue_id) pair is evaluated only against its own MC
+    row. No pooled or averaged failure rate is computed. Missing, unsupported,
+    errored, or inadequate rows make the overall evidence insufficient, never
+    a pass and never zero.
+    """
+    failed: list[tuple[str, str]] = []
+    inadequate: list[tuple[str, str]] = []
+    rows: list[dict[str, Any]] = []
+    for key in required_pairs:
+        time_label, queue_id = key
+        mc = mc_rows_by_pair.get(key)
+        if mc is None:
+            inadequate.append(key)
+            continue
+        failure_rate = mc.get("mc_failure_rate", mc.get("failure_rate"))
+        verdict = "pass"
+        if (
+            mc.get("simulation_supported") is not True
+            or not _finite_non_negative(failure_rate)
+            or mc.get("mc_failure_rate_adequate") is not True
+        ):
+            verdict = "inadequate"
+            inadequate.append(key)
+        elif float(cast(int | float, failure_rate)) > failure_cap:
+            verdict = "fail"
+            failed.append(key)
+        rows.append({
+            "time": time_label,
+            "queue_id": queue_id,
+            "selected_model": mc.get("selected_model"),
+            "mc_failure_rate": failure_rate,
+            "mc_failure_rate_adequate": mc.get("mc_failure_rate_adequate"),
+            "failure_rate_cap": failure_cap,
+            "validation_verdict": verdict,
+        })
+    if failed:
+        status = "fail"
+    elif inadequate:
+        status = "insufficient"
+    else:
+        status = "pass"
+    return {"status": status, "failed": failed, "inadequate": inadequate,
+            "total": len(required_pairs), "results": rows}
 
 
 @router.post("/{analysis_id}/workflow/selection")
@@ -569,6 +625,82 @@ def run_validation(
     job = _save_job(
         db, user, "workflow_validation", analysis, scenario,
         payload.model_dump(), result, settings,
+    )
+    return {"evidence": _job_out(job)}
+
+
+@router.post(
+    "/{analysis_id}/workflow/simulation/validation/current",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_validation_current(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Validate the current separate-queue operation from persisted MC evidence.
+
+    No optimized scenario is required or fabricated: required rows are the
+    Current analytical (time, queue_id) entities and verdicts aggregate from
+    the persisted Current-MC rows with FAIL > insufficient > PASS precedence.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    setup = analysis.queue_setup_json or {}
+    if setup.get("queue_structure") != "separate_queues":
+        raise HTTPException(
+            status_code=422,
+            detail="Current validation is only supported for separate-queue analyses.",
+        )
+    dataset = _current_dataset(db, user, analysis)
+    mc_job = _latest_job(db, user, "workflow_mc_current", analysis.id)
+    if mc_job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Run Current Monte Carlo before validating the current operation.",
+        )
+    mc_params = mc_job.params_json or {}
+    if mc_params.get("dataset_id") != dataset.id:
+        raise HTTPException(
+            status_code=409,
+            detail="Current Monte Carlo evidence is stale for this dataset. Rerun Current Monte Carlo.",
+        )
+    failure_cap = mc_params.get("failure_rate_cap")
+    if (
+        not isinstance(failure_cap, (int, float))
+        or isinstance(failure_cap, bool)
+        or not math.isfinite(float(failure_cap))
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Current Monte Carlo evidence has no usable failure cap.",
+        )
+    frame, _, _ = analyze_segments(
+        dataset.normalized_json or [],
+        setup,
+        dataset.validation_report_json or {},
+    )
+    required = [
+        (str(row.get("time", "")), str(row.get("queue_id", "")))
+        for _, row in frame.iterrows()
+        if isinstance(row.get("queue_id"), str) and row.get("queue_id").strip()
+    ]
+    mc_rows = ((mc_job.result_json or {}).get("results") or [])
+    mc_by_pair = {
+        (str(row.get("time", "")), str(row.get("queue_id", ""))): row
+        for row in mc_rows
+        if isinstance(row, dict) and isinstance(row.get("queue_id"), str)
+    }
+    verdict = _separate_validation_verdict(required, mc_by_pair, float(failure_cap))
+    result: dict[str, Any] = {
+        "results": verdict.pop("results"),
+        "verdict": verdict,
+        "mc_job_id": mc_job.id,
+        "provenance": "CURRENT",
+    }
+    job = _save_job(
+        db, user, "workflow_validation_current", analysis, None,
+        {"mc_job_id": mc_job.id}, result, settings, dataset_id=dataset.id,
     )
     return {"evidence": _job_out(job)}
 

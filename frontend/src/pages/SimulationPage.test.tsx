@@ -11,6 +11,7 @@ const runDesCurrentMock = vi.fn()
 const runMcMock = vi.fn()
 const runMcCurrentMock = vi.fn()
 const runValidationMock = vi.fn()
+const runValidationCurrentMock = vi.fn()
 const getAnalysisMock = vi.fn()
 
 vi.mock('../api/workflow', () => ({
@@ -20,6 +21,7 @@ vi.mock('../api/workflow', () => ({
   runWorkflowMc: (...args: unknown[]) => runMcMock(...args),
   runWorkflowMcCurrent: (...args: unknown[]) => runMcCurrentMock(...args),
   runWorkflowValidation: (...args: unknown[]) => runValidationMock(...args),
+  runWorkflowValidationCurrent: (...args: unknown[]) => runValidationCurrentMock(...args),
 }))
 
 vi.mock('../api/analyses', () => ({
@@ -169,6 +171,13 @@ beforeEach(() => {
   })
   runDesMock.mockReset().mockResolvedValue({ evidence: job('workflow_des', trace) })
   runMcMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc', { results: [mcRow] }) })
+  runValidationCurrentMock.mockReset().mockResolvedValue({
+    evidence: job('workflow_validation_current', {
+      results: [{ time: '08:00', queue_id: 'cashier-east', mc_failure_rate: 0.01,
+                  mc_failure_rate_adequate: true, failure_rate_cap: 0.05, validation_verdict: 'pass' }],
+      verdict: { status: 'pass', failed: [], inadequate: [], total: 1 },
+    }, { scenario_id: null }),
+  })
   runValidationMock.mockReset().mockResolvedValue({
     evidence: job('workflow_validation', { results: [validationRow] }, {
       des_sim_hours: 24,
@@ -413,7 +422,7 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(screen.queryByTestId('lane-queue_1')).not.toBeInTheDocument()
   })
 
-  it('keeps Validate disabled in Current-only mode while Monte Carlo runs per queue', async () => {
+  it('gates Validate on Current-MC evidence while Monte Carlo runs per queue', async () => {
     const user = userEvent.setup()
     separateSetup()
     getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null, des_current: null }))
@@ -421,7 +430,8 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(await screen.findByRole('button', { name: 'Run Current DES' })).toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     expect(screen.queryByText(/Monte Carlo requires a verified scenario/)).not.toBeInTheDocument()
-    expect(screen.getByText(/Scenario validation requires a verified scenario/)).toBeInTheDocument()
+    expect(screen.getByText(/needs Current Monte Carlo evidence first/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Validate plan' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
     await waitFor(() => expect(runMcCurrentMock).toHaveBeenCalledWith(7, expect.objectContaining({
       num_trials: 2000,
@@ -441,5 +451,40 @@ describe('SimulationPage Simulate Current mode', () => {
     renderPage()
     expect(await screen.findByText('cashier-east')).toBeInTheDocument()
     expect(runMcCurrentMock).not.toHaveBeenCalled()
+  })
+
+  it('runs Current validation from persisted MC and shows the per-queue verdict', async () => {
+    const user = userEvent.setup()
+    separateSetup()
+    const queuedRow = { ...mcRow, queue_id: 'cashier-east' }
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: null,
+      mc_current: job('workflow_mc_current', { results: [queuedRow] }, { scenario_id: null }),
+    }))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Validate plan' }))
+    await waitFor(() => expect(runValidationCurrentMock).toHaveBeenCalledWith(7))
+    expect(runValidationMock).not.toHaveBeenCalled()
+  })
+
+  it('restores a persisted Current validation verdict without rerunning', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: null,
+      mc_current: job('workflow_mc_current', { results: [{ ...mcRow, queue_id: 'cashier-east' }] }, { scenario_id: null }),
+      validation_current: job('workflow_validation_current', {
+        results: [{ time: '08:00', queue_id: 'cashier-east', mc_failure_rate: 0.01,
+                    mc_failure_rate_adequate: true, failure_rate_cap: 0.05, validation_verdict: 'pass' }],
+        verdict: { status: 'pass', failed: [], inadequate: [], total: 1 },
+      }, { scenario_id: null }),
+    }))
+    renderPage()
+    expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
+    expect(screen.getAllByText('cashier-east').length).toBeGreaterThanOrEqual(2)
+    expect(runValidationCurrentMock).not.toHaveBeenCalled()
   })
 })

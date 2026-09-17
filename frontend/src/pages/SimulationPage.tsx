@@ -11,6 +11,7 @@ import {
   runWorkflowMc,
   runWorkflowMcCurrent,
   runWorkflowValidation,
+  runWorkflowValidationCurrent,
 } from '../api/workflow'
 import { getAnalysis } from '../api/analyses'
 import { ApiState } from '../components/ui/ApiState'
@@ -163,6 +164,11 @@ export function SimulationPage() {
     onSuccess: refresh,
     onError: (err) => setError(requestError(err, t('errors.server'))),
   })
+  const validationCurrentRun = useMutation({
+    mutationFn: () => runWorkflowValidationCurrent(analysisId),
+    onSuccess: refresh,
+    onError: (err) => setError(requestError(err, t('errors.server'))),
+  })
 
   if (!Number.isInteger(analysisId)) return <ApiState.ErrorState />
   if (workflow.isLoading || analysis.isLoading) return <ApiState.Loading />
@@ -204,6 +210,11 @@ export function SimulationPage() {
   const showMcQueueColumn = mcRows.some((row) => typeof row.queue_id === 'string' && row.queue_id.trim() !== '')
   const validationEvidence = validationRun.data?.evidence ?? workflow.data.validation
   const validationRows = validationEvidence?.result.results ?? []
+  const validationCurrent = validationCurrentRun.data?.evidence ?? workflow.data.validation_current
+  const validationCurrentRows = validationCurrent?.result.results ?? []
+  const validationCurrentVerdict = validationCurrent?.result.verdict ?? null
+  const hasMcCurrent = (workflow.data.mc_current?.result.results ?? []).length > 0
+    || (mcCurrentRun.data?.evidence.result.results ?? []).length > 0
   const cap = Number(failureCap)
   const savedCapValue = validationEvidence?.params.mc_failure_rate_cap
   const savedFailureCap = typeof savedCapValue === 'number' && validProbability(savedCapValue)
@@ -219,7 +230,7 @@ export function SimulationPage() {
   const validationPassed = savedFailureCap !== null
     && validationRows.length > 0
     && validationRows.every((row) => validationPasses(row, savedFailureCap))
-  const running = desRun.isPending || desCurrentRun.isPending || mcRun.isPending || mcCurrentRun.isPending || validationRun.isPending
+  const running = desRun.isPending || desCurrentRun.isPending || mcRun.isPending || mcCurrentRun.isPending || validationRun.isPending || validationCurrentRun.isPending
 
   function begin(tabId: Tab) {
     setTab(tabId)
@@ -485,9 +496,39 @@ export function SimulationPage() {
       )}
       {isCurrentMode && (
         <>
-          <div className="card simulation-controls" aria-disabled="true">
+          <div className="card simulation-controls">
             <h3 className="section-title">{t('simulation.tabs.validate')}</h3>
-            <p className="form-hint">{t('simulation.validate_disabled_current')}</p>
+            {validationCurrentRows.length > 0 ? (
+              <>
+                {validationCurrentVerdict?.status === 'pass' && (
+                  <div role="status" className="alert alert-ok">{t('simulation.passed')}</div>
+                )}
+                {validationCurrentVerdict?.status === 'fail' && (
+                  <div role="status" className="alert alert-warn">{t('simulation.failed')}</div>
+                )}
+                {validationCurrentVerdict?.status === 'insufficient' && (
+                  <div role="status" className="alert alert-warn">{t('decision.status.insufficient_evidence')}</div>
+                )}
+                <div className="card table-scroll" role="region" aria-label={t('simulation.validation_table_caption')} tabIndex={0}>
+                  <table>
+                    <caption className="sr-only">{t('simulation.validation_table_caption')}</caption>
+                    <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('analyses.service_line')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.status')}</th></tr></thead>
+                    <tbody>{validationCurrentRows.map((row, index) => (
+                      <tr key={`${row.time}-${row.queue_id}-${index}`}>
+                        <th scope="row">{row.time}</th>
+                        <td>{row.queue_id}</td>
+                        <td>{fmtPct(row.mc_failure_rate)}</td>
+                        <td><span className={`badge ${row.validation_verdict === 'pass' ? 'badge-ok' : row.validation_verdict === 'fail' ? 'badge-bad' : 'badge-neutral'}`}>{row.validation_verdict}</span></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              </>
+            ) : hasMcCurrent ? (
+              <button type="button" className="btn-primary" disabled={running} onClick={() => validationCurrentRun.mutate()}>{t('simulation.validate_run')}</button>
+            ) : (
+              <p className="form-hint">{t('simulation.validation_requires_mc')}</p>
+            )}
           </div>
         </>
       )}
