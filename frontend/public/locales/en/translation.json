@@ -305,7 +305,7 @@
   "integrity.incomplete": "Comparison incomplete. Aggregate cost savings are unavailable.",
   "integrity.legacy": "Legacy scenario: calculation provenance is unverified.",
   "integrity.staffing_basis": "Staffing totals assume one-hour segments; requirements are not employee schedules. Savings include modeled waiting and abandonment costs.",
-  "integrity.simulation_coverage": "DES and Monte Carlo cover M/M/1 and M/M/c only. Other queueing models are not validated by these simulations.",
+  "integrity.simulation_coverage": "DES and Monte Carlo cover M/M/1, M/M/c, and supported separate M/G/1 queues. Other queueing models are not validated by these simulations.",
   "integrity.unsupported": "Simulation unsupported; no validation claim is available.",
   "integrity.erlang_basis": "Erlang-A W/Wq are legacy workload-per-served-throughput ratios, not mean waits for all arrivals or served customers.",
   "integrity.status.Unavailable": "Unavailable",

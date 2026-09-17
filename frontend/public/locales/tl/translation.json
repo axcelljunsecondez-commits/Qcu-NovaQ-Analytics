@@ -305,7 +305,7 @@
   "integrity.incomplete": "Hindi kumpleto ang paghahambing. Hindi makakalkula ang kabuuang matitipid.",
   "integrity.legacy": "Lumang scenario: hindi beripikado ang pinagmulan ng kalkulasyon.",
   "integrity.staffing_basis": "Ipinapalagay na isang oras ang bawat segment; hindi iskedyul ng empleyado ang mga pangangailangan. Kasama sa matitipid ang tinatayang gastos sa paghihintay at pag-alis.",
-  "integrity.simulation_coverage": "M/M/1 at M/M/c lamang ang saklaw ng DES at Monte Carlo. Hindi nito bineberipika ang ibang modelo.",
+  "integrity.simulation_coverage": "Saklaw ng DES at Monte Carlo ang M/M/1, M/M/c, at sinusuportahang separate M/G/1 queues. Hindi bineberipika ng mga simulation na ito ang ibang modelo.",
   "integrity.unsupported": "Hindi suportado ang simulation; walang resulta ng beripikasyon.",
   "integrity.erlang_basis": "Ang W/Wq ng Erlang-A ay ratio ng workload sa throughput ng naserbisyuhan, hindi karaniwang paghihintay ng lahat ng dumating o naserbisyuhan.",
   "integrity.status.Unavailable": "Hindi available",

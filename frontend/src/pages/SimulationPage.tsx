@@ -204,7 +204,7 @@ export function SimulationPage() {
   ) ?? trace?.segments[0] ?? null
   const playbackLayout = activePlaybackSegment
     ? selectPlaybackLayout(activePlaybackSegment.queue_structure)
-    : 'shared'
+    : (queueStructure === 'separate_queues' ? 'separate' : 'shared')
   const mcRows = isCurrentMode
     ? mcCurrentRun.data?.evidence.result.results ?? workflow.data.mc_current?.result.results ?? []
     : mcRun.data?.evidence.result.results ?? workflow.data.mc?.result.results ?? []
@@ -376,7 +376,7 @@ export function SimulationPage() {
               <div className="card-grid">
                 <MetricCard label={t('simulation.stable')} value={desRows.filter((row) => ['Lean', 'Normal', 'Peak'].includes(row.status)).length} />
                 <MetricCard label={t('simulation.critical')} value={desRows.filter((row) => ['Critical', 'Unstable', 'ERROR'].includes(row.status)).length} />
-                <MetricCard label={t('simulation.served')} value={desRows.reduce((sum, row) => sum + row.served, 0)} />
+                <MetricCard label={t('simulation.served')} value={desRows.reduce((sum, row) => sum + (typeof row.served === 'number' && Number.isFinite(row.served) ? row.served : 0), 0)} />
                 <MetricCard label={t('simulation.live_complete')} value={trace.event_count} />
               </div>
               <p className="form-hint">
@@ -410,7 +410,7 @@ export function SimulationPage() {
                       <tr key={`${row.time}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`}>
                         <th scope="row">{row.time}</th>
                         {showDesQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}
-                        <td>{row.status}</td>
+                        <td>{row.error ?? row.status}</td>
                         <td>{fmt(row.rho_sim, 3)}</td>
                         <td>{fmt(row.Lq_sim, 3)}</td>
                         <td>{fmt(row.Wq_sim == null ? null : row.Wq_sim * 60, 2)}</td>

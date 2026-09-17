@@ -402,6 +402,29 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(await screen.findByTestId('lane-queue_1')).toBeInTheDocument()
   })
 
+  it('shows capability errors distinctly instead of blank rows and NaN totals', async () => {
+    separateSetup()
+    const blockedTrace = {
+      ...separateTrace,
+      results: [
+        { time: '05:00-06:00', queue_structure: 'separate', simulation_supported: false, selected_model: 'Parallel M/G/1', error: 'Parallel M/G/1 DES requires structured QueueSetup.segments.' },
+        { time: '06:00-07:00', queue_structure: 'separate', simulation_supported: false, selected_model: 'Parallel M/G/1', error: 'Parallel M/G/1 DES requires structured QueueSetup.segments.' },
+      ],
+      trace: [],
+      event_count: 0,
+      segments: [],
+    }
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: job('workflow_des_current', { ...blockedTrace, provenance: 'CURRENT' }, { scenario_id: null }),
+    }))
+    renderPage()
+    expect(await screen.findAllByText('Parallel M/G/1 DES requires structured QueueSetup.segments.')).toHaveLength(2)
+    expect(screen.queryByText('NaN')).not.toBeInTheDocument()
+    expect(screen.getByText('Separate queues view')).toBeInTheDocument()
+  })
+
   it('renders same-time queues as distinct DES rows without key collisions', async () => {
     const errors: unknown[][] = []
     const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args) })
