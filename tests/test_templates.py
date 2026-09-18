@@ -196,3 +196,28 @@ def test_template_endpoints(db_engine, client):
     bad = client.get("/templates/guide?structure=pooled&schema=aggregate")
     assert bad.status_code == 422
     assert HEADER_ALIASES["queue_id"]
+
+
+def test_separate_events_workbook_has_events_staff_and_breaks_sheets():
+    import openpyxl
+
+    from backend.data import uploads
+
+    data = template_workbook("separate_queues", "events")
+    workbook = openpyxl.load_workbook(io.BytesIO(data))
+    assert workbook.sheetnames == ["events", "staff", "breaks", "Example", "Field Guide"]
+    headers = {name: [cell.value for cell in workbook[name][1]] for name in ("events", "staff", "breaks")}
+    assert headers == {
+        "events": ["arrival_time", "service_start", "service_end", "queue_id"],
+        "staff": ["queue_id", "shift_start", "shift_end"],
+        "breaks": ["queue_id", "break_name", "start", "minutes"],
+    }
+    guide_fields = [row[0].value for row in workbook["Field Guide"].iter_rows(min_row=2)]
+    for field in ("shift_start", "shift_end", "break_name", "start", "minutes"):
+        assert field in guide_fields
+    sheets = uploads.parse_upload_workbook("template.xlsx", data)
+    assert sheets is not None and sheets["staff"] is None and sheets["breaks"] is None
+    # The shared template and its guide are unchanged.
+    shared = openpyxl.load_workbook(io.BytesIO(template_workbook("shared_queue", "events")))
+    assert shared.sheetnames == ["Data Entry", "Example", "Field Guide"]
+    assert "shift_start" not in [row[0].value for row in shared["Field Guide"].iter_rows(min_row=2)]

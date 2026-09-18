@@ -946,5 +946,22 @@
   "optimize.breaks_des_served": "Customers served",
   "optimize.breaks_des_better": "Proposed breaks had the shorter average wait in {{better}} of {{runs}} simulated days.",
   "optimize.breaks_des_note": "Both schedules are simulated with the same random seeds. This compares simulation with simulation, never with recorded waits.",
-  "optimize.breaks_shared_note": "Break optimization is available for separate queues."
+  "optimize.breaks_shared_note": "Break optimization is available for separate queues.",
+  "analyses.break_label": "Break {{number}}",
+  "analyses.break_minutes": "{{minutes}} min",
+  "analyses.upload_read_title": "Here's what NovaQ read from your file",
+  "analyses.upload_read_queues": "Queues",
+  "analyses.upload_read_shifts": "Shifts",
+  "analyses.upload_read_no_staff": "No staff sheet: every queue works the whole day.",
+  "analyses.upload_read_segments": "Segments ({{count}})",
+  "analyses.upload_read_breaks": "Breaks",
+  "analyses.upload_read_no_breaks": "No breaks",
+  "analyses.upload_read_errors": "NovaQ could not read your file:",
+  "analyses.upload_confirm_title": "This file would change your saved Setup",
+  "analyses.upload_confirm_help": "Your saved Setup stays as it is until you confirm. These settings would change:",
+  "analyses.upload_confirm": "Replace Setup and upload",
+  "analyses.upload_field_queue_ids": "Queue IDs",
+  "analyses.upload_field_closure_policy": "Queue closing policy",
+  "analyses.setup_workbook_download": "Download setup workbook",
+  "analyses.setup_workbook_help": "Contains the staff and breaks sheets from this Setup. Add your events sheet to upload it again."
 }

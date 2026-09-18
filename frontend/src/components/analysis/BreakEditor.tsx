@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import type { QueueBreak } from '../../api/types'
 
@@ -5,6 +6,25 @@ interface BreakEditorProps {
   queueIds: string[]
   breaks: QueueBreak[]
   onChange: (breaks: QueueBreak[]) => void
+}
+
+function padTime(value: string): string {
+  return value.length === 5 ? `${value}:00` : value
+}
+
+/** A break's label: its name, else "Break n" in time order within its queue. */
+function breakLabels(breaks: QueueBreak[], t: TFunction): string[] {
+  const labels: string[] = new Array(breaks.length).fill('')
+  const byQueue = new Map<string, number[]>()
+  breaks.forEach((entry, index) => byQueue.set(entry.queue_id, [...(byQueue.get(entry.queue_id) ?? []), index]))
+  for (const indices of byQueue.values()) {
+    const ordered = [...indices].sort((left, right) =>
+      padTime(breaks[left].scheduled_start_time).localeCompare(padTime(breaks[right].scheduled_start_time)) || left - right)
+    ordered.forEach((index, position) => {
+      labels[index] = breaks[index].break_name || t('analyses.break_label', { number: position + 1 })
+    })
+  }
+  return labels
 }
 
 /**
@@ -16,6 +36,7 @@ interface BreakEditorProps {
  */
 export function BreakEditor({ queueIds, breaks, onChange }: BreakEditorProps) {
   const { t } = useTranslation()
+  const labels = breakLabels(breaks, t)
 
   function update(index: number, update: Partial<QueueBreak>) {
     onChange(breaks.map((entry, position) => (position === index ? { ...entry, ...update } : entry)))
@@ -31,6 +52,7 @@ export function BreakEditor({ queueIds, breaks, onChange }: BreakEditorProps) {
       <p className="form-hint">{t('analyses.breaks_help')}</p>
       {breaks.map((entry, index) => (
         <div className="form-row" key={`break-${index}`} style={{ alignItems: 'flex-end', gap: '10px', marginTop: '8px' }}>
+          <span className="form-hint" data-testid="break-label" style={{ minWidth: '72px', alignSelf: 'center' }}>{labels[index]}</span>
           <div className="form-field" style={{ flex: 1 }}>
             <label htmlFor={`break-queue-${index}`}>
               {t('analyses.break_queue_label', { count: index + 1 })}

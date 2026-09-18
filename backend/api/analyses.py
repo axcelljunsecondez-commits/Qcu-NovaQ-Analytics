@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from backend.api.scenarios import _to_out as scenario_out
 from backend.api.settings import Settings
 from backend.data import uploads
 from backend.data.analysis_ingestion import AnalysisIngestionError, normalize_analysis_input
+from backend.data.setup_derivation import SetupExportError, derive_setup, setup_diff, setup_workbook
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
 from backend.queueing_engine.services.data_processing import compute_kpis
@@ -177,6 +178,7 @@ def upload_analysis_dataset(
     analysis_id: int,
     file: UploadFile = File(...),
     name: str | None = None,
+    apply_setup: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
@@ -188,6 +190,8 @@ def upload_analysis_dataset(
     data = file.file.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(status_code=413, detail="File too large.")
+    if apply_setup:
+        return _apply_setup_upload(db, analysis, user, file.filename or "", data, name, settings)
     try:
         frame = uploads.sanitize_workbook(
             uploads.parse_upload(
@@ -223,6 +227,114 @@ def upload_analysis_dataset(
     db.commit()
     db.refresh(dataset)
     return {"dataset": dataset_out(dataset, include_normalized=True)}
+
+
+def _upload_limits(settings: Settings) -> dict:
+    return {
+        "xlsx_max_uncompressed_bytes": settings.xlsx_max_uncompressed_bytes,
+        "xlsx_max_zip_members": settings.xlsx_max_zip_members,
+        "xlsx_max_compression_ratio": settings.xlsx_max_compression_ratio,
+        "xlsx_max_worksheets": settings.xlsx_max_worksheets,
+        "max_rows": settings.upload_max_rows,
+        "max_columns": settings.upload_max_columns,
+        "max_cell_chars": settings.upload_max_cell_chars,
+        "max_dataframe_bytes": settings.upload_max_dataframe_bytes,
+    }
+
+
+def _read_setup_sheets(filename: str, data: bytes, settings: Settings) -> dict | None:
+    """Setup workbook sheets (sanitized), or None for legacy files."""
+    try:
+        sheets = uploads.parse_upload_workbook(filename, data, settings.max_upload_bytes, **_upload_limits(settings))
+    except uploads.UploadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if sheets is None:
+        return None
+    return {key: None if frame is None else uploads.sanitize_workbook(frame) for key, frame in sheets.items()}
+
+
+def _apply_setup_upload(db: Session, analysis: AnalysisProject, user: User, filename: str, data: bytes,
+                        name: str | None, settings: Settings) -> dict:
+    """Save the Setup derived from a three-sheet upload and its dataset in one commit."""
+    sheets = _read_setup_sheets(filename, data, settings)
+    if sheets is None:
+        raise HTTPException(status_code=422, detail="apply_setup requires a workbook with an events sheet.")
+    derivation = derive_setup(sheets, analysis.queue_setup_json)
+    if derivation.errors or derivation.setup is None:
+        raise HTTPException(status_code=422, detail=" ".join(derivation.errors))
+    setup = QueueSetup.model_validate(derivation.setup)
+    safe_filename = uploads.safe_stem(filename or "upload")
+    records = derivation.records
+    dataset = Dataset(
+        user_id=user.id,
+        analysis_id=analysis.id,
+        name=(name or Path(safe_filename).stem)[:255],
+        source_filename=safe_filename[:255],
+        source_format=Path(safe_filename).suffix.lower().lstrip("."),
+        row_count=len(records),
+        normalized_json=records,
+        validation_report_json={"ok": True, "message": "Input data is valid.", **derivation.provenance},
+    )
+    analysis.queue_setup_json = setup.model_dump(mode="json")
+    analysis.setup_status = setup_status(setup)
+    analysis.updated_at = datetime.now(timezone.utc)
+    db.add(dataset)
+    db.commit()
+    db.refresh(dataset)
+    return {"dataset": dataset_out(dataset, include_normalized=True)}
+
+
+@router.post("/{analysis_id}/datasets/preview")
+def preview_analysis_dataset(
+    analysis_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(user_rate_limit("upload")),
+) -> dict:
+    """Show the Setup a three-sheet upload would derive. Nothing is stored."""
+    analysis = own_analysis(db, user, analysis_id)
+    if analysis.archived_at is not None:
+        raise HTTPException(status_code=409, detail="Archived analyses cannot accept uploads.")
+    data = file.file.read(settings.max_upload_bytes + 1)
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail="File too large.")
+    sheets = _read_setup_sheets(file.filename or "", data, settings)
+    if sheets is None:
+        return {"mode": "legacy"}
+    saved = QueueSetup.model_validate(analysis.queue_setup_json or {}).model_dump(mode="json")
+    derivation = derive_setup(sheets, saved)
+    diff = setup_diff(saved, derivation.setup) if derivation.setup is not None else []
+    return {
+        "mode": "multi_sheet",
+        "derived_setup": derivation.setup,
+        "saved_setup": saved,
+        "diff": diff,
+        "needs_confirmation": saved["queue_structure"] != "unknown" and bool(diff),
+        "staff": derivation.staff_rows,
+        "breaks": derivation.break_rows,
+        "errors": derivation.errors,
+    }
+
+
+@router.get("/{analysis_id}/setup/workbook")
+def export_setup_workbook(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """The Setup's staff and breaks sheets, ready to re-upload with the events sheet."""
+    analysis = own_analysis(db, user, analysis_id)
+    try:
+        content = setup_workbook(analysis.queue_setup_json or {})
+    except SetupExportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="novaq_setup_{analysis.id}.xlsx"'},
+    )
 
 
 @router.get("/{analysis_id}/current")

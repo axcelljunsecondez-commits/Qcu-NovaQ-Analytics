@@ -128,7 +128,43 @@ export interface QueueBreak {
   queue_id: string
   scheduled_start_time: string
   duration_minutes: number
+  break_name?: string | null
 }
+
+export interface SetupStaffRow {
+  row: number
+  queue_id: string
+  shift_start: string
+  shift_end: string
+}
+
+export interface SetupBreakRow {
+  row: number
+  queue_id: string
+  break_name: string | null
+  start: string
+  minutes: number | string | null
+  label: string | null
+}
+
+export interface SetupFieldChange {
+  field: string
+  saved: unknown
+  derived: unknown
+}
+
+export type DatasetPreviewOut =
+  | { mode: 'legacy' }
+  | {
+      mode: 'multi_sheet'
+      derived_setup: QueueSetup | null
+      saved_setup: QueueSetup
+      diff: SetupFieldChange[]
+      needs_confirmation: boolean
+      staff: SetupStaffRow[]
+      breaks: SetupBreakRow[]
+      errors: string[]
+    }
 
 export interface QueueSetup {
   queue_structure: QueueStructure

@@ -118,6 +118,51 @@ FIELD_GUIDE: list[dict[str, str]] = [
     },
 ]
 
+# Separate customer-event workbooks also carry ``staff`` and ``breaks`` sheets
+# (backend/data/setup_derivation.py derives Setup from them). Kept apart from
+# FIELD_GUIDE so every other template and guide stays unchanged.
+SETUP_SHEET_COLUMNS: dict[str, list[str]] = {
+    "staff": ["queue_id", "shift_start", "shift_end"],
+    "breaks": ["queue_id", "break_name", "start", "minutes"],
+}
+SETUP_SHEET_GUIDE: list[dict[str, str]] = [
+    {
+        "field": "shift_start",
+        "meaning": "Staff sheet: when this queue's cashier starts work.",
+        "required": "Optional sheet; one row per queue_id",
+        "example": "05:00",
+        "notes": "Wall-clock HH:MM. Without a staff sheet, every queue works the whole day.",
+    },
+    {
+        "field": "shift_end",
+        "meaning": "Staff sheet: when this queue's cashier stops taking new customers.",
+        "required": "Optional sheet; one row per queue_id",
+        "example": "17:00",
+        "notes": "Must be after shift_start. Customers already in line are still served.",
+    },
+    {
+        "field": "break_name",
+        "meaning": "Breaks sheet: an optional label for the break.",
+        "required": "Optional",
+        "example": "Lunch",
+        "notes": "At most 50 characters. Blank breaks are labelled Break 1, 2, 3 in time order.",
+    },
+    {
+        "field": "start",
+        "meaning": "Breaks sheet: when the break starts.",
+        "required": "Required for each break row",
+        "example": "11:00",
+        "notes": "Wall-clock HH:MM, inside the queue's shift. Breaks of one queue must not overlap.",
+    },
+    {
+        "field": "minutes",
+        "meaning": "Breaks sheet: how long the break lasts.",
+        "required": "Required for each break row",
+        "example": "60",
+        "notes": "A positive whole number of minutes.",
+    },
+]
+
 # Clearly marked example rows. Every set validates cleanly on its own.
 EXAMPLE_ROWS: dict[tuple[str, str], list[dict[str, object]]] = {
     ("shared_queue", "aggregate"): [
@@ -194,10 +239,16 @@ def template_workbook(structure: str, schema: str) -> bytes:
     columns = template_columns(structure, schema)
     guide = field_guide(structure, schema)
     examples = example_rows(structure, schema)
+    setup_sheets = (structure, schema) == ("separate_queues", "events")
+    if setup_sheets:
+        guide = guide + SETUP_SHEET_GUIDE
     workbook = Workbook()
     entry = workbook.active
-    entry.title = "Data Entry"
+    entry.title = "events" if setup_sheets else "Data Entry"
     entry.append(columns)
+    if setup_sheets:
+        for title, sheet_columns in SETUP_SHEET_COLUMNS.items():
+            workbook.create_sheet(title).append(sheet_columns)
     example = workbook.create_sheet("Example")
     example.append(columns)
     for row in examples:
@@ -206,9 +257,10 @@ def template_workbook(structure: str, schema: str) -> bytes:
     sheet.append(["Field", "What it means", "Required?", "Example", "Notes"])
     for item in guide:
         sheet.append([item["field"], item["meaning"], item["required"], item["example"], item["notes"]])
-    for sheet in (entry, example):
-        for index in range(1, len(columns) + 1):
-            sheet.column_dimensions[get_column_letter(index)].width = 20
+    for sheet in workbook.worksheets:
+        if sheet.title != "Field Guide":
+            for index in range(1, len(columns) + 1):
+                sheet.column_dimensions[get_column_letter(index)].width = 20
     guide_sheet = workbook["Field Guide"]
     for index in range(1, 6):
         guide_sheet.column_dimensions[get_column_letter(index)].width = 32
@@ -225,6 +277,8 @@ __all__ = [
     "FIELD_GUIDE",
     "HEADER_ALIASES",
     "SCHEMAS",
+    "SETUP_SHEET_COLUMNS",
+    "SETUP_SHEET_GUIDE",
     "STRUCTURES",
     "TEMPLATE_COLUMNS",
     "example_rows",

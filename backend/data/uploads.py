@@ -94,6 +94,75 @@ def parse_upload(
     return _validate_frame(frame, max_rows, max_columns, max_cell_chars, max_dataframe_bytes)
 
 
+SETUP_SHEETS = ("events", "staff", "breaks")
+
+
+def parse_upload_workbook(
+    filename: str,
+    data: bytes,
+    max_bytes: int = DEFAULT_MAX_UPLOAD_BYTES,
+    *,
+    xlsx_max_uncompressed_bytes: int = DEFAULT_XLSX_MAX_UNCOMPRESSED_BYTES,
+    xlsx_max_zip_members: int = DEFAULT_XLSX_MAX_ZIP_MEMBERS,
+    xlsx_max_compression_ratio: float = DEFAULT_XLSX_MAX_COMPRESSION_RATIO,
+    xlsx_max_worksheets: int = DEFAULT_XLSX_MAX_WORKSHEETS,
+    max_rows: int = DEFAULT_UPLOAD_MAX_ROWS,
+    max_columns: int = DEFAULT_UPLOAD_MAX_COLUMNS,
+    max_cell_chars: int = DEFAULT_UPLOAD_MAX_CELL_CHARS,
+    max_dataframe_bytes: int = DEFAULT_UPLOAD_MAX_DATAFRAME_BYTES,
+) -> dict[str, pd.DataFrame | None] | None:
+    """Read the ``events``/``staff``/``breaks`` sheets of a setup workbook.
+
+    Returns None for CSV files and for workbooks without an ``events`` sheet
+    (legacy mode: callers use ``parse_upload``). Sheet names match
+    case-insensitively after trimming. The archive checks run once; the row,
+    column, cell, and memory limits run on every sheet read. A ``staff`` or
+    ``breaks`` sheet that is missing or has no data rows is returned as None.
+    """
+    name = filename.lower()
+    if not name.endswith(ALLOWED_EXTENSIONS):
+        raise UploadError("Upload must be a CSV or XLSX file.")
+    if len(data) > max_bytes:
+        raise UploadError(f"File too large: limit is {max_bytes} bytes.")
+    if name.endswith(".csv"):
+        return None
+    if not data.startswith(_XLSX_MAGIC):
+        raise UploadError("Uploaded file is not a valid Excel workbook.")
+    _validate_xlsx_archive(
+        data,
+        max_uncompressed_bytes=xlsx_max_uncompressed_bytes,
+        max_members=xlsx_max_zip_members,
+        max_compression_ratio=xlsx_max_compression_ratio,
+        max_worksheets=xlsx_max_worksheets,
+    )
+    try:
+        workbook = pd.ExcelFile(io.BytesIO(data), engine="openpyxl")
+        sheet_names = list(workbook.sheet_names)
+    except Exception as exc:
+        raise UploadError("Could not parse the XLSX file.") from exc
+    found: dict[str, str] = {}
+    for sheet_name in sheet_names:
+        key = str(sheet_name).strip().lower()
+        if key in SETUP_SHEETS:
+            if key in found:
+                raise UploadError(f"The workbook has more than one sheet named {key}.")
+            found[key] = str(sheet_name)
+    if "events" not in found:
+        return None
+    sheets: dict[str, pd.DataFrame | None] = {}
+    for key in SETUP_SHEETS:
+        if key not in found:
+            sheets[key] = None
+            continue
+        try:
+            frame = pd.read_excel(workbook, sheet_name=found[key], keep_default_na=False)
+        except Exception as exc:
+            raise UploadError("Could not parse the XLSX file.") from exc
+        frame = _validate_frame(frame, max_rows, max_columns, max_cell_chars, max_dataframe_bytes)
+        sheets[key] = None if key != "events" and frame.empty else frame
+    return sheets
+
+
 def _validate_xlsx_archive(
     data: bytes,
     *,
@@ -173,6 +242,7 @@ __all__ = [
     "DEFAULT_MAX_UPLOAD_BYTES",
     "UploadError",
     "parse_upload",
+    "parse_upload_workbook",
     "safe_stem",
     "sanitize_workbook",
 ]

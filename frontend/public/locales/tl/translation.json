@@ -947,5 +947,22 @@
   "optimize.breaks_des_served": "Mga customer na napagsilbihan",
   "optimize.breaks_des_better": "Mas maikli ang karaniwang paghihintay sa mungkahing pahinga sa {{better}} sa {{runs}} simulated na araw.",
   "optimize.breaks_des_note": "Parehong sini-simulate ang dalawang iskedyul gamit ang parehong random seeds. Simulation laban sa simulation ang paghahambing na ito, hindi kailanman sa naitalang paghihintay.",
-  "optimize.breaks_shared_note": "Available ang break optimization para sa separate queues."
+  "optimize.breaks_shared_note": "Available ang break optimization para sa separate queues.",
+  "analyses.break_label": "Pahinga {{number}}",
+  "analyses.break_minutes": "{{minutes}} min",
+  "analyses.upload_read_title": "Narito ang nabasa ng NovaQ mula sa iyong file",
+  "analyses.upload_read_queues": "Mga pila",
+  "analyses.upload_read_shifts": "Mga shift",
+  "analyses.upload_read_no_staff": "Walang staff sheet: bukas ang bawat pila sa buong araw.",
+  "analyses.upload_read_segments": "Mga time segment ({{count}})",
+  "analyses.upload_read_breaks": "Mga pahinga",
+  "analyses.upload_read_no_breaks": "Walang pahinga",
+  "analyses.upload_read_errors": "Hindi mabasa ng NovaQ ang iyong file:",
+  "analyses.upload_confirm_title": "Babaguhin ng file na ito ang naka-save mong Setup",
+  "analyses.upload_confirm_help": "Mananatili ang naka-save mong Setup hanggang kumpirmahin mo. Magbabago ang mga setting na ito:",
+  "analyses.upload_confirm": "Palitan ang Setup at i-upload",
+  "analyses.upload_field_queue_ids": "Mga queue ID",
+  "analyses.upload_field_closure_policy": "Patakaran sa pagsasara ng pila",
+  "analyses.setup_workbook_download": "I-download ang setup workbook",
+  "analyses.setup_workbook_help": "Naglalaman ng staff at breaks sheet mula sa Setup na ito. Idagdag ang iyong events sheet para ma-upload itong muli."
 }

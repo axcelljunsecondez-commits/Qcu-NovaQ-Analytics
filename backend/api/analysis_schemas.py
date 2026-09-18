@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from datetime import time as datetime_time
 from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 
 class QueueStructure(str, Enum):
@@ -72,6 +80,15 @@ class QueueBreak(BaseModel):
     queue_id: str = Field(min_length=1, max_length=100)
     scheduled_start_time: datetime_time
     duration_minutes: int = Field(gt=0)
+    break_name: str | None = Field(default=None, max_length=50)
+
+    @model_serializer(mode="wrap")
+    def _omit_missing_name(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Unnamed breaks serialize exactly as before break_name existed.
+        data = handler(self)
+        if data.get("break_name") is None:
+            data.pop("break_name", None)
+        return data
 
 
 class QueueSetup(BaseModel):

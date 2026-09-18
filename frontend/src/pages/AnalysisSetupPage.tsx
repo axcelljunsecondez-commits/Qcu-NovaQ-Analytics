@@ -2,8 +2,8 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
-import { getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, uploadAnalysisDataset } from '../api/analyses'
-import type { EventPeriodBasis, QueueSetup } from '../api/types'
+import { downloadSetupWorkbook, getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, previewAnalysisDataset, uploadAnalysisDataset } from '../api/analyses'
+import type { DatasetPreviewOut, EventPeriodBasis, QueueSetup } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { BreakEditor } from '../components/analysis/BreakEditor'
 import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
@@ -20,6 +20,22 @@ function normalizeSetup(value: QueueSetup): QueueSetup {
     segments: (value.segments ?? []).map((segment) => ({ ...segment, active_queue_ids: segment.active_queue_ids ?? null })),
     breaks: (value.breaks ?? []).map((entry) => ({ ...entry })),
   }
+}
+
+// Setup fields a file upload can change, labelled with the Setup form's own keys.
+const SETUP_FIELD_LABELS: Record<string, string> = {
+  queue_structure: 'analyses.queue_structure',
+  queue_ids: 'analyses.upload_field_queue_ids',
+  segments: 'analyses.segments',
+  staffing_varies_by_period: 'analyses.staffing_varies',
+  fixed_server_count: 'analyses.server_count',
+  event_period_basis: 'analyses.period_basis',
+  breaks: 'analyses.breaks_title',
+  capacity_mode: 'analyses.capacity',
+  total_system_capacity: 'analyses.total_capacity',
+  abandonment_mode: 'analyses.abandonment',
+  patience_rate_per_hour: 'analyses.theta',
+  separate_queue_closure_policy: 'analyses.upload_field_closure_policy',
 }
 
 function structureDisplayKey(structure: QueueSetup['queue_structure']): string {
@@ -52,9 +68,20 @@ export function AnalysisSetupPage() {
     mutationFn: () => patchAnalysis(id, { queue_setup: setup }),
     onSuccess: () => { setFormError(null); setNotice(t('analyses.setup_saved')); void client.invalidateQueries({ queryKey: ['analysis', id] }) },
   })
+  const [preview, setPreview] = useState<Extract<DatasetPreviewOut, { mode: 'multi_sheet' }> | null>(null)
+  const [pendingConfirm, setPendingConfirm] = useState(false)
+  const [readErrors, setReadErrors] = useState<string[]>([])
+  const [checking, setChecking] = useState(false)
+  const [noticeIsError, setNoticeIsError] = useState(false)
   const upload = useMutation({
-    mutationFn: (selected: File) => uploadAnalysisDataset(id, selected),
-    onSuccess: (data) => { setNotice(data.dataset.validation.message); void client.invalidateQueries({ queryKey: ['datasets', id] }); void client.invalidateQueries({ queryKey: ['current', id] }) },
+    mutationFn: ({ selected, applySetup }: { selected: File; applySetup: boolean }) =>
+      applySetup ? uploadAnalysisDataset(id, selected, { applySetup: true }) : uploadAnalysisDataset(id, selected),
+    onSuccess: (data, variables) => {
+      setNotice(data.dataset.validation.message)
+      void client.invalidateQueries({ queryKey: ['datasets', id] })
+      void client.invalidateQueries({ queryKey: ['current', id] })
+      if (variables.applySetup) void client.invalidateQueries({ queryKey: ['analysis', id] })
+    },
     onError: (error) => setNotice(messageOf(error, t('errors.upload'))),
   })
   if (analysis.isLoading) return <ApiState.Loading />
@@ -115,7 +142,30 @@ export function AnalysisSetupPage() {
     setFormError(null)
     save.mutate()
   }
-  function pick(event: ChangeEvent<HTMLInputElement>) { setFile(event.target.files?.[0] ?? null); setNotice(null) }
+  function pick(event: ChangeEvent<HTMLInputElement>) { setFile(event.target.files?.[0] ?? null); setNotice(null); setPreview(null); setPendingConfirm(false); setReadErrors([]) }
+  async function processFile(selected: File) {
+    setNotice(null); setNoticeIsError(false); setPreview(null); setPendingConfirm(false); setReadErrors([])
+    if (!selected.name.toLowerCase().endsWith('.xlsx')) { upload.mutate({ selected, applySetup: false }); return }
+    setChecking(true)
+    try {
+      const result = await previewAnalysisDataset(id, selected)
+      if (result.mode === 'legacy') { upload.mutate({ selected, applySetup: false }); return }
+      if (result.errors.length > 0 || !result.derived_setup) { setReadErrors(result.errors); return }
+      setPreview(result)
+      if (result.needs_confirmation) setPendingConfirm(true)
+      else upload.mutate({ selected, applySetup: true })
+    } catch (error) {
+      setNoticeIsError(true)
+      setNotice(messageOf(error, t('errors.upload')))
+    } finally {
+      setChecking(false)
+    }
+  }
+  async function exportWorkbook() {
+    try { await downloadSetupWorkbook(id) } catch (error) { setNoticeIsError(true); setNotice(messageOf(error, t('errors.server'))) }
+  }
+  const savedIsSeparate = analysis.data.analysis.queue_setup.queue_structure === 'separate_queues'
+  const read = preview?.derived_setup ?? null
   return (
     <div>
       <header className="page-header">
@@ -154,8 +204,46 @@ export function AnalysisSetupPage() {
         <h2 className="card-title">{t('analyses.upload')}</h2>
         <p className="page-caption">{t('analyses.upload_help')}</p>
         <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" onChange={pick} />
-        <button type="button" disabled={!file || upload.isPending} onClick={() => file && upload.mutate(file)}>{t('analyses.process')}</button>
-        {notice && <div className={`alert ${upload.isError ? 'alert-error' : 'alert-ok'}`} role={upload.isError ? 'alert' : 'status'}>{notice}</div>}
+        <button type="button" disabled={!file || upload.isPending || checking} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
+        {notice && <div className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}</div>}
+        {readErrors.length > 0 && (
+          <div className="alert alert-error" role="alert">
+            <strong>{t('analyses.upload_read_errors')}</strong>
+            <ul>{readErrors.map((message) => <li key={message}>{message}</li>)}</ul>
+          </div>
+        )}
+        {pendingConfirm && preview && (
+          <div className="alert alert-warn">
+            <strong>{t('analyses.upload_confirm_title')}</strong>
+            <p>{t('analyses.upload_confirm_help')}</p>
+            <ul>{preview.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}</li>)}</ul>
+            <button type="button" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) upload.mutate({ selected: file, applySetup: true }) }}>{t('analyses.upload_confirm')}</button>
+            <button type="button" className="btn-ghost" onClick={() => { setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
+          </div>
+        )}
+        {preview && read && (
+          <section className="card" aria-label={t('analyses.upload_read_title')}>
+            <h3 className="card-title">{t('analyses.upload_read_title')}</h3>
+            <dl>
+              <dt>{t('analyses.upload_read_queues')}</dt>
+              <dd>{read.queue_ids.join(', ')}</dd>
+              <dt>{t('analyses.upload_read_shifts')}</dt>
+              <dd>{preview.staff.length > 0 ? <ul>{preview.staff.map((row) => <li key={row.queue_id}>{`${row.queue_id}: ${row.shift_start}–${row.shift_end}`}</li>)}</ul> : t('analyses.upload_read_no_staff')}</dd>
+              <dt>{t('analyses.upload_read_segments', { count: read.segments.length })}</dt>
+              <dd><ul>{read.segments.map((segment) => <li key={segment.id ?? segment.start_time}>{`${segment.id}: ${(segment.active_queue_ids ?? read.queue_ids).join(', ')}`}</li>)}</ul></dd>
+              <dt>{t('analyses.upload_read_breaks')}</dt>
+              <dd>{preview.breaks.length > 0 ? <ul>{preview.breaks.map((row) => <li key={row.row}>{`${row.queue_id} · ${row.break_name || t('analyses.break_label', { number: (row.label ?? '').replace(/^Break /, '') })} · ${row.start} · ${t('analyses.break_minutes', { minutes: row.minutes })}`}</li>)}</ul> : t('analyses.upload_read_no_breaks')}</dd>
+              <dt>{t('analyses.period_basis')}</dt>
+              <dd>{t(read.event_period_basis === 'representative_day' ? 'analyses.period_basis_representative_day' : 'analyses.period_basis_per_date')}</dd>
+            </dl>
+          </section>
+        )}
+        {savedIsSeparate && (
+          <div style={{ marginTop: '12px' }}>
+            <button type="button" className="btn-secondary" onClick={() => void exportWorkbook()}>{t('analyses.setup_workbook_download')}</button>
+            <p className="form-hint">{t('analyses.setup_workbook_help')}</p>
+          </div>
+        )}
       </div>
       <SetupDataTemplates queueStructure={setup.queue_structure} />
       {current.data && <div className="card"><h2 className="card-title">{t('analyses.why_model')}</h2><p><strong>{current.data.selected_model}</strong></p>{current.data.explanations.map((item) => <details key={item.time}><summary>{item.time}: {item.selected_model}</summary><p>{item.selection_reason}</p><h3>{t('analyses.operational_facts')}</h3><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h3>{t('analyses.measured')}</h3><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h3>{t('analyses.assumptions')}</h3><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}<Link className="button-link" to="../current">{t('analyses.view_current')}</Link></div>}

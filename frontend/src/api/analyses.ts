@@ -1,5 +1,6 @@
 import { http } from '../lib/http'
-import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, QueueSetup } from './types'
+import { downloadReport } from './reports'
+import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, DatasetPreviewOut, QueueSetup } from './types'
 
 export interface AnalysisInput {
   name: string
@@ -38,11 +39,28 @@ export async function listAnalysisDatasets(id: number): Promise<{ datasets: Data
   return data
 }
 
-export async function uploadAnalysisDataset(id: number, file: File): Promise<{ dataset: DatasetOut }> {
+export async function uploadAnalysisDataset(
+  id: number,
+  file: File,
+  options: { applySetup?: boolean } = {},
+): Promise<{ dataset: DatasetOut }> {
   const body = new FormData()
   body.append('file', file)
-  const { data } = await http.post<{ dataset: DatasetOut }>(`/analyses/${id}/datasets`, body)
+  const config = options.applySetup ? { params: { apply_setup: true } } : undefined
+  const { data } = await http.post<{ dataset: DatasetOut }>(`/analyses/${id}/datasets`, body, config)
   return data
+}
+
+export async function previewAnalysisDataset(id: number, file: File): Promise<DatasetPreviewOut> {
+  const body = new FormData()
+  body.append('file', file)
+  const { data } = await http.post<DatasetPreviewOut>(`/analyses/${id}/datasets/preview`, body)
+  return data
+}
+
+export async function downloadSetupWorkbook(id: number): Promise<void> {
+  const res = await http.get(`/analyses/${id}/setup/workbook`, { responseType: 'blob' })
+  downloadReport(res.data as Blob, `novaq_setup_${id}.xlsx`)
 }
 
 export async function getAnalysisCurrent(id: number): Promise<AnalysisCurrentOut> {
