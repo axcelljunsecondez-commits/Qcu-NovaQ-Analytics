@@ -18,16 +18,17 @@ from .optimization import (
     optimize_segments,
     summarize_optimization,
 )
+from .separate_optimization import optimize_separate
 
 __all__ = [
     "CURRENT_COLUMNS",
     "compute_all_costs",
     "compute_blended_rate",
     "compute_cost_summary",
-    "compute_kpis",
     "compute_segment_costs",
     "optimize_segment",
     "optimize_segments",
+    "optimize_separate",
     "process_segments",
     "summarize_optimization",
 ]

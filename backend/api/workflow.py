@@ -29,6 +29,8 @@ from backend.queueing_engine.services.model_explanations import analyze_segments
 from backend.queueing_engine.services.separate_optimization import (
     SEPARATE_DES_ENGINE_VERSION,
     _period_current_active,
+    _segment_window,
+    des_day_start_minutes,
     evaluate_candidate_with_des,
     full_coverage_min_lanes,
     index_period_queues,
@@ -36,6 +38,7 @@ from backend.queueing_engine.services.separate_optimization import (
     period_des_breaks,
     prune_separate_schedule,
     resolve_des_breaks,
+    run_routing_day_des,
     validate_des_replication_config,
 )
 from backend.queueing_engine.simulation.simulation import (
@@ -993,17 +996,17 @@ def run_separate_optimize(
         des_settings = validate_des_replication_config(
             {key: value for key, value in payload.des.model_dump().items() if value is not None}
         )
-        min_lanes = full_coverage_min_lanes(setup, payload.min_active_lanes)
+        full_coverage_min_lanes(setup, payload.min_active_lanes)
         schedule = optimize_separate_schedule(
             setup,
             records,
             target=payload.target_utilization,
             server_cost=payload.server_cost_per_hr,
             waiting_cost=payload.customer_waiting_cost,
-            min_lanes=min_lanes,
             max_lanes=payload.max_active_lanes,
             lambda_multiplier=payload.lambda_multiplier,
             des_settings=des_settings,
+            full_coverage=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1289,7 +1292,12 @@ def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
     Reuses the proven single-run routing DES evaluator per period — same
     conserved arrivals, same live-system-size routing with seeded fair ties,
     same empirical service sampling. No optimizer calls.
+
+    Representative-day analyses run one continuous day instead
+    (``_run_selected_plan_day_des``) with the same output shape.
     """
+    if execute is None and (plan.get("setup") or {}).get("event_period_basis") == "representative_day":
+        return _run_selected_plan_day_des(plan, seed)
     executor = execute or evaluate_candidate_with_des
     scenario = plan["scenario"]
     schedule = plan["schedule"]
@@ -1463,6 +1471,117 @@ def run_selected_des(
     return {"evidence": _job_out(job)}
 
 
+def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[str, Any]:
+    """Execute the selected representative-day plan as one continuous day.
+
+    Periods map to their configured operating segments on the DES clock
+    (origin = earliest segment start); each period activates its persisted
+    optimum lanes; breaks come from the setup at their wall-clock offsets.
+    Lane rows keep the period-independent output shape; costs are not
+    computed in this mode and stay null.
+    """
+    scenario = plan["scenario"]
+    setup = plan.get("setup") or {}
+    records = plan["dataset"].normalized_json or []
+    try:
+        des_breaks = resolve_des_breaks(setup)
+        origin = des_day_start_minutes(setup)
+        windows_by_key = {key: (low, high) for key, low, high in
+                          (_segment_window(seg) for seg in setup.get("segments") or []
+                           if isinstance(seg, dict))}
+    except ValueError as exc:
+        raise SelectedPlanError(str(exc)) from exc
+    if origin is None:
+        raise SelectedPlanError("A representative day needs configured operating segments.")
+    windows: list[dict[str, Any]] = []
+    for sched_period in plan["schedule"].get("periods") or []:
+        label = str(sched_period.get("time"))
+        if label not in windows_by_key:
+            raise SelectedPlanError(f"Period {label} does not match a configured operating segment.")
+        low, high = windows_by_key[label]
+        queues = {}
+        for queue_id, row in index_period_queues(records, label).items():
+            scaled = dict(row)
+            scaled["lambda"] = float(row.get("lambda") or 0.0) * plan["multiplier"]
+            queues[queue_id] = scaled
+        windows.append({
+            "time": label, "start_hours": (low - origin) / 60.0, "end_hours": (high - origin) / 60.0,
+            "active_queue_ids": [str(q) for q in ((sched_period.get("optimum") or {})
+                                                  .get("active_queue_ids") or [])],
+            "queues_by_id": queues,
+        })
+    tie_order = [str(q) for q in setup.get("queue_ids", [])]
+    try:
+        day = run_routing_day_des(windows, tie_order=tie_order, seed=seed,
+                                  max_events=plan["max_events"], breaks=des_breaks)
+    except ValueError as exc:
+        raise SelectedPlanError(str(exc)) from exc
+    conserved = day["customer_conservation"] is True
+    periods_out = []
+    for window, period in zip(sorted(windows, key=lambda w: w["start_hours"]), day["periods"]):
+        label = period["time"]
+        lane_rows = []
+        for lane in period["lanes"]:
+            if not lane["active"] and not lane["arrivals"]:
+                continue
+            lane_rows.append({
+                "time": label, "queue_id": lane["queue_id"], "server_id": lane["server_id"],
+                "lambda": _json_number(lane["lambda"]),
+                "lambda_routed": _json_number(lane["lambda_routed_sim"]),
+                "mu": None, "c": 1, "arrivals": lane["arrivals"], "served": lane["served"],
+                "waiting": None, "in_service": None, "abandoned": None,
+                "Wq_sim": _json_number(lane["Wq"]), "rho_sim": _json_number(lane["rho"]),
+                "max_queue": lane["max_queue"], "active": bool(lane["active"]),
+                "simulation_supported": True, "error": None,
+                "metric_provenance": "simulated", "customer_conservation": conserved,
+            })
+        events = [e for e in day["trace_events"] if e.get("segment_id") == label]
+        periods_out.append({
+            "time": label,
+            "active_queue_ids": window["active_queue_ids"],
+            "inactive_queue_ids": [q for q in tie_order if q not in window["active_queue_ids"]],
+            "evaluation_status": "FEASIBLE" if conserved else "ERROR",
+            "conservation": conserved,
+            "duration_hours": period["duration_hours"],
+            "total_lambda": _json_number(sum(float(r["lambda"] or 0.0) for r in lane_rows)),
+            "total_cost": None, "server_cost": None, "waiting_cost": None,
+            "results": lane_rows,
+            "trace": {
+                "results": lane_rows, "trace": events,
+                "trace_hours": period["duration_hours"], "total_hours": day["day_hours"],
+                "event_count": len(events), "truncated": bool(day["trace_truncated"]),
+                "abandonment_supported": False,
+                "segments": [{"segment_id": f"{label}:{r['queue_id']}", "time": label,
+                              "queue_id": r["queue_id"], "lambda": r["lambda"], "mu": None, "c": 1,
+                              "selected_model": "Parallel M/G/1 (routing)",
+                              "simulation_supported": True, "error": None,
+                              "queue_structure": "separate", "initial_queue_depth": None,
+                              "final_queue_depth": None, "server_id": r["server_id"]}
+                             for r in lane_rows],
+            },
+        })
+    return {
+        "provenance": "SELECTED",
+        "engine_version": ENGINE_VERSION,
+        "execution": "selected-plan continuous-day routing DES (queues and breaks carry across periods)",
+        "arrival_method": "Poisson stream per period at the period's total lambda",
+        "routing_policy": "shortest system size with seeded fair ties",
+        "service_sampling_method": "empirical per-lane resampling for the arrival period",
+        "scenario_id": scenario.id,
+        "analysis_id": scenario.analysis_id,
+        "dataset_id": scenario.dataset_id,
+        "target_utilization": plan["target"],
+        "seed": seed,
+        "duration_hours": day["day_hours"],
+        "max_events": plan["max_events"],
+        "periods": periods_out,
+        "admitted": day["admitted"],
+        "served": day["served"],
+        "overall_conservation": conserved,
+        "overall_status": "COMPLETED" if conserved else "ERROR",
+    }
+
+
 def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> list[dict[str, Any]]:
     """Monte Carlo lane segments at DES-measured operating points.
 
@@ -1476,7 +1595,7 @@ def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> l
     for period in des_result.get("periods") or []:
         time_label = str(period.get("time", "Unknown"))
         by_id = index_period_queues(records, time_label)
-        duration = des_result.get("duration_hours") or 0.0
+        duration = period.get("duration_hours") or des_result.get("duration_hours") or 0.0
         for row in period.get("results") or []:
             if not row.get("active"):
                 continue

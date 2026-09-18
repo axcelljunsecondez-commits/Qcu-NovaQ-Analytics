@@ -56,6 +56,7 @@ from backend.queueing_engine.services.optimization import (
 from backend.queueing_engine.simulation.queue_lifecycle import (
     DedicatedQueueLifecycle,
     DedicatedQueueState,
+    QueueReactivationPolicyError,
     dedicated_server_id,
     scheduled_active_queue_ids,
 )
@@ -974,6 +975,221 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
     return stats, trace, truncated, {"admitted": admitted, "unrouted_at_horizon": admitted - routed}
 
 
+def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int | None,
+                        max_events: int, breaks: list[dict] | None = None) -> dict:
+    """Run one continuous operating day of the Separate routing DES.
+
+    ``periods`` are consecutive windows on the DES clock (``start_hours`` /
+    ``end_hours`` from the operating-day origin), each with its scheduled
+    ``active_queue_ids`` and per-lane rows (``lambda``, empirical
+    ``service_samples_hours``). Within a window one Poisson stream at the
+    window's total rate is routed by ``route_arrival`` over ACTIVE lanes
+    (same live-system-size rule and seeded ties as ``_run_routing_des``);
+    each customer is served by its own lane from that lane's samples for the
+    customer's arrival window. At window boundaries lanes open or close per
+    the schedule through ``DedicatedQueueLifecycle`` (a closing lane stops
+    taking arrivals and finishes its own queue in place). Breaks (absolute
+    DES offsets) use the same DRAINING -> ON_BREAK -> ACTIVE lifecycle and
+    carry across boundaries. Arrivals stop at the day end; service continues
+    until every admitted customer is served. Metrics are attributed to the
+    customer's arrival window.
+    """
+    if not periods:
+        raise ValueError("A day simulation needs at least one period.")
+    windows = sorted(periods, key=lambda p: float(p["start_hours"]))
+    lanes = list(tie_order)
+    samples: dict[tuple[str, str], list[float]] = {}
+    for window in windows:
+        for queue_id in window["active_queue_ids"]:
+            if queue_id not in lanes:
+                raise ValueError(f"Period {window['time']} schedules unknown lane {queue_id!r}.")
+            row = (window.get("queues_by_id") or {}).get(queue_id)
+            clean = _validated_samples(row) if isinstance(row, dict) else None
+            if clean is None:
+                raise ValueError(
+                    f"Lane {queue_id!r} has no empirical service samples for period {window['time']}.")
+            samples[(window["time"], queue_id)] = clean
+    by_queue_breaks = _validate_breaks(breaks, lanes)
+    env = simpy.Environment()
+    rng = random.Random(seed)
+    resources = {q: simpy.Resource(env, capacity=1) for q in lanes}
+    lifecycles = {q: DedicatedQueueLifecycle(q, dedicated_server_id(q)) for q in lanes}
+    first_active = set(windows[0]["active_queue_ids"])
+    for queue_id, lifecycle in lifecycles.items():
+        if queue_id not in first_active:
+            lifecycle.state = DedicatedQueueState.INACTIVE
+    scheduled = {"active": first_active}
+    day_end = float(windows[-1]["end_hours"])
+    stats = {(w["time"], q): {"arrivals": 0, "served": 0, "wait_sum": 0.0, "busy_time": 0.0,
+                              "max_queue": 0}
+             for w in windows for q in lanes}
+    trace: list[dict] = []
+    truncated = False
+    topology_changed = env.event()
+    pending_completion: dict[str, Any] = {q: None for q in lanes}
+    counters = {"customer": 0, "admitted": 0, "served": 0}
+    current_label = {"time": windows[0]["time"]}
+
+    def record(event_type, customer_id, queue_id, label, service_time_hours=None) -> None:
+        nonlocal truncated
+        if len(trace) >= max_events:
+            truncated = True
+            return
+        lifecycle = lifecycles[queue_id]
+        event = {"t": round(env.now, 6), "type": event_type, "segment_id": label,
+                 "customer_id": customer_id,
+                 "server_id": lifecycle.server_id if event_type != "arrival" else None,
+                 "queue_len_after": len(lifecycle.waiting_customer_ids), "queue_id": queue_id}
+        if service_time_hours is not None:
+            event["service_time_hours"] = round(service_time_hours, 12)
+        trace.append(event)
+
+    def signal() -> None:
+        nonlocal topology_changed
+        if not topology_changed.triggered:
+            topology_changed.succeed()
+        topology_changed = env.event()
+
+    def add_busy(queue_id: str, start: float, end: float) -> None:
+        # Busy time is credited to the window in which it occurs.
+        for window in windows:
+            lo, hi = float(window["start_hours"]), float(window["end_hours"])
+            overlap = min(end, hi) - max(start, lo)
+            if overlap > 0:
+                stats[(window["time"], queue_id)]["busy_time"] += overlap
+
+    def apply_schedule(queue_id: str) -> None:
+        lifecycle = lifecycles[queue_id]
+        if lifecycle.break_pending or lifecycle.state == DedicatedQueueState.ON_BREAK:
+            return  # the break controller re-applies the schedule when the rest ends
+        try:
+            lifecycle.transition_for_segment(queue_id in scheduled["active"])
+        except QueueReactivationPolicyError as exc:
+            raise ValueError(str(exc)) from None
+
+    def customer_process(queue_id, customer_id, arrival, label):
+        lifecycle = lifecycles[queue_id]
+        row = stats[(label, queue_id)]
+        row["arrivals"] += 1
+        row["max_queue"] = max(row["max_queue"], len(lifecycle.waiting_customer_ids))
+        record("arrival", customer_id, queue_id, label)
+        with resources[queue_id].request() as request:
+            yield request
+            lifecycle.begin_service()
+            start = env.now
+            row["wait_sum"] += start - arrival
+            record("service_start", customer_id, queue_id, label)
+            service_time = rng.choice(samples[(label, queue_id)])
+            yield env.timeout(service_time)
+            add_busy(queue_id, start, env.now)
+            lifecycle.complete_service()
+            row["served"] += 1
+            counters["served"] += 1
+            record("service_end", customer_id, queue_id, label, service_time)
+            if lifecycle.state == DedicatedQueueState.INACTIVE:
+                signal()
+            waiter = pending_completion.get(queue_id)
+            if waiter is not None and not waiter.triggered:
+                waiter.succeed()
+
+    def schedule_controller():
+        for window in windows[1:]:
+            yield env.timeout(float(window["start_hours"]) - env.now)
+            current_label["time"] = window["time"]
+            scheduled["active"] = set(window["active_queue_ids"])
+            for queue_id in lanes:
+                apply_schedule(queue_id)
+            signal()
+
+    def break_controller(queue_id):
+        lifecycle = lifecycles[queue_id]
+        for cutoff, duration, _scheduled in by_queue_breaks.get(queue_id, []):
+            if env.now < cutoff:
+                yield env.timeout(cutoff - env.now)
+            if lifecycle.state == DedicatedQueueState.INACTIVE:
+                continue  # lane is off shift: nothing to take a break from
+            if lifecycle.state == DedicatedQueueState.ACTIVE:
+                lifecycle.begin_draining()
+                record("draining_start", None, queue_id, current_label["time"])
+            signal()
+            while lifecycle.waiting_customer_ids or lifecycle.in_service_customer_id is not None:
+                waiter = env.event()
+                pending_completion[queue_id] = waiter
+                yield waiter
+            lifecycle.begin_break()
+            record("break_start", None, queue_id, current_label["time"])
+            signal()
+            yield env.timeout(duration)
+            lifecycle.end_break()
+            record("break_end", None, queue_id, current_label["time"])
+            apply_schedule(queue_id)
+            signal()
+
+    def arrival_process():
+        for window in windows:
+            label, end = window["time"], float(window["end_hours"])
+            if env.now < float(window["start_hours"]):
+                yield env.timeout(float(window["start_hours"]) - env.now)
+            rate = sum(float((window["queues_by_id"].get(q) or {}).get("lambda") or 0.0)
+                       for q in window["active_queue_ids"])
+            # A customer may wait for an open lane past the window end; the
+            # next window then starts from the current clock.
+            while rate > 0 and env.now < end:
+                interval = rng.expovariate(rate)
+                if env.now + interval >= end:
+                    yield env.timeout(end - env.now)
+                    break
+                yield env.timeout(interval)
+                counters["admitted"] += 1
+                arrival = env.now
+                eligible = [q for q in lanes if lifecycles[q].accepts_arrivals]
+                while not eligible:
+                    yield topology_changed
+                    eligible = [q for q in lanes if lifecycles[q].accepts_arrivals]
+                sizes = {q: len(lifecycles[q].waiting_customer_ids)
+                         + (1 if lifecycles[q].in_service_customer_id is not None else 0)
+                         for q in eligible}
+                chosen = route_arrival(eligible, sizes, lanes, rng)
+                if (label, chosen) not in samples:
+                    raise ValueError(
+                        f"A customer arriving in period {label} waited for an open lane and "
+                        f"reached lane {chosen!r}, which has no service samples for {label}.")
+                counters["customer"] += 1
+                lifecycles[chosen].enqueue(str(counters["customer"]))
+                env.process(customer_process(chosen, counters["customer"], arrival, label))
+
+    env.process(schedule_controller())
+    for queue_id in lanes:
+        if queue_id in by_queue_breaks:
+            env.process(break_controller(queue_id))
+    env.process(arrival_process())
+    env.run(until=day_end + 24.0)
+    conserved = counters["served"] == counters["admitted"]
+    period_out = []
+    for window in windows:
+        duration = float(window["end_hours"]) - float(window["start_hours"])
+        lane_rows = []
+        for queue_id in lanes:
+            row = stats[(window["time"], queue_id)]
+            lane_rows.append({
+                "queue_id": queue_id,
+                "server_id": dedicated_server_id(queue_id),
+                "active": queue_id in window["active_queue_ids"],
+                "lambda": (window["queues_by_id"].get(queue_id) or {}).get("lambda"),
+                "arrivals": row["arrivals"],
+                "served": row["served"],
+                "lambda_routed_sim": row["arrivals"] / duration if duration > 0 else None,
+                "Wq": row["wait_sum"] / row["served"] if row["served"] else None,
+                "rho": row["busy_time"] / duration if duration > 0 else None,
+                "max_queue": row["max_queue"],
+            })
+        period_out.append({"time": window["time"], "start_hours": float(window["start_hours"]),
+                           "duration_hours": duration, "lanes": lane_rows})
+    return {"periods": period_out, "trace_events": trace, "trace_truncated": truncated,
+            "admitted": counters["admitted"], "served": counters["served"],
+            "customer_conservation": conserved, "day_hours": day_end - float(windows[0]["start_hours"])}
+
+
 def index_period_queues(records: list, time_label: str) -> dict[str, dict]:
     """Index one period's queue rows by queue ID in persisted order.
 
@@ -1386,8 +1602,12 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
                                min_lanes=None, max_lanes=None,
                                lambda_multiplier: float = 1.0,
                                des_settings: dict | None = None,
-                               run_fn=None) -> dict:
+                               run_fn=None, full_coverage: bool = False) -> dict:
     """Optimize every time period in persisted order, then roll up one status.
+
+    With ``full_coverage`` each period's lower lane bound is the set of lanes
+    scheduled for it (every configured lane unless staffing varies), and the
+    period's records must name exactly those lanes; otherwise ValueError.
 
     Records group by time label; each period runs the routing-capable
     optimizer (or the legacy path when samples don't cover its search).
@@ -1428,6 +1648,14 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             scaled["lambda"] = float(lam) * factor if _is_number(lam) else lam
             period_rows.append(scaled)
         current = _period_current_active(queue_setup, grouped[label])
+        period_min = min_lanes
+        if full_coverage:
+            present = {str(row.get("queue_id")) for row in grouped[label]}
+            if current is None or present != set(current):
+                raise ValueError(
+                    f"Full coverage: period {label} has records for lanes {sorted(present)} "
+                    f"but the lanes scheduled for it are {current}.")
+            period_min = len(current)
         try:
             period_breaks = (period_des_breaks(queue_setup, grouped[label])
                              if des_breaks is not None else None)
@@ -1436,7 +1664,7 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
                     "target_utilization": ceiling, "evaluation_method": None,
                     "periods": [], "des": settings}
         result = optimize_separate(
-            label, period_rows, target=ceiling, min_lanes=min_lanes, max_lanes=max_lanes,
+            label, period_rows, target=ceiling, min_lanes=period_min, max_lanes=max_lanes,
             current_active=len(current) if current else None,
             server_cost=server_cost, waiting_cost=waiting_cost,
             des_replications=settings, run_fn=run_fn, breaks=period_breaks)

@@ -21,6 +21,7 @@ UNKNOWN_SETUP: dict[str, Any] = {
     "separate_queue_closure_policy": "drain_existing",
     "queue_ids": [],
     "breaks": [],
+    "event_period_basis": "per_date",
 }
 
 

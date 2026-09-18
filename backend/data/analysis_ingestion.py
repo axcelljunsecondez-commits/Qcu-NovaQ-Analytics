@@ -7,6 +7,7 @@ import pandas as pd
 from backend.api.analysis_schemas import (
     AbandonmentMode,
     CapacityMode,
+    EventPeriodBasis,
     QueueSetup,
     QueueStructure,
 )
@@ -212,12 +213,20 @@ def normalize_analysis_input(
                 "assumption_provenance": {"selected_model_assumptions": "model_assumption"},
         }
 
-    if setup.staffing_varies_by_period:
+    separate = setup.queue_structure == QueueStructure.separate_queues
+    # Separate lanes always have c = 1; varying staffing comes from each
+    # segment's active_queue_ids, so no fixed server count is needed there.
+    if setup.staffing_varies_by_period and not separate:
         raise AnalysisIngestionError(
             "Customer-event input requires a fixed server count. For varying staffing, upload aggregate data with c per segment."
         )
-    if setup.fixed_server_count is None:
+    if setup.fixed_server_count is None and not (separate and setup.staffing_varies_by_period):
         raise AnalysisIngestionError("Enter the fixed server count before uploading customer-event data.")
+    representative_day = setup.event_period_basis == EventPeriodBasis.representative_day
+    if representative_day and not setup.segments:
+        raise AnalysisIngestionError(
+            "The representative day basis requires configured operating segments."
+        )
     if setup.queue_structure == QueueStructure.separate_queues:
         if "queue_id" not in prepared.columns:
             raise AnalysisIngestionError(
@@ -265,6 +274,11 @@ def normalize_analysis_input(
         row = int((service_hours <= 0).to_numpy().nonzero()[0][0]) + 1
         raise AnalysisIngestionError(f"Row {row}: service duration must be greater than zero.")
     working = _assign_event_segments(parsed["arrival_time"], setup)
+    observation_days = int(parsed["arrival_time"].dt.date.nunique())
+    if representative_day:
+        # Pool every observed date: one period per configured segment.
+        working["segment_key"] = working["segment_id"]
+        working["time_label"] = working["segment_id"]
     working["waiting_hours"] = waiting_hours
     working["service_hours"] = service_hours
     if setup.queue_structure == QueueStructure.separate_queues:
@@ -273,7 +287,7 @@ def normalize_analysis_input(
     fixed_server_count = setup.fixed_server_count
     total_system_capacity = setup.total_system_capacity
     patience_rate = setup.patience_rate_per_hour
-    assert fixed_server_count is not None
+    assert separate or fixed_server_count is not None
     derived_statistics: list[dict] = []
     group_columns = ["segment_key"]
     if setup.queue_structure == QueueStructure.separate_queues:
@@ -285,11 +299,14 @@ def normalize_analysis_input(
         record: dict = {
             "time": str(segment),
             "segment_id": str(group["segment_id"].iloc[0]),
-            "lambda": float(len(group)) / duration_hours,
+            "lambda": float(len(group)) / (
+                duration_hours * (observation_days if representative_day else 1)),
             "mu": 1.0 / mean_service,
-            "c": 1 if setup.queue_structure == QueueStructure.separate_queues else int(fixed_server_count),
+            "c": 1 if separate else int(fixed_server_count),  # type: ignore[arg-type]
             "variance": float(group["service_hours"].var(ddof=0)),
         }
+        if representative_day:
+            record["observation_days"] = observation_days
         if setup.queue_structure == QueueStructure.separate_queues:
             record["queue_id"] = str(group["queue_id"].iloc[0])
             record["queue_structure"] = QueueStructure.separate_queues.value
@@ -329,14 +346,23 @@ def normalize_analysis_input(
         fields["queue_id"] = "user_provided"
         fields["queue_structure"] = "user_provided"
         fields["model_id"] = "model_assumption"
+    pooling: dict = {}
+    if representative_day:
+        pooling = {
+            "period_basis": EventPeriodBasis.representative_day.value,
+            "observation_days": observation_days,
+        }
     return event_records, {
+        **pooling,
         "schema": kind,
         "field_provenance": fields,
         "derived_fields": {
             "waiting_time": "service_start - arrival_time",
             "service_time": "service_end - service_start",
             "aggregation": "configured half-open intervals; default clock-hour buckets",
-            "arrival_rate": "arrival_count / segment_duration_hours",
+            "arrival_rate": (
+                "arrival_count / (segment_duration_hours * observation_days)"
+                if representative_day else "arrival_count / segment_duration_hours"),
         },
         "derived_statistics": derived_statistics,
         "column_mapping": column_mapping,

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, uploadAnalysisDataset } from '../api/analyses'
-import type { QueueSetup } from '../api/types'
+import type { EventPeriodBasis, QueueSetup } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { BreakEditor } from '../components/analysis/BreakEditor'
 import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
@@ -62,10 +62,10 @@ export function AnalysisSetupPage() {
   function set<K extends keyof QueueSetup>(key: K, value: QueueSetup[K]) { setSetup((old) => ({ ...old, [key]: value })) }
   function changeQueueStructure(value: QueueSetup['queue_structure']) {
     if (value === 'separate_queues') {
-      setSetup((old) => ({ ...old, queue_structure: value, queue_ids: [], segments: old.segments.map((segment) => ({ ...segment, active_queue_ids: null })) }))
+      setSetup((old) => ({ ...old, queue_structure: value, queue_ids: [], event_period_basis: undefined, segments: old.segments.map((segment) => ({ ...segment, active_queue_ids: null })) }))
       return
     }
-    setSetup((old) => ({ ...old, queue_structure: value, queue_ids: [], segments: old.segments.map((segment) => ({ ...segment, active_queue_ids: null })) }))
+    setSetup((old) => ({ ...old, queue_structure: value, queue_ids: [], event_period_basis: undefined, segments: old.segments.map((segment) => ({ ...segment, active_queue_ids: null })) }))
   }
   function changeQueueIds(next: string[]) {
     const removed = setup.queue_ids.filter((queueId) => !next.includes(queueId))
@@ -137,6 +137,7 @@ export function AnalysisSetupPage() {
           <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
         )}
         {setup.queue_structure === 'separate_queues' && <QueueIdEditor ids={setup.queue_ids} onChange={changeQueueIds} />}
+        {setup.queue_structure === 'separate_queues' && <div className="form-field"><label htmlFor="period-basis">{t('analyses.period_basis')}</label><select id="period-basis" aria-describedby="period-basis-help" value={setup.event_period_basis ?? 'per_date'} onChange={(e) => set('event_period_basis', e.target.value as EventPeriodBasis)}><option value="per_date">{t('analyses.period_basis_per_date')}</option><option value="representative_day">{t('analyses.period_basis_representative_day')}</option></select><span id="period-basis-help" className="form-hint">{t('analyses.period_basis_help')}</span></div>}
         {setup.queue_structure === 'separate_queues' && <BreakEditor queueIds={setup.queue_ids} breaks={setup.breaks ?? []} onChange={(breaks) => set('breaks', breaks)} />}
         <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
         <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>

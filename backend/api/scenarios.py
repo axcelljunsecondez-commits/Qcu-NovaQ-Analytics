@@ -168,10 +168,10 @@ def _verify_separate_calculation(payload: ScenarioIn, dataset=None, analysis=Non
         target=target,
         server_cost=server_cost,
         waiting_cost=waiting_cost,
-        min_lanes=min_lanes,
         max_lanes=_separate_lane_bound(options.get("max_active_lanes")),
         lambda_multiplier=multiplier,
         des_settings=des_settings,
+        full_coverage=True,
     )
     expected = {"schedule": prune_separate_schedule(schedule)}
     if not _same_result(payload.results, expected):

@@ -575,6 +575,13 @@ describe('separate staffing optimization', () => {
     expect(screen.queryByTestId('optimize-staffing-blocked')).not.toBeInTheDocument()
   })
 
+  it('describes full coverage as a schedule check, not a lane-count search', async () => {
+    renderSeparate()
+    await screen.findByRole('heading', { name: 'Optimize Staffing Schedule' })
+    expect(screen.getByText(/full coverage/i)).toBeInTheDocument()
+    expect(screen.queryByText(/decides how many/i)).not.toBeInTheDocument()
+  })
+
   it('runs one separate optimization and renders the estimated schedule', async () => {
     const user = userEvent.setup()
     optimizeSeparateMock.mockResolvedValue(completeSchedule)

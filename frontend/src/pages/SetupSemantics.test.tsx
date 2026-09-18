@@ -343,4 +343,28 @@ describe('separate server break schedule', () => {
     expect(await screen.findByDisplayValue('09:05')).toBeInTheDocument()
     expect(screen.getByDisplayValue('15')).toBeInTheDocument()
   })
+
+  it('saves the representative-day basis for separate customer data', async () => {
+    const user = userEvent.setup()
+    renderSeparateSetup()
+    const basis = await screen.findByLabelText('Customer data periods')
+    expect(basis).toHaveValue('per_date')
+    await user.selectOptions(basis, 'representative_day')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
+      queue_setup: expect.objectContaining({ event_period_basis: 'representative_day' }),
+    }))
+  })
+
+  it('offers no representative-day basis for shared queues', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
+      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [],
+    } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+    await screen.findByTestId('queue-structure-readonly')
+    expect(screen.queryByLabelText('Customer data periods')).not.toBeInTheDocument()
+  })
 })

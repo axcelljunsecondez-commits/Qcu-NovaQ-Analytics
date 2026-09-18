@@ -31,6 +31,18 @@ class SeparateQueueClosurePolicy(str, Enum):
     drain_existing = "drain_existing"
 
 
+class EventPeriodBasis(str, Enum):
+    """How customer-event uploads form analysis periods.
+
+    ``per_date`` keeps one period per calendar date and segment. The
+    ``representative_day`` basis pools every observed date into one period per
+    segment (arrival rate averaged over the observed days).
+    """
+
+    per_date = "per_date"
+    representative_day = "representative_day"
+
+
 class AnalysisSegment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -76,6 +88,7 @@ class QueueSetup(BaseModel):
     separate_queue_closure_policy: SeparateQueueClosurePolicy = SeparateQueueClosurePolicy.drain_existing
     queue_ids: list[str] = Field(default_factory=list)
     breaks: list[QueueBreak] = Field(default_factory=list)
+    event_period_basis: EventPeriodBasis = EventPeriodBasis.per_date
 
     @model_validator(mode="after")
     def validate_dependencies(self) -> QueueSetup:
@@ -105,6 +118,11 @@ class QueueSetup(BaseModel):
         if self.queue_structure == QueueStructure.separate_queues and not self.queue_ids:
             raise ValueError("Separate-queue analysis requires at least one configured queue ID.")
         configured = set(self.queue_ids)
+        if (
+            self.event_period_basis == EventPeriodBasis.representative_day
+            and self.queue_structure != QueueStructure.separate_queues
+        ):
+            raise ValueError("The representative day basis is only supported for separate queues.")
         if self.breaks and self.queue_structure != QueueStructure.separate_queues:
             raise ValueError("Server break schedules are only supported for separate queues.")
         for entry in self.breaks:

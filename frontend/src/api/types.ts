@@ -115,6 +115,7 @@ export type QueueStructure = 'shared_queue' | 'single_server' | 'separate_queues
 export type CapacityMode = 'unlimited' | 'finite' | 'unknown'
 export type AbandonmentMode = 'not_modeled' | 'modeled' | 'unknown'
 export type SeparateQueueClosurePolicy = 'drain_existing'
+export type EventPeriodBasis = 'per_date' | 'representative_day'
 
 export interface AnalysisSegment {
   id: string | null
@@ -141,6 +142,7 @@ export interface QueueSetup {
   separate_queue_closure_policy: SeparateQueueClosurePolicy
   queue_ids: string[]
   breaks: QueueBreak[]
+  event_period_basis?: EventPeriodBasis
 }
 
 export interface AnalysisProjectOut {

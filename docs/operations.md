@@ -75,9 +75,12 @@ Separate Queue setup stores user-configured server break schedules. The Separate
 routing DES (optimizer evaluation and selected-plan simulation) applies each break
 only in the period whose operating segment contains its scheduled start: the lane
 drains from 3 minutes before, rests for the full duration once empty, then returns.
-Periods are simulated independently, so lane break state does not carry into the
-next period's run. Separate optimization keeps every configured queue active
-(full coverage).
+With the default per-date basis, periods are simulated independently, so lane
+break state does not carry into the next period's run. With the representative-day
+basis (customer events pooled over all observed dates), Simulate runs one
+continuous day: lanes open and close on the segment schedule, and queues and
+breaks carry across periods. Separate optimization keeps every lane scheduled for
+a period active (full coverage).
 
 New UI saves include effective inputs, options, what-if factor, timestamp and
 engine version. The API recomputes and verifies them, and makes saved calculation
