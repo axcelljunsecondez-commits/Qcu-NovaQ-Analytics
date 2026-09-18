@@ -10,6 +10,9 @@ selected evidence.
 """
 from __future__ import annotations
 
+from typing import Any
+
+from backend.api.scenarios import setup_fingerprint
 from backend.api.workflow import _derive_selected_decision
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from tests.helpers import create_user, csrf_header, login, make_sessionmaker
@@ -153,7 +156,8 @@ def _api_calculation(dataset_id):
         "schema_version": 2,
         "engine_version": "novaq-2026-09-separate-des-v1",
         "dataset_id": dataset_id, "dataset_row_count": 2,
-        "options": options, "calculated_at": "2026-09-18T00:00:00+00:00"}}
+        "options": options, "calculated_at": "2026-09-18T00:00:00+00:00",
+        "setup_hash": setup_fingerprint(_setup())}}
 
 
 def _api_workspace(db_engine, email):
@@ -328,3 +332,115 @@ def test_decision_path_makes_no_engine_or_decision_calls():
     assert "validate_selected_plan" not in source
     assert "create_decision" not in source
     assert "_derive_decision" not in source
+
+
+# --- R6a: stored verdicts do not survive Setup edits ---------------------------------
+
+SETUP_STALE = "Setup changed since this evidence was produced. Rerun Simulation."
+
+
+def _patch_break(client, analysis_id, headers, start="08:40:00"):
+    setup = {**_setup(), "breaks": [
+        {"queue_id": "east-07", "scheduled_start_time": start, "duration_minutes": 10}]}
+    response = client.patch(f"/analyses/{analysis_id}", headers=headers,
+                            json={"queue_setup": setup})
+    assert response.status_code == 200, response.text
+
+
+def _select_first(db_engine, client, email):
+    analysis_id, _, scenario_id = _api_workspace(db_engine, email)
+    login(client, email, "pw")
+    headers = csrf_header(client)
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/selection", headers=headers,
+        json={"scenario_id": scenario_id}).status_code == 200
+    return analysis_id, scenario_id, headers
+
+
+def _run_stages(client, analysis_id, headers, stages):
+    response = None
+    for path, body in stages:
+        response = client.post(
+            f"/analyses/{analysis_id}/workflow/simulation/{path}",
+            headers=headers, json=body)
+        assert response.status_code == 200, response.text
+    return response.json()["evidence"]["id"]
+
+
+DES: tuple[str, dict[str, Any]] = ("des/selected", {"seed": 7})
+MC: tuple[str, dict[str, Any]] = ("mc/selected", {})
+VALIDATION: tuple[str, dict[str, Any]] = ("validation/selected", {})
+
+
+def _clear_setup_hash(db_engine, job_id):
+    from backend.db.models import Job
+
+    with make_sessionmaker(db_engine)() as db:
+        job = db.get(Job, job_id)
+        params = dict(job.params_json)
+        params.pop("setup_hash", None)
+        job.params_json = params
+        db.commit()
+
+
+def test_evidence_records_setup_hash_and_unchanged_setup_keeps_decision(db_engine, client):
+    analysis_id, _, headers = _select_first(db_engine, client, "h@example.com")
+    body = _full_chain(client, analysis_id, headers)
+    with make_sessionmaker(db_engine)() as db:
+        expected = setup_fingerprint(db.get(AnalysisProject, analysis_id).queue_setup_json)
+    assert body["evidence"]["params"]["setup_hash"] == expected
+    workflow = client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()
+    assert workflow["decision"]["id"] == body["evidence"]["id"]
+    assert workflow["decision_stale"] is False
+    for key in ("des", "mc", "validation"):
+        assert workflow[key]["params"]["setup_hash"] == expected
+
+
+def test_setup_edit_hides_selected_decision_and_report(db_engine, client):
+    analysis_id, _, headers = _select_first(db_engine, client, "p@example.com")
+    _full_chain(client, analysis_id, headers)
+    assert client.get(f"/reports/analyses/{analysis_id}/selected/preview",
+                      headers=headers).status_code == 200
+    _patch_break(client, analysis_id, headers)
+    workflow = client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()
+    assert workflow["decision"] is None
+    assert workflow["decision_stale"] is True
+    preview = client.get(f"/reports/analyses/{analysis_id}/selected/preview", headers=headers)
+    assert preview.status_code != 200
+    assert "model" not in preview.json()
+
+
+def test_setup_edit_blocks_selected_decision(db_engine, client):
+    analysis_id, _, headers = _select_first(db_engine, client, "q@example.com")
+    _run_stages(client, analysis_id, headers, (DES, MC, VALIDATION))
+    _patch_break(client, analysis_id, headers)
+    decided = _decide(client, analysis_id, headers)
+    assert decided.status_code == 409, decided.text
+    assert decided.json()["detail"] == SETUP_STALE
+
+
+def test_selected_mc_rejects_des_without_current_setup_hash(db_engine, client):
+    analysis_id, _, headers = _select_first(db_engine, client, "m@example.com")
+    _clear_setup_hash(db_engine, _run_stages(client, analysis_id, headers, (DES,)))
+    mc = client.post(f"/analyses/{analysis_id}/workflow/simulation/mc/selected",
+                     headers=headers, json={})
+    assert mc.status_code == 409, mc.text
+    assert mc.json()["detail"] == SETUP_STALE
+
+
+def test_selected_validation_rejects_mc_without_current_setup_hash(db_engine, client):
+    analysis_id, _, headers = _select_first(db_engine, client, "n@example.com")
+    _clear_setup_hash(db_engine, _run_stages(client, analysis_id, headers, (DES, MC)))
+    validated = client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/validation/selected",
+        headers=headers, json={})
+    assert validated.status_code == 409, validated.text
+    assert validated.json()["detail"] == SETUP_STALE
+
+
+def test_selected_decision_rejects_validation_without_current_setup_hash(db_engine, client):
+    analysis_id, _, headers = _select_first(db_engine, client, "o@example.com")
+    _clear_setup_hash(db_engine, _run_stages(client, analysis_id, headers, (DES, MC, VALIDATION)))
+    decided = _decide(client, analysis_id, headers)
+    assert decided.status_code == 409, decided.text
+    assert decided.json()["detail"] == SETUP_STALE

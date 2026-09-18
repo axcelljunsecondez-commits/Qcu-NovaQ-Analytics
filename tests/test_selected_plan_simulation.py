@@ -7,6 +7,7 @@ scenario-scoped evidence jobs, and never reoptimizes or mutates scenarios.
 """
 from __future__ import annotations
 
+from backend.api.scenarios import setup_fingerprint
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.queueing_engine.services.separate_optimization import (
     SEPARATE_DES_ENGINE_VERSION,
@@ -100,7 +101,8 @@ def _calculation(dataset_id, target=0.70):
     return {**options, "calculation": {
         "schema_version": 2, "engine_version": SEPARATE_DES_ENGINE_VERSION,
         "dataset_id": dataset_id, "dataset_row_count": 2,
-        "options": options, "calculated_at": "2026-09-18T00:00:00+00:00"}}
+        "options": options, "calculated_at": "2026-09-18T00:00:00+00:00",
+        "setup_hash": setup_fingerprint(_setup())}}
 
 
 def _workspace(db_engine, email, periods=None):

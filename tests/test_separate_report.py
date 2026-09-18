@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from backend.api.scenarios import setup_fingerprint
 from backend.reports.separate_report import build_separate_report_model
 
 
@@ -276,7 +277,8 @@ def _api_workspace(db_engine, email):
                 "schema_version": 2,
                 "engine_version": "novaq-2026-09-separate-des-v1",
                 "dataset_id": dataset.id, "dataset_row_count": 2,
-                "options": options, "calculated_at": "2026-09-18T00:00:00+00:00"}},
+                "options": options, "calculated_at": "2026-09-18T00:00:00+00:00",
+                "setup_hash": setup_fingerprint(setup)}},
             results_json={"schedule": schedule})
         db.add(scenario)
         db.commit()
@@ -404,7 +406,7 @@ def test_report_generation_makes_no_engine_calls_and_leaves_evidence_untouched()
 
 # --- hardening: staleness / identity / nulls / no-engine -----------------------------
 
-from backend.db.models import Job, Scenario, User
+from backend.db.models import AnalysisProject, Job, Scenario, User
 from tests.helpers import csrf_header, login, make_sessionmaker
 
 
@@ -442,7 +444,9 @@ def _add_scenario(db_engine, email, analysis_id, dataset_id, name, target):
                 "schema_version": 2,
                 "engine_version": "novaq-2026-09-separate-des-v1",
                 "dataset_id": dataset_id, "dataset_row_count": 2,
-                "options": options, "calculated_at": "2026-09-18T00:00:00+00:00"}},
+                "options": options, "calculated_at": "2026-09-18T00:00:00+00:00",
+                "setup_hash": setup_fingerprint(
+                    db.get(AnalysisProject, analysis_id).queue_setup_json)}},
             results_json={"schedule": schedule})
         db.add(scenario)
         db.commit()
@@ -457,6 +461,8 @@ def _insert_job(db_engine, email, kind, analysis_id, scenario_id, params, result
         job = Job(
             user_id=user.id, kind=kind, status="completed",
             params_json={"analysis_id": analysis_id, "scenario_id": scenario_id,
+                         "setup_hash": setup_fingerprint(
+                             db.get(AnalysisProject, analysis_id).queue_setup_json),
                          **params},
             result_json=result, tenant_id=user.tenant_id,
             finished_at=datetime.now(timezone.utc))

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from datetime import datetime
 
@@ -179,6 +181,12 @@ def _verify_separate_calculation(payload: ScenarioIn, dataset=None, analysis=Non
     payload.results = expected
 
 
+def setup_fingerprint(setup: dict | None) -> str:
+    """Stable identity of an Analysis Setup; evidence is only valid for it."""
+    encoded = json.dumps(setup or {}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def _verify_calculation(payload: ScenarioIn, dataset=None, analysis=None) -> None:
     snapshot = payload.settings.get("calculation")
     if snapshot is None:
@@ -292,6 +300,13 @@ def create_scenario(
     _check_size(payload.results, settings)
     _check_size(payload.settings, settings)
     _verify_calculation(payload, dataset, analysis)
+    snapshot = payload.settings.get("calculation")
+    if isinstance(snapshot, dict) and snapshot.get("schema_version") == 2:
+        # Server-stamped: the verified schedule describes exactly this Setup.
+        payload.settings = {
+            **payload.settings,
+            "calculation": {**snapshot, "setup_hash": setup_fingerprint(analysis.queue_setup_json)},
+        }
     scenario = Scenario(
         user_id=user.id,
         analysis_id=analysis.id,

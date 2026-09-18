@@ -181,3 +181,24 @@ def test_stale_mc_evidence_cannot_validate(db_engine, client):
     )
     assert run.status_code == 409, run.text
     assert "stale" in run.json()["detail"].lower()
+
+
+def test_current_validation_rejects_mc_without_current_setup_hash(db_engine, client):
+    from backend.db.models import Job
+    from tests.helpers import make_sessionmaker
+
+    create_user(db_engine, "hash@example.com", "pw")
+    login(client, "hash@example.com", "pw")
+    headers = csrf_header(client)
+    analysis_id = _workspace_with_mc(client, headers)
+    with make_sessionmaker(db_engine)() as db:
+        job = db.query(Job).filter_by(kind="workflow_mc_current").one()
+        job.params_json = {**job.params_json, "setup_hash": "0" * 64}
+        db.commit()
+    run = client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/validation/current", headers=headers, json={},
+    )
+    assert run.status_code == 409, run.text
+    assert run.json()["detail"] == "Setup changed since this evidence was produced. Rerun Simulation."
+    workflow = client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()
+    assert workflow["mc_current"] is None

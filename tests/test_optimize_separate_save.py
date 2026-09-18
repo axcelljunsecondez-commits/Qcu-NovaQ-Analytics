@@ -156,3 +156,22 @@ def test_runs_at_different_targets_coexist_unchanged(db_engine, client):
     kept = next(item for item in listed if item["name"] == "Optimal @ 70%")
     assert kept["settings"]["target_utilization"] == 0.70
     assert kept["results"]["schedule"]["target_utilization"] == 0.70
+
+
+def test_save_stamps_server_setup_hash_over_client_value(db_engine, client):
+    from backend.api.scenarios import setup_fingerprint
+    from backend.db.models import AnalysisProject
+    from tests.helpers import make_sessionmaker
+
+    analysis_id, dataset_id, row_count = _workspace(db_engine, "stamp@example.com")
+    login(client, "stamp@example.com", "pw")
+    run = _run(client, analysis_id, 0.70)
+    assert run.status_code == 200, run.text
+    settings, results = _snapshot(analysis_id, dataset_id, row_count, 0.70,
+                                  run.json()["schedule"])
+    settings["calculation"]["setup_hash"] = "client-supplied"
+    saved = _save(client, "Stamped", analysis_id, dataset_id, settings, results)
+    assert saved.status_code == 201, saved.text
+    with make_sessionmaker(db_engine)() as db:
+        expected = setup_fingerprint(db.get(AnalysisProject, analysis_id).queue_setup_json)
+    assert saved.json()["scenario"]["settings"]["calculation"]["setup_hash"] == expected

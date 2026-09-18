@@ -544,3 +544,111 @@ def test_threshold_gap_between_075_and_080_is_behaviorally_meaningful():
     assert 0.0 < low["failure_rate"] < 1.0
     assert 0.0 <= high["failure_rate"] < 1.0
     assert low["failure_rate"] > high["failure_rate"]
+
+
+# --- R6a: stored verdicts do not survive Setup edits ---------------------------------
+
+
+def _adopt_chain(client, analysis_id, scenario_id, headers):
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/selection",
+        headers=headers, json={"scenario_id": scenario_id},
+    ).status_code == 200
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/des",
+        headers=headers, json={"sim_hours": 2, "max_events": 100, "seed": 7},
+    ).status_code == 200
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/validation",
+        headers=headers,
+        json={"des_sim_hours": 2, "mc_trials": 200, "mc_failure_threshold": 1,
+              "mc_failure_rate_cap": 1, "seed": 7},
+    ).status_code == 200
+    decision = client.post(f"/analyses/{analysis_id}/workflow/decision", headers=headers)
+    assert decision.json()["decision"]["status"] == "adopt"
+
+
+def test_queue_structure_edit_drops_shared_adopt_decision(db_engine, client):
+    from backend.api.workflow import current_decision_for_report
+    from backend.db.models import User
+
+    analysis_id, scenario_id = _workspace(db_engine)
+    login(client, "owner@example.com", "pw")
+    headers = csrf_header(client)
+    _adopt_chain(client, analysis_id, scenario_id, headers)
+    with make_sessionmaker(db_engine)() as db:
+        user = db.query(User).filter_by(email="owner@example.com").one()
+        assert current_decision_for_report(db, user, analysis_id, scenario_id)["status"] == "adopt"
+        setup = dict(db.get(AnalysisProject, analysis_id).queue_setup_json)
+    setup.update({"queue_structure": "separate_queues", "fixed_server_count": 1,
+                  "queue_ids": ["q1"]})
+    patched = client.patch(f"/analyses/{analysis_id}", headers=headers,
+                           json={"queue_setup": setup})
+    assert patched.status_code == 200, patched.text
+    workflow = client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()
+    assert workflow["decision"] is None
+    assert workflow["decision_stale"] is True
+    assert workflow["des"] is None and workflow["validation"] is None
+    with make_sessionmaker(db_engine)() as db:
+        user = db.query(User).filter_by(email="owner@example.com").one()
+        assert current_decision_for_report(db, user, analysis_id, scenario_id) is None
+
+
+def test_shared_evidence_without_setup_hash_is_absent(db_engine, client):
+    from backend.db.models import Job
+
+    analysis_id, scenario_id = _workspace(db_engine)
+    login(client, "owner@example.com", "pw")
+    headers = csrf_header(client)
+    _adopt_chain(client, analysis_id, scenario_id, headers)
+    with make_sessionmaker(db_engine)() as db:
+        for job in db.query(Job).filter(Job.kind != "workflow_selection").all():
+            params = dict(job.params_json)
+            params.pop("setup_hash", None)
+            job.params_json = params
+        db.commit()
+    workflow = client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()
+    assert workflow["selection"] is not None
+    assert workflow["scenario"]["id"] == scenario_id
+    assert workflow["des"] is None
+    assert workflow["decision"] is None
+    assert workflow["decision_stale"] is True
+
+
+def test_legacy_snapshot_queue_type_rule():
+    from backend.api.workflow import _legacy_snapshot_queue_type, _scenario_setup_problem
+
+    shared = {"input_segments": [{"time": "08:00", "lambda": 1, "mu": 10, "c": 1}]}
+    by_structure = {"input_segments": [
+        {"time": "08:00", "lambda": 1}, {"time": "08:00", "queue_structure": "separate_queues"}]}
+    by_model = {"input_segments": [{"time": "08:00", "model_id": "parallel_mg1"}]}
+    assert _legacy_snapshot_queue_type(shared) == "shared"
+    assert _legacy_snapshot_queue_type(by_structure) == "separate"
+    assert _legacy_snapshot_queue_type(by_model) == "separate"
+    assert _legacy_snapshot_queue_type({}) == "shared"
+
+    def problem(snapshot, structure):
+        scenario = Scenario(settings_json={"calculation": {"schema_version": 1, **snapshot}})
+        analysis = AnalysisProject(queue_setup_json={"queue_structure": structure})
+        return _scenario_setup_problem(scenario, analysis)
+
+    assert problem(shared, "shared_queue") is None
+    assert problem(by_model, "separate_queues") is None
+    assert problem(shared, "separate_queues") is not None
+    assert problem(by_structure, "shared_queue") is not None
+    assert problem(shared, "unknown") is not None
+
+
+def test_legacy_scenario_unselectable_after_queue_structure_edit(db_engine, client):
+    analysis_id, scenario_id = _workspace(db_engine)
+    login(client, "owner@example.com", "pw")
+    headers = csrf_header(client)
+    with make_sessionmaker(db_engine)() as db:
+        setup = dict(db.get(AnalysisProject, analysis_id).queue_setup_json)
+    setup.update({"queue_structure": "separate_queues", "queue_ids": ["q1"]})
+    assert client.patch(f"/analyses/{analysis_id}", headers=headers,
+                        json={"queue_setup": setup}).status_code == 200
+    selection = client.post(f"/analyses/{analysis_id}/workflow/selection",
+                            headers=headers, json={"scenario_id": scenario_id})
+    assert selection.status_code == 422
+    assert "queue structure" in selection.json()["detail"]

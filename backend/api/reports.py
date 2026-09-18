@@ -12,6 +12,7 @@ from backend.api.workflow import (
     SelectedPlanError,
     _latest_job,
     _require_selected_separate_plan,
+    _require_setup_current,
     current_decision_for_report,
 )
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
@@ -118,6 +119,7 @@ def _selected_report_chain(db: Session, user: User, analysis: AnalysisProject) -
             status_code=409,
             detail="Decision evidence is stale for the latest Validation evidence.",
         )
+    _require_setup_current(analysis, des_job, mc_job, validation_job, decision_job)
     for label, job in (("DES", des_job), ("Monte Carlo", mc_job),
                        ("Validation", validation_job), ("Decision", decision_job)):
         result = job.result_json or {}

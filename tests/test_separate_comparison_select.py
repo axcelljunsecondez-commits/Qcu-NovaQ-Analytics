@@ -6,6 +6,7 @@ never mutates saved scenarios. Stale or incomplete plans cannot be selected.
 """
 from __future__ import annotations
 
+from backend.api.scenarios import setup_fingerprint
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.queueing_engine.services.separate_optimization import (
     SEPARATE_DES_ENGINE_VERSION,
@@ -94,6 +95,7 @@ def _calculation(dataset_id, target=0.70):
             "dataset_row_count": 2,
             "options": options,
             "calculated_at": "2026-09-18T00:00:00+00:00",
+            "setup_hash": setup_fingerprint(_setup()),
         },
     }
 
@@ -299,3 +301,42 @@ def test_comparison_current_metrics_come_from_authoritative_evidence(db_engine, 
     assert body["current"]["util_max"] == expected["max_utilization"]
     assert body["current"]["waiting_cost"] == expected["total_waiting_cost"]
     assert body["current"]["periods"][0]["lambda_total"] == 6.0
+
+
+def test_comparison_marks_plan_stale_after_setup_edit(db_engine, client):
+    analysis_id, _, scenario_id = _workspace(db_engine, "edit@example.com")
+    login(client, "edit@example.com", "pw")
+    plan = next(p for p in _comparison(client, analysis_id).json()["plans"]
+                if p["scenario_id"] == scenario_id)
+    assert plan["stale"] is False and plan["valid"] is True
+    setup = {**_setup(), "breaks": [
+        {"queue_id": "lane-a", "scheduled_start_time": "08:40:00", "duration_minutes": 10}]}
+    patched = client.patch(f"/analyses/{analysis_id}", headers=csrf_header(client),
+                           json={"queue_setup": setup})
+    assert patched.status_code == 200, patched.text
+    plan = next(p for p in _comparison(client, analysis_id).json()["plans"]
+                if p["scenario_id"] == scenario_id)
+    assert plan["stale"] is True
+    assert plan["valid"] is False
+    assert plan["valid_reason"] == "stale for the current Setup"
+    assert _select(client, analysis_id, scenario_id).status_code == 422
+
+
+def test_saved_separate_plan_without_setup_hash_is_stale(db_engine, client):
+    analysis_id, dataset_id, _ = _workspace(db_engine, "nohash@example.com")
+    settings = _calculation(dataset_id)
+    settings["calculation"].pop("setup_hash")
+    with make_sessionmaker(db_engine)() as db:
+        user = db.query(User).filter_by(email="nohash@example.com").one()
+        scenario = Scenario(
+            user_id=user.id, analysis_id=analysis_id, dataset_id=dataset_id,
+            name="Pre-hash plan", settings_json=settings,
+            results_json={"schedule": _schedule()})
+        db.add(scenario)
+        db.commit()
+        legacy_id = scenario.id
+    login(client, "nohash@example.com", "pw")
+    plan = next(p for p in _comparison(client, analysis_id).json()["plans"]
+                if p["scenario_id"] == legacy_id)
+    assert plan["stale"] is True and plan["valid"] is False
+    assert _select(client, analysis_id, legacy_id).status_code == 422

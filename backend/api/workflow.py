@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.api.analyses import own_analysis
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
+from backend.api.scenarios import setup_fingerprint as _setup_fingerprint
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
 from backend.db.session import get_db
@@ -199,6 +200,56 @@ def _separate_schedule_problem(scenario: Scenario) -> str | None:
     return None
 
 
+SETUP_STALE_DETAIL = "Setup changed since this evidence was produced. Rerun Simulation."
+
+
+def _job_setup_current(job: Job | None, analysis: AnalysisProject) -> bool:
+    """True only when the job recorded the analysis's current Setup (fail-closed)."""
+    if job is None:
+        return False
+    return (job.params_json or {}).get("setup_hash") == _setup_fingerprint(
+        analysis.queue_setup_json
+    )
+
+
+def _require_setup_current(analysis: AnalysisProject, *jobs: Job) -> None:
+    if not all(_job_setup_current(job, analysis) for job in jobs):
+        raise HTTPException(status_code=409, detail=SETUP_STALE_DETAIL)
+
+
+_SETUP_QUEUE_TYPE: dict[Any, str] = {"separate_queues": "separate", "shared_queue": "shared"}
+
+
+def _legacy_snapshot_queue_type(snapshot: dict[str, Any]) -> str:
+    """Queue type a legacy (non-v2) snapshot was calculated for.
+
+    "separate" if any input segment is a separate-queue / parallel M/G/1 row,
+    else "shared". It must equal the analysis's current queue_structure
+    (separate_queues -> separate, shared_queue -> shared); any other
+    structure, including unknown, is not verifiable.
+    """
+    segments = snapshot.get("input_segments") or []
+    separate = any(
+        isinstance(row, dict)
+        and (row.get("queue_structure") == "separate_queues" or row.get("model_id") == "parallel_mg1")
+        for row in segments
+    )
+    return "separate" if separate else "shared"
+
+
+def _scenario_setup_problem(scenario: Scenario, analysis: AnalysisProject) -> str | None:
+    """Return why a saved Scenario cannot describe the current Setup, if it cannot."""
+    snapshot = (scenario.settings_json or {}).get("calculation") or {}
+    setup = analysis.queue_setup_json or {}
+    if snapshot.get("schema_version") == 2:
+        if snapshot.get("setup_hash") != _setup_fingerprint(setup):
+            return "stale for the current Setup"
+        return None
+    if _legacy_snapshot_queue_type(snapshot) != _SETUP_QUEUE_TYPE.get(setup.get("queue_structure")):
+        return "not verifiable for the current Setup queue structure"
+    return None
+
+
 def _own_verified_scenario(
     db: Session, user: User, analysis: AnalysisProject, scenario_id: int
 ) -> Scenario:
@@ -235,7 +286,17 @@ def _own_verified_scenario(
                 status_code=422,
                 detail="Separate plan is stale for the current dataset.",
             )
+        if _scenario_setup_problem(scenario, analysis) is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Separate plan is stale for the current Setup.",
+            )
         return scenario
+    if _scenario_setup_problem(scenario, analysis) is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="Scenario is not verifiable for the current Setup queue structure.",
+        )
     if not _operationally_complete(_scenario_rows(scenario)):
         raise HTTPException(status_code=422, detail="Scenario comparison evidence is incomplete.")
     return scenario
@@ -419,6 +480,7 @@ def _save_job(
             "dataset_id": resolved_dataset_id,
             "engine_version": ENGINE_VERSION,
             **params,
+            "setup_hash": _setup_fingerprint(analysis.queue_setup_json),
         },
         result_json=result,
         tenant_id=user.tenant_id,
@@ -450,22 +512,32 @@ def _current_evidence(
 ) -> dict[str, Any]:
     scenario, selection = _selected_scenario(db, user, analysis)
     scenario_id = scenario.id if scenario is not None else None
-    des = _latest_job(db, user, "workflow_des", analysis.id, scenario_id) if scenario_id else None
-    des_current = _latest_job(db, user, "workflow_des_current", analysis.id)
-    mc_current = _latest_job(db, user, "workflow_mc_current", analysis.id)
-    mc = _latest_job(db, user, "workflow_mc", analysis.id, scenario_id) if scenario_id else None
+
+    def current(job: Job | None) -> Job | None:
+        # Evidence produced under a different (or unrecorded) Setup is absent.
+        return job if _job_setup_current(job, analysis) else None
+
+    des = current(_latest_job(db, user, "workflow_des", analysis.id, scenario_id)) if scenario_id else None
+    des_current = current(_latest_job(db, user, "workflow_des_current", analysis.id))
+    mc_current = current(_latest_job(db, user, "workflow_mc_current", analysis.id))
+    mc = current(_latest_job(db, user, "workflow_mc", analysis.id, scenario_id)) if scenario_id else None
     validation = (
-        _latest_job(db, user, "workflow_validation", analysis.id, scenario_id)
+        current(_latest_job(db, user, "workflow_validation", analysis.id, scenario_id))
         if scenario_id
         else None
     )
-    validation_current = _latest_job(db, user, "workflow_validation_current", analysis.id)
-    decision = (
-        _latest_job(db, user, "workflow_decision", analysis.id, scenario_id)
-        if scenario_id
+    validation_current = current(_latest_job(db, user, "workflow_validation_current", analysis.id))
+    selected_id = (selection.params_json or {}).get("scenario_id") if selection else None
+    raw_decision = (
+        _latest_job(db, user, "workflow_decision", analysis.id, selected_id)
+        if isinstance(selected_id, int)
         else None
     )
+    decision = raw_decision if scenario_id else None
     decision_stale = False
+    if raw_decision is not None and not _job_setup_current(raw_decision, analysis):
+        decision = None
+        decision_stale = True
     if decision is not None:
         references = (decision.result_json or {}).get("evidence_ids") or {}
         decision_stale = (
@@ -783,6 +855,7 @@ def run_validation_current(
             status_code=409,
             detail="Current Monte Carlo evidence is stale for this dataset. Rerun Current Monte Carlo.",
         )
+    _require_setup_current(analysis, mc_job)
     failure_cap = mc_params.get("failure_rate_cap")
     if (
         not isinstance(failure_cap, (int, float))
@@ -1159,9 +1232,12 @@ def separate_comparison(
             })
             continue
         schedule = (scenario.results_json or {}).get("schedule") or {}
-        stale = scenario.dataset_id != dataset.id
+        setup_problem = _scenario_setup_problem(scenario, analysis)
+        stale = scenario.dataset_id != dataset.id or setup_problem is not None
         problem = _separate_schedule_problem(scenario)
-        if stale:
+        if setup_problem is not None:
+            problem = setup_problem
+        if scenario.dataset_id != dataset.id:
             problem = "stale for the current dataset"
         detail_periods = []
         for period in schedule.get("periods") or []:
@@ -1719,6 +1795,7 @@ def run_selected_mc(
             status_code=409,
             detail="Latest DES evidence is not a selected-plan run for this scenario.",
         )
+    _require_setup_current(analysis, des_job)
     try:
         segments = _selected_mc_segments(plan, des_job.result_json or {})
         rows = mc_simulate_segments(
@@ -1861,6 +1938,7 @@ def run_selected_validation(
             status_code=409,
             detail="Monte Carlo evidence is stale for the latest selected-plan DES. Rerun Monte Carlo.",
         )
+    _require_setup_current(analysis, des_job, mc_job)
     failure_cap = (mc_job.params_json or {}).get("failure_rate_cap")
     if (
         not isinstance(failure_cap, (int, float))
@@ -2052,6 +2130,15 @@ def create_selected_decision(
     scenario-scoped decision job. Nothing is re-optimized or rerun.
     """
     analysis = own_analysis(db, user, analysis_id)
+    # Evidence recorded under another Setup is reported as such before the
+    # (then also stale) plan is resolved, so the user learns to rerun.
+    selection = _latest_job(db, user, "workflow_selection", analysis.id)
+    selected_id = (selection.params_json or {}).get("scenario_id") if selection else None
+    if isinstance(selected_id, int):
+        for kind in ("workflow_des", "workflow_mc", "workflow_validation"):
+            prior = _latest_job(db, user, kind, analysis.id, selected_id)
+            if prior is not None:
+                _require_setup_current(analysis, prior)
     try:
         plan = _require_selected_separate_plan(db, user, analysis)
     except SelectedPlanError as exc:
@@ -2087,6 +2174,7 @@ def create_selected_decision(
             status_code=409,
             detail="Validation evidence is stale for the latest Simulation evidence. Rerun Validation.",
         )
+    _require_setup_current(analysis, des_job, mc_job, validation_job)
     validation_result = validation_job.result_json or {}
     if validation_result.get("scenario_id") != scenario.id:
         raise HTTPException(

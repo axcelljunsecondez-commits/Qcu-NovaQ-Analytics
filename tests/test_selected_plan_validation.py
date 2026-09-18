@@ -7,6 +7,7 @@ never averages away failures, never converts missing evidence to success.
 """
 from __future__ import annotations
 
+from backend.api.scenarios import setup_fingerprint
 from backend.api.workflow import validate_selected_plan
 from tests.helpers import csrf_header, login
 
@@ -168,7 +169,8 @@ def _api_calculation(dataset_id):
         "schema_version": 2,
         "engine_version": "novaq-2026-09-separate-des-v1",
         "dataset_id": dataset_id, "dataset_row_count": 2,
-        "options": options, "calculated_at": "2026-09-18T00:00:00+00:00"}}
+        "options": options, "calculated_at": "2026-09-18T00:00:00+00:00",
+        "setup_hash": setup_fingerprint(_setup())}}
 
 
 def _api_workspace(db_engine, email):
@@ -264,7 +266,8 @@ def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows):
             params_json={"analysis_id": analysis_id, "scenario_id": scenario_id,
                          "des_job_id": des_job_id, "failure_threshold": 0.75,
                          "failure_rate_cap": 0.05, "num_trials": 2000,
-                         "engine": "selected-plan-measured-mc"},
+                         "engine": "selected-plan-measured-mc",
+                         "setup_hash": setup_fingerprint(_setup())},
             result_json={"provenance": "SELECTED", "scenario_id": scenario_id,
                          "des_job_id": des_job_id, "results": rows},
             tenant_id=user.tenant_id,
