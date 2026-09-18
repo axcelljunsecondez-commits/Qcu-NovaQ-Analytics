@@ -1,5 +1,14 @@
 import { http } from '../lib/http'
-import type { SimMcOut, SimValidateOut, SimulationTrace } from './types'
+import type {
+  SelectedDesResult,
+  SelectedDecision,
+  SelectedMcResult,
+  SelectedValidationResult,
+  SeparateComparison,
+  SimMcOut,
+  SimValidateOut,
+  SimulationTrace,
+} from './types'
 
 export interface WorkflowJob<T = Record<string, unknown>> {
   id: number
@@ -16,6 +25,7 @@ export interface WorkflowScenario {
   name: string
   dataset_id: number
   provenance: 'verified_snapshot'
+  settings?: Record<string, unknown>
 }
 
 export interface WorkflowValidationCurrentRow {
@@ -180,6 +190,64 @@ export async function createWorkflowDecision(
 ): Promise<{ decision: WorkflowDecision; persisted: boolean }> {
   const { data } = await http.post<{ decision: WorkflowDecision; persisted: boolean }>(
     `/analyses/${analysisId}/workflow/decision`,
+  )
+  return data
+}
+
+export async function getSeparateComparison(
+  analysisId: number,
+): Promise<SeparateComparison> {
+  const { data } = await http.get<SeparateComparison>(
+    `/analyses/${analysisId}/workflow/comparison/separate`,
+  )
+  return data
+}
+
+export async function runSelectedDes(
+  analysisId: number,
+  options: { seed?: number | null } = {},
+): Promise<{ evidence: WorkflowJob<SelectedDesResult> }> {
+  const { data } = await http.post<{ evidence: WorkflowJob<SelectedDesResult> }>(
+    `/analyses/${analysisId}/workflow/simulation/des/selected`,
+    options,
+  )
+  return data
+}
+
+export async function runSelectedMc(
+  analysisId: number,
+  options: {
+    num_trials?: number
+    failure_threshold?: number
+    failure_rate_cap?: number
+    seed?: number | null
+  } = {},
+): Promise<{ evidence: WorkflowJob<SelectedMcResult> }> {
+  const { data } = await http.post<{ evidence: WorkflowJob<SelectedMcResult> }>(
+    `/analyses/${analysisId}/workflow/simulation/mc/selected`,
+    options,
+  )
+  return data
+}
+
+export async function runSelectedValidation(
+  analysisId: number,
+): Promise<{ evidence: WorkflowJob<SelectedValidationResult> }> {
+  const { data } = await http.post<{ evidence: WorkflowJob<SelectedValidationResult> }>(
+    `/analyses/${analysisId}/workflow/simulation/validation/selected`,
+    {},
+  )
+  return data
+}
+
+export async function runSelectedDecision(
+  analysisId: number,
+): Promise<{ decision: SelectedDecision; persisted: boolean; evidence: WorkflowJob<SelectedDecision> }> {
+  const { data } = await http.post<{
+    decision: SelectedDecision; persisted: boolean; evidence: WorkflowJob<SelectedDecision>
+  }>(
+    `/analyses/${analysisId}/workflow/decision/selected`,
+    {},
   )
   return data
 }

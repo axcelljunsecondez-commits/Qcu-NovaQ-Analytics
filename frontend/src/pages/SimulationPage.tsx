@@ -3,9 +3,22 @@ import { useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import type { SimDesOut, SimMcOut, SimValidateOut } from '../api/types'
+import type {
+  SelectedDesPeriod,
+  SelectedDesResult,
+  SelectedDecision,
+  SelectedMcResult,
+  SelectedValidationResult,
+  SimDesOut,
+  SimMcOut,
+  SimValidateOut,
+} from '../api/types'
 import {
   getWorkflow,
+  runSelectedDes,
+  runSelectedDecision,
+  runSelectedMc,
+  runSelectedValidation,
   runWorkflowDes,
   runWorkflowDesCurrent,
   runWorkflowMc,
@@ -79,6 +92,511 @@ function PrecisionBadge({ level }: { level: SimMcOut['failure_rate_precision'] }
   if (!level) return <span className="badge badge-neutral">—</span>
   const style = level === 'high' ? 'badge-ok' : level === 'moderate' ? 'badge-warn' : 'badge-bad'
   return <span className={`badge ${style}`}>{level}</span>
+}
+
+function isSelectedDesResult(value: unknown): value is SelectedDesResult {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return record.provenance === 'SELECTED' && Array.isArray(record.periods)
+}
+
+function isSelectedMcResult(value: unknown): value is SelectedMcResult {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return record.provenance === 'SELECTED' && Array.isArray(record.results)
+}
+
+function isSelectedValidationResult(value: unknown): value is SelectedValidationResult {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return record.provenance === 'SELECTED'
+    && typeof record.verdict === 'object'
+    && record.verdict !== null
+    && Array.isArray(record.periods)
+}
+
+function validationVerdictLabel(status: string | null, t: (key: string) => string): string {
+  if (status === 'pass') return t('simulation.sep_validation_pass')
+  if (status === 'fail') return t('simulation.sep_validation_fail')
+  return t('simulation.sep_validation_insufficient')
+}
+
+function isSelectedDecision(value: unknown): value is SelectedDecision {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return record.provenance === 'SELECTED'
+    && typeof record.status === 'string'
+    && Array.isArray(record.rationale)
+}
+
+function decisionStatusLabel(status: string | null, t: (key: string) => string): string {
+  if (status === 'adopt') return t('simulation.sep_decision_adopt')
+  if (status === 'revise') return t('simulation.sep_decision_revise')
+  if (status === 'insufficient_evidence') return t('simulation.sep_decision_insufficient')
+  return t('simulation.sep_decision_conditional')
+}
+
+function SelectedSeparateSimulationView({
+  analysisId,
+  scenario,
+}: {
+  analysisId: number
+  scenario: { id: number; name: string; dataset_id: number }
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [seed, setSeed] = useState('42')
+  const [periodTime, setPeriodTime] = useState<string | null>(null)
+  const [mcTrials, setMcTrials] = useState(String(simulationDefaults.num_trials))
+  const [mcThreshold, setMcThreshold] = useState(String(simulationDefaults.failure_threshold))
+  const [failureCap, setFailureCap] = useState(String(simulationDefaults.failure_rate_cap))
+  const [mcSeed, setMcSeed] = useState('42')
+  const [error, setError] = useState<string | null>(null)
+  const workflow = useQuery({
+    queryKey: ['workflow', analysisId],
+    queryFn: () => getWorkflow(analysisId),
+    enabled: Number.isInteger(analysisId),
+  })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
+  const desRun = useMutation({
+    mutationFn: () => runSelectedDes(analysisId, { seed: parseSeed(seed) }),
+    onSuccess: refresh,
+    onError: (err) => setError(requestError(err, t('errors.server'))),
+  })
+  const mcRun = useMutation({
+    mutationFn: () => runSelectedMc(analysisId, {
+      num_trials: Number(mcTrials),
+      failure_threshold: Number(mcThreshold),
+      failure_rate_cap: Number(failureCap),
+      seed: parseSeed(mcSeed),
+    }),
+    onSuccess: refresh,
+    onError: (err) => setError(requestError(err, t('errors.server'))),
+  })
+  const desEvidence = desRun.data?.evidence ?? workflow.data?.des ?? null
+  const desResult = desEvidence && isSelectedDesResult(desEvidence.result)
+    && (desEvidence.result.scenario_id === scenario.id)
+    ? desEvidence.result
+    : null
+  const mcEvidence = mcRun.data?.evidence ?? workflow.data?.mc ?? null
+  const mcResult = mcEvidence && isSelectedMcResult(mcEvidence.result)
+    && (mcEvidence.result.scenario_id === scenario.id)
+    ? mcEvidence.result
+    : null
+  const validationRun = useMutation({
+    mutationFn: () => runSelectedValidation(analysisId),
+    onSuccess: refresh,
+    onError: (err) => setError(requestError(err, t('errors.server'))),
+  })
+  const validationEvidence = validationRun.data?.evidence ?? workflow.data?.validation ?? null
+  const validationResult = validationEvidence && isSelectedValidationResult(validationEvidence.result)
+    && (validationEvidence.result.scenario_id === scenario.id)
+    ? validationEvidence.result
+    : null
+  const decisionRun = useMutation({
+    mutationFn: () => runSelectedDecision(analysisId),
+    onSuccess: refresh,
+    onError: (err) => setError(requestError(err, t('errors.server'))),
+  })
+  const decisionEvidence = decisionRun.data?.evidence ?? workflow.data?.decision ?? null
+  const persistedDecision = decisionEvidence && isSelectedDecision(decisionEvidence.result)
+    && (decisionEvidence.result.scenario_id === scenario.id)
+    ? decisionEvidence.result
+    : null
+  const freshDecision = decisionRun.data && isSelectedDecision(decisionRun.data.decision)
+    && (decisionRun.data.decision.scenario_id === scenario.id)
+    ? decisionRun.data.decision
+    : null
+  const decision = freshDecision ?? persistedDecision
+  const periods = desResult?.periods ?? []
+  const activePeriod = periods.find((period) => period.time === periodTime) ?? periods[0] ?? null
+  const running = desRun.isPending || mcRun.isPending || validationRun.isPending || decisionRun.isPending
+  return (
+    <div>
+      <div className="topbar">
+        <div>
+          <div className="topbar-eyebrow">{t('simulation.workflow_eyebrow')}</div>
+          <h1 className="page-title">{t('simulation.title')}</h1>
+          <p className="page-caption">{t('simulation.sep_selected_plan')}: {scenario.name}</p>
+          <p className="form-hint">
+            {t('simulation.sep_eval_source')}
+            {' · '}{t('simulation.sep_scenario')}: {scenario.name} (id {scenario.id})
+          </p>
+        </div>
+      </div>
+      {error && <div role="alert" className="alert alert-error" style={{ marginTop: '12px' }}>{error}</div>}
+
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('simulation.tabs.des_live')}</h3>
+        <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="sel-des-seed" style={{ fontSize: '14px', fontWeight: 800 }}>{t('simulation.seed')}</label>
+            <input
+              id="sel-des-seed"
+              aria-label={t('simulation.seed')}
+              type="number"
+              step={1}
+              value={seed}
+              onChange={(e) => setSeed(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => { setError(null); desRun.mutate() }}
+            disabled={running}
+            className="button-primary"
+            style={{ padding: '8px 16px', height: '35px' }}
+          >
+            {t('simulation.sep_run_des')}
+          </button>
+        </div>
+      </div>
+
+      {desResult && (
+        <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+          <div role="status" className={`alert ${desResult.overall_conservation ? 'alert-ok' : 'alert-error'}`}>
+            {desResult.overall_conservation ? t('simulation.sep_conservation_ok') : t('simulation.sep_conservation_bad')}
+          </div>
+          {desResult.overall_status !== 'COMPLETED' && (
+            <div role="alert" className="alert alert-error" style={{ marginTop: '8px' }}>
+              {t('simulation.sep_conservation_bad')}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }} role="group" aria-label={t('simulation.sep_period')}>
+            {periods.map((period) => (
+              <button
+                key={period.time}
+                type="button"
+                aria-pressed={activePeriod?.time === period.time}
+                onClick={() => setPeriodTime(period.time)}
+                style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontWeight: activePeriod?.time === period.time ? 800 : 400 }}
+              >
+                {period.time}
+              </button>
+            ))}
+          </div>
+          {activePeriod && (
+            <SelectedPeriodDetail period={activePeriod} />
+          )}
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('simulation.tabs.mc')}</h3>
+        <p className="form-hint">{t('simulation.sep_mc_measured')}</p>
+        <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
+          <div className="form-field">
+            <label htmlFor="sel-mc-trials" style={{ fontSize: '14px', fontWeight: 800 }}>{t('simulation.trials')}</label>
+            <input
+              id="sel-mc-trials"
+              type="number"
+              value={mcTrials}
+              onChange={(e) => setMcTrials(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+            />
+          </div>
+          <div className="form-field">
+            <label htmlFor="sel-mc-threshold" style={{ fontSize: '14px', fontWeight: 800 }}>{t('simulation.threshold')}</label>
+            <input
+              id="sel-mc-threshold"
+              type="number"
+              step="any"
+              value={mcThreshold}
+              onChange={(e) => setMcThreshold(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+            />
+          </div>
+          <div className="form-field">
+            <label htmlFor="sel-mc-cap" style={{ fontSize: '14px', fontWeight: 800 }}>{t('simulation.failure_rate_cap')}</label>
+            <input
+              id="sel-mc-cap"
+              type="number"
+              step="any"
+              value={failureCap}
+              onChange={(e) => setFailureCap(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+            />
+          </div>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="sel-mc-seed" style={{ fontSize: '14px', fontWeight: 800 }}>{t('simulation.seed')}</label>
+            <input
+              id="sel-mc-seed"
+              aria-label={t('simulation.seed')}
+              type="number"
+              step={1}
+              value={mcSeed}
+              onChange={(e) => setMcSeed(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const trials = Number(mcTrials)
+              const threshold = Number(mcThreshold)
+              const cap = Number(failureCap)
+              if (!Number.isInteger(trials) || trials < 1 || trials > MC_MAX_TRIALS) {
+                setError(t('simulation.trials_range_error', { max: String(MC_MAX_TRIALS) }))
+              } else if (!validProbability(threshold)) {
+                setError(t('simulation.threshold_range_error'))
+              } else if (!validProbability(cap)) {
+                setError(t('simulation.cap_range_error'))
+              } else {
+                setError(null)
+                mcRun.mutate()
+              }
+            }}
+            disabled={running || desResult === null}
+            className="button-primary"
+            style={{ padding: '8px 16px', height: '35px' }}
+            title={desResult === null ? t('simulation.sep_need_des') : undefined}
+          >
+            {t('simulation.sep_run_mc')}
+          </button>
+        </div>
+        {desResult === null && <p className="form-hint" style={{ marginTop: '6px' }}>{t('simulation.sep_need_des')}</p>}
+        {mcResult && (
+          <div className="table-scroll" role="region" aria-label={t('simulation.tabs.mc')} tabIndex={0} style={{ marginTop: '12px' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">{t('common.time')}</th>
+                  <th scope="col">{t('simulation.sep_lane')}</th>
+                  <th scope="col">λ</th>
+                  <th scope="col">ρ</th>
+                  <th scope="col">Wq (min)</th>
+                  <th scope="col">{t('simulation.sep_mc_failure')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mcResult.results.map((row, index) => (
+                  <tr key={`${row.time}-${row.queue_id ?? index}`}>
+                    <th scope="row">{row.time}</th>
+                    <td>{row.queue_id ?? '—'}</td>
+                    <td>{fmt(row.lambda)}</td>
+                    <td>{fmt(row.rho_mean)}</td>
+                    <td>{fmt(row.Wq_mean === null ? null : row.Wq_mean * 60)}</td>
+                    <td>{fmt(row.failure_rate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('simulation.sep_validation_title')}</h3>
+        <p className="form-hint">
+          {t('simulation.sep_selected_plan')}: {scenario.name}
+          {' · '}DES: {desResult ? t('compare.sep_row_complete') : '—'}
+          {' · '}MC: {mcResult ? t('compare.sep_row_complete') : '—'}
+        </p>
+        <button
+          type="button"
+          onClick={() => { setError(null); validationRun.mutate() }}
+          disabled={running || desResult === null || mcResult === null}
+          className="button-primary"
+          style={{ padding: '8px 16px', height: '35px', marginTop: '8px' }}
+          title={desResult === null || mcResult === null ? t('simulation.sep_need_validation_evidence') : undefined}
+        >
+          {t('simulation.sep_run_validation')}
+        </button>
+        {(desResult === null || mcResult === null) && (
+          <p className="form-hint" style={{ marginTop: '6px' }}>{t('simulation.sep_need_validation_evidence')}</p>
+        )}
+        {validationResult && (
+          <div style={{ marginTop: '12px' }}>
+            <div
+              role={validationResult.verdict.status === 'pass' ? 'status' : 'alert'}
+              className={`alert ${validationResult.verdict.status === 'pass' ? 'alert-ok' : validationResult.verdict.status === 'fail' ? 'alert-error' : 'alert-warn'}`}
+            >
+              {validationVerdictLabel(validationResult.verdict.status, t)}
+            </div>
+            {validationResult.verdict.status === 'insufficient' && (
+              <p className="form-hint" style={{ marginTop: '6px' }}>
+                {t('simulation.sep_validation_missing_reason')}
+              </p>
+            )}
+            <div className="table-scroll" role="region" aria-label={t('simulation.sep_validation_title')} tabIndex={0} style={{ marginTop: '12px' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('common.time')}</th>
+                    <th scope="col">{t('optimize.sep_col_lanes')}</th>
+                    <th scope="col">{t('simulation.sep_col_des')}</th>
+                    <th scope="col">{t('simulation.sep_col_mc')}</th>
+                    <th scope="col">{t('simulation.sep_col_validation')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {validationResult.periods.map((period) => (
+                    <tr key={period.time}>
+                      <th scope="row">{period.time}</th>
+                      <td>{period.active_queue_ids.length}</td>
+                      <td>{period.des_ok ? '✓' : t('simulation.sep_des_incomplete')}</td>
+                      <td>
+                        {period.queues.length === 0
+                          ? '—'
+                          : period.queues.every((q) => q.validation_verdict === 'pass')
+                            ? '✓'
+                            : period.queues.some((q) => q.validation_verdict === 'fail')
+                              ? 'FAIL'
+                              : '—'}
+                      </td>
+                      <td>{period.status === 'pass' ? '✓' : period.status === 'fail' ? 'FAIL' : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {validationResult.periods.map((period) => (
+              <details key={period.time} style={{ marginTop: '8px' }}>
+                <summary style={{ fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+                  {t('compare.sep_candidate_detail')} · {period.time}
+                </summary>
+                <table style={{ marginTop: '6px' }}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('simulation.sep_lane')}</th>
+                      <th scope="col">ρ</th>
+                      <th scope="col">Wq (min)</th>
+                      <th scope="col">{t('simulation.sep_mc_failure')}</th>
+                      <th scope="col">{t('simulation.sep_col_validation')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {period.queues.map((queue) => (
+                      <tr key={String(queue.queue_id)}>
+                        <th scope="row">{queue.queue_id ?? '—'}</th>
+                        <td>{fmt(queue.rho_sim)}</td>
+                        <td>{fmt(queue.Wq_sim === null || queue.Wq_sim === undefined ? null : queue.Wq_sim * 60)}</td>
+                        <td>{queue.mc_failure_rate === null || queue.mc_failure_rate === undefined ? '—' : fmt(queue.mc_failure_rate)}</td>
+                        <td>{queue.validation_verdict === 'pass' ? '✓' : queue.validation_verdict === 'fail' ? 'FAIL' : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('simulation.sep_decision_title')}</h3>
+        <p className="form-hint">
+          {t('simulation.sep_selected_plan')}: {scenario.name}
+        </p>
+        <button
+          type="button"
+          onClick={() => { setError(null); decisionRun.mutate() }}
+          disabled={running || validationResult === null}
+          className="button-primary"
+          style={{ padding: '8px 16px', height: '35px', marginTop: '8px' }}
+          title={validationResult === null ? t('simulation.sep_need_validation') : undefined}
+        >
+          {t('simulation.sep_run_decision')}
+        </button>
+        {validationResult === null && (
+          <p className="form-hint" style={{ marginTop: '6px' }}>{t('simulation.sep_need_validation')}</p>
+        )}
+        {decision && (
+          <div style={{ marginTop: '12px' }}>
+            <div
+              role={decision.status === 'revise' || decision.status === 'insufficient_evidence' ? 'alert' : 'status'}
+              className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`}
+            >
+              {decisionStatusLabel(decision.status, t)}
+            </div>
+            {decision.headline && <p style={{ marginTop: '8px', fontWeight: 700 }}>{decision.headline}</p>}
+            {decision.recommendation && <p style={{ marginTop: '4px' }}>{decision.recommendation}</p>}
+            <h4 className="section-title" style={{ marginTop: '10px' }}>{t('simulation.sep_decision_rationale')}</h4>
+            <ul>
+              {decision.rationale.map((line, index) => (
+                <li key={index} style={{ fontSize: '14px' }}>{line}</li>
+              ))}
+            </ul>
+            <h4 className="section-title" style={{ marginTop: '10px' }}>{t('simulation.sep_decision_evidence')}</h4>
+            <div className="table-scroll" role="region" aria-label={t('simulation.sep_decision_evidence')} tabIndex={0}>
+              <table>
+                <tbody>
+                  <tr>
+                    <th scope="row">{t('simulation.sep_lane')} Δ</th>
+                    <td>{decision.facts?.lane_delta === null || decision.facts?.lane_delta === undefined ? '—' : String(decision.facts.lane_delta)}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">{t('compare.sep_row_target')}</th>
+                    <td>{decision.facts?.selected_target === null || decision.facts?.selected_target === undefined ? '—' : fmtPct(decision.facts.selected_target)}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">{t('simulation.sep_col_validation')}</th>
+                    <td>{decision.facts?.failed_checks ?? '—'} / {decision.facts?.validation_checks ?? '—'}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {decision.failed_periods.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                <h4 className="section-title">{t('simulation.sep_decision_periods')}</h4>
+                <ul>
+                  {decision.failed_periods.map((time) => (
+                    <li key={time} style={{ fontSize: '14px' }}>{time}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+              {(decision.status === 'conditional' || decision.status === 'adopt') && (
+                <Link to={`/analyses/${analysisId}/reports`}>{t('simulation.sep_decision_next_reports')}</Link>
+              )}
+              {(decision.status === 'revise' || decision.status === 'insufficient_evidence') && (
+                <Link to={`/analyses/${analysisId}/compare`}>{t('simulation.sep_decision_next_compare')}</Link>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
+  const { t } = useTranslation()
+  return (
+    <div style={{ marginTop: '12px' }}>
+      <div className="table-scroll" role="region" aria-label={period.time} tabIndex={0}>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">{t('simulation.sep_lane')}</th>
+              <th scope="col">{t('simulation.sep_active')}</th>
+              <th scope="col">{t('simulation.sep_arrivals')}</th>
+              <th scope="col">{t('simulation.sep_served')}</th>
+              <th scope="col">Wq (min)</th>
+              <th scope="col">ρ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {period.results.map((row) => (
+              <tr key={String(row.queue_id)}>
+                <th scope="row">{row.queue_id ?? '—'}</th>
+                <td>{row.active ? '✓' : '—'}</td>
+                <td>{row.arrivals ?? '—'}</td>
+                <td>{row.served ?? '—'}</td>
+                <td>{fmt(row.Wq_sim === null || row.Wq_sim === undefined ? null : row.Wq_sim * 60)}</td>
+                <td>{fmt(row.rho_sim)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <SeparateSimulationPlayback trace={period.trace} />
+      </div>
+    </div>
+  )
 }
 
 export function SimulationPage() {
@@ -177,6 +695,13 @@ export function SimulationPage() {
   const scenario = workflow.data.scenario
   const queueStructure = analysis.data?.analysis.queue_setup.queue_structure
   const isCurrentMode = !scenario && queueStructure === 'separate_queues'
+  const selectedCalculation = (scenario?.settings?.calculation ?? {}) as {
+    schema_version?: unknown
+  }
+  const isSelectedSeparatePlan = queueStructure === 'separate_queues'
+    && selectedCalculation.schema_version === 2
+    && scenario !== null
+    && scenario !== undefined
   if (!scenario && !isCurrentMode) {
     return (
       <div>
@@ -188,6 +713,27 @@ export function SimulationPage() {
         </div>
         <div className="alert alert-warn">
           {t('simulation.select_scenario_first')}{' '}
+          <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (isSelectedSeparatePlan && scenario) {
+    return <SelectedSeparateSimulationView analysisId={analysisId} scenario={scenario} />
+  }
+
+  if (!scenario && queueStructure === 'separate_queues' && workflow.data.selection) {
+    return (
+      <div>
+        <div className="topbar">
+          <div>
+            <div className="topbar-eyebrow">{t('simulation.workflow_eyebrow')}</div>
+            <h1 className="page-title">{t('simulation.title')}</h1>
+          </div>
+        </div>
+        <div className="alert alert-warn" style={{ marginTop: '12px' }}>
+          {t('simulation.sep_stale_body')}{' '}
           <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
         </div>
       </div>

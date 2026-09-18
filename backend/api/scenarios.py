@@ -16,6 +16,13 @@ from backend.api.optimization import OptimizeBatchRequest, SegmentInput, optimiz
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
+from backend.queueing_engine.services.separate_optimization import (
+    SEPARATE_DES_ENGINE_VERSION,
+    full_coverage_min_lanes,
+    optimize_separate_schedule,
+    prune_separate_schedule,
+    validate_des_replication_config,
+)
 
 router = APIRouter(prefix="/scenarios", tags=["scenarios"])
 
@@ -99,14 +106,91 @@ def _same_result(left, right) -> bool:
     return type(left) is type(right) and left == right
 
 
-def _verify_calculation(payload: ScenarioIn, dataset=None) -> None:
+def _separate_lane_bound(value) -> int | None:
+    """Coerce a saved lane bound mirroring endpoint integer parsing."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    raise ValueError("Invalid separate lane bound")
+
+
+def _verify_separate_calculation(payload: ScenarioIn, dataset=None, analysis=None) -> None:
+    """Verify a Separate-Queue DES optimization snapshot by deterministic rerun.
+
+    The snapshot re-executes the same persisted evidence with the same
+    replication seeds; any tampering with results, options, or dataset
+    version fails verification. Trace payloads stay pruned on both sides.
+    """
+    snapshot = payload.settings.get("calculation")
+    if not isinstance(snapshot, dict):
+        raise ValueError("Unknown calculation schema or engine version")
+    if snapshot.get("engine_version") != SEPARATE_DES_ENGINE_VERSION:
+        raise ValueError("Unknown calculation schema or engine version")
+    if not isinstance(snapshot.get("calculated_at"), str):
+        raise ValueError("Calculation time must be an ISO timestamp")
+    timestamp = datetime.fromisoformat(snapshot["calculated_at"].replace("Z", "+00:00"))
+    if timestamp.tzinfo is None:
+        raise ValueError("Calculation time requires a timezone")
+    options = snapshot.get("options")
+    required = ("target_utilization", "server_cost_per_hr", "customer_waiting_cost",
+                "min_active_lanes", "max_active_lanes", "lambda_multiplier", "des")
+    if not isinstance(options, dict) or any(key not in options for key in required):
+        raise ValueError("Invalid separate calculation options")
+    if any(payload.settings.get(key) != value for key, value in options.items()):
+        raise ValueError("Saved settings differ from calculated options")
+    if dataset is None or snapshot.get("dataset_id") != dataset.id:
+        raise ValueError("Separate optimization snapshot requires its dataset.")
+    if snapshot.get("dataset_row_count") != len(dataset.normalized_json or []):
+        raise ValueError("Dataset changed since the optimization run.")
+    setup = (analysis.queue_setup_json or {}) if analysis is not None else {}
+    if setup.get("queue_structure") != "separate_queues":
+        raise ValueError("Separate optimization requires a separate_queues analysis.")
+    des_settings = validate_des_replication_config(options.get("des") or {})
+    min_lanes = _separate_lane_bound(options.get("min_active_lanes"))
+    if min_lanes is None:
+        raise ValueError("Separate plans must record full coverage in min_active_lanes.")
+    full_coverage_min_lanes(setup, min_lanes)
+    try:
+        target = float(options["target_utilization"])
+        server_cost = float(options["server_cost_per_hr"])
+        waiting_cost = float(options["customer_waiting_cost"])
+        multiplier = float(options["lambda_multiplier"])
+    except (TypeError, ValueError):
+        raise ValueError("Invalid separate calculation options") from None
+    schedule = optimize_separate_schedule(
+        setup,
+        dataset.normalized_json or [],
+        target=target,
+        server_cost=server_cost,
+        waiting_cost=waiting_cost,
+        min_lanes=min_lanes,
+        max_lanes=_separate_lane_bound(options.get("max_active_lanes")),
+        lambda_multiplier=multiplier,
+        des_settings=des_settings,
+    )
+    expected = {"schedule": prune_separate_schedule(schedule)}
+    if not _same_result(payload.results, expected):
+        raise ValueError("Results do not match the calculation inputs")
+    payload.results = expected
+
+
+def _verify_calculation(payload: ScenarioIn, dataset=None, analysis=None) -> None:
     snapshot = payload.settings.get("calculation")
     if snapshot is None:
         return  # compatibility: readable/imported legacy results are explicitly unverified
     try:
+        if not isinstance(snapshot, dict):
+            raise ValueError("Unknown calculation schema or engine version")
+        if snapshot.get("schema_version") == 2:
+            _verify_separate_calculation(payload, dataset, analysis)
+            return
         if (
-            not isinstance(snapshot, dict)
-            or snapshot.get("schema_version") != 1
+            snapshot.get("schema_version") != 1
             or snapshot.get("engine_version") not in ("novaq-2026-09-integrity-v1", "novaq-2026-09-system-v2")
         ):
             raise ValueError("Unknown calculation schema or engine version")
@@ -207,7 +291,7 @@ def create_scenario(
             dataset.analysis_id = analysis.id
     _check_size(payload.results, settings)
     _check_size(payload.settings, settings)
-    _verify_calculation(payload, dataset)
+    _verify_calculation(payload, dataset, analysis)
     scenario = Scenario(
         user_id=user.id,
         analysis_id=analysis.id,

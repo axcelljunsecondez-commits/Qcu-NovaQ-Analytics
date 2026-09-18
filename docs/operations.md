@@ -71,6 +71,13 @@ Staffing and daily-cost summaries assume one-hour segments making up one operati
 day. Validate that assumption for imported data. Waiting/abandonment costs are
 modeled costs, not realized payroll savings. Per-segment server requirements do
 not account for shifts/breaks and are not an executable employee schedule.
+Separate Queue setup stores user-configured server break schedules. The Separate
+routing DES (optimizer evaluation and selected-plan simulation) applies each break
+only in the period whose operating segment contains its scheduled start: the lane
+drains from 3 minutes before, rests for the full duration once empty, then returns.
+Periods are simulated independently, so lane break state does not carry into the
+next period's run. Separate optimization keeps every configured queue active
+(full coverage).
 
 New UI saves include effective inputs, options, what-if factor, timestamp and
 engine version. The API recomputes and verifies them, and makes saved calculation

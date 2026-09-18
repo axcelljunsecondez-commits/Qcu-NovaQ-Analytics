@@ -9,6 +9,10 @@ import { Route, Routes } from 'react-router-dom'
 const listScenariosMock = vi.fn()
 const getWorkflowMock = vi.fn()
 const selectWorkflowScenarioMock = vi.fn()
+const getAnalysisMock = vi.fn()
+const getSeparateComparisonMock = vi.fn()
+const optimizeBatchSpy = vi.fn()
+const optimizeSeparateSpy = vi.fn()
 
 vi.mock('../api/scenarios', () => ({
   listScenarios: (...args: unknown[]) => listScenariosMock(...args),
@@ -18,6 +22,16 @@ vi.mock('../api/scenarios', () => ({
 vi.mock('../api/workflow', () => ({
   getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
   selectWorkflowScenario: (...args: unknown[]) => selectWorkflowScenarioMock(...args),
+  getSeparateComparison: (...args: unknown[]) => getSeparateComparisonMock(...args),
+}))
+
+vi.mock('../api/analyses', () => ({
+  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+}))
+
+vi.mock('../api/optimization', () => ({
+  optimizeBatch: (...args: unknown[]) => optimizeBatchSpy(...args),
+  optimizeSeparate: (...args: unknown[]) => optimizeSeparateSpy(...args),
 }))
 
 vi.mock('../api/auth', () => ({
@@ -93,6 +107,12 @@ beforeEach(() => {
     decision_stale: false,
   })
   selectWorkflowScenarioMock.mockReset().mockResolvedValue({ selection: { id: 10 } })
+  getAnalysisMock.mockReset().mockResolvedValue({
+    analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue', queue_ids: [] } },
+  })
+  getSeparateComparisonMock.mockReset()
+  optimizeBatchSpy.mockReset()
+  optimizeSeparateSpy.mockReset()
 })
 
 describe('ComparisonPage', () => {
@@ -386,5 +406,139 @@ describe('ComparisonPage', () => {
     expect(
       await screen.findByText('No scenarios yet. Save an optimization to compare plans.'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('separate comparison', () => {
+  function renderSeparate() {
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['east-07', 'lane-A'] } },
+    })
+    return renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/compare" element={<ComparisonPage />} />
+      </Routes>,
+      { route: '/analyses/7/compare' },
+    )
+  }
+
+  function plan(id: number, name: string, target: number, overrides = {}) {
+    return {
+      scenario_id: id, name, dataset_id: 5, target,
+      evaluation_method: 'DES_REPLICATIONS', replications: 5, base_seed: 42,
+      overall: 'COMPLETE', stale: false, valid: true, valid_reason: null,
+      periods: [
+        {
+          time: '08:00', current_active_lanes: ['east-07', 'lane-A'],
+          optimal_active_lanes: 2, adjustment: 0, peak_util: 0.55,
+          wait_mean: 0.06, wait_ci: [0.05, 0.07],
+          total_cost_mean: 200.0, total_cost_ci: [190.0, 210.0], status: 'OPTIMAL',
+        },
+        {
+          time: '09:00', current_active_lanes: ['east-07', 'checkout_blue'],
+          optimal_active_lanes: 1, adjustment: -1, peak_util: 0.3,
+          wait_mean: null, wait_ci: null,
+          total_cost_mean: 95.0, total_cost_ci: null, status: 'OPTIMAL',
+        },
+      ],
+      totals: { lane_periods: 3, wait_mean: 0.06, peak_util: 0.55, total_cost_mean: 295.0 },
+      ...overrides,
+    }
+  }
+
+  function comparisonResponse(plans: unknown[], selected: number | null = null) {
+    return {
+      analysis_id: 7,
+      queue_structure: 'separate_queues',
+      current: {
+        dataset_id: 5,
+        periods: [
+          { time: '08:00', active_lanes: ['east-07', 'lane-A'], lambda_total: 6.0, wait_mean: 0.05, util_max: 0.4 },
+          { time: '09:00', active_lanes: ['east-07', 'checkout_blue'], lambda_total: 3.0, wait_mean: null, util_max: 0.2 },
+        ],
+        wait_mean: 0.05,
+        wait_basis: 'lambda-weighted analytical mean over Current rows',
+        util_max: 0.4,
+        waiting_cost: 30.0,
+        waiting_cost_basis: 'Lq-based Current basis; excludes server cost',
+        total_cost: null,
+        total_cost_reason: 'Current evidence has no server-cost basis; savings are not computed.',
+      },
+      plans,
+      selected_scenario_id: selected,
+    }
+  }
+
+  it('renders Current beside saved plans with staffing schedules', async () => {
+    getSeparateComparisonMock.mockResolvedValue(
+      comparisonResponse([plan(11, 'Optimal @ 60%', 0.6), plan(12, 'Optimal @ 70%', 0.7)]),
+    )
+    renderSeparate()
+    expect((await screen.findAllByRole('columnheader', { name: 'Current' })).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('columnheader', { name: 'Optimal @ 60%' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('columnheader', { name: 'Optimal @ 70%' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('rowheader', { name: '08:00' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/east-07/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Replicated DES').length).toBeGreaterThan(0)
+    expect(optimizeBatchSpy).not.toHaveBeenCalled()
+    expect(optimizeSeparateSpy).not.toHaveBeenCalled()
+  })
+
+  it('selects exactly one valid plan explicitly and never automatically', async () => {
+    const user = userEvent.setup()
+    getSeparateComparisonMock.mockResolvedValue(
+      comparisonResponse([plan(11, 'Optimal @ 60%', 0.6), plan(12, 'Optimal @ 70%', 0.7)]),
+    )
+    renderSeparate()
+    await screen.findAllByRole('columnheader', { name: 'Optimal @ 70%' })
+    expect(selectWorkflowScenarioMock).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('radio', { name: /Optimal @ 70%/ }))
+    await user.click(screen.getByRole('button', { name: 'Select for Simulation' }))
+    await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 12))
+    expect(optimizeSeparateSpy).not.toHaveBeenCalled()
+  })
+
+  it('marks stale plans and blocks their selection', async () => {
+    const user = userEvent.setup()
+    getSeparateComparisonMock.mockResolvedValue(
+      comparisonResponse([
+        plan(11, 'Optimal @ 60%', 0.6, { stale: true, valid: false, valid_reason: 'stale for the current dataset' }),
+        plan(12, 'Optimal @ 70%', 0.7),
+      ]),
+    )
+    renderSeparate()
+    expect((await screen.findAllByText('STALE')).length).toBeGreaterThan(0)
+    expect(screen.getByRole('radio', { name: /Optimal @ 60%/ })).toBeDisabled()
+    await user.click(screen.getByRole('radio', { name: /Optimal @ 70%/ }))
+    await user.click(screen.getByRole('button', { name: 'Select for Simulation' }))
+    await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 12))
+  })
+
+  it('shows invalid plans with reasons and keeps them unselectable', async () => {
+    getSeparateComparisonMock.mockResolvedValue(
+      comparisonResponse([plan(11, 'Blocked plan', 0.7, {
+        overall: 'BLOCKED', valid: false, valid_reason: 'schedule is not COMPLETE',
+      })]),
+    )
+    renderSeparate()
+    expect(await screen.findByText(/schedule is not COMPLETE/)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Blocked plan/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Select for Simulation' })).toBeDisabled()
+  })
+
+  it('shows the empty state when no separate plans are saved', async () => {
+    getSeparateComparisonMock.mockResolvedValue(comparisonResponse([]))
+    renderSeparate()
+    expect(await screen.findByText('No saved optimal plans are available for comparison.')).toBeInTheDocument()
+  })
+
+  it('renders nulls as em-dash and introduces no synthetic scores', async () => {
+    getSeparateComparisonMock.mockResolvedValue(
+      comparisonResponse([plan(12, 'Optimal @ 70%', 0.7)]),
+    )
+    const { container } = renderSeparate()
+    await screen.findAllByRole('columnheader', { name: 'Optimal @ 70%' })
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    expect(container.textContent).not.toMatch(/score|winner|best plan|recommended/i)
   })
 })

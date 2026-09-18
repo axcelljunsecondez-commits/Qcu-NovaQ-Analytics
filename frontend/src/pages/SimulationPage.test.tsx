@@ -12,6 +12,11 @@ const runMcMock = vi.fn()
 const runMcCurrentMock = vi.fn()
 const runValidationMock = vi.fn()
 const runValidationCurrentMock = vi.fn()
+const runSelectedDesMock = vi.fn()
+const runSelectedMcMock = vi.fn()
+const runSelectedValidationMock = vi.fn()
+const runSelectedDecisionMock = vi.fn()
+const optimizeSpy = vi.fn()
 const getAnalysisMock = vi.fn()
 
 vi.mock('../api/workflow', () => ({
@@ -22,6 +27,16 @@ vi.mock('../api/workflow', () => ({
   runWorkflowMcCurrent: (...args: unknown[]) => runMcCurrentMock(...args),
   runWorkflowValidation: (...args: unknown[]) => runValidationMock(...args),
   runWorkflowValidationCurrent: (...args: unknown[]) => runValidationCurrentMock(...args),
+  runSelectedDes: (...args: unknown[]) => runSelectedDesMock(...args),
+  runSelectedMc: (...args: unknown[]) => runSelectedMcMock(...args),
+  runSelectedValidation: (...args: unknown[]) => runSelectedValidationMock(...args),
+  runSelectedDecision: (...args: unknown[]) => runSelectedDecisionMock(...args),
+}))
+
+vi.mock('../api/optimization', () => ({
+  optimize: (...args: unknown[]) => optimizeSpy(...args),
+  optimizeBatch: (...args: unknown[]) => optimizeSpy(...args),
+  optimizeSeparate: (...args: unknown[]) => optimizeSpy(...args),
 }))
 
 vi.mock('../api/analyses', () => ({
@@ -189,6 +204,11 @@ beforeEach(() => {
   })
   runDesCurrentMock.mockReset().mockResolvedValue({ evidence: job('workflow_des_current', trace, { scenario_id: null }) })
   runMcCurrentMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc_current', { results: [mcRow] }, { scenario_id: null }) })
+  runSelectedDesMock.mockReset()
+  runSelectedMcMock.mockReset()
+  runSelectedValidationMock.mockReset()
+  runSelectedDecisionMock.mockReset()
+  optimizeSpy.mockReset()
 })
 
 function separateSetup() {
@@ -535,5 +555,399 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
     expect(screen.getAllByText('cashier-east').length).toBeGreaterThanOrEqual(2)
     expect(runValidationCurrentMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('selected separate plan simulation', () => {
+  const v2scenario = {
+    id: 9,
+    name: 'Optimal @ 70%',
+    dataset_id: 2,
+    provenance: 'verified_snapshot',
+    settings: { calculation: { schema_version: 2, engine_version: 'novaq-2026-09-separate-des-v1' } },
+  }
+
+  const selectedLane = {
+    time: '08:00',
+    queue_id: 'east-07',
+    server_id: 'server:east-07',
+    lambda: 4.0,
+    lambda_routed: 5.8,
+    mu: 11.4,
+    c: 1,
+    arrivals: 46,
+    served: 45,
+    waiting: 1,
+    in_service: 0,
+    abandoned: null,
+    Wq_sim: 0.09,
+    rho_sim: 0.55,
+    max_queue: 4,
+    active: true,
+    simulation_supported: true,
+    error: null,
+    metric_provenance: 'simulated',
+    customer_conservation: true,
+  }
+
+  const idleLane = {
+    ...selectedLane,
+    queue_id: 'lane-A',
+    server_id: 'server:lane-A',
+    lambda: 2.0,
+    lambda_routed: 0.0,
+    arrivals: 0,
+    served: 0,
+    waiting: 0,
+    Wq_sim: null,
+    rho_sim: 0.0,
+    max_queue: 0,
+    active: false,
+  }
+
+  const selectedTrace = {
+    results: [selectedLane, idleLane],
+    trace: [
+      { t: 0.12, type: 'arrival', segment_id: '08:00:east-07', customer_id: 1, server_id: null, queue_id: 'east-07', queue_len_after: 1 },
+      { t: 0.2, type: 'service_start', segment_id: '08:00:east-07', customer_id: 1, server_id: 'server:east-07', queue_id: 'east-07', queue_len_after: 0 },
+      { t: 0.41, type: 'service_end', segment_id: '08:00:east-07', customer_id: 1, server_id: 'server:east-07', queue_id: 'east-07', queue_len_after: 0, service_time_hours: 0.21 },
+    ],
+    trace_hours: 8,
+    total_hours: 8,
+    event_count: 3,
+    truncated: false,
+    abandonment_supported: false,
+    segments: [{
+      segment_id: '08:00:east-07',
+      time: '08:00',
+      queue_id: 'east-07',
+      lambda: 4,
+      mu: 11.4,
+      c: 1,
+      selected_model: 'Parallel M/G/1 (routing)',
+      simulation_supported: true,
+      error: null,
+      queue_structure: 'separate',
+      initial_queue_depth: 0,
+      final_queue_depth: 1,
+    }],
+  }
+
+  const selectedDesResult = {
+    provenance: 'SELECTED',
+    scenario_id: 9,
+    analysis_id: 7,
+    dataset_id: 2,
+    seed: 7,
+    duration_hours: 8,
+    periods: [{
+      time: '08:00',
+      active_queue_ids: ['east-07'],
+      inactive_queue_ids: ['lane-A'],
+      evaluation_status: 'FEASIBLE',
+      conservation: true,
+      total_lambda: 6.0,
+      results: [selectedLane, idleLane],
+      trace: selectedTrace,
+    }],
+    overall_conservation: true,
+    overall_status: 'COMPLETED',
+  }
+
+  const selectedMcRow = {
+    ...mcRow,
+    time: '08:00',
+    queue_id: 'east-07',
+    lambda: 5.75,
+    status: 'PASS',
+  }
+
+  function separateSelectedSetup(scenario: unknown = v2scenario) {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({ scenario, selection: job('workflow_selection', { scenario_id: 9 }) }))
+  }
+
+  it('shows the selected-plan header with scenario identity', async () => {
+    separateSelectedSetup()
+    renderPage()
+    expect(await screen.findAllByText(/Selected Plan/)).not.toHaveLength(0)
+    expect(screen.getAllByText(/Optimal @ 70%/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Replicated DES/).length).toBeGreaterThan(0)
+  })
+
+  it('blocks runs and points to Comparison when the selection went stale', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: job('workflow_selection', { scenario_id: 9 }),
+      scenario: null,
+    }))
+    renderPage()
+    expect(await screen.findByText(/no longer matches the current analysis data/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run selected DES' })).not.toBeInTheDocument()
+  })
+
+  it('runs selected DES once and renders lanes, conservation, and playback', async () => {
+    const user = userEvent.setup()
+    separateSelectedSetup()
+    runSelectedDesMock.mockResolvedValue({
+      evidence: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run selected DES' }))
+    await waitFor(() => expect(runSelectedDesMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByTestId('lane-east-07')).toBeInTheDocument()
+    expect(screen.getByText('east-07')).toBeInTheDocument()
+    expect(screen.getByText('lane-A')).toBeInTheDocument()
+    expect(optimizeSpy).not.toHaveBeenCalled()
+    expect(runDesMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps event timestamps intact when playback speed changes', async () => {
+    const user = userEvent.setup()
+    separateSelectedSetup()
+    runSelectedDesMock.mockResolvedValue({
+      evidence: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run selected DES' }))
+    await screen.findByTestId('lane-east-07')
+    const speed = screen.getByLabelText('Speed')
+    await user.selectOptions(speed, '10')
+    expect(speed).toHaveValue('10')
+    expect(screen.getByTestId('lane-east-07')).toBeInTheDocument()
+    expect(screen.getByText('east-07')).toBeInTheDocument()
+  })
+
+  it('runs selected MC against the same scenario with measured loads', async () => {
+    const user = userEvent.setup()
+    separateSelectedSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      scenario: v2scenario,
+      selection: job('workflow_selection', { scenario_id: 9 }),
+      des: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+    }))
+    runSelectedMcMock.mockResolvedValue({
+      evidence: job('workflow_mc', {
+        provenance: 'SELECTED', scenario_id: 9, des_job_id: 10, results: [selectedMcRow],
+      }, { scenario_id: 9, engine: 'selected-plan-measured-mc' }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run selected MC' }))
+    await waitFor(() => expect(runSelectedMcMock).toHaveBeenCalledTimes(1))
+    expect(screen.getAllByText('east-07').length).toBeGreaterThan(0)
+    expect(optimizeSpy).not.toHaveBeenCalled()
+  })
+
+  it('renders missing waits as em-dash instead of zero', async () => {
+    separateSelectedSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      scenario: v2scenario,
+      selection: job('workflow_selection', { scenario_id: 9 }),
+      des: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+    }))
+    renderPage()
+    await screen.findByTestId('lane-east-07')
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+
+  const selectedValidationResult = {
+    provenance: 'SELECTED',
+    scenario_id: 9,
+    analysis_id: 7,
+    dataset_id: 2,
+    des_job_id: 10,
+    mc_job_id: 11,
+    failure_rate_cap: 0.05,
+    periods: [{
+      time: '08:00',
+      active_queue_ids: ['east-07'],
+      status: 'pass',
+      des_ok: true,
+      des_reason: null,
+      queues: [{
+        time: '08:00',
+        queue_id: 'east-07',
+        selected_model: 'Parallel M/G/1',
+        mc_failure_rate: 0.0,
+        mc_failure_rate_adequate: true,
+        failure_rate_cap: 0.05,
+        validation_verdict: 'pass',
+        rho_sim: 0.55,
+        Wq_sim: 0.09,
+        served: 45,
+      }],
+    }],
+    verdict: { status: 'pass', failed: [], inadequate: [], total: 1 },
+  }
+
+  function selectedEvidenceSetup(overrides = {}) {
+    separateSelectedSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      scenario: v2scenario,
+      selection: job('workflow_selection', { scenario_id: 9 }),
+      des: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+      mc: job('workflow_mc', {
+        provenance: 'SELECTED', scenario_id: 9, des_job_id: 10, results: [selectedMcRow],
+      }, { scenario_id: 9, engine: 'selected-plan-measured-mc' }),
+      ...overrides,
+    }))
+  }
+
+  function decidedEvidenceSetup(validationResult: unknown) {
+    selectedEvidenceSetup({
+      validation: job('workflow_validation', validationResult, { scenario_id: 9 }),
+    })
+  }
+
+  it('runs selected validation once and shows the PASS verdict with periods', async () => {
+    const user = userEvent.setup()
+    selectedEvidenceSetup()
+    runSelectedValidationMock.mockResolvedValue({
+      evidence: job('workflow_validation', selectedValidationResult, { scenario_id: 9 }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run validation' }))
+    await waitFor(() => expect(runSelectedValidationMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('Validation: PASS')).toBeInTheDocument()
+    expect(screen.getAllByRole('rowheader', { name: '08:00' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('east-07').length).toBeGreaterThan(0)
+    expect(optimizeSpy).not.toHaveBeenCalled()
+    expect(runValidationMock).not.toHaveBeenCalled()
+    expect(runValidationCurrentMock).not.toHaveBeenCalled()
+  })
+
+  it('shows FAIL with the failing period and no recommendation', async () => {
+    const user = userEvent.setup()
+    selectedEvidenceSetup()
+    runSelectedValidationMock.mockResolvedValue({
+      evidence: job('workflow_validation', {
+        ...selectedValidationResult,
+        periods: [{ ...selectedValidationResult.periods[0], status: 'fail' }],
+        verdict: { status: 'fail', failed: [['08:00', 'east-07']], inadequate: [], total: 1 },
+      }, { scenario_id: 9 }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run validation' }))
+    expect(await screen.findByText('Validation: FAIL')).toBeInTheDocument()
+    expect(screen.queryByText(/Adopt|Reject|Recommended/i)).not.toBeInTheDocument()
+  })
+
+  it('disables validation until DES and MC evidence exist', async () => {
+    separateSelectedSetup()
+    renderPage()
+    expect(await screen.findByRole('button', { name: /Run validation/ })).toBeDisabled()
+  })
+
+  it('renders null failure evidence as em-dash', async () => {
+    const user = userEvent.setup()
+    selectedEvidenceSetup()
+    runSelectedValidationMock.mockResolvedValue({
+      evidence: job('workflow_validation', {
+        ...selectedValidationResult,
+        periods: [{
+          ...selectedValidationResult.periods[0],
+          status: 'insufficient',
+          queues: [{ ...selectedValidationResult.periods[0].queues[0],
+            mc_failure_rate: null, validation_verdict: 'inadequate' }],
+        }],
+        verdict: { status: 'insufficient', failed: [], inadequate: [['08:00', 'east-07']], total: 1 },
+      }, { scenario_id: 9 }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run validation' }))
+    expect(await screen.findByText('Validation: INSUFFICIENT EVIDENCE')).toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+
+  const selectedDecisionResult = {
+    provenance: 'SELECTED',
+    status: 'conditional',
+    headline: 'Consider Scenario "Optimal @ 70%" conditionally.',
+    recommendation: 'All 1 validation checks passed, but modeled savings are unavailable.',
+    rationale: [
+      'Selected Scenario: Optimal @ 70% (ID 9).',
+      'Validation: 1 of 1 checks passed.',
+      'Modeled savings unavailable: no Current server-cost basis for comparison.',
+      'Net lane change across periods: -1.',
+    ],
+    missing_evidence: [],
+    scenario_id: 9,
+    scenario_name: 'Optimal @ 70%',
+    dataset_id: 2,
+    facts: {
+      selected_target: 0.7,
+      validation_checks: 1,
+      failed_checks: 0,
+      inadequate_checks: 0,
+      failure_rate_cap: 0.05,
+      lane_delta: -1,
+      periods: 1,
+    },
+    failed_periods: [],
+    inadequate_periods: [],
+    evidence_ids: { selection: 10, des: 11, mc: 12, validation: 13 },
+  }
+
+  function decidedSetup(decision: unknown) {
+    selectedEvidenceSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      scenario: v2scenario,
+      selection: job('workflow_selection', { scenario_id: 9 }),
+      des: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+      mc: job('workflow_mc', {
+        provenance: 'SELECTED', scenario_id: 9, des_job_id: 10, results: [selectedMcRow],
+      }, { scenario_id: 9, engine: 'selected-plan-measured-mc' }),
+      validation: job('workflow_validation', selectedValidationResult, { scenario_id: 9 }),
+      decision: job('workflow_decision', decision, { scenario_id: 9 }),
+    }))
+  }
+
+  it('runs selected decision once and shows the conditional outcome with rationale', async () => {
+    const user = userEvent.setup()
+    decidedEvidenceSetup(selectedValidationResult)
+    runSelectedDecisionMock.mockResolvedValue({
+      decision: selectedDecisionResult,
+      persisted: true,
+      evidence: job('workflow_decision', selectedDecisionResult, { scenario_id: 9 }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run decision' }))
+    await waitFor(() => expect(runSelectedDecisionMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('Decision: CONDITIONAL')).toBeInTheDocument()
+    expect(screen.getByText(/Net lane change across periods/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Continue to Reports' })).toHaveAttribute('href', '/analyses/7/reports')
+    expect(optimizeSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows REVISE with failed periods and a Comparison route', async () => {
+    const user = userEvent.setup()
+    decidedEvidenceSetup(selectedValidationResult)
+    const revise = { ...selectedDecisionResult, status: 'revise', failed_periods: ['10:00'] }
+    runSelectedDecisionMock.mockResolvedValue({
+      decision: revise,
+      persisted: true,
+      evidence: job('workflow_decision', revise, { scenario_id: 9 }),
+    })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run decision' }))
+    expect(await screen.findByText('Decision: REVISE')).toBeInTheDocument()
+    expect(screen.getByText('10:00')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Return to Optimize / Comparison' })).toHaveAttribute('href', '/analyses/7/compare')
+    expect(screen.queryByRole('link', { name: 'Continue to Reports' })).not.toBeInTheDocument()
+  })
+
+  it('restores a persisted decision without rerunning and never generates reports', async () => {
+    decidedSetup(selectedDecisionResult)
+    renderPage()
+    expect(await screen.findByText('Decision: CONDITIONAL')).toBeInTheDocument()
+    expect(runSelectedDecisionMock).not.toHaveBeenCalled()
+    expect(optimizeSpy).not.toHaveBeenCalled()
+  })
+
+  it('disables decision until validation evidence exists', async () => {
+    selectedEvidenceSetup()
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Run decision' })).toBeDisabled()
+    expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
 })

@@ -10,8 +10,9 @@ import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
 import { getAnalysis } from '../api/analyses'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
+import { optimizeSeparate } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
-import type { DatasetOut, OptimizationOut, SegmentRow } from '../api/types'
+import type { DatasetOut, OptimizationOut, SegmentRow, SeparateSchedule } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
 import { generateOptimizationInsights } from '../lib/insights'
 import {
@@ -19,7 +20,7 @@ import {
   comparisonComplete,
   comparisonTotals,
 } from '../lib/comparison'
-import { fmt } from '../lib/format'
+import { fmt, fmtPct } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -156,6 +157,111 @@ function staffingTotals(rows: OptimizationOut[]) {
   return { removed, added, net: removed - added }
 }
 
+function formatLaneCount(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : String(value)
+}
+
+function formatAdjustment(value: number | null | undefined, t: TFunction): string {
+  if (value === null || value === undefined) return '—'
+  if (value === 0) return t('optimize.sep_keep')
+  return value > 0 ? `+${value}` : String(value)
+}
+
+function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
+  const { t } = useTranslation()
+  return (
+    <div className="card result-card" style={{
+      background: 'linear-gradient(135deg, #faf7f2 0%, #fafafa 100%)',
+      border: '1px solid #f0ece4',
+      borderRadius: '13px',
+      padding: '18px',
+    }}>
+      <h3 className="section-title">{t('optimize.sep_estimated_plan')}</h3>
+      <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+        <span>{t('optimize.sep_target')}: {Math.round(schedule.target_utilization * 100)}%</span>
+        {' · '}<span>{t('optimize.sep_method')}</span>
+        {' · '}<span>{t('optimize.sep_replications')}: {schedule.des.replications}</span>
+      </div>
+      {schedule.overall !== 'COMPLETE' && (
+        <div role="alert" className="alert alert-warn" style={{ marginTop: '12px' }}>
+          <strong>
+            {schedule.overall === 'INFEASIBLE'
+              ? t('optimize.sep_infeasible')
+              : t('optimize.sep_unavailable_title')}
+          </strong>
+          {schedule.reason && <p style={{ margin: '4px 0 0' }}>{schedule.reason}</p>}
+          {schedule.overall !== 'INFEASIBLE' && (
+            <p style={{ margin: '4px 0 0' }}>{t('optimize.sep_unavailable_body')}</p>
+          )}
+        </div>
+      )}
+      <div className="table-scroll" role="region" aria-label={t('optimize.sep_estimated_plan')} tabIndex={0} style={{ marginTop: '12px' }}>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">{t('optimize.sep_col_time')}</th>
+              <th scope="col">{t('optimize.sep_col_current')}</th>
+              <th scope="col">{t('optimize.sep_col_optimal')}</th>
+              <th scope="col">{t('optimize.sep_col_adjustment')}</th>
+              <th scope="col">{t('optimize.sep_col_peak')}</th>
+              <th scope="col">{t('optimize.sep_col_cost')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {schedule.periods.map((period) => {
+              const uncertainty = period.optimum?.cost_uncertainty
+              return (
+                <tr key={period.time}>
+                  <th scope="row">{period.time}</th>
+                  <td>{period.current_active_lanes === null ? '—' : period.current_active_lanes.length}</td>
+                  <td>{formatLaneCount(period.optimal_active_lanes)}</td>
+                  <td>{formatAdjustment(period.adjustment, t)}</td>
+                  <td>{fmtPct(period.optimum?.candidate_utilization ?? null)}</td>
+                  <td>
+                    {fmt(period.optimum?.total_cost ?? null)}
+                    {uncertainty && uncertainty.ci_lower !== null && uncertainty.ci_upper !== null && (
+                      <small style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                        {t('optimize.sep_cost_ci')}: {fmt(uncertainty.ci_lower)}–{fmt(uncertainty.ci_upper)}
+                      </small>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {schedule.periods.map((period) => (
+        <details key={period.time} style={{ marginTop: '8px' }}>
+          <summary style={{ fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+            {t('optimize.sep_candidate_evidence')} · {period.time}
+          </summary>
+          <table style={{ marginTop: '6px' }}>
+            <thead>
+              <tr>
+                <th scope="col">{t('optimize.sep_col_lanes')}</th>
+                <th scope="col">{t('optimize.sep_col_status')}</th>
+                <th scope="col">{t('optimize.sep_col_peak')}</th>
+                <th scope="col">{t('optimize.sep_col_mean_cost')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {period.candidates.map((candidate) => (
+                <tr key={candidate.active_lane_count}>
+                  <td>{candidate.active_lane_count}</td>
+                  <td>{candidate.status}</td>
+                  <td>{fmtPct(candidate.candidate_utilization)}</td>
+                  <td>{fmt(candidate.mean_total_cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      ))}
+    </div>
+  )
+}
+
 export function OptimizePage() {
   const { t } = useTranslation()
   const analysisParam = useParams().analysisId
@@ -174,6 +280,19 @@ export function OptimizePage() {
   const [scenarioName, setScenarioName] = useState('')
   const [saved, setSaved] = useState(false)
   const [availableCashiers, setAvailableCashiers] = useState('')
+  const [sepTarget, setSepTarget] = useState(0.70)
+  const [schedule, setSchedule] = useState<SeparateSchedule | null>(null)
+  const [sepSnapshot, setSepSnapshot] = useState<{
+    signature: string; datasetId: string; rowCount: number; target: number;
+    serverCost: number | undefined; waitingCost: number | undefined;
+    factor: number; minLanes: number; calculatedAt: string;
+  } | null>(null)
+  const sepSignature = JSON.stringify({
+    datasetId, sepTarget,
+    serverCost: options.server_cost_per_hr, waitingCost: options.customer_waiting_cost,
+    multiplier,
+  })
+  const sepStale = sepSnapshot !== null && sepSnapshot.signature !== sepSignature
 
   const datasets = useQuery({
     queryKey: ['datasets', analysisId],
@@ -185,6 +304,8 @@ export function OptimizePage() {
     enabled: Number.isInteger(analysisId),
   })
   const isSeparateStaffing = analysis.data?.analysis.queue_setup.queue_structure === 'separate_queues'
+  // Full coverage: every configured Separate queue stays active in every candidate.
+  const separateQueueCount = analysis.data?.analysis.queue_setup.queue_ids.length ?? 0
 
   async function run(dataset: DatasetOut, factor = 1) {
     setError(null)
@@ -205,10 +326,46 @@ export function OptimizePage() {
     }
   }
 
+  async function runSeparate(dataset: DatasetOut, factor = 1) {
+    if (analysisId === undefined) {
+      setError(t('errors.server'))
+      return
+    }
+    setError(null)
+    setSaved(false)
+    setRunning(true)
+    try {
+      const out = await optimizeSeparate(analysisId, Number(dataset.id), {
+        target_utilization: sepTarget,
+        server_cost_per_hr: options.server_cost_per_hr,
+        customer_waiting_cost: options.customer_waiting_cost,
+        lambda_multiplier: factor,
+        min_active_lanes: separateQueueCount,
+      })
+      setSchedule(out.schedule)
+      const rowCount = datasets.data?.datasets.find((d: DatasetOut) => String(d.id) === datasetId)?.row_count ?? 0
+      setSepSnapshot({
+        signature: sepSignature, datasetId, rowCount, target: sepTarget,
+        serverCost: options.server_cost_per_hr, waitingCost: options.customer_waiting_cost,
+        factor, minLanes: separateQueueCount, calculatedAt: new Date().toISOString(),
+      })
+      setScenarioName((prev) => prev || `Optimal @ ${Math.round(sepTarget * 100)}%`)
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      setError(typeof detail === 'string' ? detail : t('errors.server'))
+    } finally {
+      setRunning(false)
+    }
+  }
+
   async function handleOptimize() {
     const dataset = datasets.data?.datasets.find((d: DatasetOut) => String(d.id) === datasetId)
     if (!dataset) {
       setError(t('optimize.select_dataset_first'))
+      return
+    }
+    if (isSeparateStaffing) {
+      await runSeparate(dataset)
       return
     }
     await run(dataset)
@@ -216,7 +373,7 @@ export function OptimizePage() {
 
   async function handleWhatIf() {
     const dataset = datasets.data?.datasets.find((d: DatasetOut) => String(d.id) === datasetId)
-    if (!dataset || !rows) {
+    if (!dataset) {
       return
     }
     const factor = Number(multiplier)
@@ -224,11 +381,18 @@ export function OptimizePage() {
       setError(t('optimize.multiplier_range_error'))
       return
     }
+    if (isSeparateStaffing) {
+      await runSeparate(dataset, factor)
+      return
+    }
+    if (!rows) {
+      return
+    }
     await run(dataset, factor)
   }
 
   async function handleSave() {
-    if (!rows?.length || !snapshot || stale || running || !scenarioName.trim() || isSeparateStaffing) {
+    if (!rows?.length || !snapshot || stale || running || !scenarioName.trim()) {
       return
     }
     setSaving(true)
@@ -244,6 +408,54 @@ export function OptimizePage() {
           what_if_multiplier: snapshot.factor, calculated_at: snapshot.calculatedAt,
         } },
         results: { results: rows },
+      })
+      void queryClient.invalidateQueries({ queryKey: ['scenarios', analysisId] })
+      setSaved(true)
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      setError(typeof detail === 'string' ? detail : t('errors.server'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSaveSeparate() {
+    if (
+      !schedule || schedule.overall !== 'COMPLETE' || !sepSnapshot || sepStale ||
+      running || saving || !scenarioName.trim()
+    ) {
+      return
+    }
+    setSaving(true)
+    setSaved(false)
+    try {
+      const target = schedule.target_utilization
+      const inputOptions = {
+        target_utilization: target,
+        server_cost_per_hr: sepSnapshot.serverCost,
+        customer_waiting_cost: sepSnapshot.waitingCost,
+        min_active_lanes: sepSnapshot.minLanes,
+        max_active_lanes: null,
+        lambda_multiplier: sepSnapshot.factor,
+        des: { ...schedule.des },
+      }
+      await createScenario({
+        name: scenarioName.trim(),
+        analysis_id: analysisId,
+        dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
+        settings: {
+          ...inputOptions,
+          calculation: {
+            schema_version: 2,
+            engine_version: 'novaq-2026-09-separate-des-v1',
+            analysis_id: analysisId,
+            dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
+            dataset_row_count: sepSnapshot.rowCount,
+            options: inputOptions,
+            calculated_at: sepSnapshot.calculatedAt,
+          },
+        },
+        results: { schedule },
       })
       void queryClient.invalidateQueries({ queryKey: ['scenarios', analysisId] })
       setSaved(true)
@@ -282,13 +494,6 @@ export function OptimizePage() {
         </div>
       </div>
 
-      {isSeparateStaffing && (
-        <div className="alert alert-warn" data-testid="optimize-staffing-blocked" style={{ marginTop: '12px' }}>
-          <strong>{t('optimize.staffing_blocked')}</strong>{' '}{t('optimize.staffing_blocked_reason')}{' '}
-          <Link to={`/analyses/${analysisId}/simulate`}>{t('nav.simulate')}</Link>
-        </div>
-      )}
-
       {stale && <div role="alert" className="alert alert-warn">{t('integrity.stale')}</div>}
       {rows && !comparisonComplete(rows) && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
       {rows && !staffingSummaryAvailable && (
@@ -311,7 +516,8 @@ export function OptimizePage() {
       <div className="grid g2" style={{ marginTop: '12px' }}>
         {/* Left Column — Controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* Goal Presets */}
+          {/* Goal Presets (shared optimizer only: preset targets sit outside the Separate range) */}
+          {!isSeparateStaffing && (
           <div className="card" style={{ padding: '18px' }}>
             <h3 className="section-title">{t('optimize.constraint_presets')}</h3>
             <div className="goal-presets">
@@ -345,6 +551,31 @@ export function OptimizePage() {
               ))}
             </div>
           </div>
+          )}
+
+          {/* Utilization target (Separate optimizer: approved 40-90% range) */}
+          {isSeparateStaffing && (
+          <div className="card" style={{ padding: '18px' }}>
+            <h3 className="section-title">{t('optimize.sep_target')}</h3>
+            <div className="form-field">
+              <label htmlFor="opt-sep-target" style={{ fontSize: '14px', fontWeight: 800 }}>
+                {t('optimize.sep_target')} ({Math.round(sepTarget * 100)}%)
+              </label>
+              <input
+                id="opt-sep-target"
+                aria-label={t('optimize.sep_target')}
+                type="range"
+                min={0.4}
+                max={0.9}
+                step={0.05}
+                value={sepTarget}
+                onChange={(e) => setSepTarget(Number(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <span className="form-hint">{t('optimize.sep_target_desc')}</span>
+            </div>
+          </div>
+          )}
 
           {/* Source Dataset */}
           <div className="card" style={{ padding: '18px' }}>
@@ -373,6 +604,37 @@ export function OptimizePage() {
           {/* Advanced Settings */}
           <div className="card" style={{ padding: '18px' }}>
             <h3 className="section-title">{t('optimize.advanced_settings')}</h3>
+            {isSeparateStaffing && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-field">
+                <label htmlFor="opt-sep-cost" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.server_cost')}</label>
+                <input
+                  id="opt-sep-cost"
+                  type="number"
+                  step="any"
+                  value={options.server_cost_per_hr ?? ''}
+                  onChange={(e) =>
+                    setOptions((o) => ({ ...o, server_cost_per_hr: Number(e.target.value) }))
+                  }
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="opt-sep-wait" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.waiting_cost')}</label>
+                <input
+                  id="opt-sep-wait"
+                  type="number"
+                  step="any"
+                  value={options.customer_waiting_cost ?? ''}
+                  onChange={(e) =>
+                    setOptions((o) => ({ ...o, customer_waiting_cost: Number(e.target.value) }))
+                  }
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                />
+              </div>
+            </div>
+            )}
+            {isSeparateStaffing ? null : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div className="form-field">
                 <label htmlFor="opt-util" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.planning_target')}</label>
@@ -466,6 +728,7 @@ export function OptimizePage() {
                 />
               </div>
             </div>
+            )}
             <button
               type="button"
               onClick={handleOptimize}
@@ -480,7 +743,22 @@ export function OptimizePage() {
 
         {/* Right Column — Result Card */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Separate result card replaces the shared candidate card */}
+          {isSeparateStaffing && schedule && <SeparateScheduleCard schedule={schedule} />}
+          {isSeparateStaffing && !schedule && !running && !error && (
+            <div className="card result-card" style={{
+              border: '1px solid #f0ece4',
+              borderRadius: '13px',
+              padding: '18px',
+            }}>
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>
+                <p style={{ margin: 0 }}>{t('optimize.empty_result')}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '14px' }}>{t('optimize.empty_result_help')}</p>
+              </div>
+            </div>
+          )}
           {/* Result Card */}
+          {!isSeparateStaffing && (
           <div className="card result-card" style={{
             background: 'linear-gradient(135deg, #faf7f2 0%, #fafafa 100%)',
             border: '1px solid #f0ece4',
@@ -607,9 +885,10 @@ export function OptimizePage() {
               </div>
             )}
           </div>
+          )}
 
           {/* What-If Card */}
-          {rows && (
+          {(rows || (isSeparateStaffing && schedule)) && (
             <div className="card" style={{ padding: '18px' }}>
               <h3 className="section-title">{t('page2.what_if')}</h3>
               <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
@@ -638,7 +917,7 @@ export function OptimizePage() {
           )}
 
           {/* Save Scenario Card */}
-          {rows && (
+          {!isSeparateStaffing && rows && (
             <div className="card" style={{ padding: '18px' }}>
               <h3 className="section-title">{t('page2.save_scenario')}</h3>
               <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
@@ -657,15 +936,45 @@ export function OptimizePage() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim() || isSeparateStaffing}
+                  disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}
                   style={{ padding: '8px 16px', background: 'var(--primary)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: saving || running || stale ? 'not-allowed' : 'pointer', height: '35px' }}
                 >
                   {t('common.save')}
                 </button>
               </div>
-              {isSeparateStaffing && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>{t('optimize.save_blocked_separate')}</p>}
               {!stale && rows.length > 0 && !comparisonComplete(rows) && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>{t('system.save_incomplete')}</p>}
               {saved && !stale && <div className="alert alert-success" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
+            </div>
+          )}
+
+          {/* Save Scenario Card (Separate: verified DES snapshot, COMPLETE only) */}
+          {isSeparateStaffing && schedule && (
+            <div className="card" style={{ padding: '18px' }}>
+              <h3 className="section-title">{t('page2.save_scenario')}</h3>
+              <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
+                <div className="form-field" style={{ flex: 1 }}>
+                  <label htmlFor="opt-scenario" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.scenario_name')}</label>
+                  <input
+                    id="opt-scenario"
+                    aria-label={t('optimize.scenario_name')}
+                    type="text"
+                    value={scenarioName}
+                    onChange={(e) => setScenarioName(e.target.value)}
+                    placeholder={t('optimize.scenario_placeholder')}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveSeparate}
+                  disabled={saving || running || sepStale || !sepSnapshot || schedule.overall !== 'COMPLETE' || !scenarioName.trim()}
+                  style={{ padding: '8px 16px', background: 'var(--primary)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: saving || running || sepStale ? 'not-allowed' : 'pointer', height: '35px' }}
+                >
+                  {t('common.save')}
+                </button>
+              </div>
+              {sepStale && <div role="alert" className="alert alert-warn" style={{ marginTop: '8px' }}>{t('integrity.stale')}</div>}
+              {saved && !sepStale && <div className="alert alert-success" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
             </div>
           )}
         </div>

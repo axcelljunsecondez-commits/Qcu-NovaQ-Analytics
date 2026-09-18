@@ -30,8 +30,10 @@ from backend.queueing_engine.services.separate_optimization import (
     SEPARATE_DES_ENGINE_VERSION,
     _period_current_active,
     evaluate_candidate_with_des,
+    full_coverage_min_lanes,
     index_period_queues,
     optimize_separate_schedule,
+    period_des_breaks,
     prune_separate_schedule,
     resolve_des_breaks,
     validate_des_replication_config,
@@ -991,13 +993,14 @@ def run_separate_optimize(
         des_settings = validate_des_replication_config(
             {key: value for key, value in payload.des.model_dump().items() if value is not None}
         )
+        min_lanes = full_coverage_min_lanes(setup, payload.min_active_lanes)
         schedule = optimize_separate_schedule(
             setup,
             records,
             target=payload.target_utilization,
             server_cost=payload.server_cost_per_hr,
             waiting_cost=payload.customer_waiting_cost,
-            min_lanes=payload.min_active_lanes,
+            min_lanes=min_lanes,
             max_lanes=payload.max_active_lanes,
             lambda_multiplier=payload.lambda_multiplier,
             des_settings=des_settings,
@@ -1303,6 +1306,11 @@ def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
         active = [str(queue_id) for queue_id in (optimum.get("active_queue_ids") or [])]
         inactive = [str(queue_id) for queue_id in (optimum.get("inactive_queue_ids") or [])]
         by_id = index_period_queues(records, time_label)
+        try:
+            period_breaks = (period_des_breaks(plan.get("setup"), list(by_id.values()))
+                             if des_breaks is not None else None)
+        except ValueError as exc:
+            raise SelectedPlanError(str(exc)) from exc
         queues_by_id: dict[str, dict] = {}
         for queue_id in active + inactive:
             row = by_id.get(queue_id)
@@ -1323,8 +1331,8 @@ def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
         seg_seed = (seed + index) if seed is not None else None
         candidate: dict[str, Any] = {"time": time_label, "available_queue_ids": active + inactive,
                                      "active_queue_ids": active, "inactive_queue_ids": inactive}
-        if des_breaks is not None:
-            candidate["breaks"] = des_breaks
+        if period_breaks is not None:
+            candidate["breaks"] = period_breaks
         result = executor(
             candidate,
             queues_by_id, duration_hours=plan["duration_hours"], seed=seg_seed,

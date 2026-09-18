@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
+import type { QueueSetup } from '../api/types'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
 import { GuidedSetupPage } from './GuidedSetupPage'
 
@@ -38,6 +39,7 @@ const unknownSetup = {
   segments: [],
   separate_queue_closure_policy: 'drain_existing',
   queue_ids: [],
+  breaks: [],
 }
 
 const analysis = {
@@ -237,5 +239,108 @@ describe('setup semantic contracts', () => {
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/setup' })
     expect(await screen.findByTestId('queue-structure-readonly')).toHaveTextContent('One shared queue')
     expect(screen.queryByText('Configured physical queues')).not.toBeInTheDocument()
+  })
+})
+
+describe('separate server break schedule', () => {
+  const separateSetup: QueueSetup = {
+    queue_structure: 'separate_queues',
+    fixed_server_count: 1,
+    staffing_varies_by_period: false,
+    capacity_mode: 'unlimited',
+    total_system_capacity: null,
+    abandonment_mode: 'not_modeled',
+    patience_rate_per_hour: null,
+    segments: [],
+    separate_queue_closure_policy: 'drain_existing',
+    queue_ids: ['cashier_3', 'express'],
+    breaks: [],
+  }
+
+  function renderSeparateSetup(setup = separateSetup) {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: setup } })
+    return renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+  }
+
+  it('renders a break editor only for separate queues', async () => {
+    renderSeparateSetup()
+    expect(await screen.findByText('Server break schedule')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add break' })).toBeInTheDocument()
+  })
+
+  it('shows no break editor for shared queues', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
+      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [],
+    } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+    await screen.findByTestId('queue-structure-readonly')
+    expect(screen.queryByText('Server break schedule')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add break' })).not.toBeInTheDocument()
+  })
+
+  it('adds a break and saves the explicit schedule', async () => {
+    const user = userEvent.setup()
+    renderSeparateSetup()
+    await screen.findByText('Server break schedule')
+    await user.click(screen.getByRole('button', { name: 'Add break' }))
+    await user.selectOptions(screen.getByLabelText('Break queue 1'), 'cashier_3')
+    await user.type(screen.getByLabelText('Break start 1'), '11:00')
+    await user.type(screen.getByLabelText('Break duration 1 (minutes)'), '60')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
+      queue_setup: expect.objectContaining({
+        breaks: [{ queue_id: 'cashier_3', scheduled_start_time: '11:00', duration_minutes: 60 }],
+      }),
+    }))
+  })
+
+  it('removes a break without touching other breaks', async () => {
+    const user = userEvent.setup()
+    renderSeparateSetup({
+      ...separateSetup,
+      breaks: [
+        { queue_id: 'cashier_3', scheduled_start_time: '11:00', duration_minutes: 60 },
+        { queue_id: 'express', scheduled_start_time: '12:00', duration_minutes: 30 },
+      ],
+    })
+    await screen.findByText('Server break schedule')
+    await user.click(screen.getByRole('button', { name: 'Remove break 1' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
+      queue_setup: expect.objectContaining({
+        breaks: [{ queue_id: 'express', scheduled_start_time: '12:00', duration_minutes: 30 }],
+      }),
+    }))
+  })
+
+  it('blocks removing a queue that has a configured break', async () => {
+    const user = userEvent.setup()
+    renderSeparateSetup({
+      ...separateSetup,
+      breaks: [{ queue_id: 'cashier_3', scheduled_start_time: '11:00', duration_minutes: 60 }],
+    })
+    await screen.findByText('Server break schedule')
+    await user.click(screen.getByRole('button', { name: 'Remove cashier_3' }))
+    expect(await screen.findByText(/configured breaks/)).toBeInTheDocument()
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+  })
+
+  it('reloads persisted breaks into the editor verbatim', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
+      ...separateSetup,
+      breaks: [{ queue_id: 'express', scheduled_start_time: '09:05', duration_minutes: 15 }],
+    } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+    expect(await screen.findByDisplayValue('09:05')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('15')).toBeInTheDocument()
   })
 })

@@ -7,11 +7,22 @@ import { DecisionEndpointPage } from './DecisionEndpointPage'
 
 const getWorkflowMock = vi.fn()
 const createDecisionMock = vi.fn()
+const runSelectedDecisionMock = vi.fn()
+const getAnalysisMock = vi.fn()
 
 vi.mock('../../api/workflow', () => ({
   getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
   createWorkflowDecision: (...args: unknown[]) => createDecisionMock(...args),
+  runSelectedDecision: (...args: unknown[]) => runSelectedDecisionMock(...args),
 }))
+
+vi.mock('../../api/analyses', () => ({
+  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+}))
+
+function analysisWith(queueStructure: string) {
+  return { analysis: { id: 7, name: 'A', queue_setup: { queue_structure: queueStructure } } }
+}
 
 vi.mock('../../api/auth', () => ({
   me: vi.fn(async () => ({
@@ -55,6 +66,8 @@ beforeEach(() => {
     decision_stale: false,
   })
   createDecisionMock.mockReset().mockResolvedValue({ decision: insufficient, persisted: true })
+  runSelectedDecisionMock.mockReset()
+  getAnalysisMock.mockReset().mockResolvedValue(analysisWith('shared_queue'))
 })
 
 describe('DecisionEndpointPage', () => {
@@ -128,5 +141,41 @@ describe('DecisionEndpointPage', () => {
     expect(await screen.findByText(/prior Decision is stale/)).toBeInTheDocument()
     expect(screen.queryByText(insufficient.headline)).not.toBeInTheDocument()
     expect(screen.getByText('No current Decision')).toBeInTheDocument()
+  })
+
+  it('derives a Separate Queue decision through the selected-plan endpoint', async () => {
+    const conditional = {
+      ...insufficient,
+      status: 'conditional',
+      headline: 'Consider Scenario "Plan A" conditionally.',
+      recommendation: 'All 3 validation checks passed.',
+      missing_evidence: [],
+    }
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    runSelectedDecisionMock.mockImplementation(async () => {
+      getWorkflowMock.mockResolvedValue({
+        analysis_id: 7, selection: null, scenario: null, des: null, mc: null, validation: null,
+        decision: {
+          id: 9, kind: 'workflow_decision', status: 'completed', params: {}, result: conditional,
+          created_at: '2026-09-18T00:00:00Z', finished_at: '2026-09-18T00:00:01Z',
+        },
+        decision_stale: false,
+      })
+      return { decision: conditional, persisted: true, evidence: {} }
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Generate Decision' }))
+    await waitFor(() => expect(runSelectedDecisionMock).toHaveBeenCalledWith(7))
+    expect(createDecisionMock).not.toHaveBeenCalled()
+    expect(await screen.findByText(conditional.recommendation)).toBeInTheDocument()
+  })
+
+  it('keeps shared analyses on the shared Decision endpoint', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Generate Decision' }))
+    await waitFor(() => expect(createDecisionMock).toHaveBeenCalledWith(7))
+    expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
 })

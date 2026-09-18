@@ -5,11 +5,12 @@ import { Link, useParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, uploadAnalysisDataset } from '../api/analyses'
 import type { QueueSetup } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
+import { BreakEditor } from '../components/analysis/BreakEditor'
 import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { SetupDataTemplates } from '../components/analysis/SetupDataTemplates'
 import { messageOf } from '../lib/format'
 
-const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null, segments: [], separate_queue_closure_policy: 'drain_existing', queue_ids: [] }
+const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null, segments: [], separate_queue_closure_policy: 'drain_existing',     queue_ids: [], breaks: [] }
 
 function normalizeSetup(value: QueueSetup): QueueSetup {
   return {
@@ -17,6 +18,7 @@ function normalizeSetup(value: QueueSetup): QueueSetup {
     ...value,
     queue_ids: value.queue_ids ?? [],
     segments: (value.segments ?? []).map((segment) => ({ ...segment, active_queue_ids: segment.active_queue_ids ?? null })),
+    breaks: (value.breaks ?? []).map((entry) => ({ ...entry })),
   }
 }
 
@@ -67,9 +69,12 @@ export function AnalysisSetupPage() {
   }
   function changeQueueIds(next: string[]) {
     const removed = setup.queue_ids.filter((queueId) => !next.includes(queueId))
-    const referenced = setup.segments.some((segment) => (segment.active_queue_ids ?? []).some((queueId) => removed.includes(queueId)))
-    if (referenced) {
-      setFormError(t('analyses.queue_remove_referenced'))
+    const segmentReferenced = setup.segments.some((segment) => (segment.active_queue_ids ?? []).some((queueId) => removed.includes(queueId)))
+    const breakReferenced = (setup.breaks ?? []).some((entry) => removed.includes(entry.queue_id))
+    if (segmentReferenced || breakReferenced) {
+      setFormError(t(breakReferenced && !segmentReferenced
+        ? 'analyses.break_remove_referenced'
+        : 'analyses.queue_remove_referenced'))
       return
     }
     setFormError(null)
@@ -93,6 +98,7 @@ export function AnalysisSetupPage() {
       if (new Set(trimmed).size !== trimmed.length) return t('analyses.queue_id_duplicate')
     }
     if (setup.queue_structure === 'separate_queues' && setup.staffing_varies_by_period && setup.segments.some((segment) => !segment.active_queue_ids?.length)) return t('analyses.active_queue_required')
+    if (setup.queue_structure === 'separate_queues' && (setup.breaks ?? []).some((entry) => !entry.queue_id.trim() || !entry.scheduled_start_time || !Number.isFinite(entry.duration_minutes) || entry.duration_minutes <= 0)) return t('analyses.break_invalid')
     const ordered = [...setup.segments].sort((left, right) => left.start_time.localeCompare(right.start_time))
     if (ordered.some((segment) => !segment.start_time || !segment.end_time || segment.end_time <= segment.start_time)) return t('analyses.segment_time_error')
     if (ordered.slice(1).some((segment, index) => segment.start_time < ordered[index].end_time)) return t('analyses.segment_overlap_error')
@@ -131,6 +137,7 @@ export function AnalysisSetupPage() {
           <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
         )}
         {setup.queue_structure === 'separate_queues' && <QueueIdEditor ids={setup.queue_ids} onChange={changeQueueIds} />}
+        {setup.queue_structure === 'separate_queues' && <BreakEditor queueIds={setup.queue_ids} breaks={setup.breaks ?? []} onChange={(breaks) => set('breaks', breaks)} />}
         <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
         <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>
         {setup.queue_structure === 'separate_queues' && <div className="card"><h3 className="card-title">{t('analyses.segments')}</h3>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}

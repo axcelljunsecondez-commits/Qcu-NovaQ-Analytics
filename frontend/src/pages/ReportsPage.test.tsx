@@ -8,7 +8,10 @@ import { ReportsPage } from './ReportsPage'
 const listDatasetsMock = vi.fn()
 const listScenariosMock = vi.fn()
 const fetchReportMock = vi.fn()
+const fetchSelectedReportMock = vi.fn()
+const fetchSelectedPreviewMock = vi.fn()
 const getWorkflowMock = vi.fn()
+const getAnalysisMock = vi.fn()
 const createObjectURLMock = vi.fn()
 const revokeObjectURLMock = vi.fn()
 let clickSpy: ReturnType<typeof vi.spyOn>
@@ -27,8 +30,17 @@ vi.mock('../api/scenarios', () => ({
 
 vi.mock('../api/reports', async () => {
   const actual = await vi.importActual<typeof import('../api/reports')>('../api/reports')
-  return { ...actual, fetchReport: (...args: unknown[]) => fetchReportMock(...args) }
+  return {
+    ...actual,
+    fetchReport: (...args: unknown[]) => fetchReportMock(...args),
+    fetchSelectedReport: (...args: unknown[]) => fetchSelectedReportMock(...args),
+    fetchSelectedPreview: (...args: unknown[]) => fetchSelectedPreviewMock(...args),
+  }
 })
+
+vi.mock('../api/analyses', () => ({
+  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+}))
 
 vi.mock('../api/workflow', () => ({
   getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
@@ -113,6 +125,11 @@ beforeEach(() => {
   listDatasetsMock.mockResolvedValue({ datasets: [dataset] })
   listScenariosMock.mockResolvedValue({ scenarios: [scenario] })
   fetchReportMock.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
+  fetchSelectedReportMock.mockReset().mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
+  fetchSelectedPreviewMock.mockReset()
+  getAnalysisMock.mockReset().mockResolvedValue({
+    analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue', queue_ids: [] } },
+  })
   createObjectURLMock.mockReset().mockReturnValue('blob:report')
   revokeObjectURLMock.mockReset()
   clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
@@ -232,5 +249,110 @@ describe('ReportsPage', () => {
     const card = await screen.findByTestId('report-card-scenarios')
     await user.click(within(card).getByRole('button', { name: 'Download PDF' }))
     await waitFor(() => expect(fetchReportMock).toHaveBeenCalledWith('scenarios', 1, 'pdf', 7))
+  })
+})
+
+describe('separate full report', () => {
+  function renderSeparateReports() {
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['east-07', 'lane-A'] } },
+    })
+    return renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/reports" element={<ReportsPage />} />
+      </Routes>,
+      { route: '/analyses/7/reports' },
+    )
+  }
+
+  const previewModel = {
+    overview: {
+      analysis_id: 7, analysis_name: 'East lanes', queue_structure: 'separate_queues',
+      dataset_id: 2, dataset_name: 'lanes.csv', scenario_id: 9,
+      scenario_name: 'Optimal @ 70%', target: 0.7, decision: 'conditional',
+      generated_at: '2026-09-18T00:00:00+00:00',
+    },
+    dataset: { row_count: 2, periods: ['08:00'], queue_ids: ['east-07', 'lane-A'], queue_count: 2 },
+    queue_config: { model: 'one queue_id = one physical queue + one physical single server' },
+    current: {
+      periods: [{
+        time: '08:00',
+        queues: [
+          { queue_id: 'east-07', lambda: 4.0, rho: 0.36, Wq: 0.05, model: 'M/G/1', stable: true },
+          { queue_id: 'lane-A', lambda: 2.0, rho: 0.18, Wq: 0.02, model: 'M/G/1', stable: true },
+        ],
+      }],
+      wait_mean: 0.04, peak_utilization: 0.36, waiting_cost: 25.0,
+    },
+    optimization: { evaluation_method: 'DES_REPLICATIONS', target: 0.7 },
+    comparison_plans: [{ scenario_id: 9, name: 'Optimal @ 70%', target: 0.7, overall: 'COMPLETE' }],
+    selected: { scenario_id: 9, name: 'Optimal @ 70%' },
+    schedule: {
+      periods: [{
+        time: '08:00', current_active_lanes: ['east-07', 'lane-A'],
+        optimal_active_lanes: 1, adjustment: -1, peak_utilization: 0.55,
+        optimum: { active_queue_ids: ['east-07'], inactive_queue_ids: ['lane-A'] },
+      }],
+    },
+    des: { overall_conservation: true, overall_status: 'COMPLETED', periods: [] },
+    mc: { lanes: [] },
+    validation: { verdict: 'pass', periods: [] },
+    decision: {
+      status: 'conditional',
+      headline: 'Consider Scenario "Optimal @ 70%" conditionally.',
+      recommendation: 'All 1 validation checks passed, but modeled savings are unavailable.',
+      rationale: ['Selected Scenario: Optimal @ 70% (ID 9).'],
+      facts: { lane_delta: -1 },
+      failed_periods: [],
+    },
+    staffing_title: 'Selected Staffing Schedule',
+    cost: {
+      current_waiting: 25.0, selected_total: 180.0,
+      current_total: null, savings: null, roi: null,
+    },
+    limitations: ['Each optimized period was simulated independently (period-independent execution).'],
+    provenance: { scenario_id: 9, des_job_id: 10, decision_job_id: 13 },
+  }
+
+  it('renders context, preview sections, and the selected schedule', async () => {
+    fetchSelectedPreviewMock.mockResolvedValue({ model: previewModel })
+    renderSeparateReports()
+    expect(await screen.findByText('Optimal @ 70%')).toBeInTheDocument()
+    expect(screen.getByText('Decision: CONDITIONAL')).toBeInTheDocument()
+    expect(screen.getByRole('rowheader', { name: '08:00' })).toBeInTheDocument()
+    expect(screen.getAllByText(/east-07/).length).toBeGreaterThan(0)
+    expect(fetchReportMock).not.toHaveBeenCalled()
+  })
+
+  it('blocks export with the exact missing stage and keeps buttons disabled', async () => {
+    fetchSelectedPreviewMock.mockRejectedValue({
+      response: { data: { detail: 'Run selected-plan Decision before generating the final report.' } },
+    })
+    renderSeparateReports()
+    expect(await screen.findByText(/Run selected-plan Decision/)).toBeInTheDocument()
+    const card = await screen.findByTestId('report-card-separate')
+    expect(within(card).getByRole('button', { name: 'Download PDF' })).toBeDisabled()
+    expect(within(card).getByRole('button', { name: 'Download Excel' })).toBeDisabled()
+  })
+
+  it('exports PDF and Excel from the previewed chain without shared endpoints', async () => {
+    const user = userEvent.setup()
+    fetchSelectedPreviewMock.mockResolvedValue({ model: previewModel })
+    renderSeparateReports()
+    const card = await screen.findByTestId('report-card-separate')
+    await user.click(within(card).getByRole('button', { name: 'Download PDF' }))
+    await waitFor(() => expect(fetchSelectedReportMock).toHaveBeenCalledWith(7, 'pdf'))
+    await user.click(within(card).getByRole('button', { name: 'Download Excel' }))
+    await waitFor(() => expect(fetchSelectedReportMock).toHaveBeenCalledWith(7, 'excel'))
+    expect(fetchReportMock).not.toHaveBeenCalled()
+  })
+
+  it('shows N/A costs without fabricating savings or ROI', async () => {
+    fetchSelectedPreviewMock.mockResolvedValue({ model: previewModel })
+    renderSeparateReports()
+    await screen.findByTestId('report-card-separate')
+    expect(screen.getAllByText('N/A').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Savings: ₱/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ROI: [0-9]/)).not.toBeInTheDocument()
   })
 })

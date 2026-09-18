@@ -114,6 +114,24 @@ def validate_separate_target(value) -> float:
     return number
 
 
+def full_coverage_min_lanes(queue_setup, requested) -> int:
+    """Lower lane bound for Separate optimization under FULL COVERAGE.
+
+    Every configured demand queue must stay active, so the only admissible
+    ``min_active_lanes`` is the configured queue count (None selects it).
+    Any other value would let the search close a lane; it raises ValueError.
+    """
+    setup = queue_setup if isinstance(queue_setup, dict) else {}
+    count = len(setup.get("queue_ids") or [])
+    if requested is None:
+        return count
+    if isinstance(requested, bool) or not isinstance(requested, int) or requested != count:
+        raise ValueError(
+            f"Separate optimization requires full coverage: min_active_lanes must equal "
+            f"the configured queue count ({count}), got {requested!r}.")
+    return count
+
+
 def build_candidates(available_ids, min_lanes=None, max_lanes=None) -> list[dict]:
     """Build active-lane count candidates in configured order.
 
@@ -692,7 +710,67 @@ def resolve_des_breaks(queue_setup) -> list[dict] | None:
         raise ValueError(
             "Separate-queue breaks require configured operating segments "
             "to anchor simulation time.")
+    windows = [_segment_window(segment) for segment in setup.get("segments") or []
+               if isinstance(segment, dict)]
+    for entry in records:
+        start = _break_start_minutes(entry)
+        if start is not None and not any(low <= start < high for _, low, high in windows):
+            raise ValueError(
+                f"Break for {entry.get('queue_id')!r} at {entry.get('scheduled_start_time')} "
+                "falls outside every configured operating segment.")
     return breaks_to_des_offsets(records, origin)
+
+
+def _segment_window(segment: dict) -> tuple[str, float, float]:
+    """(period key, start, end) of one configured segment in wall-clock minutes.
+
+    The key matches the ``segment_id`` ingestion stamps on period rows: the
+    configured id, else the ``HH:MM-HH:MM`` label of the interval.
+    """
+    low = _wall_minutes(segment.get("start_time"))
+    high = _wall_minutes(segment.get("end_time"))
+    key = segment.get("id") or (
+        f"{int(low) // 60:02d}:{int(low) % 60:02d}-{int(high) // 60:02d}:{int(high) % 60:02d}")
+    return str(key), low, high
+
+
+def _break_start_minutes(entry) -> float | None:
+    try:
+        return _wall_minutes(entry.get("scheduled_start_time"))
+    except (AttributeError, TypeError, ValueError):
+        return None  # malformed records are rejected by breaks_to_des_offsets
+
+
+def period_des_breaks(queue_setup, period_rows) -> list[dict] | None:
+    """DES offsets for the breaks one period owns, or None when it owns none.
+
+    A break belongs to exactly one period: the one whose operating segment
+    contains its scheduled start. Other periods' runs never repeat it. Offsets
+    use the same day origin as ``resolve_des_breaks``. Raises ValueError when
+    breaks exist but the period cannot be mapped to a configured segment.
+    """
+    resolved = resolve_des_breaks(queue_setup)
+    if resolved is None:
+        return None
+    setup = queue_setup if isinstance(queue_setup, dict) else {}
+    segment_ids = {str(row.get("segment_id")) for row in period_rows or []
+                   if isinstance(row, dict) and row.get("segment_id") is not None}
+    windows = [_segment_window(segment) for segment in setup.get("segments") or []
+               if isinstance(segment, dict)]
+    matches = [(low, high) for key, low, high in windows if key in segment_ids]
+    if len(matches) != 1:
+        raise ValueError(
+            "Cannot determine which operating segment owns this period's breaks "
+            f"(segment ids: {sorted(segment_ids) or 'none'}).")
+    low, high = matches[0]
+    owned = []
+    for entry in setup.get("breaks") or []:
+        start = _break_start_minutes(entry)
+        if start is not None and low <= start < high:
+            owned.append(entry)
+    if not owned:
+        return None
+    return breaks_to_des_offsets(owned, des_day_start_minutes(setup))
 
 
 def _validate_breaks(breaks, active_ids) -> dict[str, list[tuple[float, float, float]]]:
@@ -1350,11 +1428,18 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             scaled["lambda"] = float(lam) * factor if _is_number(lam) else lam
             period_rows.append(scaled)
         current = _period_current_active(queue_setup, grouped[label])
+        try:
+            period_breaks = (period_des_breaks(queue_setup, grouped[label])
+                             if des_breaks is not None else None)
+        except ValueError as exc:
+            return {"overall": "INVALID_INPUT", "reason": str(exc),
+                    "target_utilization": ceiling, "evaluation_method": None,
+                    "periods": [], "des": settings}
         result = optimize_separate(
             label, period_rows, target=ceiling, min_lanes=min_lanes, max_lanes=max_lanes,
             current_active=len(current) if current else None,
             server_cost=server_cost, waiting_cost=waiting_cost,
-            des_replications=settings, run_fn=run_fn, breaks=des_breaks)
+            des_replications=settings, run_fn=run_fn, breaks=period_breaks)
         optimum = result.get("optimum")
         optimal_count = optimum.get("active_lane_count") if optimum else None
         periods.append({

@@ -17,6 +17,7 @@ const baseSetup: QueueSetup = {
   segments: [],
   separate_queue_closure_policy: 'drain_existing',
   queue_ids: [],
+  breaks: [],
 }
 
 type Choice = 'shared_queue' | 'separate_queues'

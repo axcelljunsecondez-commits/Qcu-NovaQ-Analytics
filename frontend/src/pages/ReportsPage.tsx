@@ -8,9 +8,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { listDatasets } from '../api/datasets'
 import { listScenarios } from '../api/scenarios'
+import { getAnalysis } from '../api/analyses'
 import {
   downloadReport,
   fetchReport,
+  fetchSelectedPreview,
+  fetchSelectedReport,
   reportFileExtension,
   type ReportFormat,
   type ReportKind,
@@ -55,6 +58,167 @@ const REPORT_PREVIEW_GROUPS: ReportPreviewGroup[] = [
     ],
   },
 ]
+function formatMoney(value: unknown): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'N/A'
+  return `₱${value.toFixed(2)}`
+}
+
+function formatCount(value: unknown): string {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return '—'
+  return String(value)
+}
+
+function SeparateReportView({ analysisId }: { analysisId: number }) {
+  const { t } = useTranslation()
+  const [fetching, setFetching] = useState<ReportFormat | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [downloaded, setDownloaded] = useState(false)
+  const preview = useQuery({
+    queryKey: ['separate-report-preview', analysisId],
+    queryFn: () => fetchSelectedPreview(analysisId),
+  })
+  if (preview.isLoading) return <ApiState.Loading />
+  const blockedDetail = preview.isError
+    ? (preview.error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
+    : null
+  const model = !preview.isError && preview.data
+    ? (preview.data.model as unknown as Record<string, Record<string, unknown> | unknown[] | string | null>)
+    : null
+  const overview = ((model?.overview ?? {}) as Record<string, unknown>)
+  const decision = ((model?.decision ?? {}) as Record<string, unknown>)
+  const cost = ((model?.cost ?? {}) as Record<string, unknown>)
+  const schedule = ((model?.schedule ?? {}) as Record<string, unknown>)
+  const limitations = ((model?.limitations ?? []) as string[])
+  const provenance = ((model?.provenance ?? {}) as Record<string, unknown>)
+  const periods = ((schedule.periods ?? []) as Array<Record<string, unknown>>)
+
+  async function handleDownload(format: ReportFormat) {
+    setFetching(format)
+    setError(null)
+    setDownloaded(false)
+    try {
+      const blob = await fetchSelectedReport(analysisId, format)
+      downloadReport(blob, `novaq_separate_${analysisId}.${reportFileExtension(format)}`)
+      setDownloaded(true)
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      setError(typeof detail === 'string' ? detail : t('errors.server'))
+    } finally {
+      setFetching(null)
+    }
+  }
+
+  return (
+    <div>
+      <div className="topbar">
+        <div>
+          <div className="topbar-eyebrow">{t('reports.eyebrow')}</div>
+          <h1 className="page-title">{t('reports.sep_title')}</h1>
+          <p className="page-caption">{t('reports.sep_preview')}</p>
+        </div>
+      </div>
+
+      {downloaded && <div className="alert alert-ok" role="status" style={{ marginTop: '12px' }}>{t('reports.download')}</div>}
+      {error && <div className="alert alert-error" role="alert" style={{ marginTop: '12px' }}>{error}</div>}
+      {blockedDetail !== null && (
+        <div className="alert alert-warn" role="alert" style={{ marginTop: '12px' }}>
+          {typeof blockedDetail === 'string' ? blockedDetail : t('errors.server')}
+        </div>
+      )}
+
+      {model !== null && (
+      <>
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('reports.sep_context')}</h3>
+        <p>{t('reports.source_scenario')}: <span>{String(overview.scenario_name ?? '—')}</span></p>
+        <p><span>{t('simulation.sep_decision_title')}: {String(decision.status ?? '—').toUpperCase()}</span></p>
+        <p>{t('reports.source_dataset')}: <span>{String(overview.dataset_name ?? '—')}</span></p>
+      </div>
+
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('reports.preview_title')}</h3>
+        <div className="table-scroll" role="region" aria-label={t('reports.preview_title')} tabIndex={0}>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">{t('common.time')}</th>
+                <th scope="col">{t('optimize.sep_col_current')}</th>
+                <th scope="col">{t('optimize.sep_col_optimal')}</th>
+                <th scope="col">{t('optimize.sep_col_adjustment')}</th>
+                <th scope="col">{t('optimize.sep_col_peak')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {periods.map((period) => {
+                const optimum = (period.optimum ?? {}) as Record<string, unknown>
+                const activeIds = (optimum.active_queue_ids ?? []) as string[]
+                return (
+                  <tr key={String(period.time)}>
+                    <th scope="row">{String(period.time ?? '—')}</th>
+                    <td>{formatCount(period.current_count)}</td>
+                    <td>
+                      {formatCount(period.optimal_active_lanes)}
+                      {activeIds.length > 0 && (
+                        <small style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                          {activeIds.join(', ')}
+                        </small>
+                      )}
+                    </td>
+                    <td>{period.adjustment === null || period.adjustment === undefined ? '—' : String(period.adjustment)}</td>
+                    <td>{typeof period.peak_utilization === 'number' ? `${Math.round((period.peak_utilization as number) * 100)}%` : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('reports.sep_cost_title')}</h3>
+        <p>{t('reports.sep_row_waiting')}: <span>{formatMoney(cost.current_waiting)}</span></p>
+        <p>{t('reports.sep_row_selected_total')}: <span>{formatMoney(cost.selected_total)}</span></p>
+        <p>{t('reports.sep_row_current_total')}: <span>N/A</span></p>
+        <p>{t('reports.sep_row_savings')}: <span>N/A</span></p>
+        <p>{t('reports.sep_row_roi')}: <span>N/A</span></p>
+      </div>
+
+      <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
+        <h3 className="section-title">{t('reports.sep_limitations')}</h3>
+        <ul>
+          {limitations.map((line, index) => (
+            <li key={index} style={{ fontSize: '14px' }}>{line}</li>
+          ))}
+        </ul>
+        <h3 className="section-title" style={{ marginTop: '12px' }}>{t('reports.sep_provenance')}</h3>
+        <p className="form-hint">Scenario {String(provenance.scenario_id ?? '—')} · DES {String(provenance.des_job_id ?? '—')} · Decision {String(provenance.decision_job_id ?? '—')}</p>
+      </div>
+      </>
+      )}
+
+      <div className="card" data-testid="report-card-separate" style={{ marginTop: '12px', padding: '18px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            disabled={fetching !== null || model === null}
+            onClick={() => handleDownload('pdf')}
+            style={{ padding: '8px 16px', background: 'var(--primary)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: fetching !== null || model === null ? 'not-allowed' : 'pointer' }}
+          >
+            {fetching === 'pdf' ? '...' : t('reports.pdf')}
+          </button>
+          <button
+            type="button"
+            disabled={fetching !== null || model === null}
+            onClick={() => handleDownload('excel')}
+            style={{ padding: '8px 16px', background: 'var(--accent)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: fetching !== null || model === null ? 'not-allowed' : 'pointer' }}
+          >
+            {fetching === 'excel' ? '...' : t('reports.excel')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function ReportsPage() {
   const { t } = useTranslation()
@@ -68,6 +232,11 @@ export function ReportsPage() {
 
   const datasets = useQuery({ queryKey: ['datasets', analysisId], queryFn: () => listDatasets(analysisId) })
   const scenarios = useQuery({ queryKey: ['scenarios', analysisId], queryFn: () => listScenarios(analysisId) })
+  const analysis = useQuery({
+    queryKey: ['analysis', analysisId],
+    queryFn: () => getAnalysis(analysisId!),
+    enabled: Number.isInteger(analysisId),
+  })
   const workflow = useQuery({
     queryKey: ['workflow', analysisId],
     queryFn: () => getWorkflow(analysisId!),
@@ -76,6 +245,11 @@ export function ReportsPage() {
 
   if (datasets.isLoading || scenarios.isLoading || workflow.isLoading) return <ApiState.Loading />
   if (datasets.isError || scenarios.isError || workflow.isError) return <ApiState.ErrorState />
+
+  const isSeparate = analysis.data?.analysis.queue_setup.queue_structure === 'separate_queues'
+  if (isSeparate && Number.isInteger(analysisId)) {
+    return <SeparateReportView analysisId={analysisId as number} />
+  }
 
   const datasetList = datasets.data?.datasets ?? []
   const scenarioList = scenarios.data?.scenarios ?? []

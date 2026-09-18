@@ -123,6 +123,12 @@ export interface AnalysisSegment {
   active_queue_ids: string[] | null
 }
 
+export interface QueueBreak {
+  queue_id: string
+  scheduled_start_time: string
+  duration_minutes: number
+}
+
 export interface QueueSetup {
   queue_structure: QueueStructure
   fixed_server_count: number | null
@@ -134,6 +140,7 @@ export interface QueueSetup {
   segments: AnalysisSegment[]
   separate_queue_closure_policy: SeparateQueueClosurePolicy
   queue_ids: string[]
+  breaks: QueueBreak[]
 }
 
 export interface AnalysisProjectOut {
@@ -258,6 +265,138 @@ export interface SimulationTrace {
   segments: SimulationTraceSegment[]
 }
 
+export interface SelectedDesLaneRow {
+  time: string
+  queue_id: string | null
+  server_id: string | null
+  lambda: number | null
+  lambda_routed: number | null
+  mu: number | null
+  c: number
+  arrivals: number | null
+  served: number | null
+  waiting: number | null
+  in_service: number | null
+  abandoned: number | null
+  Wq_sim: number | null
+  rho_sim: number | null
+  max_queue: number | null
+  active: boolean | null
+  simulation_supported: boolean | null
+  error: string | null
+  metric_provenance: string | null
+  customer_conservation: boolean | null
+}
+
+export interface SelectedDesPeriod {
+  time: string
+  active_queue_ids: string[]
+  inactive_queue_ids: string[]
+  evaluation_status: string | null
+  conservation: boolean | null
+  total_lambda: number | null
+  total_cost: number | null
+  server_cost: number | null
+  waiting_cost: number | null
+  results: SelectedDesLaneRow[]
+  trace: SimulationTrace
+}
+
+export interface SelectedDesResult {
+  provenance: string | null
+  engine_version?: string | null
+  execution?: string | null
+  arrival_method?: string | null
+  routing_policy?: string | null
+  service_sampling_method?: string | null
+  scenario_id: number | null
+  analysis_id: number | null
+  dataset_id: number | null
+  target_utilization: number | null
+  seed: number | null
+  duration_hours: number | null
+  max_events: number | null
+  periods: SelectedDesPeriod[]
+  overall_conservation: boolean | null
+  overall_status: string | null
+}
+
+export interface SelectedMcResult {
+  provenance: string | null
+  scenario_id: number | null
+  analysis_id: number | null
+  dataset_id: number | null
+  des_job_id: number | null
+  results: SimMcOut[]
+}
+
+export interface SelectedValidationQueue {
+  time: string
+  queue_id: string | null
+  selected_model: string | null
+  mc_failure_rate: number | null
+  mc_failure_rate_adequate: boolean | null
+  failure_rate_cap: number | null
+  validation_verdict: string | null
+  rho_sim: number | null
+  Wq_sim: number | null
+  served: number | null
+}
+
+export interface SelectedValidationPeriod {
+  time: string
+  active_queue_ids: string[]
+  status: string | null
+  des_ok: boolean | null
+  des_reason: string | null
+  queues: SelectedValidationQueue[]
+}
+
+export interface SelectedValidationVerdict {
+  status: string | null
+  failed: Array<[string, string] | { time: string; queue_id: string }>
+  inadequate: Array<[string, string] | { time: string; queue_id: string }>
+  total: number | null
+}
+
+export interface SelectedValidationResult {
+  provenance: string | null
+  scenario_id: number | null
+  analysis_id: number | null
+  dataset_id: number | null
+  des_job_id: number | null
+  mc_job_id: number | null
+  failure_rate_cap: number | null
+  periods: SelectedValidationPeriod[]
+  verdict: SelectedValidationVerdict
+}
+
+export interface SelectedDecisionFacts {
+  selected_target: number | null
+  validation_checks: number | null
+  failed_checks: number | null
+  inadequate_checks: number | null
+  failure_rate_cap: number | null
+  lane_delta: number | null
+  periods: number | null
+}
+
+export interface SelectedDecision {
+  provenance: string | null
+  status: string | null
+  headline: string | null
+  recommendation: string | null
+  rationale: string[]
+  missing_evidence: string[]
+  scenario_id: number | null
+  scenario_name: string | null
+  dataset_id: number | null
+  facts: SelectedDecisionFacts | null
+  failed_periods: string[]
+  inadequate_periods: string[]
+  evidence_ids: Record<string, number | null> | null
+}
+
 export interface SimMcOut {
   num_trials?: number
   failure_criterion?: string
@@ -291,6 +430,131 @@ export interface SimMcOut {
   failure_rate_ci_half_width?: number
   failure_rate_precision?: 'high' | 'moderate' | 'low' | null
   failure_rate_adequate?: boolean
+}
+
+export interface SeparateUncertainty {
+  mean: number | null
+  sd: number | null
+  se: number | null
+  ci_lower: number | null
+  ci_upper: number | null
+  n: number | null
+}
+
+export interface SeparateCandidate {
+  active_lane_count: number
+  status: string
+  reason: string | null
+  candidate_utilization: number | null
+  total_cost: number | null
+  mean_total_cost: number | null
+  server_cost: number | null
+  waiting_cost: number | null
+  evaluation_method?: string | null
+}
+
+export interface SeparateOptimum {
+  active_lane_count: number
+  recommendation: string | null
+  total_cost: number | null
+  candidate_utilization: number | null
+  estimated_optimal?: boolean | null
+  cost_uncertainty?: SeparateUncertainty | null
+}
+
+export interface SeparatePeriod {
+  time: string
+  overall: string
+  reason: string | null
+  current_active_lanes: string[] | null
+  optimal_active_lanes: number | null
+  adjustment: number | null
+  optimum: SeparateOptimum | null
+  candidates: SeparateCandidate[]
+  evaluation_method: string | null
+  replication_seeds?: number[] | null
+}
+
+export interface SeparateDesConfig {
+  replications: number
+  base_seed: number
+  duration_hours: number
+  max_events: number
+}
+
+export interface SeparateSchedule {
+  overall: string
+  reason: string | null
+  target_utilization: number
+  evaluation_method: string | null
+  periods: SeparatePeriod[]
+  des: SeparateDesConfig
+}
+
+export interface SeparateCurrentPeriod {
+  time: string
+  active_lanes: string[] | null
+  lambda_total: number | null
+  wait_mean: number | null
+  util_max: number | null
+}
+
+export interface SeparateCurrentComparison {
+  dataset_id: number | null
+  periods: SeparateCurrentPeriod[]
+  wait_mean: number | null
+  wait_basis: string | null
+  util_max: number | null
+  waiting_cost: number | null
+  waiting_cost_basis: string | null
+  total_cost: number | null
+  total_cost_reason: string | null
+}
+
+export interface SeparatePlanPeriod {
+  time: string
+  current_active_lanes: string[] | null
+  optimal_active_lanes: number | null
+  adjustment: number | null
+  peak_util: number | null
+  wait_mean: number | null
+  wait_ci: [number | null, number | null] | null
+  waiting_cost_mean: number | null
+  total_cost_mean: number | null
+  total_cost_ci: [number | null, number | null] | null
+  status: string | null
+}
+
+export interface SeparatePlanTotals {
+  lane_periods: number | null
+  wait_mean: number | null
+  peak_util: number | null
+  waiting_cost_mean: number | null
+  total_cost_mean: number | null
+}
+
+export interface SeparatePlanComparison {
+  scenario_id: number
+  name: string
+  dataset_id: number | null
+  target: number | null
+  evaluation_method: string | null
+  replications: number | null
+  base_seed: number | null
+  overall: string | null
+  stale: boolean
+  valid: boolean
+  valid_reason: string | null
+  periods: SeparatePlanPeriod[]
+  totals: SeparatePlanTotals | null
+}
+
+export interface SeparateComparison {
+  analysis_id: number
+  queue_structure: string
+  current: SeparateCurrentComparison
+  plans: SeparatePlanComparison[]
+  selected_scenario_id: number | null
 }
 
 export interface SimValidateOut {

@@ -20,6 +20,7 @@ UNKNOWN_SETUP: dict[str, Any] = {
     "segments": [],
     "separate_queue_closure_policy": "drain_existing",
     "queue_ids": [],
+    "breaks": [],
 }
 
 

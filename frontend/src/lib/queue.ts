@@ -4,6 +4,14 @@
 import type { DatasetOut, SegmentRow } from '../api/types'
 
 /**
+ * Stable queue IDs for a separate-queue count, preserving existing IDs.
+ * Backend requires at least one queue_id for separate_queues analyses.
+ */
+export function queueIdsForCount(existing: string[], count: number): string[] {
+  return Array.from({ length: count }, (_, index) => existing[index] ?? `queue_${index + 1}`)
+}
+
+/**
  * Extract segment rows from a dataset's normalized data.
  * Handles optional fields (variance, K, theta, server_cost) with proper validation.
  */

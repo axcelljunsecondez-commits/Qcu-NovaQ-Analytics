@@ -8,6 +8,7 @@ import { OptimizePage } from './OptimizePage'
 const listDatasetsMock = vi.fn()
 const getDatasetMock = vi.fn()
 const optimizeBatchMock = vi.fn()
+const optimizeSeparateMock = vi.fn()
 const createScenarioMock = vi.fn()
 const listScenariosMock = vi.fn()
 const getAnalysisMock = vi.fn()
@@ -22,6 +23,7 @@ vi.mock('../api/datasets', () => ({
 vi.mock('../api/optimization', () => ({
   optimize: vi.fn(),
   optimizeBatch: (...args: unknown[]) => optimizeBatchMock(...args),
+  optimizeSeparate: (...args: unknown[]) => optimizeSeparateMock(...args),
   DEFAULT_OPTIONS: {
     target_utilization: 0.7,
     server_cost_per_hr: 87,
@@ -99,6 +101,7 @@ beforeEach(() => {
   listDatasetsMock.mockReset()
   getDatasetMock.mockReset()
   optimizeBatchMock.mockReset()
+  optimizeSeparateMock.mockReset()
   createScenarioMock.mockReset()
   listScenariosMock.mockReset()
   getAnalysisMock.mockReset()
@@ -509,10 +512,10 @@ describe('OptimizePage', () => {
   })
 })
 
-describe('separate staffing optimization is blocked', () => {
+describe('separate staffing optimization', () => {
   function renderSeparate() {
     getAnalysisMock.mockResolvedValue({
-      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['queue_1'] } },
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['lane-a', 'lane-b'] } },
     })
     return renderWithProviders(
       <Routes>
@@ -522,26 +525,150 @@ describe('separate staffing optimization is blocked', () => {
     )
   }
 
-  it('identifies the page as staffing schedule optimization with a blocked banner', async () => {
-    renderSeparate()
-    expect(await screen.findByRole('heading', { name: 'Optimize Staffing Schedule' })).toBeInTheDocument()
-    expect(await screen.findByTestId('optimize-staffing-blocked')).toHaveTextContent(/demand allocation policy not defined/)
-    expect(screen.getByRole('link', { name: 'Simulate' })).toHaveAttribute('href', '/analyses/7/simulate')
+  const candidate = (lanes: number, status: string, util: number | null, cost: number | null) => ({
+    active_lane_count: lanes,
+    status,
+    reason: status === 'FEASIBLE' ? null : `${status} reason`,
+    candidate_utilization: util,
+    total_cost: cost,
+    mean_total_cost: cost,
+    server_cost: cost === null ? null : 174,
+    waiting_cost: cost === null ? null : cost - 174,
+    evaluation_method: 'DES_REPLICATIONS',
   })
 
-  it('disables saving so no fake scenario can be produced', async () => {
+  const completeSchedule = {
+    schedule: {
+      overall: 'COMPLETE',
+      reason: null,
+      target_utilization: 0.7,
+      evaluation_method: 'DES_REPLICATIONS',
+      des: { replications: 5, base_seed: 42, duration_hours: 24, max_events: 10000 },
+      periods: [
+        {
+          time: '08:00',
+          overall: 'OPTIMAL',
+          reason: null,
+          current_active_lanes: ['lane-a', 'lane-b'],
+          optimal_active_lanes: 1,
+          adjustment: -1,
+          evaluation_method: 'DES_REPLICATIONS',
+          replication_seeds: [42, 43, 44, 45, 46],
+          optimum: {
+            active_lane_count: 1, recommendation: 'REDUCE', total_cost: 120.5,
+            candidate_utilization: 0.6, estimated_optimal: true,
+            cost_uncertainty: { mean: 120.5, sd: 4.0, se: 1.8, ci_lower: 115.5, ci_upper: 125.5, n: 5 },
+          },
+          candidates: [candidate(1, 'FEASIBLE', 0.6, 120.5), candidate(2, 'FEASIBLE', 0.35, 210.0)],
+        },
+      ],
+    },
+  }
+
+  it('shows a 40-90 utilization target slider defaulting to 70%', async () => {
+    renderSeparate()
+    await screen.findByRole('heading', { name: 'Optimize Staffing Schedule' })
+    const slider = screen.getByRole('slider', { name: /utilization target/i })
+    expect(slider).toHaveAttribute('min', '0.4')
+    expect(slider).toHaveAttribute('max', '0.9')
+    expect(slider).toHaveValue('0.7')
+    expect(screen.queryByTestId('optimize-staffing-blocked')).not.toBeInTheDocument()
+  })
+
+  it('runs one separate optimization and renders the estimated schedule', async () => {
     const user = userEvent.setup()
-    optimizeBatchMock.mockResolvedValue({
-      results: [{ ...row, c_optimal: null, optimized_stable: false, feasibility_status: 'INVALID_INPUT', warning: 'Optimization is not supported.' }],
+    optimizeSeparateMock.mockResolvedValue(completeSchedule)
+    renderSeparate()
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText('Estimated Optimal Plan')).toBeInTheDocument()
+    expect(screen.getByText('Replicated DES')).toBeInTheDocument()
+    expect(optimizeSeparateMock).toHaveBeenCalledTimes(1)
+    expect(optimizeSeparateMock).toHaveBeenCalledWith(
+      7, 1, expect.objectContaining({ target_utilization: 0.7 }),
+    )
+    expect(screen.getByRole('rowheader', { name: '08:00' })).toBeInTheDocument()
+  })
+
+  it('shows the blocked reason and keeps save disabled without an optimum', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateMock.mockResolvedValue({
+      schedule: {
+        ...completeSchedule.schedule,
+        overall: 'BLOCKED',
+        reason: 'Period(s) 08:00 cannot claim an optimum: evidence missing.',
+        periods: [{ ...completeSchedule.schedule.periods[0], overall: 'UNSUPPORTED', optimal_active_lanes: null, adjustment: null, optimum: null }],
+      },
     })
     renderSeparate()
     await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
-    await screen.findByText('Optimization is not supported.')
-    await user.type(screen.getByLabelText('Scenario name'), 'fake plan')
-    const save = screen.getByRole('button', { name: 'Save' })
-    expect(save).toBeDisabled()
+    expect(await screen.findByText(/cannot claim an optimum/)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Scenario name'), 'blocked plan')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     expect(createScenarioMock).not.toHaveBeenCalled()
+  })
+
+  it('renders missing optima as em-dash rather than zero', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateMock.mockResolvedValue({
+      schedule: {
+        ...completeSchedule.schedule,
+        overall: 'INFEASIBLE',
+        reason: 'Period 08:00 evaluated without a feasible lane count.',
+        periods: [{
+          ...completeSchedule.schedule.periods[0],
+          overall: 'INFEASIBLE', optimal_active_lanes: null, adjustment: null, optimum: null,
+          candidates: [candidate(1, 'INFEASIBLE', 0.91, null), candidate(2, 'INFEASIBLE', 0.83, null)],
+        }],
+      },
+    })
+    renderSeparate()
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText(/No feasible staffing plan/)).toBeInTheDocument()
+    const dashes = screen.getAllByText('—')
+    expect(dashes.length).toBeGreaterThan(0)
+    expect(screen.queryByText('0 cashiers')).not.toBeInTheDocument()
+  })
+
+  it('saves a verified snapshot when the schedule is complete', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateMock.mockResolvedValue(completeSchedule)
+    createScenarioMock.mockResolvedValue({ scenario: { id: 9 } })
+    renderSeparate()
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('Estimated Optimal Plan')
+    const nameInput = screen.getByLabelText('Scenario name') as HTMLInputElement
+    expect(nameInput.value).toBe('Optimal @ 70%')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(createScenarioMock).toHaveBeenCalledTimes(1)
+    const payload = createScenarioMock.mock.calls[0][0]
+    expect(payload.settings.calculation.schema_version).toBe(2)
+    expect(payload.settings.calculation.engine_version).toBe('novaq-2026-09-separate-des-v1')
+    expect(payload.results.schedule.overall).toBe('COMPLETE')
+  })
+
+  it('requests and records full coverage: min_active_lanes equals the configured queue count', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateMock.mockResolvedValue(completeSchedule)
+    createScenarioMock.mockResolvedValue({ scenario: { id: 9 } })
+    renderSeparate()
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('Estimated Optimal Plan')
+    expect(optimizeSeparateMock).toHaveBeenCalledWith(
+      7, 1, expect.objectContaining({ min_active_lanes: 2 }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    const payload = createScenarioMock.mock.calls[0][0]
+    expect(payload.settings.min_active_lanes).toBe(2)
+    expect(payload.settings.calculation.options.min_active_lanes).toBe(2)
   })
 })

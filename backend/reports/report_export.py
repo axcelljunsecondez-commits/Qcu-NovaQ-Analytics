@@ -16,6 +16,7 @@ from backend.queueing_engine.log import get_logger
 logger = get_logger(__name__)
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -191,8 +192,374 @@ def current_only_blocked_lines() -> list[str]:
     ]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PDF Report
+# Separate-Queue full report (selected plan)
 # ──────────────────────────────────────────────────────────────────────────────
+
+SEPARATE_DECISION_LABELS = {
+    "adopt": "ADOPT",
+    "conditional": "CONDITIONAL",
+    "revise": "REVISE",
+    "insufficient_evidence": "INSUFFICIENT EVIDENCE",
+}
+
+
+def separate_pdf_section_headings(model: dict) -> list[str]:
+    """Single source for Separate PDF section headings (preview parity)."""
+    decision = ((model.get("decision") or {}).get("status") or "insufficient_evidence")
+    return [
+        "Separate-Queue Optimization Report",
+        f"Decision: {SEPARATE_DECISION_LABELS.get(decision, 'INSUFFICIENT EVIDENCE')}",
+        str(model.get("staffing_title") or "Selected Staffing Schedule"),
+        "Cost Evidence",
+        "Validation",
+        "Limitations",
+        "Provenance",
+    ]
+
+
+def generate_separate_pdf_report(model: dict) -> io.BytesIO:
+    """Generate the management PDF for one selected Separate plan.
+
+    Renders only normalized model values: hours-to-minutes conversion and
+    N/A wording happen here, identically for every consumer of the model.
+    """
+    from reportlab.platypus import Paragraph
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.75 * inch, bottomMargin=0.75 * inch)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("SepTitle", parent=styles["Title"], fontSize=22, spaceAfter=6)
+    subtitle_style = ParagraphStyle("SepSub", parent=styles["Normal"], fontSize=11, textColor=colors.grey)
+    h2 = ParagraphStyle("SepH2", parent=styles["Heading2"], spaceBefore=18, spaceAfter=8)
+    bullet_style = ParagraphStyle("SepBullet", parent=styles["Normal"], leftIndent=20, spaceAfter=8, fontSize=11)
+    cell_style = ParagraphStyle("SepCell", parent=styles["Normal"], fontSize=8, leading=10)
+    header_cell = ParagraphStyle("SepHeader", parent=cell_style, fontName="Helvetica-Bold")
+
+    headings = separate_pdf_section_headings(model)
+    overview = model.get("overview") or {}
+    decision = model.get("decision") or {}
+    schedule = model.get("schedule") or {}
+    cost = model.get("cost") or {}
+
+    def _table(headers: list[str], rows: list[list[str]], widths: list[float]):
+        data = [[Paragraph(h, header_cell) for h in headers]]
+        for row in rows:
+            data.append([Paragraph(escape(cell), cell_style) for cell in row])
+        tbl = Table(data, colWidths=widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2F5496")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#D6E4F0")]),
+        ]))
+        return tbl
+
+    def _na(value: object) -> str:
+        return str(value) if value is not None else "N/A"
+
+    def _pct(value: object) -> str:
+        number = _number(value)
+        return f"{number:.1%}" if number is not None else "N/A"
+
+    def _minutes(value: object) -> str:
+        number = _number(value)
+        return f"{number * 60:.2f}" if number is not None else "N/A"
+
+    elements: list = []
+    elements.append(Paragraph(headings[0], title_style))
+    elements.append(Paragraph(f"Generated: {date.today().isoformat()}", subtitle_style))
+    elements.append(Paragraph(
+        escape(f"Analysis: {_na(overview.get('analysis_name'))} "
+               f"(ID {_na(overview.get('analysis_id'))}) · "
+               f"Dataset: {_na(overview.get('dataset_name'))} "
+               f"(ID {_na(overview.get('dataset_id'))})"),
+        subtitle_style))
+    elements.append(Paragraph(
+        escape(f"Scenario: {_na(overview.get('scenario_name'))} "
+               f"(ID {_na(overview.get('scenario_id'))})"),
+        subtitle_style))
+    elements.append(PageBreak())
+
+    elements.append(Paragraph(headings[1], h2))
+    elements.append(Paragraph(escape(str(decision.get("headline") or "No decision headline.")), bullet_style))
+    elements.append(Paragraph(escape(str(decision.get("recommendation") or "")), bullet_style))
+    for line in decision.get("rationale") or []:
+        elements.append(Paragraph(escape(f"• {line}"), bullet_style))
+
+    elements.append(Paragraph(headings[2], h2))
+    elements.append(_table(
+        ["Period", "Current Active", "Selected Active", "Adjustment", "Peak Mean Utilization"],
+        [[str(p.get("time", "")),
+          _staff_count(p.get("current_count")),
+          _staff_count(p.get("optimal_active_lanes")),
+          "N/A" if p.get("adjustment") is None else str(p.get("adjustment")),
+          _pct(p.get("peak_utilization"))]
+         for p in schedule.get("periods") or []],
+        [1.1 * inch, 1.1 * inch, 1.1 * inch, 1.1 * inch, 1.4 * inch],
+    ))
+
+    elements.append(Paragraph(headings[3], h2))
+    for label, value in [
+        ("Current waiting cost", _money(cost.get("current_waiting"))),
+        ("Selected staffing cost", _money(cost.get("selected_staffing"))),
+        ("Selected waiting cost", _money(cost.get("selected_waiting"))),
+        ("Selected total modeled cost", _money(cost.get("selected_total"))),
+        ("Savings", "N/A"),
+        ("ROI", "N/A"),
+    ]:
+        elements.append(Paragraph(escape(f"• {label}: {value}"), bullet_style))
+    elements.append(Paragraph(
+        escape("Current total modeled cost is N/A on a comparable basis; savings and ROI are not computed."),
+        bullet_style))
+
+    elements.append(Paragraph(headings[4], h2))
+    validation = model.get("validation") or {}
+    elements.append(Paragraph(
+        escape(f"Overall verdict: {str(validation.get('verdict', 'N/A')).upper()}"), bullet_style))
+    for period in validation.get("periods") or []:
+        elements.append(Paragraph(
+            escape(f"• {period.get('time')}: {str(period.get('status', '')).upper()}"), bullet_style))
+
+    elements.append(Paragraph(headings[5], h2))
+    for line in model.get("limitations") or []:
+        elements.append(Paragraph(escape(f"• {line}"), bullet_style))
+
+    elements.append(Paragraph(headings[6], h2))
+    for key, value in (model.get("provenance") or {}).items():
+        elements.append(Paragraph(escape(f"• {key}: {value}"), bullet_style))
+
+    doc.build(elements)
+    buf.seek(0)
+    return buf
+
+
+def generate_separate_excel_report(model: dict) -> io.BytesIO:
+    """Detailed evidence workbook for one selected Separate plan.
+
+    Numbers stay numeric with display formats; unavailable evidence is the
+    string "N/A", never zero. Stored waits are hours; minutes conversion
+    happens here, matching PDF and preview.
+    """
+    wb = openpyxl.Workbook()
+    pct_fmt = "0.0%"
+    money_fmt = '#,##0.00" ₱"'
+    min_fmt = "0.00"
+
+    def _put(ws, row: int, label: str, value: object, number_format: str | None = None,
+             bold: bool = False) -> None:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=bold, size=11)
+        cell = ws.cell(row=row, column=2)
+        if value is None:
+            cell.value = "N/A"
+        else:
+            cell.value = value
+            if number_format:
+                cell.number_format = number_format
+        cell.font = Font(size=11)
+
+    def _sheet(title: str, headers: list[str]) -> Worksheet:
+        ws = wb.active if title == "Overview" else wb.create_sheet(title)
+        if title == "Overview":
+            ws.title = "Overview"
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(row=1, column=col_idx, value=header).font = Font(bold=True)
+        ws.column_dimensions["A"].width = 32
+        ws.column_dimensions["B"].width = 24
+        return ws
+
+    overview = model.get("overview") or {}
+    decision = model.get("decision") or {}
+    schedule = model.get("schedule") or {}
+    cost = model.get("cost") or {}
+    current = model.get("current") or {}
+
+    ws = _sheet("Overview", ["Field", "Value"])
+    for idx, (label, value) in enumerate([
+        ("Analysis", overview.get("analysis_name")),
+        ("Dataset", overview.get("dataset_name")),
+        ("Scenario", overview.get("scenario_name")),
+        ("Scenario ID", overview.get("scenario_id")),
+        ("Target", overview.get("target")),
+        ("Decision", decision.get("status")),
+        ("Evaluation method", (schedule.get("evaluation_method")
+                               if "evaluation_method" in schedule else "DES_REPLICATIONS")),
+    ], start=2):
+        _put(ws, idx, label, value,
+             number_format=pct_fmt if label == "Target" and value is not None else None)
+
+    ws_cur = _sheet("Current", ["Time", "Queue", "Lambda", "Rho", "Wq (min)", "Model"])
+    row_idx = 2
+    for period in current.get("periods") or []:
+        for queue in period.get("queues") or []:
+            vals = [period.get("time"), queue.get("queue_id"), queue.get("lambda"),
+                    queue.get("rho"),
+                    (queue.get("Wq") * 60) if _number(queue.get("Wq")) is not None else None,
+                    queue.get("model")]
+            for col_idx, val in enumerate(vals, start=1):
+                ws_cur.cell(row=row_idx, column=col_idx, value=val)
+            if _number(queue.get("rho")) is not None:
+                ws_cur.cell(row=row_idx, column=4).number_format = pct_fmt
+            if _number(queue.get("Wq")) is not None:
+                ws_cur.cell(row=row_idx, column=5).number_format = min_fmt
+            row_idx += 1
+    for col in ("A", "B", "C", "D", "E", "F"):
+        ws_cur.column_dimensions[col].width = 18
+
+    ws_sched = _sheet("Selected Staffing",
+                      ["Time", "Current Active", "Selected Active", "Adjustment", "Peak Mean Utilization"])
+    for idx, period in enumerate(schedule.get("periods") or [], start=2):
+        ws_sched.cell(row=idx, column=1, value=period.get("time"))
+        ws_sched.cell(row=idx, column=2, value=period.get("current_count"))
+        optimal = period.get("optimal_active_lanes")
+        ws_sched.cell(row=idx, column=3,
+                      value=int(optimal) if isinstance(optimal, int) and not isinstance(optimal, bool)
+                      else (int(optimal) if isinstance(optimal, float) and float(optimal).is_integer() else None))
+        adjustment = period.get("adjustment")
+        ws_sched.cell(row=idx, column=4, value=adjustment if _is_int(adjustment) else None)
+        peak = period.get("peak_utilization")
+        ws_sched.cell(row=idx, column=5, value=peak if _number(peak) is not None else "N/A")
+        if _number(peak) is not None:
+            ws_sched.cell(row=idx, column=5).number_format = pct_fmt
+    for col in ("A", "B", "C", "D", "E"):
+        ws_sched.column_dimensions[col].width = 20
+
+    des = model.get("des") or {}
+    ws_des = _sheet("DES", ["Time", "Queue", "Active", "Arrivals", "Served",
+                            "Wq (min)", "Utilization", "Peak Mean Utilization", "Max Queue"])
+    row_idx = 2
+    for period in des.get("periods") or []:
+        peak = None
+        for cand in (schedule.get("periods") or []):
+            if cand.get("time") == period.get("time"):
+                peak = cand.get("peak_utilization")
+        for lane in period.get("lanes") or []:
+            wq = lane.get("Wq")
+            rho = lane.get("rho")
+            ws_des.cell(row=row_idx, column=1, value=period.get("time"))
+            ws_des.cell(row=row_idx, column=2, value=lane.get("queue_id"))
+            ws_des.cell(row=row_idx, column=3, value="yes" if lane.get("active") else ("no" if lane.get("active") is False else "N/A"))
+            ws_des.cell(row=row_idx, column=4, value=lane.get("arrivals"))
+            ws_des.cell(row=row_idx, column=5, value=lane.get("served"))
+            ws_des.cell(row=row_idx, column=6,
+                        value=(wq * 60) if _number(wq) is not None else "N/A")
+            if _number(wq) is not None:
+                ws_des.cell(row=row_idx, column=6).number_format = min_fmt
+            ws_des.cell(row=row_idx, column=7,
+                        value=rho if _number(rho) is not None else "N/A")
+            if _number(rho) is not None:
+                ws_des.cell(row=row_idx, column=7).number_format = pct_fmt
+            ws_des.cell(row=row_idx, column=8,
+                        value=peak if _number(peak) is not None else "N/A")
+            if _number(peak) is not None:
+                ws_des.cell(row=row_idx, column=8).number_format = pct_fmt
+            ws_des.cell(row=row_idx, column=9, value=lane.get("max_queue"))
+            row_idx += 1
+    for col in ("A", "B", "C", "D", "E", "F", "G", "H", "I"):
+        ws_des.column_dimensions[col].width = 18
+
+    ws_mc = _sheet("MonteCarlo", ["Time", "Queue", "Lambda", "Trials", "Failure Rate",
+                                  "Cap", "CI Lower", "CI Upper", "Status"])
+    row_idx = 2
+    mc = model.get("mc") or {}
+    for lane in mc.get("lanes") or []:
+        ci = lane.get("failure_rate_ci") or [None, None]
+        for col_idx, val in enumerate(
+                [lane.get("time"), lane.get("queue_id"), lane.get("lambda"),
+                 mc.get("num_trials"), lane.get("failure_rate"),
+                 mc.get("failure_rate_cap"), ci[0], ci[1], lane.get("status")], start=1):
+            ws_mc.cell(row=row_idx, column=col_idx,
+                       value=val if val is not None else "N/A")
+        row_idx += 1
+
+    ws_val = _sheet("Validation", ["Time", "Queue", "Rho", "Wq (min)",
+                                   "Failure Rate", "Verdict"])
+    row_idx = 2
+    validation = model.get("validation") or {}
+    for period in validation.get("periods") or []:
+        for queue in period.get("queues") or []:
+            wq = queue.get("Wq_sim")
+            ws_val.cell(row=row_idx, column=1, value=period.get("time"))
+            ws_val.cell(row=row_idx, column=2, value=queue.get("queue_id"))
+            rho = queue.get("rho_sim")
+            ws_val.cell(row=row_idx, column=3, value=rho if _number(rho) is not None else "N/A")
+            if _number(rho) is not None:
+                ws_val.cell(row=row_idx, column=3).number_format = pct_fmt
+            ws_val.cell(row=row_idx, column=4,
+                        value=(wq * 60) if _number(wq) is not None else "N/A")
+            if _number(wq) is not None:
+                ws_val.cell(row=row_idx, column=4).number_format = min_fmt
+            ws_val.cell(row=row_idx, column=5,
+                        value=queue.get("mc_failure_rate")
+                        if _number(queue.get("mc_failure_rate")) is not None else "N/A")
+            ws_val.cell(row=row_idx, column=6, value=queue.get("validation_verdict"))
+            row_idx += 1
+
+    ws_dec = _sheet("Decision", ["Field", "Value"])
+    _put(ws_dec, 2, "Status", decision.get("status"))
+    _put(ws_dec, 3, "Headline", decision.get("headline"))
+    _put(ws_dec, 4, "Recommendation", decision.get("recommendation"))
+    for idx, line in enumerate(decision.get("rationale") or [], start=5):
+        _put(ws_dec, idx, f"Rationale {idx - 4}", line)
+    after = 5 + len(decision.get("rationale") or [])
+    _put(ws_dec, after, "Failed periods",
+         ", ".join(decision.get("failed_periods") or []) or "N/A")
+
+    ws_cost = _sheet("Cost", ["Metric", "Value"])
+    _put(ws_cost, 2, "Current waiting cost", cost.get("current_waiting"), money_fmt)
+    _put(ws_cost, 3, "Current total modeled cost", cost.get("current_total"))
+    _put(ws_cost, 4, "Selected staffing cost", cost.get("selected_staffing"), money_fmt)
+    _put(ws_cost, 5, "Selected waiting cost", cost.get("selected_waiting"), money_fmt)
+    _put(ws_cost, 6, "Selected total modeled cost", cost.get("selected_total"), money_fmt)
+    _put(ws_cost, 7, "Savings", cost.get("savings"))
+    _put(ws_cost, 8, "ROI", cost.get("roi"))
+
+    ws_lim = _sheet("Limitations", ["Limitation"])
+    for idx, line in enumerate(model.get("limitations") or [], start=2):
+        ws_lim.cell(row=idx, column=1, value=line)
+    ws_lim.column_dimensions["A"].width = 120
+
+    ws_prov = _sheet("Provenance", ["Field", "Value"])
+    for idx, (label, key) in enumerate([
+        ("Scenario ID", "scenario_id"),
+        ("Analysis ID", "analysis_id"),
+        ("Dataset ID", "dataset_id"),
+        ("DES job ID", "des_job_id"),
+        ("MC job ID", "mc_job_id"),
+        ("Validation job ID", "validation_job_id"),
+        ("Decision job ID", "decision_job_id"),
+        ("Optimization engine", "optimization_engine"),
+        ("Generated at", "generated_at"),
+    ], start=2):
+        _put(ws_prov, idx, label, (model.get("provenance") or {}).get(key))
+
+    plans = model.get("comparison_plans") or []
+    if plans:
+        ws_plans = _sheet("Plans", ["Scenario", "Target", "Overall"])
+        for idx, plan in enumerate(plans, start=2):
+            ws_plans.cell(row=idx, column=1, value=plan.get("name"))
+            target = plan.get("target")
+            ws_plans.cell(row=idx, column=2, value=target if _number(target) is not None else "N/A")
+            if _number(target) is not None:
+                ws_plans.cell(row=idx, column=2).number_format = pct_fmt
+            ws_plans.cell(row=idx, column=3, value=plan.get("overall"))
+
+    buf = io.BytesIO()
+    for sheet in wb:
+        for row in sheet:
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[str]:
@@ -233,9 +600,13 @@ def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[st
     return bullets
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Shared PDF Report
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 def generate_pdf_report(
-    current_kpis: dict,
-    recommended_kpis: dict,
+    current_kpis: dict,    recommended_kpis: dict,
     comparison_df: pd.DataFrame,
     recommendations: list[str] | None = None,
 ) -> io.BytesIO:

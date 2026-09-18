@@ -46,6 +46,22 @@ class AnalysisSegment(BaseModel):
         return self
 
 
+class QueueBreak(BaseModel):
+    """One explicitly user-configured server break (input authority only).
+
+    The queue must already exist in ``QueueSetup.queue_ids``; the start is a
+    wall-clock time and the duration is a positive whole number of minutes.
+    Multiple breaks per queue are allowed. Nothing here executes breaks —
+    downstream simulation phases consume these records.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    queue_id: str = Field(min_length=1, max_length=100)
+    scheduled_start_time: datetime_time
+    duration_minutes: int = Field(gt=0)
+
+
 class QueueSetup(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -59,6 +75,7 @@ class QueueSetup(BaseModel):
     segments: list[AnalysisSegment] = Field(default_factory=list)
     separate_queue_closure_policy: SeparateQueueClosurePolicy = SeparateQueueClosurePolicy.drain_existing
     queue_ids: list[str] = Field(default_factory=list)
+    breaks: list[QueueBreak] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_dependencies(self) -> QueueSetup:
@@ -88,6 +105,17 @@ class QueueSetup(BaseModel):
         if self.queue_structure == QueueStructure.separate_queues and not self.queue_ids:
             raise ValueError("Separate-queue analysis requires at least one configured queue ID.")
         configured = set(self.queue_ids)
+        if self.breaks and self.queue_structure != QueueStructure.separate_queues:
+            raise ValueError("Server break schedules are only supported for separate queues.")
+        for entry in self.breaks:
+            queue_id = entry.queue_id.strip()
+            if not queue_id:
+                raise ValueError("Break queue IDs must be non-empty.")
+            if queue_id not in configured:
+                raise ValueError(
+                    f"Break references unknown queue ID: {entry.queue_id}."
+                )
+            entry.queue_id = queue_id
         ordered = sorted(self.segments, key=lambda segment: segment.start_time)
         for previous, current in zip(ordered, ordered[1:]):
             if current.start_time < previous.end_time:
