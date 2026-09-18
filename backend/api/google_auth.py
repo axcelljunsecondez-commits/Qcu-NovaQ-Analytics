@@ -3,15 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Protocol
 
 
 class InvalidGoogleCredential(ValueError):
     pass
-
-
-class GoogleTokenVerifier(Protocol):
-    def verify(self, credential: str, audience: str) -> dict: ...
 
 
 class OfficialGoogleTokenVerifier:

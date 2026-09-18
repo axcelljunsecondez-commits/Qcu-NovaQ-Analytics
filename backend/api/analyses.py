@@ -77,19 +77,6 @@ def own_analysis(db: Session, user: User, analysis_id: int) -> AnalysisProject:
     return analysis
 
 
-def create_legacy_analysis(db: Session, user: User, name: str) -> AnalysisProject:
-    setup = unknown_queue_setup()
-    analysis = AnalysisProject(
-        user_id=user.id,
-        name=name[:255],
-        queue_setup_json=setup.model_dump(mode="json"),
-        setup_status="legacy",
-    )
-    db.add(analysis)
-    db.flush()
-    return analysis
-
-
 @router.get("")
 def list_analyses(
     include_archived: bool = False,

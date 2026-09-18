@@ -67,3 +67,6 @@ backups/
 /outputs/
 /pptx-output/
 /reports/
+
+# Node dependencies
+node_modules/

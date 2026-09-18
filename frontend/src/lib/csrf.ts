@@ -1,4 +1,3 @@
-export const SESSION_COOKIE = 'novaq_session'
 export const CSRF_COOKIE = 'novaq_csrf'
 
 function cookieValue(name: string): string | null {

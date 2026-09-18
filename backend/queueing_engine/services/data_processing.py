@@ -334,19 +334,3 @@ def compute_kpis(results_df: pd.DataFrame, customer_waiting_cost: float | None =
         "stable_count": count_stable,
         "unstable_count": count_unstable,
     }
-
-
-def get_unstable_messages(results_df: pd.DataFrame) -> list[str]:
-    """Collect validation messages for unstable current-system segments."""
-    if results_df is None or results_df.empty:
-        return []
-
-    issue_rows = results_df[~results_df["stable"]]
-    messages = []
-    for _, row in issue_rows.iterrows():
-        details = row["warning"] or "Segment could not be evaluated."
-        messages.append(f"{row['time']}: {details}")
-    return messages
-
-
-
