@@ -253,8 +253,9 @@ def test_workflow_persists_selection_simulation_validation_and_decision(db_engin
     assert body["decision_stale"] is False
 
 
-def test_parallel_workflow_des_uses_persisted_queue_setup_and_empirical_samples(db_engine, client):
-    user = create_user(db_engine, "parallel-owner@example.com", "pw")
+def _legacy_separate_workspace(db_engine, email: str = "parallel-owner@example.com") -> tuple[int, int]:
+    """Separate analysis with a legacy (schema v1) per-lane Scenario."""
+    user = create_user(db_engine, email, "pw")
     with make_sessionmaker(db_engine)() as db:
         analysis = AnalysisProject(
             user_id=user.id,
@@ -332,8 +333,11 @@ def test_parallel_workflow_des_uses_persisted_queue_setup_and_empirical_samples(
         )
         db.add(scenario)
         db.commit()
-        analysis_id = analysis.id
-        scenario_id = scenario.id
+        return analysis.id, scenario.id
+
+
+def test_parallel_workflow_des_uses_persisted_queue_setup_and_empirical_samples(db_engine, client):
+    analysis_id, scenario_id = _legacy_separate_workspace(db_engine)
     login(client, "parallel-owner@example.com", "pw")
     headers = csrf_header(client)
     assert client.post(
@@ -353,6 +357,27 @@ def test_parallel_workflow_des_uses_persisted_queue_setup_and_empirical_samples(
     assert {event["queue_id"] for event in result["trace"]} == {"queue_a"}
     service_events = [event for event in result["trace"] if event["type"] == "service_end"]
     assert all(event["service_time_hours"] in {0.05, 0.1} for event in service_events)
+
+
+def test_generic_decision_never_decides_a_separate_analysis(db_engine, client):
+    """Separate plans are decided only by /workflow/decision/selected."""
+    analysis_id, scenario_id = _legacy_separate_workspace(db_engine)
+    login(client, "parallel-owner@example.com", "pw")
+    headers = csrf_header(client)
+    assert client.post(f"/analyses/{analysis_id}/workflow/selection", headers=headers,
+                       json={"scenario_id": scenario_id}).status_code == 200
+    assert client.post(f"/analyses/{analysis_id}/workflow/simulation/des", headers=headers,
+                       json={"sim_hours": 1, "max_events": 100, "seed": 7}).status_code == 200
+    assert client.post(f"/analyses/{analysis_id}/workflow/simulation/validation", headers=headers,
+                       json={"des_sim_hours": 1, "mc_trials": 200, "mc_failure_threshold": 1,
+                             "mc_failure_rate_cap": 1, "seed": 7}).status_code == 200
+    response = client.post(f"/analyses/{analysis_id}/workflow/decision", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["decision"]["status"] == "insufficient_evidence"
+    assert body["persisted"] is False
+    assert "decision/selected" in " ".join(body["decision"]["missing_evidence"])
+    assert client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()["decision"] is None
 
 
 def test_workflow_selection_is_owner_scoped(db_engine, client):

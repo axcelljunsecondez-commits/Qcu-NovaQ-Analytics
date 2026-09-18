@@ -2393,6 +2393,14 @@ def create_decision(
     analysis = own_analysis(db, user, analysis_id)
     evidence = _current_evidence(db, user, analysis)
     scenario, _ = _selected_scenario(db, user, analysis)
+    if (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues":
+        # Separate plans are decided only from the selected-plan evidence chain;
+        # the shared rules here must never produce or persist a verdict for them.
+        result = _derive_decision(analysis, None, {**evidence, "des": None, "validation": None})
+        missing = "the selected-plan Decision (POST /workflow/decision/selected)"
+        result["missing_evidence"] = [missing]
+        result["rationale"] = [f"Missing: {missing}."]
+        return {"decision": result, "persisted": False}
     result = _derive_decision(analysis, scenario, evidence)
     if scenario is None:
         return {"decision": result, "persisted": False}
