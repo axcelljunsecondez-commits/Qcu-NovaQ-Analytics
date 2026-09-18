@@ -43,6 +43,7 @@ from backend.queueing_engine.services.separate_optimization import (
     optimize_separate_schedule,
     period_des_breaks,
     prune_separate_schedule,
+    replication_seeds,
     resolve_des_breaks,
     run_routing_day_des,
     validate_des_replication_config,
@@ -89,6 +90,12 @@ class WorkflowMcRequest(BaseModel):
     failure_threshold: float = Field(default=MC_DEFAULT_FAILURE_THRESHOLD, gt=0, le=1)
     failure_rate_cap: float = Field(default=0.05, gt=0, le=1)
     seed: int | None = 42
+
+
+class SelectedMcRequest(WorkflowMcRequest):
+    """Selected-plan MC: an omitted failure threshold means the plan's target."""
+
+    failure_threshold: float | None = Field(default=None, gt=0, le=1)  # type: ignore[assignment]
 
 
 class WorkflowValidationRequest(BaseModel):
@@ -1444,6 +1451,9 @@ class SelectedDesRequest(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
 
     seed: int | None = 42
+    # Paired replications whose mean routed arrivals set the Monte Carlo
+    # lane loads (bounded like the break optimizer's DES replications).
+    load_replications: StrictInt = Field(default=20, ge=1, le=20)
 
 
 class SelectedPlanError(ValueError):
@@ -1708,16 +1718,52 @@ def run_selected_des(
     try:
         plan = _require_selected_separate_plan(db, user, analysis)
         result = _run_selected_plan_des(plan, payload.seed)
+        _attach_mean_routed_loads(plan, payload.seed, payload.load_replications, result)
     except SelectedPlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     scenario = plan["scenario"]
     job = _save_job(
         db, user, "workflow_des", analysis, scenario,
         {"seed": payload.seed, "engine": "selected-plan-routing-des",
-         "periods": len(result["periods"])},
+         "periods": len(result["periods"]),
+         "load_replications": payload.load_replications},
         result, settings,
     )
     return {"evidence": _job_out(job)}
+
+
+def _attach_mean_routed_loads(plan: dict[str, Any], seed: int | None, count: int,
+                              stored: dict[str, Any]) -> None:
+    """Add each lane's mean routed arrivals over ``count`` paired replications.
+
+    Replication 0 is ``stored`` itself (its trace and playback stay exactly as
+    produced); the rest rerun the same plan with the next seeds of
+    ``replication_seeds``. A lane absent from a run received no arrivals there.
+    Only ``results`` rows gain ``arrivals_mean``/``lambda_routed_mean`` (as
+    copies); the stored trace payload is untouched.
+    """
+    seeds: list[int | None] = (list(replication_seeds(seed, count)) if seed is not None
+                               else [None] * count)
+    runs = [stored] + [_run_selected_plan_des(plan, extra) for extra in seeds[1:]]
+    totals: dict[tuple[str, str], float] = {}
+    for run in runs:
+        for period in run.get("periods") or []:
+            for row in period.get("results") or []:
+                key = (str(period.get("time")), str(row.get("queue_id")))
+                totals[key] = totals.get(key, 0.0) + float(row.get("arrivals") or 0)
+    for period in stored.get("periods") or []:
+        duration = period.get("duration_hours") or stored.get("duration_hours") or 0.0
+        rows = []
+        for row in period.get("results") or []:
+            mean = totals.get((str(period.get("time")), str(row.get("queue_id"))), 0.0) / len(runs)
+            rows.append({**row, "arrivals_mean": mean,
+                         "lambda_routed_mean": (mean / duration) if duration > 0 else None})
+        period["results"] = rows
+    stored["load_replications"] = {
+        "count": count,
+        "seeds": seeds,
+        "basis": f"mean routed arrivals over {count} paired DES replications",
+    }
 
 
 def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[str, Any]:
@@ -1834,8 +1880,9 @@ def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[s
 def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> list[dict[str, Any]]:
     """Monte Carlo lane segments at DES-measured operating points.
 
-    Each active lane is evaluated at its simulated routed throughput with
-    service moments from its empirical samples — the same Parallel M/G/1
+    Each active lane is evaluated at its mean simulated routed throughput
+    over the DES evidence's paired load replications, with service moments
+    from its empirical samples — the same Parallel M/G/1
     mathematics as Current MC, applied to the selected schedule's measured
     loads. Inactive lanes have no arrivals and are not evaluated.
     """
@@ -1844,7 +1891,6 @@ def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> l
     for period in des_result.get("periods") or []:
         time_label = str(period.get("time", "Unknown"))
         by_id = index_period_queues(records, time_label)
-        duration = period.get("duration_hours") or des_result.get("duration_hours") or 0.0
         for row in period.get("results") or []:
             if not row.get("active"):
                 continue
@@ -1857,11 +1903,14 @@ def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> l
                 raise SelectedPlanError(
                     f"Missing service samples for Monte Carlo lane {time_label}/{queue_id}.")
             mean_service = math.fsum(clean) / len(clean)
-            arrivals = row.get("arrivals") or 0
+            mean_load = _json_number(row.get("lambda_routed_mean"))
+            if mean_load is None:
+                raise SelectedPlanError(
+                    f"Missing mean routed load for Monte Carlo lane {time_label}/{queue_id}.")
             segments.append({
                 "time": time_label,
                 "queue_id": queue_id,
-                "lambda": (float(arrivals) / duration) if duration > 0 else 0.0,
+                "lambda": mean_load,
                 "mu": 1.0 / mean_service,
                 "variance": statistics.variance(clean) if len(clean) >= 2 else 0.0,
                 "c": 1,
@@ -1876,7 +1925,7 @@ def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> l
 )
 def run_selected_mc(
     analysis_id: int,
-    payload: WorkflowMcRequest,
+    payload: SelectedMcRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
@@ -1906,12 +1955,25 @@ def run_selected_mc(
             detail="Latest DES evidence is not a selected-plan run for this scenario.",
         )
     _require_setup_current(analysis, des_job)
+    load = (des_job.result_json or {}).get("load_replications")
+    if not isinstance(load, dict) or not isinstance(load.get("count"), int):
+        raise HTTPException(
+            status_code=409,
+            detail="Selected-plan DES evidence has no mean routed loads. Rerun selected-plan DES.",
+        )
+    target = _json_number(plan["target"])
+    if "failure_threshold" in payload.model_fields_set and payload.failure_threshold is not None:
+        failure_threshold, threshold_source = float(payload.failure_threshold), "user"
+    elif target is not None and 0 < target <= 1:
+        failure_threshold, threshold_source = target, "plan_target"
+    else:
+        failure_threshold, threshold_source = MC_DEFAULT_FAILURE_THRESHOLD, "default"
     try:
         segments = _selected_mc_segments(plan, des_job.result_json or {})
         rows = mc_simulate_segments(
             segments,
             num_trials=payload.num_trials,
-            failure_threshold=payload.failure_threshold,
+            failure_threshold=failure_threshold,
             seed=payload.seed,
             failure_rate_cap=payload.failure_rate_cap,
         )
@@ -1930,7 +1992,12 @@ def run_selected_mc(
     job = _save_job(
         db, user, "workflow_mc", analysis, scenario,
         {**payload.model_dump(), "des_job_id": des_job.id,
-         "engine": "selected-plan-measured-mc"},
+         "engine": "selected-plan-measured-mc",
+         "failure_threshold": failure_threshold,
+         "failure_threshold_source": threshold_source,
+         "load_replications": load["count"],
+         "load_seeds": load.get("seeds"),
+         "lambda_basis": load.get("basis")},
         result, settings,
     )
     return {"evidence": _job_out(job)}

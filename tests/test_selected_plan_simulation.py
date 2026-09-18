@@ -256,10 +256,10 @@ def test_selected_mc_uses_same_scenario_and_measured_loads(db_engine, client):
     rows = mc_result["results"]
     assert {row["queue_id"] for row in rows} == {"east-07"}
     assert rows[0]["num_trials"] == 2000
-    assert rows[0]["failure_threshold"] == 0.75
+    assert rows[0]["failure_threshold"] == 0.70  # R9: omitted threshold = plan target
     assert rows[0]["failure_rate_ci_lower"] is not None
     des_lane = des_body["result"]["periods"][0]["results"][0]
-    assert rows[0]["lambda"] == des_lane["arrivals"] / 8.0
+    assert rows[0]["lambda"] == des_lane["lambda_routed_mean"]
 
 
 def test_scenario_change_stales_old_simulation_evidence(db_engine, client):

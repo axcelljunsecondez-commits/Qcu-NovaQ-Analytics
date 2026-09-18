@@ -975,5 +975,7 @@
   "current.observed_banner": "Mas mahaba nang malaki ang naobserbahang paghihintay kaysa sa maipapaliwanag ng trabaho ng mga cashier. Inilalarawan ng mga resulta ang modeled na sistema; suriin kung paano naitala ang mga paghihintay.",
   "compare.sep_basis_current": "Modeled na kasalukuyang paghihintay (analytical)",
   "compare.sep_basis_plan": "Simulation (replicated DES)",
-  "compare.sep_basis_no_difference": "Magkaibang paraan ang ginamit sa paghihintay ng Current at ng mga plan; hindi sila pinagbabawas o niraranggo."
+  "compare.sep_basis_no_difference": "Magkaibang paraan ang ginamit sa paghihintay ng Current at ng mga plan; hindi sila pinagbabawas o niraranggo.",
+  "simulation.sep_mc_threshold_plan": "Failure threshold (target ng plan: {{target}})",
+  "simulation.sep_mc_threshold_below_target": "Mas mababa ang threshold na ito kaysa sa target ng plan, kaya maaaring mag-fail ang mga lane na sadyang pinuno ng plan hanggang sa target nito."
 }

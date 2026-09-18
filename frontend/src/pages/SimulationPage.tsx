@@ -139,19 +139,27 @@ function decisionStatusLabel(status: string | null, t: (key: string) => string):
 function SelectedSeparateSimulationView({
   analysisId,
   scenario,
+  planTarget,
 }: {
   analysisId: number
   scenario: { id: number; name: string; dataset_id: number }
+  /** The plan's target utilization; the selected MC threshold defaults to it. */
+  planTarget: number | null
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [seed, setSeed] = useState('42')
   const [periodTime, setPeriodTime] = useState<string | null>(null)
   const [mcTrials, setMcTrials] = useState(String(simulationDefaults.num_trials))
-  const [mcThreshold, setMcThreshold] = useState(String(simulationDefaults.failure_threshold))
+  const [mcThreshold, setMcThreshold] = useState(String(planTarget ?? simulationDefaults.failure_threshold))
   const [failureCap, setFailureCap] = useState(String(simulationDefaults.failure_rate_cap))
   const [mcSeed, setMcSeed] = useState('42')
   const [error, setError] = useState<string | null>(null)
+  // Left at the plan target, the threshold is omitted so the backend applies
+  // (and records) the plan target itself; any other value is the user's.
+  const thresholdIsPlanTarget = planTarget !== null && Number(mcThreshold) === planTarget
+  const thresholdBelowTarget = planTarget !== null && mcThreshold.trim() !== ''
+    && Number.isFinite(Number(mcThreshold)) && Number(mcThreshold) < planTarget
   const workflow = useQuery({
     queryKey: ['workflow', analysisId],
     queryFn: () => getWorkflow(analysisId),
@@ -166,7 +174,7 @@ function SelectedSeparateSimulationView({
   const mcRun = useMutation({
     mutationFn: () => runSelectedMc(analysisId, {
       num_trials: Number(mcTrials),
-      failure_threshold: Number(mcThreshold),
+      ...(thresholdIsPlanTarget ? {} : { failure_threshold: Number(mcThreshold) }),
       failure_rate_cap: Number(failureCap),
       seed: parseSeed(mcSeed),
     }),
@@ -285,6 +293,11 @@ function SelectedSeparateSimulationView({
       <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
         <h3 className="section-title">{t('simulation.tabs.mc')}</h3>
         <p className="form-hint">{t('simulation.sep_mc_measured')}</p>
+        {thresholdBelowTarget && (
+          <div role="status" className="alert alert-warn" style={{ marginTop: '8px' }}>
+            {t('simulation.sep_mc_threshold_below_target')}
+          </div>
+        )}
         <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
           <div className="form-field">
             <label htmlFor="sel-mc-trials" style={{ fontSize: '14px', fontWeight: 800 }}>{t('simulation.trials')}</label>
@@ -297,7 +310,9 @@ function SelectedSeparateSimulationView({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sel-mc-threshold" style={{ fontSize: '14px', fontWeight: 800 }}>{t('simulation.threshold')}</label>
+            <label htmlFor="sel-mc-threshold" style={{ fontSize: '14px', fontWeight: 800 }}>
+              {planTarget !== null ? t('simulation.sep_mc_threshold_plan', { target: planTarget }) : t('simulation.threshold')}
+            </label>
             <input
               id="sel-mc-threshold"
               type="number"
@@ -697,7 +712,11 @@ export function SimulationPage() {
   const isCurrentMode = !scenario && queueStructure === 'separate_queues'
   const selectedCalculation = (scenario?.settings?.calculation ?? {}) as {
     schema_version?: unknown
+    options?: { target_utilization?: unknown }
   }
+  const rawPlanTarget = selectedCalculation.options?.target_utilization
+  const selectedPlanTarget = typeof rawPlanTarget === 'number' && Number.isFinite(rawPlanTarget)
+    && rawPlanTarget > 0 && rawPlanTarget <= 1 ? rawPlanTarget : null
   const isSelectedSeparatePlan = queueStructure === 'separate_queues'
     && selectedCalculation.schema_version === 2
     && scenario !== null
@@ -720,7 +739,7 @@ export function SimulationPage() {
   }
 
   if (isSelectedSeparatePlan && scenario) {
-    return <SelectedSeparateSimulationView analysisId={analysisId} scenario={scenario} />
+    return <SelectedSeparateSimulationView analysisId={analysisId} scenario={scenario} planTarget={selectedPlanTarget} />
   }
 
   if (!scenario && queueStructure === 'separate_queues' && workflow.data.selection) {

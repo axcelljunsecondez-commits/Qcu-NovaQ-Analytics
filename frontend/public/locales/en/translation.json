@@ -974,5 +974,7 @@
   "current.observed_banner": "Observed waits are much longer than cashier workload explains. Results describe the modeled system; check how waits were recorded.",
   "compare.sep_basis_current": "Modeled current wait (analytical)",
   "compare.sep_basis_plan": "Simulation (replicated DES)",
-  "compare.sep_basis_no_difference": "Current and plan waits use different methods; they are not subtracted or ranked."
+  "compare.sep_basis_no_difference": "Current and plan waits use different methods; they are not subtracted or ranked.",
+  "simulation.sep_mc_threshold_plan": "Failure threshold (plan target: {{target}})",
+  "simulation.sep_mc_threshold_below_target": "This threshold is below the plan target, so lanes the plan loads up to its target can fail by design."
 }

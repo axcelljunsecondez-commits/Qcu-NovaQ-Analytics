@@ -950,4 +950,52 @@ describe('selected separate plan simulation', () => {
     expect(await screen.findByRole('button', { name: 'Run decision' })).toBeDisabled()
     expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
+
+  const targetScenario = {
+    ...v2scenario,
+    settings: { calculation: { schema_version: 2, engine_version: 'novaq-2026-09-separate-des-v1', options: { target_utilization: 0.85 } } },
+  }
+
+  it('starts the selected MC threshold at the plan target and lets the backend apply it', async () => {
+    const user = userEvent.setup()
+    separateSelectedSetup(targetScenario)
+    getWorkflowMock.mockResolvedValue(workflow({
+      scenario: targetScenario,
+      selection: job('workflow_selection', { scenario_id: 9 }),
+      des: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+    }))
+    runSelectedMcMock.mockResolvedValue({
+      evidence: job('workflow_mc', { provenance: 'SELECTED', scenario_id: 9, des_job_id: 10, results: [selectedMcRow] },
+        { scenario_id: 9, engine: 'selected-plan-measured-mc' }),
+    })
+    renderPage()
+    const input = await screen.findByLabelText('Failure threshold (plan target: 0.85)')
+    expect(input).toHaveValue(0.85)
+    expect(screen.queryByText(/below the plan target/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run selected MC' }))
+    await waitFor(() => expect(runSelectedMcMock).toHaveBeenCalledTimes(1))
+    expect(runSelectedMcMock.mock.calls[0][1]).not.toHaveProperty('failure_threshold')
+  })
+
+  it('warns and sends the threshold when the user sets it below the plan target', async () => {
+    const user = userEvent.setup()
+    separateSelectedSetup(targetScenario)
+    getWorkflowMock.mockResolvedValue(workflow({
+      scenario: targetScenario,
+      selection: job('workflow_selection', { scenario_id: 9 }),
+      des: job('workflow_des', selectedDesResult, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+    }))
+    runSelectedMcMock.mockResolvedValue({
+      evidence: job('workflow_mc', { provenance: 'SELECTED', scenario_id: 9, des_job_id: 10, results: [selectedMcRow] },
+        { scenario_id: 9, engine: 'selected-plan-measured-mc' }),
+    })
+    renderPage()
+    const input = await screen.findByLabelText('Failure threshold (plan target: 0.85)')
+    await user.clear(input)
+    await user.type(input, '0.75')
+    expect(screen.getByText(/below the plan target/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run selected MC' }))
+    await waitFor(() => expect(runSelectedMcMock).toHaveBeenCalledTimes(1))
+    expect(runSelectedMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.75 })
+  })
 })
