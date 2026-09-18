@@ -216,7 +216,14 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
                   <td>{period.current_active_lanes === null ? '—' : period.current_active_lanes.length}</td>
                   <td>{formatLaneCount(period.optimal_active_lanes)}</td>
                   <td>{formatAdjustment(period.adjustment, t)}</td>
-                  <td>{fmtPct(period.optimum?.candidate_utilization ?? null)}</td>
+                  <td>
+                    {fmtPct(period.optimum?.candidate_utilization ?? null)}
+                    {period.optimum?.near_target_noise === true && (
+                      <small role="note" style={{ display: 'block', color: 'var(--warning)' }}>
+                        {t('optimize.sep_near_target_noise')}
+                      </small>
+                    )}
+                  </td>
                   <td>
                     {fmt(period.optimum?.total_cost ?? null)}
                     {uncertainty && uncertainty.ci_lower !== null && uncertainty.ci_upper !== null && (
@@ -262,6 +269,12 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
   )
 }
 
+const WAIT_VERDICT_KEYS = {
+  shorter: 'optimize.breaks_wait_shorter',
+  longer: 'optimize.breaks_wait_longer',
+  no_clear_difference: 'optimize.breaks_wait_unclear',
+} as const
+
 function breakLabel(label: string, t: TFunction): string {
   const match = /^Break (\d+)$/.exec(label)
   return match ? t('optimize.breaks_label', { number: match[1] }) : label
@@ -275,6 +288,7 @@ function BreakOptimizerCard({ analysisId, datasetId }: { analysisId: number; dat
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const rho = (value: number | null) => (value === null ? t('optimize.breaks_nobody_working') : fmt(value))
+  const change = result?.des.comparison.paired_wait_change ?? null
 
   async function runBreaks() {
     setError(null)
@@ -406,7 +420,17 @@ function BreakOptimizerCard({ analysisId, datasetId }: { analysisId: number; dat
               </tbody>
             </table>
           </div>
-          <p>{t('optimize.breaks_des_better', { better: result.des.comparison.proposed_better_runs, runs: result.des.comparison.runs })}</p>
+          {change && (
+            <>
+              <p><strong>{t(WAIT_VERDICT_KEYS[change.verdict])}</strong></p>
+              <p>
+                {change.ci_lower !== null && change.ci_upper !== null
+                  ? t('optimize.breaks_wait_change', { change: fmt(change.mean), low: fmt(change.ci_lower), high: fmt(change.ci_upper) })
+                  : t('optimize.breaks_wait_change_no_range', { change: fmt(change.mean) })}
+              </p>
+            </>
+          )}
+          <p className="form-hint">{t('optimize.breaks_des_better', { better: result.des.comparison.proposed_better_runs, runs: result.des.comparison.runs })}</p>
           <p className="form-hint">{t('optimize.breaks_des_note')}</p>
         </div>
       )}

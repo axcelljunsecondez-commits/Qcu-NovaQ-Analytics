@@ -762,4 +762,95 @@ describe('break schedule optimizer', () => {
     expect(screen.getByText('Proposed breaks had the shorter average wait in 2 of 2 simulated days.')).toBeInTheDocument()
     expect(screen.getByText(/simulation with simulation, never with recorded waits/)).toBeInTheDocument()
   })
+
+  const withChange = (paired_wait_change: Record<string, unknown>) => ({
+    ...result,
+    des: { ...result.des, comparison: { ...result.des.comparison, paired_wait_change } },
+  })
+
+  it('words the wait result from the paired 95% range and keeps the win count secondary', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateBreaksMock.mockResolvedValue(withChange({
+      mean: -1.75, sd: 0.3, se: 0.2, ci_lower: -2.5, ci_upper: -1.0, n: 2, verdict: 'shorter',
+    }))
+    renderAt('separate_queues')
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    expect(await screen.findByText('Shorter waits with the proposed breaks')).toBeInTheDocument()
+    expect(screen.getByText('Wait change -1.75 min (95% range -2.50 to -1.00)')).toBeInTheDocument()
+    const better = screen.getByText('Proposed breaks had the shorter average wait in 2 of 2 simulated days.')
+    expect(better).toHaveClass('form-hint')
+    expect(screen.getByText('The proposed break times lower the busiest point of the day.')).toBeInTheDocument()
+  })
+
+  it('says there is no clear difference when the range is missing or crosses zero', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateBreaksMock.mockResolvedValue(withChange({
+      mean: -2.0, sd: null, se: null, ci_lower: null, ci_upper: null, n: 1, verdict: 'no_clear_difference',
+    }))
+    renderAt('separate_queues')
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    expect(await screen.findByText('No clear difference in waits')).toBeInTheDocument()
+    expect(screen.getByText('Wait change -2.00 min (no 95% range from a single simulated day)')).toBeInTheDocument()
+    expect(screen.queryByText('Shorter waits with the proposed breaks')).not.toBeInTheDocument()
+  })
+})
+
+describe('staffing plan near-target warning', () => {
+  function renderSeparatePlan() {
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['lane-a', 'lane-b'] } },
+    })
+    return renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} />
+      </Routes>,
+      { route: '/analyses/7/optimize' },
+    )
+  }
+
+  const schedule = (flag: boolean | null) => ({
+    schedule: {
+      overall: 'COMPLETE', reason: null, target_utilization: 0.7, evaluation_method: 'DES_REPLICATIONS',
+      des: { replications: 5, base_seed: 42, duration_hours: 24, max_events: 10000 },
+      periods: [{
+        time: '08:00', overall: 'OPTIMAL', reason: null, current_active_lanes: ['lane-a', 'lane-b'],
+        optimal_active_lanes: 1, adjustment: -1, evaluation_method: 'DES_REPLICATIONS',
+        replication_seeds: [42, 43, 44, 45, 46],
+        optimum: {
+          active_lane_count: 1, recommendation: 'REDUCE', total_cost: 120.5, candidate_utilization: 0.68,
+          estimated_optimal: true, near_target_noise: flag,
+          cost_uncertainty: { mean: 120.5, sd: 4.0, se: 1.8, ci_lower: 115.5, ci_upper: 125.5, n: 5 },
+        },
+        candidates: [],
+      }],
+    },
+  })
+
+  const warning = 'Feasible, but within simulation noise of the target — more replications or a lower target would make this safer.'
+
+  async function runWith(flag: boolean | null) {
+    const user = userEvent.setup()
+    optimizeSeparateMock.mockResolvedValue(schedule(flag))
+    renderSeparatePlan()
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('Estimated Optimal Plan')
+  }
+
+  it('shows the warning beside the plan only when flagged', async () => {
+    await runWith(true)
+    const row = screen.getByRole('row', { name: /08:00/ })
+    expect(within(row).getByText(warning)).toBeInTheDocument()
+  })
+
+  it('shows no warning when not flagged', async () => {
+    await runWith(false)
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+  })
+
+  it('shows no warning when the flag is null', async () => {
+    await runWith(null)
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+  })
 })

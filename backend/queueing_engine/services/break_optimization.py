@@ -18,6 +18,7 @@ from typing import Any
 from backend.queueing_engine.services.separate_optimization import (
     DES_DEFAULT_MAX_EVENTS,
     _segment_window,
+    _summarize_metric,
     des_day_start_minutes,
     index_period_queues,
     replication_seeds,
@@ -343,6 +344,29 @@ def _schedule_des(windows: list[dict], tie_order: list[str], offsets: list[dict]
     }
 
 
+def paired_wait_change(before_runs: list[dict], after_runs: list[dict]) -> dict:
+    """95 % interval of the paired per-replication wait change (proposed - current).
+
+    Replications share seeds (common random numbers), so each pair is one
+    comparison. A pair with a missing wait is skipped, never zero-filled. The
+    verdict comes from the interval only; with fewer than two pairs there is
+    no interval and therefore no claim.
+    """
+    diffs = [after["mean_wait_minutes"] - before["mean_wait_minutes"]
+             for before, after in zip(before_runs, after_runs)
+             if before.get("mean_wait_minutes") is not None and after.get("mean_wait_minutes") is not None]
+    summary = _summarize_metric(diffs) or {"mean": None, "sd": None, "se": None,
+                                           "ci_lower": None, "ci_upper": None, "n": 0}
+    lower, upper = summary["ci_lower"], summary["ci_upper"]
+    if lower is not None and upper is not None and upper < 0:
+        verdict = "shorter"
+    elif lower is not None and upper is not None and lower > 0:
+        verdict = "longer"
+    else:
+        verdict = "no_clear_difference"
+    return {**summary, "verdict": verdict}
+
+
 def compare_break_schedules_des(setup: dict, records: list, current: list[dict], proposed: list[dict], *,
                                 replications: int, base_seed: int,
                                 max_events: int = DES_DEFAULT_MAX_EVENTS) -> dict:
@@ -389,6 +413,7 @@ def compare_break_schedules_des(setup: dict, records: list, current: list[dict],
                 if b["mean_wait_minutes"] is not None and a["mean_wait_minutes"] is not None
                 and a["mean_wait_minutes"] < b["mean_wait_minutes"]),
             "runs": len(pairs),
+            "paired_wait_change": paired_wait_change(before["replications"], after["replications"]),
         },
     }
 

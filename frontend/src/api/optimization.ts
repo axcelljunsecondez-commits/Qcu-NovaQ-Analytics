@@ -101,6 +101,17 @@ export interface BreakDesSchedule {
   periods: Array<{ time: string; mean_wait_minutes: number | null }>
 }
 
+/** 95% interval of the paired per-replication wait change (proposed − current), minutes. */
+export interface PairedWaitChange {
+  mean: number | null
+  sd: number | null
+  se: number | null
+  ci_lower: number | null
+  ci_upper: number | null
+  n: number
+  verdict: 'shorter' | 'longer' | 'no_clear_difference'
+}
+
 export interface BreakOptimizeResult {
   status: 'improved' | 'no_improvement'
   target_rho: number
@@ -117,7 +128,12 @@ export interface BreakOptimizeResult {
     seeds: number[]
     current: BreakDesSchedule
     proposed: BreakDesSchedule
-    comparison: { mean_wait_change_minutes: number | null; proposed_better_runs: number; runs: number }
+    comparison: {
+      mean_wait_change_minutes: number | null
+      proposed_better_runs: number
+      runs: number
+      paired_wait_change?: PairedWaitChange
+    }
   }
   notes: string[]
 }

@@ -1446,6 +1446,11 @@ def apply_des_aggregate_feasibility(aggregate: dict, target: float | None = None
     redefine the constraint. Non-evidence states (INVALID_INPUT,
     UNSUPPORTED, AGGREGATION_ERROR) pass through unchanged, never converted
     into INFEASIBLE.
+
+    ``near_target_noise`` only annotates a FEASIBLE result: True when a peak
+    lane's utilization interval reaches past the target, False when every
+    peak lane's interval stays within it, None when any peak lane has no
+    interval (never guessed) and for every non-FEASIBLE result.
     """
     status = aggregate.get("status") if isinstance(aggregate, dict) else None
     if status in ("INVALID_INPUT", "UNSUPPORTED", "AGGREGATION_ERROR"):
@@ -1461,6 +1466,7 @@ def apply_des_aggregate_feasibility(aggregate: dict, target: float | None = None
         return {"status": "AGGREGATION_ERROR", "reason": str(exc),
                 "candidate_utilization": None, "max_lane_ids": []}
     means: dict[str, float] = {}
+    uppers: dict[str, Any] = {}
     for lane in aggregate.get("per_lane") or []:
         if not isinstance(lane, dict) or not lane.get("active"):
             continue
@@ -1469,6 +1475,7 @@ def apply_des_aggregate_feasibility(aggregate: dict, target: float | None = None
         queue_id = lane.get("queue_id")
         if _is_number(mean) and isinstance(queue_id, str):
             means[queue_id] = float(mean)
+            uppers[queue_id] = utilization.get("ci_upper")
     if not means:
         return {"status": "UNSUPPORTED",
                 "reason": "No mean active-lane utilization evidence to classify.",
@@ -1476,8 +1483,13 @@ def apply_des_aggregate_feasibility(aggregate: dict, target: float | None = None
     peak = max(means.values())
     peak_lanes = sorted(qid for qid, mean in means.items() if mean == peak)
     classified = {"candidate_utilization": peak, "max_lane_ids": peak_lanes,
-                  "target_utilization": ceiling}
+                  "target_utilization": ceiling, "near_target_noise": None}
     if peak <= ceiling + _UTILIZATION_TOLERANCE:
+        known = [float(upper) for qid in peak_lanes
+                 if _is_number(upper := uppers.get(qid))]
+        if len(known) == len(peak_lanes):
+            classified["near_target_noise"] = any(
+                upper > ceiling + _UTILIZATION_TOLERANCE for upper in known)
         return {**classified, "status": "FEASIBLE", "reason": None}
     violators = sorted(qid for qid, mean in means.items()
                        if mean > ceiling + _UTILIZATION_TOLERANCE)
@@ -1555,6 +1567,7 @@ def _optimize_separate_des(time_label, available, by_id, counts, *, ceiling,
             "reason": classified.get("reason"),
             "candidate_utilization": classified.get("candidate_utilization"),
             "max_lane_ids": classified.get("max_lane_ids"),
+            "near_target_noise": classified.get("near_target_noise"),
             "total_cost": total.get("mean"),
             "mean_total_cost": total.get("mean"),
             "server_cost": (costs.get("staffing") or {}).get("mean"),

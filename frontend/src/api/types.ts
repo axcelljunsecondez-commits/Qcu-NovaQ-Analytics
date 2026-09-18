@@ -486,6 +486,7 @@ export interface SeparateCandidate {
   status: string
   reason: string | null
   candidate_utilization: number | null
+  near_target_noise?: boolean | null
   total_cost: number | null
   mean_total_cost: number | null
   server_cost: number | null
@@ -498,6 +499,7 @@ export interface SeparateOptimum {
   recommendation: string | null
   total_cost: number | null
   candidate_utilization: number | null
+  near_target_noise?: boolean | null
   estimated_optimal?: boolean | null
   cost_uncertainty?: SeparateUncertainty | null
 }
