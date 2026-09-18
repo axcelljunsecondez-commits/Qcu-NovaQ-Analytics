@@ -35,6 +35,12 @@ def _run(breaks, seed=7, total_lambda=20.0, duration=8.0):
         max_events=100000, breaks=breaks)
 
 
+# Long enough that lane a's queue at the 4 h cutoff (served at <= 0.25 h per
+# customer under the overloaded 20/h demand) drains and its 1 h break ends
+# inside the run, independent of the particular random draws.
+BREAK_COMPLETES_HORIZON = 16.0
+
+
 def _break(start=4.0, duration=1.0, queue="a"):
     return {"queue_id": queue, "start_hours": start, "duration_hours": duration}
 
@@ -111,7 +117,7 @@ def test_lane_active_before_cutoff_and_draining_exactly_at_cutoff():
 
 
 def test_draining_lane_gets_no_new_arrivals_while_other_lane_serves():
-    lanes, trace, _, _ = _run([_break()])
+    lanes, trace, _, _ = _run([_break()], duration=BREAK_COMPLETES_HORIZON)
     breaks_a = lanes["a"]["breaks"]
     assert breaks_a
     returned = breaks_a[0]["actual_end"]
@@ -150,7 +156,7 @@ def test_every_service_start_pairs_with_later_service_end():
 
 
 def test_break_starts_only_when_empty_with_full_duration_from_actual():
-    lanes, trace, _, _ = _run([_break()])
+    lanes, trace, _, _ = _run([_break()], duration=BREAK_COMPLETES_HORIZON)
     (record,) = lanes["a"]["breaks"]
     assert record["scheduled_start"] == 4.0
     assert record["cutoff"] == CUTOFF
@@ -166,7 +172,7 @@ def test_break_starts_only_when_empty_with_full_duration_from_actual():
 
 
 def test_returned_lane_accepts_arrivals_and_other_lane_untouched():
-    lanes, trace, _, _ = _run([_break()])
+    lanes, trace, _, _ = _run([_break()], duration=BREAK_COMPLETES_HORIZON)
     returned = lanes["a"]["breaks"][0]["actual_end"]
     assert [event for event in trace
             if event["type"] == "arrival" and event["queue_id"] == "a"
@@ -186,7 +192,7 @@ def test_multiple_breaks_stay_independent():
     for queue_id, start in (("a", 3.0), ("b", 6.0)):
         (record,) = lanes[queue_id]["breaks"]
         assert record["scheduled_start"] == start
-        assert record["actual_end"] - record["actual_start"] == 0.5
+        assert record["actual_end"] - record["actual_start"] == pytest.approx(0.5)
         assert record["actual_start"] >= start - 3.0 / 60.0
 
 

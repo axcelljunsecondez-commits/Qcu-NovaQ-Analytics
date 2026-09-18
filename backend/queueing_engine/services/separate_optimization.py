@@ -808,6 +808,30 @@ def _validate_breaks(breaks, active_ids) -> dict[str, list[tuple[float, float, f
     return out
 
 
+def _paired_stream_seeds(seed: int | None) -> tuple[int | None, int | None, int | None]:
+    """Derive the (arrivals, service, ties) stream seeds from one run seed.
+
+    Common random numbers: ``random.Random(seed)`` yields three 64-bit seeds
+    in that fixed order, so schedules run with the same seed share arrival
+    gaps, per-customer service quantiles, and tie draws independently of one
+    another. ``seed=None`` stays non-deterministic (each stream OS-seeded).
+    """
+    if seed is None:
+        return None, None, None
+    master = random.Random(seed)
+    return master.getrandbits(64), master.getrandbits(64), master.getrandbits(64)
+
+
+def _paired_streams(seed: int | None) -> tuple[random.Random, random.Random, random.Random]:
+    arrivals, service, ties = _paired_stream_seeds(seed)
+    return random.Random(arrivals), random.Random(service), random.Random(ties)
+
+
+def _service_at_quantile(samples: list[float], quantile: float) -> float:
+    """Empirical service time at a customer's uniform draw (uniform over samples)."""
+    return samples[min(int(quantile * len(samples)), len(samples) - 1)]
+
+
 def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
                      duration_hours, seed, time_label, max_events, breaks=None
                      ) -> tuple[dict, list[dict], bool, dict]:
@@ -839,7 +863,9 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
         queue_id: DedicatedQueueLifecycle(queue_id, dedicated_server_id(queue_id))
         for queue_id in active_ids
     }
-    rng = random.Random(seed)
+    # Independent streams: arrival gaps, one service quantile per admitted
+    # customer (by arrival order), and routing ties (common random numbers).
+    arrival_rng, service_rng, tie_rng = _paired_streams(seed)
     stats = {
         queue_id: {"arrivals": 0, "served": 0, "wait_sum": 0.0,
                    "busy_time": 0.0, "max_queue": 0, "lifecycle": lifecycles[queue_id],
@@ -883,7 +909,7 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
         return [queue_id for queue_id in active_ids
                 if lifecycles[queue_id].accepts_arrivals]
 
-    def customer_process(queue_id, customer_id, arrival):
+    def customer_process(queue_id, customer_id, arrival, quantile):
         lifecycle = lifecycles[queue_id]
         row = stats[queue_id]
         row["arrivals"] += 1
@@ -897,7 +923,7 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
             row["wait_sum"] += service_start - arrival
             record(env.now, "service_start", customer_id, lifecycle.server_id,
                    len(lifecycle.waiting_customer_ids), queue_id)
-            service_time = rng.choice(samples_by_id[queue_id])
+            service_time = _service_at_quantile(samples_by_id[queue_id], quantile)
             yield env.timeout(service_time)
             row["busy_time"] += max(0.0, min(env.now, duration_hours) - service_start)
             lifecycle.complete_service()
@@ -947,11 +973,12 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
         while env.now < duration_hours:
             if total_lambda <= 0:
                 break
-            interval = rng.expovariate(total_lambda)
+            interval = arrival_rng.expovariate(total_lambda)
             if env.now + interval >= duration_hours:
                 break
             yield env.timeout(interval)
             admitted += 1
+            quantile = service_rng.random()
             eligible = _eligible_ids()
             while not eligible:
                 yield topology_changed
@@ -961,10 +988,10 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
                 + (1 if lifecycles[queue_id].in_service_customer_id is not None else 0)
                 for queue_id in eligible
             }
-            chosen = route_arrival(eligible, system_sizes, tie_order, rng)
+            chosen = route_arrival(eligible, system_sizes, tie_order, tie_rng)
             customer_counter += 1
             lifecycles[chosen].enqueue(str(customer_counter))
-            env.process(customer_process(chosen, customer_counter, env.now))
+            env.process(customer_process(chosen, customer_counter, env.now, quantile))
 
     for queue_id in active_ids:
         if queue_id in by_queue_breaks:
@@ -1011,7 +1038,8 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
             samples[(window["time"], queue_id)] = clean
     by_queue_breaks = _validate_breaks(breaks, lanes)
     env = simpy.Environment()
-    rng = random.Random(seed)
+    # Independent streams (common random numbers), as in ``_run_routing_des``.
+    arrival_rng, service_rng, tie_rng = _paired_streams(seed)
     resources = {q: simpy.Resource(env, capacity=1) for q in lanes}
     lifecycles = {q: DedicatedQueueLifecycle(q, dedicated_server_id(q)) for q in lanes}
     first_active = set(windows[0]["active_queue_ids"])
@@ -1067,7 +1095,7 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
         except QueueReactivationPolicyError as exc:
             raise ValueError(str(exc)) from None
 
-    def customer_process(queue_id, customer_id, arrival, label):
+    def customer_process(queue_id, customer_id, arrival, label, quantile):
         lifecycle = lifecycles[queue_id]
         row = stats[(label, queue_id)]
         row["arrivals"] += 1
@@ -1079,7 +1107,7 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
             start = env.now
             row["wait_sum"] += start - arrival
             record("service_start", customer_id, queue_id, label)
-            service_time = rng.choice(samples[(label, queue_id)])
+            service_time = _service_at_quantile(samples[(label, queue_id)], quantile)
             yield env.timeout(service_time)
             add_busy(queue_id, start, env.now)
             lifecycle.complete_service()
@@ -1135,12 +1163,13 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
             # A customer may wait for an open lane past the window end; the
             # next window then starts from the current clock.
             while rate > 0 and env.now < end:
-                interval = rng.expovariate(rate)
+                interval = arrival_rng.expovariate(rate)
                 if env.now + interval >= end:
                     yield env.timeout(end - env.now)
                     break
                 yield env.timeout(interval)
                 counters["admitted"] += 1
+                quantile = service_rng.random()
                 arrival = env.now
                 eligible = [q for q in lanes if lifecycles[q].accepts_arrivals]
                 while not eligible:
@@ -1149,14 +1178,14 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
                 sizes = {q: len(lifecycles[q].waiting_customer_ids)
                          + (1 if lifecycles[q].in_service_customer_id is not None else 0)
                          for q in eligible}
-                chosen = route_arrival(eligible, sizes, lanes, rng)
+                chosen = route_arrival(eligible, sizes, lanes, tie_rng)
                 if (label, chosen) not in samples:
                     raise ValueError(
                         f"A customer arriving in period {label} waited for an open lane and "
                         f"reached lane {chosen!r}, which has no service samples for {label}.")
                 counters["customer"] += 1
                 lifecycles[chosen].enqueue(str(counters["customer"]))
-                env.process(customer_process(chosen, counters["customer"], arrival, label))
+                env.process(customer_process(chosen, counters["customer"], arrival, label, quantile))
 
     env.process(schedule_controller())
     for queue_id in lanes:

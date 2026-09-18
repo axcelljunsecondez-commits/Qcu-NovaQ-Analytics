@@ -55,7 +55,9 @@ def test_schedule_optimizes_each_period_with_current_lanes():
         _setup(["a", "b", "c"]), records, target=0.70,
         server_cost=87.0, waiting_cost=100.0,
         min_lanes=None, max_lanes=None, lambda_multiplier=1.0,
-        des_settings=_config())
+        # One lane at 08:00 has analytical rho 9 x 0.0875 = 0.79 > 0.70; a
+        # 100 h horizon measures it well clear of the target (4 h did not).
+        des_settings=_config(duration_hours=100.0))
     assert schedule["overall"] == "COMPLETE"
     assert schedule["evaluation_method"] == "DES_REPLICATIONS"
     assert [period["time"] for period in schedule["periods"]] == ["08:00", "09:00"]
