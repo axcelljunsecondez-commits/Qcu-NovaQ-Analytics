@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
 import { getAnalysis } from '../api/analyses'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
-import { optimizeSeparate } from '../api/optimization'
+import { optimizeSeparate, optimizeSeparateBreaks, type BreakOptimizeResult } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
 import type { DatasetOut, OptimizationOut, SegmentRow, SeparateSchedule } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
@@ -20,7 +20,7 @@ import {
   comparisonComplete,
   comparisonTotals,
 } from '../lib/comparison'
-import { fmt, fmtPct } from '../lib/format'
+import { fmt, fmtPct, messageOf } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -258,6 +258,158 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
           </table>
         </details>
       ))}
+    </div>
+  )
+}
+
+function breakLabel(label: string, t: TFunction): string {
+  const match = /^Break (\d+)$/.exec(label)
+  return match ? t('optimize.breaks_label', { number: match[1] }) : label
+}
+
+function BreakOptimizerCard({ analysisId, datasetId }: { analysisId: number; datasetId: string }) {
+  const { t } = useTranslation()
+  const [target, setTarget] = useState(0.85)
+  const [maxMove, setMaxMove] = useState(120)
+  const [result, setResult] = useState<BreakOptimizeResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
+  const rho = (value: number | null) => (value === null ? t('optimize.breaks_nobody_working') : fmt(value))
+
+  async function runBreaks() {
+    setError(null)
+    setRunning(true)
+    try {
+      setResult(await optimizeSeparateBreaks(analysisId, {
+        dataset_id: datasetId ? Number(datasetId) : null,
+        target_rho: target,
+        max_shift_minutes: maxMove,
+      }))
+    } catch (err) {
+      setResult(null)
+      setError(messageOf(err, t('errors.server')))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const changed = result ? result.slots.filter((slot) => slot.rho_before !== slot.rho_after) : []
+  return (
+    <div className="card" style={{ marginTop: '16px' }}>
+      <h2 className="section-title">{t('optimize.breaks_title')}</h2>
+      <p className="form-hint">{t('optimize.breaks_help')}</p>
+      <div className="form-row" style={{ gap: '12px', alignItems: 'flex-end' }}>
+        <div className="form-field">
+          <label htmlFor="break-target">{t('optimize.breaks_target')}</label>
+          <input id="break-target" type="number" min={0.05} max={1} step={0.05} value={target}
+            onChange={(e) => setTarget(Number(e.target.value))} />
+        </div>
+        <div className="form-field">
+          <label htmlFor="break-window">{t('optimize.breaks_window')}</label>
+          <input id="break-window" type="number" min={0} max={240} step={15} value={maxMove}
+            onChange={(e) => setMaxMove(Number(e.target.value))} />
+        </div>
+        <button type="button" disabled={running} onClick={() => void runBreaks()}>
+          {running ? t('optimize.breaks_running') : t('optimize.breaks_run')}
+        </button>
+      </div>
+      {error && <div role="alert" className="alert alert-error" style={{ marginTop: '12px' }}>{error}</div>}
+      {result && (
+        <div style={{ marginTop: '12px' }}>
+          <p role="status"><strong>{t(result.status === 'improved' ? 'optimize.breaks_status_improved' : 'optimize.breaks_status_no_improvement')}</strong></p>
+          <p>{t('optimize.breaks_peak', { before: rho(result.peak_rho.before), after: rho(result.peak_rho.after) })}</p>
+          <p>{t('optimize.breaks_above_target', { target: fmt(result.target_rho), before: result.slots_above_target.before, after: result.slots_above_target.after })}</p>
+          <div className="table-scroll" role="region" aria-label={t('optimize.breaks_table_label')} tabIndex={0}>
+            <table aria-label={t('optimize.breaks_table_label')}>
+              <thead>
+                <tr>
+                  <th scope="col">{t('optimize.breaks_col_cashier')}</th>
+                  <th scope="col">{t('optimize.breaks_col_break')}</th>
+                  <th scope="col">{t('optimize.breaks_col_current')}</th>
+                  <th scope="col">{t('optimize.breaks_col_proposed')}</th>
+                  <th scope="col">{t('optimize.breaks_col_minutes')}</th>
+                  <th scope="col">{t('optimize.breaks_col_moved')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.proposed_breaks.map((entry, index) => (
+                  <tr key={`${entry.queue_id}-${index}`}>
+                    <th scope="row">{entry.queue_id}</th>
+                    <td>{breakLabel(entry.label, t)}</td>
+                    <td>{entry.current_start_time.slice(0, 5)}</td>
+                    <td>{entry.scheduled_start_time.slice(0, 5)}</td>
+                    <td>{entry.duration_minutes}</td>
+                    <td>{t(entry.shift_minutes !== 0 ? 'optimize.breaks_moved_yes' : 'optimize.breaks_moved_no')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {changed.length > 0 && (
+            <>
+              <h3 className="section-title">{t('optimize.breaks_slots_title')}</h3>
+              <div className="table-scroll" role="region" aria-label={t('optimize.breaks_slots_title')} tabIndex={0}>
+                <table aria-label={t('optimize.breaks_slots_title')}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('optimize.breaks_col_slot')}</th>
+                      <th scope="col">{t('optimize.breaks_col_rho_before')}</th>
+                      <th scope="col">{t('optimize.breaks_col_rho_after')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {changed.map((slot) => (
+                      <tr key={slot.start}>
+                        <th scope="row">{`${slot.start}–${slot.end}`}</th>
+                        <td>{rho(slot.rho_before)}</td>
+                        <td>{rho(slot.rho_after)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <p className="form-hint">{t('optimize.breaks_slot_note')}</p>
+          <h3 className="section-title">{t('optimize.breaks_gaps_title')}</h3>
+          {result.staffing_gaps.length === 0 ? (
+            <p>{t('optimize.breaks_gaps_none')}</p>
+          ) : (
+            <ul>
+              {result.staffing_gaps.map((gap) => (
+                <li key={gap.start}>{t('optimize.breaks_gap_item', { start: gap.start, end: gap.end, onShift: gap.on_shift, rho: rho(gap.rho_no_breaks) })}</li>
+              ))}
+            </ul>
+          )}
+          <h3 className="section-title">{t('optimize.breaks_des_title')}</h3>
+          <div className="table-scroll" role="region" aria-label={t('optimize.breaks_des_title')} tabIndex={0}>
+            <table aria-label={t('optimize.breaks_des_title')}>
+              <thead>
+                <tr>
+                  <th scope="col">{t('optimize.breaks_col_metric')}</th>
+                  <th scope="col">{t('optimize.breaks_col_current_schedule')}</th>
+                  <th scope="col">{t('optimize.breaks_col_proposed_schedule')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {([
+                  ['optimize.breaks_des_mean_wait', 'mean_wait_minutes', 2],
+                  ['optimize.breaks_des_max_queue', 'max_queue', 1],
+                  ['optimize.breaks_des_served', 'served', 1],
+                ] as const).map(([label, key, digits]) => (
+                  <tr key={key}>
+                    <th scope="row">{t(label)}</th>
+                    <td>{fmt(result.des.current.summary[key], digits)}</td>
+                    <td>{fmt(result.des.proposed.summary[key], digits)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p>{t('optimize.breaks_des_better', { better: result.des.comparison.proposed_better_runs, runs: result.des.comparison.runs })}</p>
+          <p className="form-hint">{t('optimize.breaks_des_note')}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -1071,6 +1223,10 @@ export function OptimizePage() {
             </table>
           </div>
         </div>
+      )}
+      {analysisId !== undefined && isSeparateStaffing && <BreakOptimizerCard analysisId={analysisId} datasetId={datasetId} />}
+      {analysis.data && !isSeparateStaffing && (
+        <p className="form-hint" style={{ marginTop: '16px' }}>{t('optimize.breaks_shared_note')}</p>
       )}
     </div>
   )

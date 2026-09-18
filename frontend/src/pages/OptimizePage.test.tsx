@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { OptimizePage } from './OptimizePage'
@@ -9,6 +9,7 @@ const listDatasetsMock = vi.fn()
 const getDatasetMock = vi.fn()
 const optimizeBatchMock = vi.fn()
 const optimizeSeparateMock = vi.fn()
+const optimizeSeparateBreaksMock = vi.fn()
 const createScenarioMock = vi.fn()
 const listScenariosMock = vi.fn()
 const getAnalysisMock = vi.fn()
@@ -24,6 +25,7 @@ vi.mock('../api/optimization', () => ({
   optimize: vi.fn(),
   optimizeBatch: (...args: unknown[]) => optimizeBatchMock(...args),
   optimizeSeparate: (...args: unknown[]) => optimizeSeparateMock(...args),
+  optimizeSeparateBreaks: (...args: unknown[]) => optimizeSeparateBreaksMock(...args),
   DEFAULT_OPTIONS: {
     target_utilization: 0.7,
     server_cost_per_hr: 87,
@@ -102,6 +104,7 @@ beforeEach(() => {
   getDatasetMock.mockReset()
   optimizeBatchMock.mockReset()
   optimizeSeparateMock.mockReset()
+  optimizeSeparateBreaksMock.mockReset()
   createScenarioMock.mockReset()
   listScenariosMock.mockReset()
   getAnalysisMock.mockReset()
@@ -677,5 +680,86 @@ describe('separate staffing optimization', () => {
     const payload = createScenarioMock.mock.calls[0][0]
     expect(payload.settings.min_active_lanes).toBe(2)
     expect(payload.settings.calculation.options.min_active_lanes).toBe(2)
+  })
+})
+
+describe('break schedule optimizer', () => {
+  function renderAt(structure: 'shared_queue' | 'separate_queues') {
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: structure, queue_ids: structure === 'separate_queues' ? ['c1', 'c2'] : [] } },
+    })
+    return renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} />
+      </Routes>,
+      { route: '/analyses/7/optimize' },
+    )
+  }
+
+  const summary = (wait: number, queue: number, served: number) => ({
+    mean_wait_minutes: wait, max_queue: queue, admitted: served, served, customer_conservation: true,
+  })
+
+  const result = {
+    status: 'improved',
+    target_rho: 0.85,
+    max_shift_minutes: 120,
+    all_below_target: true,
+    current_breaks: [
+      { queue_id: 'c1', label: 'Break 1', scheduled_start_time: '10:00:00', duration_minutes: 30 },
+      { queue_id: 'c2', label: 'Break 1', scheduled_start_time: '10:00:00', duration_minutes: 30 },
+    ],
+    proposed_breaks: [
+      { queue_id: 'c1', label: 'Break 1', scheduled_start_time: '10:00:00', duration_minutes: 30, current_start_time: '10:00:00', shift_minutes: 0 },
+      { queue_id: 'c2', label: 'Break 1', scheduled_start_time: '11:00:00', duration_minutes: 30, current_start_time: '10:00:00', shift_minutes: 60 },
+    ],
+    moves: [{ queue_id: 'c2', label: 'Break 1', from: '10:00', to: '11:00', duration_minutes: 30 }],
+    slots: [
+      { start: '09:45', end: '10:00', lambda: 4, mu: 5, working_before: 2, working_after: 2, rho_before: 0.4, rho_after: 0.4 },
+      { start: '10:00', end: '10:15', lambda: 4, mu: 5, working_before: 0, working_after: 1, rho_before: null, rho_after: 0.8 },
+      { start: '11:00', end: '11:15', lambda: 2, mu: 5, working_before: 2, working_after: 1, rho_before: 0.2, rho_after: 0.4 },
+    ],
+    peak_rho: { before: null, after: 0.8 },
+    slots_above_target: { before: 2, after: 0 },
+    staffing_gaps: [{ start: '12:00', end: '12:15', on_shift: 2, rho_no_breaks: 0.9 }],
+    des: {
+      seeds: [42, 43],
+      current: { summary: summary(3.25, 4, 50), replications: [], periods: [] },
+      proposed: { summary: summary(1.5, 2, 50), replications: [], periods: [] },
+      comparison: { mean_wait_change_minutes: -1.75, proposed_better_runs: 2, runs: 2 },
+    },
+    notes: [],
+  }
+
+  it('hides the break optimizer for shared queues and shows the note', async () => {
+    renderAt('shared_queue')
+    expect(await screen.findByText('Break optimization is available for separate queues.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Break schedule' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Suggest break times' })).not.toBeInTheDocument()
+  })
+
+  it('runs the break optimizer and shows breaks, changed slots, gaps, and the DES comparison', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateBreaksMock.mockResolvedValue(result)
+    renderAt('separate_queues')
+    expect(await screen.findByRole('heading', { name: 'Break schedule' })).toBeInTheDocument()
+    expect(screen.queryByText('Break optimization is available for separate queues.')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Suggest break times' }))
+    await waitFor(() => expect(optimizeSeparateBreaksMock).toHaveBeenCalledWith(
+      7, expect.objectContaining({ target_rho: 0.85, max_shift_minutes: 120 }),
+    ))
+    expect(await screen.findByText('The proposed break times lower the busiest point of the day.')).toBeInTheDocument()
+    expect(screen.getByText('Peak utilization: no cashier working → 0.80')).toBeInTheDocument()
+    const breaks = screen.getByRole('table', { name: 'Current and proposed break times' })
+    expect(within(breaks).getAllByRole('row')).toHaveLength(3)
+    expect(within(breaks).getByRole('row', { name: /c2 Break 1 10:00 11:00 30 Yes/ })).toBeInTheDocument()
+    const slots = screen.getByRole('table', { name: 'Utilization in changed 15-minute slots' })
+    expect(within(slots).getAllByRole('row')).toHaveLength(3)
+    expect(within(slots).queryByText('09:45–10:00')).not.toBeInTheDocument()
+    expect(screen.getByText('12:00–12:15: 2 cashiers on shift, ρ 0.90 with no breaks')).toBeInTheDocument()
+    const des = screen.getByRole('table', { name: 'Simulated day: current vs proposed breaks' })
+    expect(within(des).getByRole('row', { name: /Average wait \(min\) 3.25 1.50/ })).toBeInTheDocument()
+    expect(screen.getByText('Proposed breaks had the shorter average wait in 2 of 2 simulated days.')).toBeInTheDocument()
+    expect(screen.getByText(/simulation with simulation, never with recorded waits/)).toBeInTheDocument()
   })
 })

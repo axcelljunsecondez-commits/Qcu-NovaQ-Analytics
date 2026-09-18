@@ -24,6 +24,11 @@ from backend.queueing_engine.config import (
     DEFAULT_WAIT_COST_HR,
     MC_DEFAULT_FAILURE_THRESHOLD,
 )
+from backend.queueing_engine.services.break_optimization import (
+    DEFAULT_MAX_SHIFT_MINUTES,
+    DEFAULT_TARGET_RHO,
+    optimize_separate_breaks,
+)
 from backend.queueing_engine.services.data_processing import _weighted_wait, compute_kpis
 from backend.queueing_engine.services.model_explanations import analyze_segments
 from backend.queueing_engine.services.separate_optimization import (
@@ -115,6 +120,22 @@ class SeparateOptimizeRequest(BaseModel):
     max_active_lanes: int | None = Field(default=None, ge=1)
     lambda_multiplier: float = Field(default=1.0, gt=0)
     des: SeparateOptimizeDesConfig = Field(default_factory=SeparateOptimizeDesConfig)
+
+
+class SeparateBreakOptimizeDesConfig(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    replications: StrictInt = Field(default=5, ge=1, le=20)
+    base_seed: StrictInt = 42
+
+
+class SeparateBreakOptimizeRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    dataset_id: int | None = None
+    target_rho: float = Field(default=DEFAULT_TARGET_RHO, gt=0, le=1)
+    max_shift_minutes: StrictInt = Field(default=DEFAULT_MAX_SHIFT_MINUTES, ge=0, le=240, multiple_of=15)
+    des: SeparateBreakOptimizeDesConfig = Field(default_factory=SeparateBreakOptimizeDesConfig)
 
 
 def _finite_non_negative(value: Any) -> bool:
@@ -1011,6 +1032,48 @@ def run_separate_optimize(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"schedule": prune_separate_schedule(schedule)}
+
+
+@router.post(
+    "/{analysis_id}/workflow/optimize/separate/breaks",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_separate_break_optimize(
+    analysis_id: int,
+    payload: SeparateBreakOptimizeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Propose moved break start times for a separate-queue analysis.
+
+    Read-only: the Setup is never written. Placement lowers the day's peak
+    15-minute utilization; the existing continuous-day routing DES runs the
+    current and proposed break schedules under identical seeds.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    setup = analysis.queue_setup_json or {}
+    if setup.get("queue_structure") != "separate_queues":
+        raise HTTPException(status_code=422, detail="Break optimization is available for separate queues.")
+    if payload.dataset_id is not None:
+        dataset = db.get(Dataset, payload.dataset_id)
+        if dataset is None or dataset.user_id != user.id or dataset.analysis_id != analysis.id:
+            raise HTTPException(status_code=404, detail="Dataset not found in this Analysis.")
+    else:
+        dataset = _current_dataset(db, user, analysis)
+    records = dataset.normalized_json or []
+    if not isinstance(records, list) or not records:
+        raise HTTPException(status_code=422, detail="This Analysis has no Current evidence.")
+    try:
+        return optimize_separate_breaks(
+            setup,
+            records,
+            target=payload.target_rho,
+            max_shift_minutes=payload.max_shift_minutes,
+            replications=payload.des.replications,
+            base_seed=payload.des.base_seed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _json_number(value: Any) -> float | None:
