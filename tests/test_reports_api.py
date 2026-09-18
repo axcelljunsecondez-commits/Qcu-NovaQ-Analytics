@@ -82,7 +82,7 @@ def test_dataset_excel_report(db_engine, client):
     assert ws["D2"].value in {"Lean", "Normal", "Peak", "Critical", "Unstable"}
     assert 0 < ws["E2"].value < 60
     summary_labels = [wb["Summary"].cell(row=r, column=1).value for r in range(1, 8)]
-    assert "Avg Wait Current (min)" in summary_labels
+    assert "Avg Wait Current, modeled (min)" in summary_labels
     assert "Avg Utilization Current" in summary_labels
 
 

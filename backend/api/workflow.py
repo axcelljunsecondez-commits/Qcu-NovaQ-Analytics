@@ -1166,6 +1166,105 @@ def _sum_all(values: Any) -> float | None:
     return math.fsum(value for value in nums if value is not None)
 
 
+# A period's observed wait is flagged only when it is BOTH this many times the
+# modeled wait AND at least this many minutes longer (presentation only).
+OBSERVED_WAIT_FLAG_RATIO = 2.0
+OBSERVED_WAIT_FLAG_MIN_GAP_MINUTES = 5.0
+
+
+def _observed_wait_summary(
+    records: list[Any], validation: dict[str, Any], frame: pd.DataFrame
+) -> dict[str, Any]:
+    """Per-period modeled vs observed wait (hours) for Current presentation.
+
+    Modeled is the lambda-weighted analytical wait of the period's Current
+    rows (the figure Current/Comparison display). Observed comes from the
+    persisted event-upload derived_statistics, weighting queues by arrival
+    count (lambda x hours x observation days). Aggregate uploads carry no
+    statistics, so nothing is observed: never zero-filled. Any statistic that
+    does not match a Current record leaves that period's observed wait unknown.
+    """
+    base = {"ratio": OBSERVED_WAIT_FLAG_RATIO,
+            "min_gap_minutes": OBSERVED_WAIT_FLAG_MIN_GAP_MINUTES}
+    stats = validation.get("derived_statistics")
+    if not isinstance(stats, list) or not stats:
+        return {"available": False, "periods": [], "flagged_any": False,
+                "day_modeled_wait": None, "day_observed_wait": None, **base}
+    days = 1.0
+    if validation.get("period_basis") == "representative_day":
+        days_value = _json_number(validation.get("observation_days"))
+        days = days_value if days_value is not None and days_value > 0 else float("nan")
+    lambdas: dict[tuple[str, str | None], Any] = {}
+    for record in records:
+        if isinstance(record, dict):
+            queue = record.get("queue_id")
+            lambdas[(str(record.get("time")), queue if isinstance(queue, str) else None)] = record.get("lambda")
+    by_period: dict[str, list[tuple[float, float] | None]] = {}
+    for stat in stats:
+        if not isinstance(stat, dict):
+            continue
+        label = str(stat.get("time"))
+        queue = stat.get("queue_id")
+        lam = _json_number(lambdas.get((label, queue if isinstance(queue, str) else None)))
+        minutes = _json_number(stat.get("duration_minutes"))
+        wait = _json_number(stat.get("mean_waiting_time_hours"))
+        entry = None
+        if lam is not None and minutes is not None and wait is not None and math.isfinite(days):
+            entry = (lam * (minutes / 60.0) * days, wait)
+        by_period.setdefault(label, []).append(entry)
+    order: list[str] = []
+    if not frame.empty and "time" in frame:
+        for value in frame["time"]:
+            if str(value) not in order:
+                order.append(str(value))
+    periods = []
+    for label in order:
+        modeled = _weighted_wait(frame[frame["time"].astype(str) == label])
+        entries = by_period.get(label)
+        observed = None
+        if entries and all(entry is not None for entry in entries):
+            pairs = [entry for entry in entries if entry is not None]
+            weight = math.fsum(w for w, _ in pairs)
+            if weight > 0:
+                observed = math.fsum(w * m for w, m in pairs) / weight
+        modeled = _json_number(modeled)
+        flagged = (
+            observed is not None
+            and modeled is not None
+            and observed > OBSERVED_WAIT_FLAG_RATIO * modeled
+            and (observed - modeled) * 60.0 > OBSERVED_WAIT_FLAG_MIN_GAP_MINUTES
+        )
+        periods.append({"time": label, "modeled_wait": modeled,
+                        "observed_wait": observed, "flagged": flagged})
+    all_entries = [entry for entries in by_period.values() for entry in entries]
+    day_observed = None
+    if all_entries and all(entry is not None for entry in all_entries):
+        day_pairs = [entry for entry in all_entries if entry is not None]
+        day_weight = math.fsum(w for w, _ in day_pairs)
+        if day_weight > 0:
+            day_observed = math.fsum(w * m for w, m in day_pairs) / day_weight
+    return {"available": True, "periods": periods,
+            "flagged_any": any(period["flagged"] for period in periods),
+            "day_modeled_wait": _json_number(_weighted_wait(frame)) if not frame.empty else None,
+            "day_observed_wait": day_observed, **base}
+
+
+@router.get("/{analysis_id}/workflow/observed-wait")
+def observed_wait(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Modeled vs observed Current wait per period (read-only presentation)."""
+    analysis = own_analysis(db, user, analysis_id)
+    dataset = _current_dataset(db, user, analysis)
+    validation = dataset.validation_report_json or {}
+    frame, _, _ = analyze_segments(
+        dataset.normalized_json or [], analysis.queue_setup_json or {}, validation)
+    return {"analysis_id": analysis.id, "dataset_id": dataset.id,
+            **_observed_wait_summary(dataset.normalized_json or [], validation, frame)}
+
+
 @router.get("/{analysis_id}/workflow/comparison/separate")
 def separate_comparison(
     analysis_id: int,
@@ -1190,6 +1289,8 @@ def separate_comparison(
     records = dataset.normalized_json or []
     frame, _, _ = analyze_segments(records, setup, dataset.validation_report_json or {})
     kpis = compute_kpis(frame)
+    observed = _observed_wait_summary(records, dataset.validation_report_json or {}, frame)
+    observed_by_time = {period["time"]: period for period in observed["periods"]}
     order: list[str] = []
     grouped: dict[str, list] = {}
     for row in records:
@@ -1211,6 +1312,8 @@ def separate_comparison(
             "active_lanes": _period_current_active(setup, grouped[label]),
             "lambda_total": math.fsum(finite_lambdas) if finite_lambdas else None,
             "wait_mean": _weighted_wait(sub),
+            "observed_wait": (observed_by_time.get(label) or {}).get("observed_wait"),
+            "observed_flag": bool((observed_by_time.get(label) or {}).get("flagged")),
             "util_max": max(finite_rhos) if finite_rhos else None,
         })
     plans = []
@@ -1227,6 +1330,7 @@ def separate_comparison(
                 "dataset_id": scenario.dataset_id, "target": None,
                 "evaluation_method": None, "replications": None, "base_seed": None,
                 "overall": None, "stale": scenario.dataset_id != dataset.id,
+                "wait_basis_kind": None,
                 "valid": False, "valid_reason": "not a Separate optimization snapshot",
                 "periods": [], "totals": None,
             })
@@ -1303,6 +1407,7 @@ def separate_comparison(
             "replications": des.get("replications"),
             "base_seed": des.get("base_seed"),
             "overall": schedule.get("overall"),
+            "wait_basis_kind": "simulation",
             "stale": stale,
             "valid": problem is None,
             "valid_reason": problem,
@@ -1319,6 +1424,11 @@ def separate_comparison(
             "periods": current_periods,
             "wait_mean": _json_number(kpis.get("avg_waiting_time")),
             "wait_basis": "lambda-weighted analytical mean over Current rows",
+            "wait_basis_kind": "analytical",
+            "observed_wait_available": observed["available"],
+            "observed_wait_flagged_any": observed["flagged_any"],
+            "observed_wait_ratio": observed["ratio"],
+            "observed_wait_min_gap_minutes": observed["min_gap_minutes"],
             "util_max": _json_number(kpis.get("max_utilization")),
             "waiting_cost": _json_number(kpis.get("total_waiting_cost")),
             "waiting_cost_basis": "Lq-based Current basis; excludes server cost",

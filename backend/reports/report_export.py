@@ -391,7 +391,7 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
         _put(ws, idx, label, value,
              number_format=pct_fmt if label == "Target" and value is not None else None)
 
-    ws_cur = _sheet("Current", ["Time", "Queue", "Lambda", "Rho", "Wq (min)", "Model"])
+    ws_cur = _sheet("Current", ["Time", "Queue", "Lambda", "Rho", "Wq, modeled (min)", "Model"])
     row_idx = 2
     for period in current.get("periods") or []:
         for queue in period.get("queues") or []:
@@ -574,13 +574,13 @@ def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[st
     wq_opt = recommended_kpis.get("avg_waiting_optimized")
     if wq_current is not None and wq_opt is not None:
         bullets.append(
-            f"• Average customer wait: {wq_current * 60:.1f} min → "
+            f"• Average customer wait (modeled): {wq_current * 60:.1f} min → "
             f"{wq_opt * 60:.1f} min (optimized)"
         )
     elif wq_current is not None:
-        bullets.append(f"• Average customer wait: {wq_current * 60:.1f} min (current)")
+        bullets.append(f"• Average customer wait (modeled): {wq_current * 60:.1f} min (current)")
     else:
-        bullets.append("• Average customer wait: N/A")
+        bullets.append("• Average customer wait (modeled): N/A")
 
     if recommended_kpis:
         savings = recommended_kpis.get("total_savings")
@@ -697,7 +697,7 @@ def generate_pdf_report(
         "Curr c",
         "Curr ρ",
         "Curr Status",
-        "Curr Wq (min)",
+        "Curr Wq, modeled (min)",
         "Opt c",
         "Opt ρ",
         "Opt Status",
@@ -854,7 +854,7 @@ def generate_excel_report(
         avg_w_cur = recommended_kpis.get("avg_waiting_current")
         avg_w_opt = recommended_kpis.get("avg_waiting_optimized")
         if avg_w_cur is not None:
-            labels_values.append(("Avg Wait Current (min)", f"{avg_w_cur * 60:.2f}"))
+            labels_values.append(("Avg Wait Current, modeled (min)", f"{avg_w_cur * 60:.2f}"))
         if avg_w_opt is not None:
             labels_values.append(("Avg Wait Optimized (min)", f"{avg_w_opt * 60:.2f}"))
 
@@ -890,7 +890,7 @@ def generate_excel_report(
     elif current_kpis:
         avg_w_cur = current_kpis.get("avg_waiting_time")
         if avg_w_cur is not None:
-            labels_values.append(("Avg Wait Current (min)", f"{avg_w_cur * 60:.2f}"))
+            labels_values.append(("Avg Wait Current, modeled (min)", f"{avg_w_cur * 60:.2f}"))
         util_cur = current_kpis.get("avg_utilization")
         if util_cur is not None:
             labels_values.append(("Avg Utilization Current", f"{util_cur:.1%}"))

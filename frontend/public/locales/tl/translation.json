@@ -964,5 +964,16 @@
   "analyses.upload_field_queue_ids": "Mga queue ID",
   "analyses.upload_field_closure_policy": "Patakaran sa pagsasara ng pila",
   "analyses.setup_workbook_download": "I-download ang setup workbook",
-  "analyses.setup_workbook_help": "Naglalaman ng staff at breaks sheet mula sa Setup na ito. Idagdag ang iyong events sheet para ma-upload itong muli."
+  "analyses.setup_workbook_help": "Naglalaman ng staff at breaks sheet mula sa Setup na ito. Idagdag ang iyong events sheet para ma-upload itong muli.",
+  "current.modeled_wait_avg": "Modeled na kasalukuyang paghihintay",
+  "current.modeled_wait_max": "Pinakamahabang modeled na paghihintay",
+  "current.observed_title": "Modeled at naobserbahang paghihintay bawat period",
+  "current.observed_caption": "Ang naobserbahang paghihintay ay ang naitalang paghihintay ng mga customer sa iyong event upload, na ina-average ayon sa dami ng dumating sa bawat pila.",
+  "current.observed_wait": "Naobserbahang paghihintay",
+  "current.observed_flagged": "Mas mahaba nang malaki kaysa sa modeled",
+  "current.observed_flag_rule": "Naka-flag kapag ang naobserbahang paghihintay ay higit sa {{ratio}}× ng modeled na paghihintay at higit sa {{gap}} minutong mas mahaba.",
+  "current.observed_banner": "Mas mahaba nang malaki ang naobserbahang paghihintay kaysa sa maipapaliwanag ng trabaho ng mga cashier. Inilalarawan ng mga resulta ang modeled na sistema; suriin kung paano naitala ang mga paghihintay.",
+  "compare.sep_basis_current": "Modeled na kasalukuyang paghihintay (analytical)",
+  "compare.sep_basis_plan": "Simulation (replicated DES)",
+  "compare.sep_basis_no_difference": "Magkaibang paraan ang ginamit sa paghihintay ng Current at ng mga plan; hindi sila pinagbabawas o niraranggo."
 }

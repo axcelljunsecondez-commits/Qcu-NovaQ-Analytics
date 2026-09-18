@@ -97,6 +97,8 @@ export interface AnalysisOut {
 export interface DatasetValidation {
   ok: boolean
   message: string
+  /** Present only for customer-event uploads (per period/queue observed means). */
+  derived_statistics?: Record<string, unknown>[]
 }
 
 export interface DatasetOut {
@@ -534,6 +536,9 @@ export interface SeparateCurrentPeriod {
   active_lanes: string[] | null
   lambda_total: number | null
   wait_mean: number | null
+  /** Observed (event-upload) wait in hours; null or absent when not recorded. */
+  observed_wait?: number | null
+  observed_flag?: boolean
   util_max: number | null
 }
 
@@ -542,6 +547,11 @@ export interface SeparateCurrentComparison {
   periods: SeparateCurrentPeriod[]
   wait_mean: number | null
   wait_basis: string | null
+  wait_basis_kind?: 'analytical'
+  observed_wait_available?: boolean
+  observed_wait_flagged_any?: boolean
+  observed_wait_ratio?: number
+  observed_wait_min_gap_minutes?: number
   util_max: number | null
   waiting_cost: number | null
   waiting_cost_basis: string | null
@@ -580,11 +590,33 @@ export interface SeparatePlanComparison {
   replications: number | null
   base_seed: number | null
   overall: string | null
+  wait_basis_kind?: 'simulation' | null
   stale: boolean
   valid: boolean
   valid_reason: string | null
   periods: SeparatePlanPeriod[]
   totals: SeparatePlanTotals | null
+}
+
+export interface ObservedWaitPeriod {
+  time: string
+  /** Hours; the lambda-weighted analytical wait the pages display. */
+  modeled_wait: number | null
+  /** Hours; arrival-weighted mean of recorded waits, or null when unknown. */
+  observed_wait: number | null
+  flagged: boolean
+}
+
+export interface ObservedWaitSummary {
+  analysis_id: number
+  dataset_id: number
+  available: boolean
+  periods: ObservedWaitPeriod[]
+  flagged_any: boolean
+  day_modeled_wait: number | null
+  day_observed_wait: number | null
+  ratio: number
+  min_gap_minutes: number
 }
 
 export interface SeparateComparison {

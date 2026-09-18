@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 import { getAnalysisCurrent, listAnalysisDatasets } from '../api/analyses'
+import { getObservedWait } from '../api/workflow'
+import type { ObservedWaitSummary } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { fmtPct } from '../lib/format'
 import { groupPeriodDemand, pickLeanPeriod, pickPeakPeriod } from '../lib/periodDemand'
@@ -26,12 +28,60 @@ function shown(value: unknown) {
   return value === null || value === undefined || value === '' ? '—' : String(value)
 }
 
+type ObservedRow = { time: string; modeled: number | null; observed: number | null; flagged: boolean }
+
+function minutesText(hours: number | null): string {
+  return hours === null || !Number.isFinite(hours) ? '—' : (hours * 60).toFixed(1)
+}
+
+/** Modeled vs observed Current wait per period; shared by Current and Comparison. */
+export function ObservedWaitTable({ rows, flaggedAny, ratio, gap }: { rows: ObservedRow[]; flaggedAny: boolean; ratio: number; gap: number }) {
+  const { t } = useTranslation()
+  return (
+    <section className="card" aria-labelledby="observed-wait-title">
+      <h2 id="observed-wait-title" className="section-title">{t('current.observed_title')}</h2>
+      {flaggedAny && <div className="alert alert-warn" role="status">{t('current.observed_banner')}</div>}
+      <p className="chart-summary">
+        {t('current.observed_caption')}
+        {Number.isFinite(ratio) && Number.isFinite(gap) && ` ${t('current.observed_flag_rule', { ratio, gap })}`}
+      </p>
+      <div className="table-scroll" role="region" aria-labelledby="observed-wait-title" tabIndex={0}>
+        <table aria-labelledby="observed-wait-title">
+          <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('current.modeled_wait_avg')} ({t('analyses.minutes')})</th><th scope="col">{t('current.observed_wait')} ({t('analyses.minutes')})</th><th scope="col">{t('analyses.status')}</th></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.time} className={row.flagged ? 'row-warning' : undefined}>
+                <th scope="row">{row.time}</th><td>{minutesText(row.modeled)}</td><td>{minutesText(row.observed)}</td><td>{row.flagged ? <span className="status-badge status-critical">{t('current.observed_flagged')}</span> : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function ObservedWaitSection({ summary }: { summary: ObservedWaitSummary }) {
+  const rows = summary.periods.map((period) => ({ time: period.time, modeled: period.modeled_wait, observed: period.observed_wait, flagged: period.flagged }))
+  return <ObservedWaitTable rows={rows} flaggedAny={summary.flagged_any} ratio={summary.ratio} gap={summary.min_gap_minutes} />
+}
+
 export function AnalysisCurrentPage() {
   const { t } = useTranslation()
   const id = Number(useParams().analysisId)
   const datasets = useQuery({ queryKey: ['datasets', id], queryFn: () => listAnalysisDatasets(id) })
   const datasetId = datasets.data?.datasets[0]?.id
   const query = useQuery({ queryKey: ['current', id, datasetId], queryFn: () => getAnalysisCurrent(id), enabled: Boolean(datasetId), retry: false })
+  // Only event uploads persist observed waits; aggregate uploads show nothing (never zero).
+  const derivedStatistics = query.data?.dataset?.validation?.derived_statistics
+  const hasEventData = Array.isArray(derivedStatistics) && derivedStatistics.length > 0
+  const observed = useQuery({
+    queryKey: ['observed-wait', id, datasetId],
+    queryFn: () => getObservedWait(id),
+    enabled: hasEventData,
+    retry: false,
+  })
+  const observedSummary = hasEventData && observed.data?.available ? observed.data : null
 
   if (datasets.isLoading || query.isLoading) return <ApiState.Loading />
   if (datasets.isError) return <ApiState.ErrorState error={datasets.error} />
@@ -91,8 +141,8 @@ export function AnalysisCurrentPage() {
         <section className="card kpi-card" aria-labelledby="current-wait-title">
           <h2 id="current-wait-title" className="kpi-group-title">{t('analyses.wait_summary')}</h2>
           <div className="kpi-pair">
-            <div><div className="kpi-label">{t('analyses.avg_wq')}</div><div className="kpi-value state-current">{avgWq !== null ? `${(avgWq * 60).toFixed(1)} ${t('analyses.minutes')}` : t('common.not_available')}</div></div>
-            <div><div className="kpi-label">{t('analyses.max_wq')}</div><div className="kpi-value state-current">{maxWq !== null ? `${(maxWq * 60).toFixed(1)} ${t('analyses.minutes')}` : t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{hasEventData ? t('current.modeled_wait_avg') : t('analyses.avg_wq')}</div><div className="kpi-value state-current">{avgWq !== null ? `${(avgWq * 60).toFixed(1)} ${t('analyses.minutes')}` : t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{hasEventData ? t('current.modeled_wait_max') : t('analyses.max_wq')}</div><div className="kpi-value state-current">{maxWq !== null ? `${(maxWq * 60).toFixed(1)} ${t('analyses.minutes')}` : t('common.not_available')}</div></div>
           </div>
           <p className="kpi-hint">{t('current.persisted_baseline')}</p>
         </section>
@@ -155,6 +205,8 @@ export function AnalysisCurrentPage() {
           ) : <ApiState.Empty message={t('current.model_unavailable')} />}
         </section>
       </div>
+
+      {observedSummary && <ObservedWaitSection summary={observedSummary} />}
 
       <div className={`alert ${criticalCount > 0 ? 'alert-warn' : 'alert-info'}`} role="status">
         <strong>{criticalCount > 0 ? t('current.pressure_found_title') : t('current.pressure_clear_title')}</strong>{' '}

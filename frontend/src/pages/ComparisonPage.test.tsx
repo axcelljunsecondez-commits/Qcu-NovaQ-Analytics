@@ -541,4 +541,63 @@ describe('separate comparison', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
     expect(container.textContent).not.toMatch(/score|winner|best plan|recommended/i)
   })
+
+  function withBases(response: ReturnType<typeof comparisonResponse>, observed: 'flagged' | 'clear' | 'none') {
+    const current = response.current as Record<string, unknown>
+    current.wait_basis_kind = 'analytical'
+    current.observed_wait_available = observed !== 'none'
+    current.observed_wait_flagged_any = observed === 'flagged'
+    current.observed_wait_ratio = 2
+    current.observed_wait_min_gap_minutes = 5
+    current.periods = [
+      { time: '08:00', active_lanes: ['east-07', 'lane-A'], lambda_total: 6.0, wait_mean: 0.05, util_max: 0.4,
+        observed_wait: observed === 'none' ? null : (observed === 'flagged' ? 0.5 : 0.06),
+        observed_flag: observed === 'flagged' },
+      { time: '09:00', active_lanes: ['east-07', 'checkout_blue'], lambda_total: 3.0, wait_mean: null, util_max: 0.2,
+        observed_wait: null, observed_flag: false },
+    ]
+    for (const item of response.plans as Record<string, unknown>[]) item.wait_basis_kind = 'simulation'
+    return response
+  }
+
+  const banner = 'Observed waits are much longer than cashier workload explains. Results describe the modeled system; check how waits were recorded.'
+
+  it('labels the basis of Current and plan waits and computes no difference', async () => {
+    getSeparateComparisonMock.mockResolvedValue(
+      withBases(comparisonResponse([plan(12, 'Optimal @ 70%', 0.7)]), 'none'),
+    )
+    const { container } = renderSeparate()
+    await screen.findAllByRole('columnheader', { name: 'Optimal @ 70%' })
+    const waitRow = screen.getByRole('rowheader', { name: 'Modeled waiting (demand-weighted mean, min)' }).parentElement as HTMLElement
+    expect(waitRow).toHaveTextContent('Modeled current wait (analytical)')
+    expect(waitRow).toHaveTextContent('Simulation (replicated DES)')
+    expect(screen.getByText('Current and plan waits use different methods; they are not subtracted or ranked.')).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/better|improvement|shorter by/i)
+    expect(screen.queryByText('Observed wait')).not.toBeInTheDocument()
+    expect(screen.queryByText(banner)).not.toBeInTheDocument()
+  })
+
+  it('shows observed Current waits and the day banner when a period is flagged', async () => {
+    getSeparateComparisonMock.mockResolvedValue(
+      withBases(comparisonResponse([plan(12, 'Optimal @ 70%', 0.7)]), 'flagged'),
+    )
+    renderSeparate()
+    expect(await screen.findByText(banner)).toBeInTheDocument()
+    const table = screen.getByRole('table', { name: 'Modeled vs observed wait by period' })
+    expect(table).toHaveTextContent('Observed wait')
+    expect(table).toHaveTextContent('30.0')
+    expect(table).toHaveTextContent('Much longer than modeled')
+    expect(screen.getByText(/more than 2× the modeled wait and more than 5 minutes longer/)).toBeInTheDocument()
+  })
+
+  it('shows observed waits without a banner when nothing is flagged', async () => {
+    getSeparateComparisonMock.mockResolvedValue(
+      withBases(comparisonResponse([plan(12, 'Optimal @ 70%', 0.7)]), 'clear'),
+    )
+    renderSeparate()
+    const table = await screen.findByRole('table', { name: 'Modeled vs observed wait by period' })
+    expect(table).toHaveTextContent('3.6')
+    expect(table).not.toHaveTextContent('Much longer than modeled')
+    expect(screen.queryByText(banner)).not.toBeInTheDocument()
+  })
 })

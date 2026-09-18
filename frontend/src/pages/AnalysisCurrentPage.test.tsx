@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { renderWithProviders } from '../test/test-utils'
 import { AnalysisCurrentPage } from './AnalysisCurrentPage'
 
@@ -11,9 +11,16 @@ vi.mock('../api/analyses', () => ({
   getAnalysisCurrent: (...args: unknown[]) => getCurrentMock(...args),
 }))
 
+const getObservedWaitMock = vi.fn()
+
+vi.mock('../api/workflow', () => ({
+  getObservedWait: (...args: unknown[]) => getObservedWaitMock(...args),
+}))
+
 beforeEach(() => {
   listDatasetsMock.mockReset()
   getCurrentMock.mockReset()
+  getObservedWaitMock.mockReset()
 })
 
 describe('AnalysisCurrentPage', () => {
@@ -133,5 +140,79 @@ describe('AnalysisCurrentPage', () => {
     expect(await screen.findByText('Busiest Period')).toBeInTheDocument()
     expect(screen.getByText('Busiest Period').parentElement).toHaveTextContent('06:00-07:00')
     expect(screen.getByText('Leanest Period').parentElement).toHaveTextContent('05:00-06:00')
+  })
+})
+
+describe('AnalysisCurrentPage modeled vs observed wait', () => {
+  const eventValidation = {
+    ok: true,
+    message: 'ok',
+    derived_statistics: [{ time: '05:00-06:00', queue_id: 'Q1', duration_minutes: 60, mean_waiting_time_hours: 0.5 }],
+  }
+
+  function mockCurrent(validation: Record<string, unknown>) {
+    const dataset = { id: 99, analysis_id: 7, name: 'Dataset', source_filename: 'events.csv', source_format: 'csv', row_count: 2, validation, normalized: null, created_at: '2026-09-01T00:00:00Z' }
+    listDatasetsMock.mockResolvedValue({ datasets: [dataset] })
+    getCurrentMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues' } },
+      dataset,
+      selected_model: 'Parallel M/G/1',
+      rows: [
+        { time: '05:00-06:00', queue_id: 'Q1', queue_structure: 'separate_queues', lambda: 2, mu: 5, c: 1, Wq: 0.1, rho: 0.4, model: 'Parallel M/G/1', status: 'Lean' },
+        { time: '06:00-07:00', queue_id: 'Q1', queue_structure: 'separate_queues', lambda: 3, mu: 5, c: 1, Wq: 0.2, rho: 0.6, model: 'Parallel M/G/1', status: 'Normal' },
+      ],
+      kpis: { avg_waiting_time: 0.16, avg_utilization: 0.5 },
+      explanations: [],
+    })
+  }
+
+  function observed(flagged: boolean) {
+    return {
+      analysis_id: 7, dataset_id: 99, available: true, ratio: 2, min_gap_minutes: 5,
+      flagged_any: flagged,
+      day_modeled_wait: 0.16, day_observed_wait: flagged ? 0.6 : 0.17,
+      periods: [
+        { time: '05:00-06:00', modeled_wait: 0.1, observed_wait: flagged ? 0.5 : 0.11, flagged },
+        { time: '06:00-07:00', modeled_wait: 0.2, observed_wait: null, flagged: false },
+      ],
+    }
+  }
+
+  const banner = 'Observed waits are much longer than cashier workload explains. Results describe the modeled system; check how waits were recorded.'
+
+  it('labels the modeled wait and shows observed waits with the day banner when flagged', async () => {
+    mockCurrent(eventValidation)
+    getObservedWaitMock.mockResolvedValue(observed(true))
+    renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
+    expect(await screen.findByText(banner)).toBeInTheDocument()
+    expect(getObservedWaitMock).toHaveBeenCalled()
+    expect(screen.getAllByText('Modeled current wait').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Average Wait Time')).not.toBeInTheDocument()
+    const table = screen.getByRole('table', { name: 'Modeled vs observed wait by period' })
+    expect(table).toHaveTextContent('Observed wait')
+    expect(table).toHaveTextContent('30.0')
+    expect(table).toHaveTextContent('6.0')
+    expect(table).toHaveTextContent('Much longer than modeled')
+    // A period without an observed wait shows a dash, never zero.
+    expect(within(table).getByRole('rowheader', { name: '06:00-07:00' }).parentElement).toHaveTextContent('—')
+  })
+
+  it('hides the banner when no period is flagged', async () => {
+    mockCurrent(eventValidation)
+    getObservedWaitMock.mockResolvedValue(observed(false))
+    renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
+    const table = await screen.findByRole('table', { name: 'Modeled vs observed wait by period' })
+    expect(table).toHaveTextContent('6.6')
+    expect(table).not.toHaveTextContent('Much longer than modeled')
+    expect(screen.queryByText(banner)).not.toBeInTheDocument()
+  })
+
+  it('shows no observed wait, flag or banner for aggregate uploads', async () => {
+    mockCurrent({ ok: true, message: 'ok' })
+    renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
+    expect(await screen.findByText('Average Wait Time')).toBeInTheDocument()
+    expect(getObservedWaitMock).not.toHaveBeenCalled()
+    expect(screen.queryByText('Observed wait')).not.toBeInTheDocument()
+    expect(screen.queryByText(banner)).not.toBeInTheDocument()
   })
 })

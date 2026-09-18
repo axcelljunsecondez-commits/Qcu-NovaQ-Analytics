@@ -140,7 +140,7 @@ def test_excel_report_includes_staffing_summary_and_status_columns() -> None:
 def test_exec_summary_bullets_full_pair() -> None:
     bullets = _exec_summary_bullets(_kpis(), _kpis())
     assert bullets == [
-        "• Average customer wait: 9.0 min → 4.8 min (optimized)",
+        "• Average customer wait (modeled): 9.0 min → 4.8 min (optimized)",
         "• Estimated daily savings: ₱12,000",
         "• Utilization improvement: 65% → 43%",
     ]
@@ -151,7 +151,7 @@ def test_exec_summary_bullets_current_only() -> None:
         {"avg_waiting_time": 0.15, "avg_utilization": 0.65}, {}
     )
     assert bullets == [
-        "• Average customer wait: 9.0 min (current)",
+        "• Average customer wait (modeled): 9.0 min (current)",
         "• Utilization improvement: 65% (current)",
     ]
 
@@ -159,6 +159,6 @@ def test_exec_summary_bullets_current_only() -> None:
 def test_exec_summary_bullets_none() -> None:
     bullets = _exec_summary_bullets({}, {})
     assert bullets == [
-        "• Average customer wait: N/A",
+        "• Average customer wait (modeled): N/A",
         "• Utilization improvement: N/A",
     ]

@@ -1,5 +1,6 @@
 import { http } from '../lib/http'
 import type {
+  ObservedWaitSummary,
   SelectedDesResult,
   SelectedDecision,
   SelectedMcResult,
@@ -199,6 +200,13 @@ export async function getSeparateComparison(
 ): Promise<SeparateComparison> {
   const { data } = await http.get<SeparateComparison>(
     `/analyses/${analysisId}/workflow/comparison/separate`,
+  )
+  return data
+}
+
+export async function getObservedWait(analysisId: number): Promise<ObservedWaitSummary> {
+  const { data } = await http.get<ObservedWaitSummary>(
+    `/analyses/${analysisId}/workflow/observed-wait`,
   )
   return data
 }

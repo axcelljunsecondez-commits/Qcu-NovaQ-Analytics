@@ -963,5 +963,16 @@
   "analyses.upload_field_queue_ids": "Queue IDs",
   "analyses.upload_field_closure_policy": "Queue closing policy",
   "analyses.setup_workbook_download": "Download setup workbook",
-  "analyses.setup_workbook_help": "Contains the staff and breaks sheets from this Setup. Add your events sheet to upload it again."
+  "analyses.setup_workbook_help": "Contains the staff and breaks sheets from this Setup. Add your events sheet to upload it again.",
+  "current.modeled_wait_avg": "Modeled current wait",
+  "current.modeled_wait_max": "Longest modeled wait",
+  "current.observed_title": "Modeled vs observed wait by period",
+  "current.observed_caption": "Observed wait is the recorded wait of customers in your event upload, averaged with each queue weighted by its arrivals.",
+  "current.observed_wait": "Observed wait",
+  "current.observed_flagged": "Much longer than modeled",
+  "current.observed_flag_rule": "Flagged when the observed wait is more than {{ratio}}× the modeled wait and more than {{gap}} minutes longer.",
+  "current.observed_banner": "Observed waits are much longer than cashier workload explains. Results describe the modeled system; check how waits were recorded.",
+  "compare.sep_basis_current": "Modeled current wait (analytical)",
+  "compare.sep_basis_plan": "Simulation (replicated DES)",
+  "compare.sep_basis_no_difference": "Current and plan waits use different methods; they are not subtracted or ranked."
 }

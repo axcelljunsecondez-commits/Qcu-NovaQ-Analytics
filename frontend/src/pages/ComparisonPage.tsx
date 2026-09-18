@@ -22,6 +22,7 @@ import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
 import { getWorkflow, selectWorkflowScenario, getSeparateComparison } from '../api/workflow'
 import { getAnalysis } from '../api/analyses'
+import { ObservedWaitTable } from './AnalysisCurrentPage'
 
 function formatCount(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—'
@@ -118,9 +119,19 @@ function SeparateComparisonView({ analysisId }: { analysisId: number }) {
                   </tr>
                   <tr>
                     <th scope="row">{t('compare.sep_row_wait')}</th>
-                    <td>{formatMetric(data.current.wait_mean, 60)}</td>
+                    <td>
+                      {formatMetric(data.current.wait_mean, 60)}
+                      {data.current.wait_basis_kind === 'analytical' && (
+                        <small style={{ display: 'block', color: 'var(--text-secondary)' }}>{t('compare.sep_basis_current')}</small>
+                      )}
+                    </td>
                     {data.plans.map((plan) => (
-                      <td key={plan.scenario_id}>{formatMetric(plan.totals?.wait_mean ?? null, 60)}</td>
+                      <td key={plan.scenario_id}>
+                        {formatMetric(plan.totals?.wait_mean ?? null, 60)}
+                        {plan.wait_basis_kind === 'simulation' && (
+                          <small style={{ display: 'block', color: 'var(--text-secondary)' }}>{t('compare.sep_basis_plan')}</small>
+                        )}
+                      </td>
                     ))}
                   </tr>
                   <tr>
@@ -160,6 +171,9 @@ function SeparateComparisonView({ analysisId }: { analysisId: number }) {
               </table>
             </div>
             <p className="page-caption" style={{ marginTop: '8px' }}>{t('compare.sep_basis_note')}</p>
+            {data.current.wait_basis_kind === 'analytical' && (
+              <p className="page-caption" style={{ marginTop: '4px' }}>{t('compare.sep_basis_no_difference')}</p>
+            )}
           </div>
 
           <section className="card" style={{ marginTop: '12px', padding: '18px' }} aria-labelledby="sep-staffing-title">
@@ -285,6 +299,21 @@ function SeparateComparisonView({ analysisId }: { analysisId: number }) {
             )}
           </div>
         </>
+      )}
+      {data.current.observed_wait_available === true && (
+        <div style={{ marginTop: '12px' }}>
+          <ObservedWaitTable
+            rows={data.current.periods.map((period) => ({
+              time: period.time,
+              modeled: period.wait_mean,
+              observed: period.observed_wait ?? null,
+              flagged: period.observed_flag === true,
+            }))}
+            flaggedAny={data.current.observed_wait_flagged_any === true}
+            ratio={data.current.observed_wait_ratio ?? Number.NaN}
+            gap={data.current.observed_wait_min_gap_minutes ?? Number.NaN}
+          />
+        </div>
       )}
     </div>
   )
