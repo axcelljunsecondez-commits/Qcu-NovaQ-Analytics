@@ -12,6 +12,7 @@ class DedicatedQueueState(str, Enum):
     ACTIVE = "ACTIVE"
     DRAINING = "DRAINING"
     INACTIVE = "INACTIVE"
+    ON_BREAK = "ON_BREAK"
 
 
 class QueueReactivationPolicyError(RuntimeError):
@@ -63,6 +64,7 @@ class DedicatedQueueLifecycle:
     state: DedicatedQueueState = DedicatedQueueState.ACTIVE
     waiting_customer_ids: deque[str] = field(default_factory=deque)
     in_service_customer_id: str | None = None
+    break_pending: bool = False
 
     def __post_init__(self) -> None:
         if self.server_id != dedicated_server_id(self.queue_id):
@@ -109,9 +111,41 @@ class DedicatedQueueLifecycle:
         self._finish_if_empty()
         return completed
 
+    def begin_draining(self) -> DedicatedQueueState:
+        """Enter pre-break DRAINING from ACTIVE, keeping every waiting customer.
+
+        New arrivals stop (``accepts_arrivals`` is ACTIVE-only) while current
+        service and the waiting line continue untouched. Marks the drain as
+        break-driven so emptying never auto-closes the queue to INACTIVE.
+        Calls from any other state leave the lifecycle unchanged.
+        """
+        if self.state == DedicatedQueueState.ACTIVE:
+            self.state = DedicatedQueueState.DRAINING
+            self.break_pending = True
+        return self.state
+
+    def begin_break(self) -> DedicatedQueueState:
+        """Enter ON_BREAK once the queue is fully empty.
+
+        Raises ValueError while customers remain: a break must never strand
+        waiting or in-service customers. The caller records the actual start.
+        """
+        if self.waiting_customer_ids or self.in_service_customer_id is not None:
+            raise ValueError(f"Queue {self.queue_id} cannot start a break while occupied.")
+        self.state = DedicatedQueueState.ON_BREAK
+        return self.state
+
+    def end_break(self) -> DedicatedQueueState:
+        """Return an ON_BREAK queue to ACTIVE and clear the break flag."""
+        if self.state == DedicatedQueueState.ON_BREAK:
+            self.state = DedicatedQueueState.ACTIVE
+            self.break_pending = False
+        return self.state
+
     def _finish_if_empty(self) -> None:
         if (
             self.state == DedicatedQueueState.DRAINING
+            and not self.break_pending
             and not self.waiting_customer_ids
             and self.in_service_customer_id is None
         ):

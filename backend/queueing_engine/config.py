@@ -25,6 +25,10 @@ DEFAULT_MAX_SERVERS = 24
 UNSTABLE_PENALTY_MULTIPLIER = 10.0
 DEFAULT_HOURS_PER_INTERVAL = 1.0
 
+# Separate-queue break policy (operational configuration, not queueing theory).
+# Minutes before a scheduled break start during which the lane drains.
+PRE_BREAK_CUTOFF_MINUTES = 3.0
+
 
 # Monte Carlo analytical perturbation defaults (assumptions, not observations).
 MC_DEFAULT_TRIALS = 2000
