@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 from datetime import datetime, timezone
 from typing import Any, cast
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,8 +19,23 @@ from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
 from backend.db.session import get_db
-from backend.queueing_engine.config import MC_DEFAULT_FAILURE_THRESHOLD
+from backend.queueing_engine.config import (
+    DEFAULT_SERVER_COST_HR,
+    DEFAULT_WAIT_COST_HR,
+    MC_DEFAULT_FAILURE_THRESHOLD,
+)
+from backend.queueing_engine.services.data_processing import _weighted_wait, compute_kpis
 from backend.queueing_engine.services.model_explanations import analyze_segments
+from backend.queueing_engine.services.separate_optimization import (
+    SEPARATE_DES_ENGINE_VERSION,
+    _period_current_active,
+    evaluate_candidate_with_des,
+    index_period_queues,
+    optimize_separate_schedule,
+    prune_separate_schedule,
+    resolve_des_breaks,
+    validate_des_replication_config,
+)
 from backend.queueing_engine.simulation.simulation import (
     mc_simulate_segments,
     simulate_segments_with_trace,
@@ -74,6 +90,28 @@ class WorkflowValidationRequest(BaseModel):
     seed: int | None = 42
 
 
+class SeparateOptimizeDesConfig(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    replications: StrictInt | None = None
+    base_seed: StrictInt | None = None
+    duration_hours: float | None = Field(default=None, gt=0)
+    max_events: StrictInt | None = None
+
+
+class SeparateOptimizeRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    dataset_id: int | None = None
+    target_utilization: float = Field(default=0.70, ge=0.40, le=0.90)
+    server_cost_per_hr: float = Field(default=DEFAULT_SERVER_COST_HR, gt=0)
+    customer_waiting_cost: float = Field(default=DEFAULT_WAIT_COST_HR, ge=0)
+    min_active_lanes: int | None = Field(default=None, ge=1)
+    max_active_lanes: int | None = Field(default=None, ge=1)
+    lambda_multiplier: float = Field(default=1.0, gt=0)
+    des: SeparateOptimizeDesConfig = Field(default_factory=SeparateOptimizeDesConfig)
+
+
 def _finite_non_negative(value: Any) -> bool:
     return (
         isinstance(value, (int, float))
@@ -106,6 +144,35 @@ def _operationally_complete(rows: list[dict[str, Any]]) -> bool:
     )
 
 
+def _separate_schedule_problem(scenario: Scenario) -> str | None:
+    """Return None when a saved Separate plan is complete and selectable.
+
+    Requires a supported schema-v2 snapshot, a COMPLETE schedule, and every
+    period OPTIMAL with an estimated optimum lane count. Anything else is
+    reported as a reason instead of becoming selectable.
+    """
+    calc = (scenario.settings_json or {}).get("calculation") or {}
+    if (calc.get("schema_version") != 2
+            or calc.get("engine_version") != SEPARATE_DES_ENGINE_VERSION):
+        return "not a supported Separate optimization snapshot"
+    schedule = (scenario.results_json or {}).get("schedule")
+    if not isinstance(schedule, dict) or schedule.get("overall") != "COMPLETE":
+        return "schedule is not COMPLETE"
+    periods = schedule.get("periods")
+    if not isinstance(periods, list) or not periods:
+        return "schedule has no periods"
+    for period in periods:
+        label = period.get("time", "?") if isinstance(period, dict) else "?"
+        if not isinstance(period, dict) or period.get("overall") != "OPTIMAL":
+            return f"period {label} is not OPTIMAL"
+        lanes = period.get("optimal_active_lanes")
+        if isinstance(lanes, bool) or not isinstance(lanes, int) or lanes < 1:
+            return f"period {label} has no optimal lane count"
+        if (period.get("optimum") or {}).get("estimated_optimal") is not True:
+            return f"period {label} lacks an estimated optimum"
+    return None
+
+
 def _own_verified_scenario(
     db: Session, user: User, analysis: AnalysisProject, scenario_id: int
 ) -> Scenario:
@@ -129,6 +196,20 @@ def _own_verified_scenario(
         or not (dataset.validation_report_json or {}).get("ok")
     ):
         raise HTTPException(status_code=422, detail="Scenario source Dataset is unavailable.")
+    snapshot = (scenario.settings_json or {}).get("calculation") or {}
+    if snapshot.get("schema_version") == 2:
+        problem = _separate_schedule_problem(scenario)
+        if problem is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Separate plan is not selectable: {problem}.",
+            )
+        if scenario.dataset_id != _current_valid_dataset_id(db, user, analysis):
+            raise HTTPException(
+                status_code=422,
+                detail="Separate plan is stale for the current dataset.",
+            )
+        return scenario
     if not _operationally_complete(_scenario_rows(scenario)):
         raise HTTPException(status_code=422, detail="Scenario comparison evidence is incomplete.")
     return scenario
@@ -182,17 +263,26 @@ def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[di
     return segments
 
 
-def _current_dataset(db: Session, user: User, analysis: AnalysisProject) -> Dataset:
+def _current_valid_dataset_id(db: Session, user: User, analysis: AnalysisProject) -> int | None:
+    """Latest successfully processed dataset id, or None when absent."""
     candidates = db.execute(
         select(Dataset)
         .where(Dataset.user_id == user.id, Dataset.analysis_id == analysis.id)
         .order_by(Dataset.id.desc())
     ).scalars()
-    dataset = next(
-        (item for item in candidates if (item.validation_report_json or {}).get("ok")),
-        None,
-    )
-    if dataset is None:
+    match = next((item for item in candidates if (item.validation_report_json or {}).get("ok")), None)
+    return match.id if match is not None else None
+
+
+def _current_dataset(db: Session, user: User, analysis: AnalysisProject) -> Dataset:
+    dataset_id = _current_valid_dataset_id(db, user, analysis)
+    if dataset_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail="This Analysis has no successfully processed dataset.",
+        )
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:  # pragma: no cover - defensive against concurrent deletion
         raise HTTPException(
             status_code=404,
             detail="This Analysis has no successfully processed dataset.",
@@ -423,11 +513,12 @@ def _separate_validation_verdict(
             inadequate.append(key)
             continue
         failure_rate = mc.get("mc_failure_rate", mc.get("failure_rate"))
+        adequate = mc.get("mc_failure_rate_adequate", mc.get("failure_rate_adequate"))
         verdict = "pass"
         if (
             mc.get("simulation_supported") is not True
             or not _finite_non_negative(failure_rate)
-            or mc.get("mc_failure_rate_adequate") is not True
+            or adequate is not True
         ):
             verdict = "inadequate"
             inadequate.append(key)
@@ -439,7 +530,7 @@ def _separate_validation_verdict(
             "queue_id": queue_id,
             "selected_model": mc.get("selected_model"),
             "mc_failure_rate": failure_rate,
-            "mc_failure_rate_adequate": mc.get("mc_failure_rate_adequate"),
+            "mc_failure_rate_adequate": adequate,
             "failure_rate_cap": failure_cap,
             "validation_verdict": verdict,
         })
@@ -860,6 +951,981 @@ def _derive_decision(
             "not observed future outcomes."
         ),
     }
+
+
+@router.post(
+    "/{analysis_id}/workflow/optimize/separate",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_separate_optimize(
+    analysis_id: int,
+    payload: SeparateOptimizeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Optimize staffing period-by-period for a separate-queue analysis.
+
+    Queue structure branches here: shared-queue analyses are rejected so the
+    shared optimizer path is never forced through separate logic. Periods
+    group persisted dataset rows by time label with current lanes resolved
+    from the authoritative queue setup; every candidate ranking uses
+    DES_REPLICATIONS evidence. Trace payloads are pruned for transfer.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    setup = analysis.queue_setup_json or {}
+    if setup.get("queue_structure") != "separate_queues":
+        raise HTTPException(
+            status_code=422,
+            detail="Separate optimization requires a separate_queues analysis.",
+        )
+    if payload.dataset_id is not None:
+        dataset = db.get(Dataset, payload.dataset_id)
+        if dataset is None or dataset.user_id != user.id or dataset.analysis_id != analysis.id:
+            raise HTTPException(status_code=404, detail="Dataset not found in this Analysis.")
+    else:
+        dataset = _current_dataset(db, user, analysis)
+    records = dataset.normalized_json or []
+    if not isinstance(records, list) or not records:
+        raise HTTPException(status_code=422, detail="This Analysis has no Current evidence.")
+    try:
+        des_settings = validate_des_replication_config(
+            {key: value for key, value in payload.des.model_dump().items() if value is not None}
+        )
+        schedule = optimize_separate_schedule(
+            setup,
+            records,
+            target=payload.target_utilization,
+            server_cost=payload.server_cost_per_hr,
+            waiting_cost=payload.customer_waiting_cost,
+            min_lanes=payload.min_active_lanes,
+            max_lanes=payload.max_active_lanes,
+            lambda_multiplier=payload.lambda_multiplier,
+            des_settings=des_settings,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"schedule": prune_separate_schedule(schedule)}
+
+
+def _json_number(value: Any) -> float | None:
+    """Finite float for API transfer, else None (never NaN/inf, never zero-filled)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _sum_all(values: Any) -> float | None:
+    """Sum only when every value is present; a single missing value voids the total."""
+    nums = [_json_number(value) for value in values]
+    if not nums or any(value is None for value in nums):
+        return None
+    return math.fsum(value for value in nums if value is not None)
+
+
+@router.get("/{analysis_id}/workflow/comparison/separate")
+def separate_comparison(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Compare Current evidence with saved Separate optimal plans.
+
+    Read-only over persisted evidence: the current dataset/setup plus
+    immutable schema-v2 schedules. Nothing is reoptimized and no DES, MC,
+    or validation runs. Stale or incomplete plans are flagged, never
+    silently compared or made selectable by this payload.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    setup = analysis.queue_setup_json or {}
+    if setup.get("queue_structure") != "separate_queues":
+        raise HTTPException(
+            status_code=422,
+            detail="Separate comparison requires a separate_queues analysis.",
+        )
+    dataset = _current_dataset(db, user, analysis)
+    records = dataset.normalized_json or []
+    frame, _, _ = analyze_segments(records, setup, dataset.validation_report_json or {})
+    kpis = compute_kpis(frame)
+    order: list[str] = []
+    grouped: dict[str, list] = {}
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get("time", row.get("segment_id", "Unknown")))
+        grouped.setdefault(label, []).append(row)
+        if label not in order:
+            order.append(label)
+    current_periods = []
+    for label in order:
+        sub = frame[frame["time"] == label] if not frame.empty else frame
+        lambdas = [_json_number(row.get("lambda")) for _, row in sub.iterrows()]
+        finite_lambdas = [value for value in lambdas if value is not None]
+        rhos = [_json_number(row.get("rho")) for _, row in sub.iterrows()]
+        finite_rhos = [value for value in rhos if value is not None]
+        current_periods.append({
+            "time": label,
+            "active_lanes": _period_current_active(setup, grouped[label]),
+            "lambda_total": math.fsum(finite_lambdas) if finite_lambdas else None,
+            "wait_mean": _weighted_wait(sub),
+            "util_max": max(finite_rhos) if finite_rhos else None,
+        })
+    plans = []
+    items = db.execute(
+        select(Scenario)
+        .where(Scenario.user_id == user.id, Scenario.analysis_id == analysis.id)
+        .order_by(Scenario.id.asc())
+    ).scalars()
+    for scenario in items:
+        calc = (scenario.settings_json or {}).get("calculation") or {}
+        if calc.get("schema_version") != 2:
+            plans.append({
+                "scenario_id": scenario.id, "name": scenario.name,
+                "dataset_id": scenario.dataset_id, "target": None,
+                "evaluation_method": None, "replications": None, "base_seed": None,
+                "overall": None, "stale": scenario.dataset_id != dataset.id,
+                "valid": False, "valid_reason": "not a Separate optimization snapshot",
+                "periods": [], "totals": None,
+            })
+            continue
+        schedule = (scenario.results_json or {}).get("schedule") or {}
+        stale = scenario.dataset_id != dataset.id
+        problem = _separate_schedule_problem(scenario)
+        if stale:
+            problem = "stale for the current dataset"
+        detail_periods = []
+        for period in schedule.get("periods") or []:
+            if not isinstance(period, dict):
+                continue
+            optimum = period.get("optimum") or {}
+            evidence = optimum.get("evidence") or {}
+            waiting = evidence.get("waiting_time") or {}
+            total = (evidence.get("costs") or {}).get("total") or {}
+            waiting_cost = (evidence.get("costs") or {}).get("waiting") or {}
+            detail_periods.append({
+                "time": period.get("time"),
+                "current_active_lanes": period.get("current_active_lanes"),
+                "optimal_active_lanes": period.get("optimal_active_lanes"),
+                "adjustment": period.get("adjustment"),
+                "peak_util": _json_number(optimum.get("candidate_utilization")),
+                "wait_mean": _json_number(waiting.get("mean")),
+                "wait_ci": ([_json_number(waiting.get("ci_lower")),
+                             _json_number(waiting.get("ci_upper"))]
+                            if waiting.get("ci_lower") is not None
+                            or waiting.get("ci_upper") is not None else None),
+                "waiting_cost_mean": _json_number(waiting_cost.get("mean")),
+                "total_cost_mean": _json_number(total.get("mean")),
+                "total_cost_ci": ([_json_number(total.get("ci_lower")),
+                                   _json_number(total.get("ci_upper"))]
+                                  if total.get("ci_lower") is not None
+                                  or total.get("ci_upper") is not None else None),
+                "status": period.get("overall"),
+            })
+        weights = []
+        for period, detail in zip(schedule.get("periods") or [], detail_periods):
+            evidence = ((period.get("optimum") or {}).get("evidence") or {}) if isinstance(period, dict) else {}
+            weights.append(_json_number(evidence.get("total_lambda")))
+        lane_ints = [v for v in (d["optimal_active_lanes"] for d in detail_periods)
+                     if isinstance(v, int) and not isinstance(v, bool)]
+        lane_total = (math.fsum(lane_ints)
+                      if detail_periods and len(lane_ints) == len(detail_periods) else None)
+        weighted: list[tuple[float, float]] = []
+        for weight, detail in zip(weights, detail_periods):
+            w = _json_number(weight)
+            m = _json_number(detail["wait_mean"])
+            if w is not None and m is not None:
+                weighted.append((w, m))
+        wait_denom = math.fsum(w for w, _ in weighted)
+        wait_mean = (math.fsum(w * m for w, m in weighted) / wait_denom
+                     if wait_denom > 0 else None)
+        peaks = [p for p in (_json_number(d["peak_util"]) for d in detail_periods)
+                 if p is not None]
+        totals = {
+            "lane_periods": lane_total,
+            "wait_mean": wait_mean,
+            "peak_util": max(peaks) if peaks else None,
+            "waiting_cost_mean": _sum_all(d["waiting_cost_mean"] for d in detail_periods),
+            "total_cost_mean": _sum_all(d["total_cost_mean"] for d in detail_periods),
+        }
+        des = schedule.get("des") or {}
+        plans.append({
+            "scenario_id": scenario.id, "name": scenario.name,
+            "dataset_id": scenario.dataset_id,
+            "target": _json_number((calc.get("options") or {}).get(
+                "target_utilization", (scenario.settings_json or {}).get("target_utilization"))),
+            "evaluation_method": schedule.get("evaluation_method"),
+            "replications": des.get("replications"),
+            "base_seed": des.get("base_seed"),
+            "overall": schedule.get("overall"),
+            "stale": stale,
+            "valid": problem is None,
+            "valid_reason": problem,
+            "periods": detail_periods,
+            "totals": totals,
+        })
+    selection = _latest_job(db, user, "workflow_selection", analysis.id)
+    selected_id = (selection.params_json or {}).get("scenario_id") if selection else None
+    return {
+        "analysis_id": analysis.id,
+        "queue_structure": "separate_queues",
+        "current": {
+            "dataset_id": dataset.id,
+            "periods": current_periods,
+            "wait_mean": _json_number(kpis.get("avg_waiting_time")),
+            "wait_basis": "lambda-weighted analytical mean over Current rows",
+            "util_max": _json_number(kpis.get("max_utilization")),
+            "waiting_cost": _json_number(kpis.get("total_waiting_cost")),
+            "waiting_cost_basis": "Lq-based Current basis; excludes server cost",
+            "total_cost": None,
+            "total_cost_reason": "Current evidence has no server-cost basis; savings are not computed.",
+        },
+        "plans": plans,
+        "selected_scenario_id": selected_id if isinstance(selected_id, int) else None,
+    }
+
+
+class SelectedDesRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    seed: int | None = 42
+
+
+class SelectedPlanError(ValueError):
+    """Selected-plan simulation cannot be built or executed honestly."""
+
+
+def _selected_schedule_options(scenario: Scenario) -> dict[str, Any]:
+    snapshot = (scenario.settings_json or {}).get("calculation") or {}
+    options = snapshot.get("options") or {}
+    if not isinstance(options, dict):
+        raise SelectedPlanError("Selected scenario has no optimization options.")
+    return options
+
+
+def _require_selected_separate_plan(
+    db: Session, user: User, analysis: AnalysisProject
+) -> dict[str, Any]:
+    """Resolve the selected schema-v2 plan into runnable simulation inputs.
+
+    The selection job points at exactly one scenario; that scenario must
+    verify (complete, current dataset) and its persisted per-period active
+    lane IDs must resolve against the CURRENT setup. Anything else blocks
+    with an exact reason — never a silent substitution.
+    """
+    selection = _latest_job(db, user, "workflow_selection", analysis.id)
+    if selection is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Select a saved optimal plan in Comparison before running optimized simulation.",
+        )
+    scenario_id = (selection.params_json or {}).get("scenario_id")
+    if not isinstance(scenario_id, int):
+        raise HTTPException(
+            status_code=409,
+            detail="Select a saved optimal plan in Comparison before running optimized simulation.",
+        )
+    try:
+        scenario = _own_verified_scenario(db, user, analysis, scenario_id)
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=f"Selected plan is not runnable: {exc.detail}",
+        ) from exc
+    setup = analysis.queue_setup_json or {}
+    if setup.get("queue_structure") != "separate_queues":
+        raise SelectedPlanError("Selected-plan simulation requires a separate_queues analysis.")
+    if setup.get("separate_queue_closure_policy", "drain_existing") != "drain_existing":
+        raise SelectedPlanError("Selected-plan simulation requires the drain_existing closure policy.")
+    configured = {str(queue_id) for queue_id in setup.get("queue_ids", [])}
+    schedule = (scenario.results_json or {}).get("schedule") or {}
+    for period in schedule.get("periods") or []:
+        optimum = (period or {}).get("optimum") or {}
+        active = optimum.get("active_queue_ids") or []
+        if len(active) != optimum.get("active_lane_count"):
+            raise SelectedPlanError(
+                f"Period {period.get('time', '?')} active IDs do not match its optimal lane count.")
+        unknown = [queue_id for queue_id in active if str(queue_id) not in configured]
+        if unknown:
+            raise SelectedPlanError(
+                f"Period {period.get('time', '?')} references lanes missing from the current "
+                f"setup: {', '.join(str(q) for q in unknown)}. The setup changed since saving.")
+    dataset = db.get(Dataset, scenario.dataset_id)
+    options = _selected_schedule_options(scenario)
+    try:
+        multiplier = float(options.get("lambda_multiplier", 1.0))
+        des_config = validate_des_replication_config(options.get("des") or {})
+        target = options.get("target_utilization")
+        server_cost = float(options.get("server_cost_per_hr", DEFAULT_SERVER_COST_HR))
+        waiting_cost = float(options.get("customer_waiting_cost", DEFAULT_WAIT_COST_HR))
+    except (TypeError, ValueError) as exc:
+        raise SelectedPlanError(f"Selected scenario options are invalid: {exc}") from exc
+    if not math.isfinite(multiplier) or multiplier <= 0:
+        raise SelectedPlanError("Selected scenario demand multiplier is invalid.")
+    return {
+        "scenario": scenario,
+        "schedule": schedule,
+        "dataset": dataset,
+        "setup": setup,
+        "options": options,
+        "target": target,
+        "server_cost": server_cost,
+        "waiting_cost": waiting_cost,
+        "multiplier": multiplier,
+        "duration_hours": des_config["duration_hours"],
+        "max_events": des_config["max_events"],
+    }
+
+
+def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
+                           execute=None) -> dict[str, Any]:
+    """Execute each persisted period optimum independently (period-independent
+    semantics, matching the optimizer's evidence model: no carryover, no
+    cross-period transitions, empty queues at each period start).
+
+    Reuses the proven single-run routing DES evaluator per period — same
+    conserved arrivals, same live-system-size routing with seeded fair ties,
+    same empirical service sampling. No optimizer calls.
+    """
+    executor = execute or evaluate_candidate_with_des
+    scenario = plan["scenario"]
+    schedule = plan["schedule"]
+    records = plan["dataset"].normalized_json or []
+    try:
+        des_breaks = resolve_des_breaks(plan.get("setup"))
+    except ValueError as exc:
+        raise SelectedPlanError(str(exc)) from exc
+    periods_out: list[dict[str, Any]] = []
+    all_conserved = True
+    for index, sched_period in enumerate(schedule.get("periods") or []):
+        time_label = str(sched_period.get("time", f"period_{index + 1}"))
+        optimum = sched_period.get("optimum") or {}
+        active = [str(queue_id) for queue_id in (optimum.get("active_queue_ids") or [])]
+        inactive = [str(queue_id) for queue_id in (optimum.get("inactive_queue_ids") or [])]
+        by_id = index_period_queues(records, time_label)
+        queues_by_id: dict[str, dict] = {}
+        for queue_id in active + inactive:
+            row = by_id.get(queue_id)
+            if row is None:
+                raise SelectedPlanError(
+                    f"Missing dataset evidence for {time_label}/{queue_id}.")
+            scaled = dict(row)
+            try:
+                lam = float(row.get("lambda", 0.0)) * plan["multiplier"]
+            except (TypeError, ValueError) as exc:
+                raise SelectedPlanError(
+                    f"Invalid arrival rate for {time_label}/{queue_id}.") from exc
+            if not math.isfinite(lam) or lam < 0:
+                raise SelectedPlanError(
+                    f"Invalid arrival rate for {time_label}/{queue_id}.")
+            scaled["lambda"] = lam
+            queues_by_id[queue_id] = scaled
+        seg_seed = (seed + index) if seed is not None else None
+        candidate: dict[str, Any] = {"time": time_label, "available_queue_ids": active + inactive,
+                                     "active_queue_ids": active, "inactive_queue_ids": inactive}
+        if des_breaks is not None:
+            candidate["breaks"] = des_breaks
+        result = executor(
+            candidate,
+            queues_by_id, duration_hours=plan["duration_hours"], seed=seg_seed,
+            target=plan["target"], server_cost=plan["server_cost"],
+            waiting_cost=plan["waiting_cost"], max_events=plan["max_events"])
+        if result.get("status") in ("INVALID_INPUT", "UNSUPPORTED"):
+            raise SelectedPlanError(
+                f"Period {time_label} cannot be simulated: {result.get('reason')}")
+        if result.get("status") not in ("FEASIBLE", "INFEASIBLE"):
+            raise SelectedPlanError(
+                f"Period {time_label} returned unexpected status {result.get('status')!r}.")
+        conserved = result.get("customer_conservation") is True
+        all_conserved = all_conserved and conserved
+        evaluations = result.get("evaluations") or []
+        lane_rows = []
+        for item in evaluations:
+            lane_rows.append({
+                "time": time_label,
+                "queue_id": item.get("queue_id"),
+                "server_id": item.get("server_id"),
+                "lambda": _json_number(item.get("lambda")),
+                "lambda_routed": _json_number(item.get("lambda_routed_sim")),
+                "mu": _json_number(item.get("mu")),
+                "c": 1,
+                "arrivals": item.get("arrivals"),
+                "served": item.get("served"),
+                "waiting": item.get("waiting"),
+                "in_service": item.get("in_service"),
+                "abandoned": None,
+                "Wq_sim": _json_number(item.get("Wq")),
+                "rho_sim": _json_number(item.get("rho")),
+                "max_queue": item.get("max_queue"),
+                "active": bool(item.get("active")),
+                "simulation_supported": True,
+                "error": None,
+                "metric_provenance": "simulated",
+                "customer_conservation": conserved,
+            })
+        events = result.get("trace_events") or []
+        lane_segments = []
+        for item in evaluations:
+            lane_segments.append({
+                "segment_id": f"{time_label}:{item.get('queue_id')}",
+                "time": time_label,
+                "queue_id": item.get("queue_id"),
+                "lambda": _json_number(item.get("lambda")),
+                "mu": _json_number(item.get("mu")),
+                "c": 1,
+                "selected_model": "Parallel M/G/1 (routing)",
+                "simulation_supported": True,
+                "error": None,
+                "queue_structure": "separate",
+                "initial_queue_depth": 0,
+                "final_queue_depth": item.get("waiting"),
+                "server_id": item.get("server_id"),
+            })
+        periods_out.append({
+            "time": time_label,
+            "active_queue_ids": active,
+            "inactive_queue_ids": inactive,
+            "evaluation_status": result.get("status"),
+            "conservation": conserved,
+            "total_lambda": _json_number(result.get("total_lambda")),
+            "total_cost": _json_number(result.get("total_cost")),
+            "server_cost": _json_number(result.get("server_cost")),
+            "waiting_cost": _json_number(result.get("waiting_cost")),
+            "results": lane_rows,
+            "trace": {
+                "results": lane_rows,
+                "trace": events,
+                "trace_hours": plan["duration_hours"],
+                "total_hours": plan["duration_hours"],
+                "event_count": len(events),
+                "truncated": bool(result.get("trace_truncated")),
+                "abandonment_supported": False,
+                "segments": lane_segments,
+            },
+        })
+    return {
+        "provenance": "SELECTED",
+        "engine_version": ENGINE_VERSION,
+        "execution": "selected-plan routing DES (period-independent, no carryover)",
+        "arrival_method": "single conserved Poisson stream at total lambda",
+        "routing_policy": "shortest system size with seeded fair ties",
+        "service_sampling_method": "empirical per-lane resampling",
+        "scenario_id": scenario.id,
+        "analysis_id": scenario.analysis_id,
+        "dataset_id": scenario.dataset_id,
+        "target_utilization": plan["target"],
+        "seed": seed,
+        "duration_hours": plan["duration_hours"],
+        "max_events": plan["max_events"],
+        "periods": periods_out,
+        "overall_conservation": all_conserved,
+        "overall_status": "COMPLETED" if all_conserved else "ERROR",
+    }
+
+
+@router.post(
+    "/{analysis_id}/workflow/simulation/des/selected",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_selected_des(
+    analysis_id: int,
+    payload: SelectedDesRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Run routing-capable DES for the selected immutable Separate plan.
+
+    One request executes the whole persisted schedule (period-independent).
+    No optimizer, ranking, or candidate search runs here.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    try:
+        plan = _require_selected_separate_plan(db, user, analysis)
+        result = _run_selected_plan_des(plan, payload.seed)
+    except SelectedPlanError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    scenario = plan["scenario"]
+    job = _save_job(
+        db, user, "workflow_des", analysis, scenario,
+        {"seed": payload.seed, "engine": "selected-plan-routing-des",
+         "periods": len(result["periods"])},
+        result, settings,
+    )
+    return {"evidence": _job_out(job)}
+
+
+def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Monte Carlo lane segments at DES-measured operating points.
+
+    Each active lane is evaluated at its simulated routed throughput with
+    service moments from its empirical samples — the same Parallel M/G/1
+    mathematics as Current MC, applied to the selected schedule's measured
+    loads. Inactive lanes have no arrivals and are not evaluated.
+    """
+    records = plan["dataset"].normalized_json or []
+    segments: list[dict[str, Any]] = []
+    for period in des_result.get("periods") or []:
+        time_label = str(period.get("time", "Unknown"))
+        by_id = index_period_queues(records, time_label)
+        duration = des_result.get("duration_hours") or 0.0
+        for row in period.get("results") or []:
+            if not row.get("active"):
+                continue
+            queue_id = row.get("queue_id")
+            samples = (by_id.get(str(queue_id)) or {}).get("service_samples_hours") or []
+            clean = [float(sample) for sample in samples
+                     if isinstance(sample, (int, float)) and not isinstance(sample, bool)
+                     and math.isfinite(float(sample)) and float(sample) > 0]
+            if not clean:
+                raise SelectedPlanError(
+                    f"Missing service samples for Monte Carlo lane {time_label}/{queue_id}.")
+            mean_service = math.fsum(clean) / len(clean)
+            arrivals = row.get("arrivals") or 0
+            segments.append({
+                "time": time_label,
+                "queue_id": queue_id,
+                "lambda": (float(arrivals) / duration) if duration > 0 else 0.0,
+                "mu": 1.0 / mean_service,
+                "variance": statistics.variance(clean) if len(clean) >= 2 else 0.0,
+                "c": 1,
+                "queue_structure": "separate_queues",
+            })
+    return segments
+
+
+@router.post(
+    "/{analysis_id}/workflow/simulation/mc/selected",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_selected_mc(
+    analysis_id: int,
+    payload: WorkflowMcRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Run Monte Carlo for the selected plan at its DES-measured loads.
+
+    Requires a selected-plan DES run for the same scenario first; the MC
+    lanes, loads, and identity all derive from that evidence. Existing MC
+    trial/threshold/CI semantics are reused unchanged.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    try:
+        plan = _require_selected_separate_plan(db, user, analysis)
+    except SelectedPlanError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    scenario = plan["scenario"]
+    des_job = _latest_job(db, user, "workflow_des", analysis.id, scenario.id)
+    if des_job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Run selected-plan DES before Monte Carlo for this scenario.",
+        )
+    des_params = des_job.params_json or {}
+    if des_params.get("engine") != "selected-plan-routing-des":
+        raise HTTPException(
+            status_code=409,
+            detail="Latest DES evidence is not a selected-plan run for this scenario.",
+        )
+    try:
+        segments = _selected_mc_segments(plan, des_job.result_json or {})
+        rows = mc_simulate_segments(
+            segments,
+            num_trials=payload.num_trials,
+            failure_threshold=payload.failure_threshold,
+            seed=payload.seed,
+            failure_rate_cap=payload.failure_rate_cap,
+        )
+    except SelectedPlanError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    result = {
+        "provenance": "SELECTED",
+        "engine_version": ENGINE_VERSION,
+        "method": "analytical parameter perturbation at DES-measured lane loads",
+        "scenario_id": scenario.id,
+        "analysis_id": analysis.id,
+        "dataset_id": scenario.dataset_id,
+        "des_job_id": des_job.id,
+        "results": rows,
+    }
+    job = _save_job(
+        db, user, "workflow_mc", analysis, scenario,
+        {**payload.model_dump(), "des_job_id": des_job.id,
+         "engine": "selected-plan-measured-mc"},
+        result, settings,
+    )
+    return {"evidence": _job_out(job)}
+
+
+def validate_selected_plan(schedule: dict[str, Any], des_result: dict[str, Any],
+                           mc_rows: list[dict[str, Any]], failure_cap: float) -> dict[str, Any]:
+    """Validate a selected plan from persisted DES and MC evidence only.
+
+    Required evidence derives from the schedule's persisted active lane IDs
+    per period — never from array positions or regenerated subsets. Each
+    period reuses the verified FAIL > insufficient > pass verdict over its
+    (time, queue_id) pairs; DES runs that are unconserved or unevaluable
+    make their period insufficient (errored evidence, never a pass). The
+    overall verdict applies the same precedence across all required pairs,
+    so one failing period or lane can never be averaged away.
+    """
+    sched_periods = schedule.get("periods") or []
+    des_by_time = {str(p.get("time")): p for p in (des_result.get("periods") or [])
+                   if isinstance(p, dict)}
+    mc_by_pair = {(str(row.get("time", "")), str(row.get("queue_id", ""))): row
+                  for row in mc_rows or []
+                  if isinstance(row, dict) and isinstance(row.get("queue_id"), str)}
+    periods_out: list[dict[str, Any]] = []
+    required_pairs: list[tuple[str, str]] = []
+    overall_mc: dict[tuple[str, str], dict[str, Any]] = {}
+    for sched in sched_periods:
+        if not isinstance(sched, dict):
+            continue
+        time_label = str(sched.get("time", "Unknown"))
+        optimum = sched.get("optimum") or {}
+        active = [str(q) for q in (optimum.get("active_queue_ids") or [])]
+        des_period = des_by_time.get(time_label)
+        des_lanes = {(str(item.get("queue_id"))): item
+                     for item in ((des_period or {}).get("results") or [])
+                     if isinstance(item, dict)}
+        des_ok = (
+            des_period is not None
+            and des_period.get("conservation") is True
+            and all(q in des_lanes and des_lanes[q].get("simulation_supported") is True
+                    for q in active)
+        )
+        des_reason = None
+        if des_period is None:
+            des_reason = "No selected-plan DES evidence for this period."
+        elif des_period.get("conservation") is not True:
+            des_reason = "Selected-plan DES evidence failed customer conservation."
+        elif not des_ok:
+            des_reason = "Selected-plan DES evidence is missing active lanes."
+        pairs = [(time_label, q) for q in active]
+        required_pairs.extend(pairs)
+        if des_ok:
+            verdict = _separate_validation_verdict(pairs, mc_by_pair, failure_cap)
+            overall_mc.update({key: mc_by_pair[key] for key in pairs if key in mc_by_pair})
+        else:
+            verdict = {"status": "insufficient", "failed": [], "inadequate": list(pairs),
+                       "total": len(pairs), "results": []}
+        queue_rows = []
+        for item in verdict.pop("results"):
+            lane = des_lanes.get(item["queue_id"], {})
+            queue_rows.append({
+                **item,
+                "rho_sim": _json_number(lane.get("rho_sim")),
+                "Wq_sim": _json_number(lane.get("Wq_sim")),
+                "served": lane.get("served"),
+            })
+        periods_out.append({
+            "time": time_label,
+            "active_queue_ids": active,
+            "status": verdict["status"],
+            "des_ok": des_ok,
+            "des_reason": des_reason,
+            "queues": queue_rows,
+        })
+    overall = _separate_validation_verdict(required_pairs, overall_mc, failure_cap)
+    return {"periods": periods_out, "verdict": overall}
+
+
+@router.post(
+    "/{analysis_id}/workflow/simulation/validation/selected",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def run_selected_validation(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Validate the selected plan from its persisted DES and MC evidence.
+
+    Consumes only evidence already persisted for exactly the selected
+    scenario: the DES job, the MC job derived from that DES job, and the
+    immutable schedule. Nothing is re-optimized, rerun, or recomputed.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    try:
+        plan = _require_selected_separate_plan(db, user, analysis)
+    except SelectedPlanError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    scenario = plan["scenario"]
+    des_job = _latest_job(db, user, "workflow_des", analysis.id, scenario.id)
+    if des_job is None or (des_job.params_json or {}).get("engine") != "selected-plan-routing-des":
+        raise HTTPException(
+            status_code=404,
+            detail="Run selected-plan DES before validating this scenario.",
+        )
+    mc_job = _latest_job(db, user, "workflow_mc", analysis.id, scenario.id)
+    if mc_job is None or (mc_job.params_json or {}).get("engine") != "selected-plan-measured-mc":
+        raise HTTPException(
+            status_code=404,
+            detail="Run selected-plan Monte Carlo before validating this scenario.",
+        )
+    if (mc_job.params_json or {}).get("des_job_id") != des_job.id:
+        raise HTTPException(
+            status_code=409,
+            detail="Monte Carlo evidence is stale for the latest selected-plan DES. Rerun Monte Carlo.",
+        )
+    failure_cap = (mc_job.params_json or {}).get("failure_rate_cap")
+    if (
+        not isinstance(failure_cap, (int, float))
+        or isinstance(failure_cap, bool)
+        or not math.isfinite(float(failure_cap))
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Selected Monte Carlo evidence has no usable failure cap.",
+        )
+    des_result = des_job.result_json or {}
+    mc_rows = ((mc_job.result_json or {}).get("results") or [])
+    outcome = validate_selected_plan(
+        plan["schedule"], des_result, mc_rows, float(failure_cap))
+    result = {
+        "provenance": "SELECTED",
+        "engine_version": ENGINE_VERSION,
+        "scenario_id": scenario.id,
+        "analysis_id": analysis.id,
+        "dataset_id": scenario.dataset_id,
+        "des_job_id": des_job.id,
+        "mc_job_id": mc_job.id,
+        "failure_rate_cap": float(failure_cap),
+        "periods": outcome["periods"],
+        "verdict": outcome["verdict"],
+    }
+    job = _save_job(
+        db, user, "workflow_validation", analysis, scenario,
+        {"des_job_id": des_job.id, "mc_job_id": mc_job.id,
+         "failure_rate_cap": float(failure_cap)},
+        result, settings,
+    )
+    return {"evidence": _job_out(job)}
+
+
+def _derive_selected_decision(*, scenario: dict[str, Any], schedule: dict[str, Any],
+                              des_result: dict[str, Any],
+                              validation_result: dict[str, Any],
+                              failure_cap: float) -> dict[str, Any]:
+    """Decide a selected Separate plan from persisted evidence only.
+
+    Rule table (from the frozen shared Decision semantics):
+      missing/inconsistent evidence            -> INSUFFICIENT EVIDENCE
+      validation FAIL                          -> REVISE (failed periods listed)
+      validation INSUFFICIENT                  -> INSUFFICIENT EVIDENCE
+      validation PASS + conserved DES          -> CONDITIONAL, because the
+        adopt/conditional split keys off modeled savings and Separate plans
+        have no comparable Current cost basis. ADOPT is unreachable until
+        such a basis exists; this is stated in the rationale, never hidden.
+    A validation PASS paired with unconserved DES is an evidence
+    inconsistency, never a success. Staffing counts are described, never
+    recomputed; no replacement schedule is produced.
+    """
+    name = scenario.get("name", "Unnamed plan")
+    periods = schedule.get("periods") or []
+    verdict = validation_result.get("verdict") or {}
+    status = verdict.get("status")
+    failed = verdict.get("failed") or []
+    inadequate = verdict.get("inadequate") or []
+    total = verdict.get("total")
+    failed_times = sorted({str(pair[0]) for pair in failed
+                           if isinstance(pair, (list, tuple)) and pair})
+    inadequate_times = sorted({str(pair[0]) for pair in inadequate
+                               if isinstance(pair, (list, tuple)) and pair})
+    lane_delta: int | None = None
+    deltas = []
+    for period in periods:
+        optimal = period.get("optimal_active_lanes")
+        current = period.get("current_active_lanes")
+        if isinstance(optimal, int) and isinstance(current, list):
+            deltas.append(optimal - len(current))
+    if deltas and len(deltas) == len(periods):
+        lane_delta = sum(deltas)
+    facts = {
+        "selected_target": schedule.get("target_utilization"),
+        "validation_checks": total,
+        "failed_checks": len(failed),
+        "inadequate_checks": len(inadequate),
+        "failure_rate_cap": failure_cap,
+        "lane_delta": lane_delta,
+        "periods": len(periods),
+    }
+    base = {
+        "scenario_id": scenario.get("id"),
+        "scenario_name": name,
+        "dataset_id": scenario.get("dataset_id"),
+        "facts": facts,
+        "failed_periods": failed_times,
+        "inadequate_periods": inadequate_times,
+        "provenance": "SELECTED",
+        "provenance_warning": (
+            "Analytical estimates and simulated results are decision support, "
+            "not observed future outcomes."
+        ),
+    }
+    conserved = des_result.get("overall_conservation") is True
+    if not conserved:
+        return {
+            **base,
+            "status": "insufficient_evidence",
+            "headline": "Insufficient evidence to make a management recommendation.",
+            "recommendation": (
+                "Selected-plan DES evidence failed customer conservation; "
+                "validation cannot be trusted. Rerun Simulation before deciding."
+            ),
+            "rationale": [
+                f"Selected Scenario: {name} (ID {scenario.get('id')}).",
+                "DES customer conservation failed: evidence is inconsistent.",
+            ],
+            "missing_evidence": ["trustworthy DES evidence with customer conservation"],
+        }
+    if status not in ("pass", "fail", "insufficient"):
+        return {
+            **base,
+            "status": "insufficient_evidence",
+            "headline": "Insufficient evidence to make a management recommendation.",
+            "recommendation": "Complete the missing workflow evidence before making an adoption decision.",
+            "rationale": [
+                f"Selected Scenario: {name} (ID {scenario.get('id')}).",
+                f"Validation verdict is missing or unrecognized: {status!r}.",
+            ],
+            "missing_evidence": ["a completed Scenario Validation run"],
+        }
+    if status == "fail":
+        passed = total - len(failed) if isinstance(total, int) else None
+        return {
+            **base,
+            "status": "revise",
+            "headline": f'Do not adopt Scenario "{name}" yet.',
+            "recommendation": (
+                f"Revise and re-test the plan because {len(failed)} of "
+                f"{total} validation checks did not pass "
+                f"({', '.join(failed_times) if failed_times else 'unspecified periods'})."
+            ),
+            "rationale": [
+                f"Selected Scenario: {name} (ID {scenario.get('id')}).",
+                f"Validation: {passed} of {total} checks passed."
+                if passed is not None else "Validation checks failed.",
+                f"Failed periods: {', '.join(failed_times) if failed_times else 'unspecified'}.",
+            ],
+            "missing_evidence": [],
+        }
+    if status == "insufficient":
+        return {
+            **base,
+            "status": "insufficient_evidence",
+            "headline": "Insufficient evidence to make a management recommendation.",
+            "recommendation": "Complete the missing workflow evidence before making an adoption decision.",
+            "rationale": [
+                f"Selected Scenario: {name} (ID {scenario.get('id')}).",
+                f"Inadequate periods: {', '.join(inadequate_times) if inadequate_times else 'unspecified'}.",
+            ],
+            "missing_evidence": ["complete validation evidence for every active lane"],
+        }
+    return {
+        **base,
+        "status": "conditional",
+        "headline": f'Consider Scenario "{name}" conditionally.',
+        "recommendation": (
+            f"All {total} validation checks passed, but modeled savings are "
+            f"unavailable for Separate plans (no comparable Current cost basis); "
+            f"adopt only with cost acceptance."
+        ),
+        "rationale": [
+            f"Selected Scenario: {name} (ID {scenario.get('id')}).",
+            f"Validation: {total} of {total} checks passed.",
+            "Modeled savings unavailable: no Current server-cost basis for comparison.",
+            f"Net lane change across periods: {lane_delta:+d}."
+            if lane_delta is not None else "Net lane change unavailable.",
+        ],
+        "missing_evidence": [],
+    }
+
+
+@router.post(
+    "/{analysis_id}/workflow/decision/selected",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def create_selected_decision(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Decide the selected Separate plan from its persisted evidence chain.
+
+    Verifies the exact scenario/DES/MC/validation identity chain, applies
+    the frozen Decision taxonomy to the validation verdict, and persists a
+    scenario-scoped decision job. Nothing is re-optimized or rerun.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    try:
+        plan = _require_selected_separate_plan(db, user, analysis)
+    except SelectedPlanError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    scenario = plan["scenario"]
+    des_job = _latest_job(db, user, "workflow_des", analysis.id, scenario.id)
+    if des_job is None or (des_job.params_json or {}).get("engine") != "selected-plan-routing-des":
+        raise HTTPException(
+            status_code=404,
+            detail="Run selected-plan DES before deciding for this scenario.",
+        )
+    mc_job = _latest_job(db, user, "workflow_mc", analysis.id, scenario.id)
+    if mc_job is None or (mc_job.params_json or {}).get("engine") != "selected-plan-measured-mc":
+        raise HTTPException(
+            status_code=404,
+            detail="Run selected-plan Monte Carlo before deciding for this scenario.",
+        )
+    if (mc_job.params_json or {}).get("des_job_id") != des_job.id:
+        raise HTTPException(
+            status_code=409,
+            detail="Monte Carlo evidence is stale for the latest selected-plan DES. Rerun Monte Carlo.",
+        )
+    validation_job = _latest_job(db, user, "workflow_validation", analysis.id, scenario.id)
+    if validation_job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Run selected-plan Validation before deciding for this scenario.",
+        )
+    validation_params = validation_job.params_json or {}
+    if (validation_params.get("des_job_id") != des_job.id
+            or validation_params.get("mc_job_id") != mc_job.id):
+        raise HTTPException(
+            status_code=409,
+            detail="Validation evidence is stale for the latest Simulation evidence. Rerun Validation.",
+        )
+    validation_result = validation_job.result_json or {}
+    if validation_result.get("scenario_id") != scenario.id:
+        raise HTTPException(
+            status_code=409,
+            detail="Validation evidence belongs to a different scenario.",
+        )
+    failure_cap = (mc_job.params_json or {}).get("failure_rate_cap")
+    decision = _derive_selected_decision(
+        scenario={"id": scenario.id, "name": scenario.name,
+                  "dataset_id": scenario.dataset_id},
+        schedule=plan["schedule"],
+        des_result=des_job.result_json or {},
+        validation_result=validation_result,
+        failure_cap=float(failure_cap) if isinstance(failure_cap, (int, float)) else 0.0,
+    )
+    selection = _latest_job(db, user, "workflow_selection", analysis.id)
+    decision["evidence_ids"] = {
+        "selection": selection.id if selection else None,
+        "des": des_job.id,
+        "mc": mc_job.id,
+        "validation": validation_job.id,
+    }
+    job = _save_job(
+        db, user, "workflow_decision", analysis, scenario,
+        {"validation_job_id": validation_job.id, "des_job_id": des_job.id,
+         "mc_job_id": mc_job.id},
+        decision, settings,
+    )
+    return {"decision": decision, "persisted": True, "evidence": _job_out(job)}
 
 
 @router.post("/{analysis_id}/workflow/decision")
