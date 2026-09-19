@@ -18,6 +18,7 @@ from backend.api.optimization import OptimizeBatchRequest, SegmentInput, optimiz
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
+from backend.queueing_engine.services.optimization import unstable_current_reason
 from backend.queueing_engine.services.separate_optimization import (
     SEPARATE_DES_ENGINE_VERSION,
     full_coverage_min_lanes,
@@ -56,6 +57,7 @@ class ScenarioOut(BaseModel):
     results: dict
     created_at: datetime
     provenance: str = "legacy_unverified"
+    roi_unavailable_reason: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -68,6 +70,14 @@ def _check_size(results: dict, settings: Settings) -> None:
         raise HTTPException(status_code=413, detail="Results payload too large.")
 
 
+def _shared_roi_reason(results: dict | None) -> str | None:
+    """Read-only: why a shared scenario's stored comparison has no savings."""
+    rows = (results or {}).get("results", (results or {}).get("comparison"))
+    if not isinstance(rows, list) or not rows or not all(isinstance(row, dict) for row in rows):
+        return None
+    return unstable_current_reason(rows)
+
+
 def _to_out(scenario: Scenario) -> dict:
     payload = {
         "id": scenario.id,
@@ -78,6 +88,7 @@ def _to_out(scenario: Scenario) -> dict:
         "results": scenario.results_json,
         "created_at": scenario.created_at,
         "provenance": "verified_snapshot" if scenario.settings_json.get("calculation") else "legacy_unverified",
+        "roi_unavailable_reason": _shared_roi_reason(scenario.results_json),
     }
     return ScenarioOut.model_validate(payload).model_dump()
 

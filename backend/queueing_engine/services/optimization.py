@@ -481,6 +481,16 @@ def summarize_optimization(comparison_rows: list[dict]) -> dict:
     }
 
 
+def unstable_current_reason(comparison_rows: list[dict]) -> str | None:
+    """Why savings are withheld when a current period is overloaded (rho >= 1)."""
+    periods = [str(row.get("time")) for row in comparison_rows
+               if isinstance(row, Mapping) and row.get("current_stable") is False]
+    if not periods or summarize_optimization(comparison_rows)["total_savings"] is not None:
+        return None
+    return (f"ROI can't be declared: in {', '.join(periods)}, customers arrive faster than the "
+            "current staff can serve them (ρ ≥ 1), so today's waiting cost has no finite value.")
+
+
 def build_recommendations(comparison_rows: list[dict]) -> list[str]:
     """Generate recommendation messages from optimized segment rows."""
     summary = summarize_optimization(comparison_rows)
@@ -492,7 +502,9 @@ def build_recommendations(comparison_rows: list[dict]) -> list[str]:
     ]
 
     if not summary["comparison_complete"]:
-        return ["Comparison incomplete: no aggregate savings or staffing assurance is available."]
+        messages = ["Comparison incomplete: no aggregate savings or staffing assurance is available."]
+        reason = unstable_current_reason(comparison_rows)
+        return messages + [reason] if reason else messages
 
     if not segment_actions:
         segment_actions = [

@@ -303,6 +303,21 @@ describe('ComparisonPage', () => {
     expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).not.toBeInTheDocument()
     expect(screen.queryByText('ROI Projection')).not.toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Aggregate cost savings are unavailable')
+    expect(screen.queryByTestId('compare-roi-reason')).not.toBeInTheDocument()
+  })
+
+  it('shows the backend ROI reason below the incomplete alert when totals are null', async () => {
+    const reason = "ROI can't be declared: in 08:00, customers arrive faster than the current staff can serve them (ρ ≥ 1), so today's waiting cost has no finite value."
+    listScenariosMock.mockResolvedValue({
+      scenarios: [{
+        ...scenarios[0],
+        results: { results: [{ ...rows[0], current_stable: false, cost_current: null }] },
+        roi_unavailable_reason: reason,
+      }],
+    })
+    renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    expect(await screen.findByTestId('compare-roi-reason')).toHaveTextContent(reason)
+    expect(screen.getByRole('alert')).toHaveTextContent('Aggregate cost savings are unavailable')
   })
 
   it('compares two saved optimized plans independently of Current instability', async () => {

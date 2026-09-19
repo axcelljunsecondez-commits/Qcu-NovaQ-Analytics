@@ -9,6 +9,7 @@ export interface ScenarioOut {
   results: Record<string, unknown>
   created_at: string
   provenance?: string
+  roi_unavailable_reason?: string | null
 }
 
 export interface ScenarioIn {

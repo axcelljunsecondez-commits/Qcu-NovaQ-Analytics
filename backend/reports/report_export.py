@@ -315,6 +315,10 @@ def generate_separate_pdf_report(model: dict) -> io.BytesIO:
     elements.append(Paragraph(
         escape("Current total modeled cost is N/A on a comparable basis; savings and ROI are not computed."),
         bullet_style))
+    if cost.get("roi_unavailable_reason"):
+        elements.append(Paragraph(escape(f"Why N/A: {cost['roi_unavailable_reason']}"), bullet_style))
+    if cost.get("break_overload_note"):
+        elements.append(Paragraph(escape(str(cost["break_overload_note"])), bullet_style))
 
     elements.append(Paragraph(headings[4], h2))
     validation = model.get("validation") or {}
@@ -516,6 +520,10 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
     _put(ws_cost, 6, "Selected total modeled cost", cost.get("selected_total"), money_fmt)
     _put(ws_cost, 7, "Savings", cost.get("savings"))
     _put(ws_cost, 8, "ROI", cost.get("roi"))
+    if cost.get("roi_unavailable_reason"):
+        _put(ws_cost, 9, "Why N/A", cost.get("roi_unavailable_reason"))
+    if cost.get("break_overload_note"):
+        _put(ws_cost, 10, "Break overload note", cost.get("break_overload_note"))
 
     ws_lim = _sheet("Limitations", ["Limitation"])
     for idx, line in enumerate(model.get("limitations") or [], start=2):
@@ -588,6 +596,8 @@ def _exec_summary_bullets(current_kpis: dict, recommended_kpis: dict) -> list[st
             bullets.append(f"• Estimated daily savings: ₱{savings:,.0f}")
         else:
             bullets.append("• Estimated daily savings: N/A")
+            if recommended_kpis.get("roi_unavailable_reason"):
+                bullets.append(f"• Why N/A: {recommended_kpis['roi_unavailable_reason']}")
 
     rho_current = current_kpis.get("avg_utilization", recommended_kpis.get("avg_utilization_current"))
     rho_opt = recommended_kpis.get("avg_utilization_optimized")
@@ -850,6 +860,8 @@ def generate_excel_report(
             ("Total Savings", _money(recommended_kpis.get("total_savings"))),
             ("Total Server Change", str(server_change) if server_change is not None else "N/A"),
         ]
+        if recommended_kpis.get("total_savings") is None and recommended_kpis.get("roi_unavailable_reason"):
+            labels_values.append(("Why Savings Is N/A", str(recommended_kpis["roi_unavailable_reason"])))
 
         avg_w_cur = recommended_kpis.get("avg_waiting_current")
         avg_w_opt = recommended_kpis.get("avg_waiting_optimized")

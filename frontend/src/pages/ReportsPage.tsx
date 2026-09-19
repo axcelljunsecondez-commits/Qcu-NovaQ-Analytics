@@ -181,6 +181,14 @@ function SeparateReportView({ analysisId }: { analysisId: number }) {
         <p>{t('reports.sep_row_current_total')}: <span>N/A</span></p>
         <p>{t('reports.sep_row_savings')}: <span>N/A</span></p>
         <p>{t('reports.sep_row_roi')}: <span>N/A</span></p>
+        {typeof cost.roi_unavailable_reason === 'string' && cost.roi_unavailable_reason && (
+          <p className="form-hint" data-testid="separate-roi-reason">
+            {t('reports.sep_row_roi_reason')}: {cost.roi_unavailable_reason}
+          </p>
+        )}
+        {typeof cost.break_overload_note === 'string' && cost.break_overload_note && (
+          <p className="form-hint" data-testid="separate-break-note">{cost.break_overload_note}</p>
+        )}
       </div>
 
       <div className="card" style={{ marginTop: '12px', padding: '18px' }}>

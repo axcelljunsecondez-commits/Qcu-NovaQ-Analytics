@@ -17,9 +17,14 @@ from backend.api.workflow import (
 )
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
+from backend.queueing_engine.services.break_optimization import slot_inputs_from_setup, slot_rho
 from backend.queueing_engine.services.data_processing import compute_kpis, process_segments
 from backend.queueing_engine.services.model_explanations import analyze_segments
-from backend.queueing_engine.services.optimization import build_recommendations, summarize_optimization
+from backend.queueing_engine.services.optimization import (
+    build_recommendations,
+    summarize_optimization,
+    unstable_current_reason,
+)
 from backend.reports.report_export import current_only_blocked_lines, generate_excel_report, generate_pdf_report
 from backend.reports.separate_report import build_separate_report_model
 
@@ -28,6 +33,69 @@ router = APIRouter(
     tags=["reports"],
     dependencies=[Depends(user_rate_limit("report"))],
 )
+
+BASIS_ROI_REASON = (
+    "ROI can't be declared: the current cost is calculated with the queueing formula and the "
+    "plan's cost with simulation, so the two can't be subtracted."
+)
+
+
+def _clock(minutes: float) -> str:
+    total = int(round(minutes))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _overloaded(row: dict) -> bool | None:
+    """rho >= 1, or demand with nobody working; None when rho can't be judged."""
+    rho = row.get("rho")
+    if rho is not None:
+        return rho >= 1
+    if row.get("lambda", 0) > 0 and row.get("working", 1) <= 1e-9:
+        return True
+    return None
+
+
+def overload_ranges(rows: list[dict]) -> list[tuple[str, str]] | None:
+    """Merged overloaded slot ranges as (start, end) clocks; None if any slot is uncomputable."""
+    ranges: list[list[float]] = []
+    for row in sorted(rows, key=lambda item: item["start"]):
+        flag = _overloaded(row)
+        if flag is None:
+            return None
+        if not flag:
+            continue
+        if ranges and abs(ranges[-1][1] - row["start"]) < 1e-9:
+            ranges[-1][1] = row["end"]
+        else:
+            ranges.append([row["start"], row["end"]])
+    return [(_clock(low), _clock(high)) for low, high in ranges]
+
+
+def separate_roi_reason(setup: dict, records: list | None) -> str:
+    """Why a separate-queue report shows no savings/ROI: incompatible cost bases.
+
+    Current cost is analytical per lane and the plan's cost is DES, so this holds
+    whatever the break schedule; the slot overload screen is reported separately.
+    """
+    return BASIS_ROI_REASON
+
+
+def separate_break_overload_note(setup: dict, records: list | None) -> str | None:
+    """Pooled 15-minute slot screen of the current break schedule; None unless overloaded."""
+    try:
+        slots, shifts = slot_inputs_from_setup(setup, list(records or []))
+        rows = slot_rho(slots, shifts, list((setup or {}).get("breaks") or []))
+    except (ValueError, TypeError, KeyError):
+        return None
+    ranges = overload_ranges(rows)
+    if not ranges:
+        return None
+    finite = [row["rho"] for row in rows if row.get("rho") is not None]
+    peak = "∞" if any(row.get("rho") is None and (row.get("lambda") or 0) > 0 for row in rows)         else f"{max(finite):.2f}"
+    spans = ", ".join(f"from {low} to {high}" for low, high in ranges)
+    return (f"Note: {spans} the cashiers on duty during breaks cannot keep up with demand "
+            f"(pooled 15-minute ρ = {peak}); the break optimizer addresses this.")
+
 
 PDF_MEDIA_TYPE = "application/pdf"
 EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -218,7 +286,7 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
             "adequate": row.get("failure_rate_adequate"),
             "status": row.get("status"),
         })
-    return build_separate_report_model({
+    model = build_separate_report_model({
         "analysis": {
             "id": analysis.id,
             "name": analysis.name,
@@ -330,6 +398,9 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
         },
         "comparison_plans": sibling_plans,
     })
+    model["cost"]["roi_unavailable_reason"] = separate_roi_reason(setup, records)
+    model["cost"]["break_overload_note"] = separate_break_overload_note(setup, records)
+    return model
 
 
 @router.get("/analyses/{analysis_id}/selected/preview")
@@ -393,6 +464,7 @@ def _scenario_payload(scenario: Scenario) -> tuple[pd.DataFrame, dict, list[str]
     rows = _comparison_rows(scenario)
     comparison_df = pd.DataFrame(rows)
     kpis = summarize_optimization(rows)
+    kpis["roi_unavailable_reason"] = unstable_current_reason(rows)
     recommendations = build_recommendations(rows)
     recommendations.insert(0, "Analytical model estimates, not observed outcomes. Abandonment percentages are sensitivity assumptions; Erlang-A theta is a patience rate per hour.")
     snapshot = (scenario.settings_json or {}).get("calculation") or {}

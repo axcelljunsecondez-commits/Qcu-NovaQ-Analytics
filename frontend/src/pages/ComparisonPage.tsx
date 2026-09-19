@@ -492,6 +492,9 @@ export function ComparisonPage() {
       </div>
 
       {!totals && <div role="alert" className="alert alert-warn" style={{ marginTop: '12px' }}>{t('integrity.incomplete')}</div>}
+      {!totals && selected?.roi_unavailable_reason && (
+        <p className="form-hint" data-testid="compare-roi-reason" style={{ marginTop: '6px' }}>{selected.roi_unavailable_reason}</p>
+      )}
 
       {/* Quick Summary */}
       {totals && operationallyComparable && (

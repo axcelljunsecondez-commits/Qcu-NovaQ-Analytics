@@ -355,4 +355,16 @@ describe('separate full report', () => {
     expect(screen.queryByText(/Savings: ₱/)).not.toBeInTheDocument()
     expect(screen.queryByText(/ROI: [0-9]/)).not.toBeInTheDocument()
   })
+
+  it('shows N/A with the backend reason next to savings and ROI', async () => {
+    const reason = "ROI can't be declared: the current cost is calculated with the queueing formula and the plan's cost with simulation, so the two can't be subtracted."
+    const note = 'Note: from 11:00 to 12:00 the cashiers on duty during breaks cannot keep up with demand (pooled 15-minute ρ = 1.01); the break optimizer addresses this.'
+    fetchSelectedPreviewMock.mockResolvedValue({
+      model: { ...previewModel, cost: { ...previewModel.cost, roi_unavailable_reason: reason, break_overload_note: note } },
+    })
+    renderSeparateReports()
+    expect(await screen.findByTestId('separate-roi-reason')).toHaveTextContent(reason)
+    expect(screen.getByTestId('separate-break-note')).toHaveTextContent(note)
+    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(3)
+  })
 })

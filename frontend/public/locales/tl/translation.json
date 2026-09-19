@@ -179,6 +179,7 @@
   "reports.sep_preview": "Preview mula sa parehong evidence model ng PDF at Excel",
   "reports.sep_row_savings": "Savings",
   "reports.sep_row_roi": "ROI",
+  "reports.sep_row_roi_reason": "Bakit",
   "reports.sep_row_current_total": "Current total modeled cost",
   "reports.sep_row_selected_total": "Selected total modeled cost",
   "reports.sep_row_waiting": "Waiting cost",
