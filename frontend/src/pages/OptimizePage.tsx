@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
 import { getAnalysis } from '../api/analyses'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
-import { optimizeSeparate, optimizeSeparateBreaks, type BreakOptimizeResult } from '../api/optimization'
+import { applySeparateBreaks, optimizeSeparate, optimizeSeparateBreaks, type BreakOptimizeResult } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
 import type { DatasetOut, OptimizationOut, SegmentRow, SeparateSchedule } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
@@ -280,8 +280,15 @@ function breakLabel(label: string, t: TFunction): string {
   return match ? t('optimize.breaks_label', { number: match[1] }) : label
 }
 
-function BreakOptimizerCard({ analysisId, datasetId }: { analysisId: number; datasetId: string }) {
+function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
+  analysisId: number
+  datasetId: string
+  latestDatasetId: number | null
+}) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [applying, setApplying] = useState(false)
+  const [applied, setApplied] = useState(false)
   const [target, setTarget] = useState(0.85)
   const [maxMove, setMaxMove] = useState(120)
   const [result, setResult] = useState<BreakOptimizeResult | null>(null)
@@ -292,6 +299,7 @@ function BreakOptimizerCard({ analysisId, datasetId }: { analysisId: number; dat
 
   async function runBreaks() {
     setError(null)
+    setApplied(false)
     setRunning(true)
     try {
       setResult(await optimizeSeparateBreaks(analysisId, {
@@ -307,6 +315,36 @@ function BreakOptimizerCard({ analysisId, datasetId }: { analysisId: number; dat
     }
   }
 
+  async function applyBreaks() {
+    if (!result) return
+    const lines = result.moves.map((move) => t('optimize.breaks_apply_move', {
+      cashier: move.queue_id, label: breakLabel(move.label, t), from: move.from, to: move.to,
+    }))
+    const message = [t('optimize.breaks_apply_confirm_title'), ...lines, '', t('optimize.breaks_apply_confirm_warning')]
+    if (!window.confirm(message.join('\n'))) return
+    setError(null)
+    setApplying(true)
+    try {
+      // Only the proposal's own parameters go back; the server recomputes the break times.
+      await applySeparateBreaks(analysisId, {
+        target_rho: result.target_rho,
+        max_shift_minutes: result.max_shift_minutes,
+        setup_hash: result.setup_hash,
+        dataset_id: result.dataset_id,
+      })
+      setResult(null)
+      setApplied(true)
+      for (const key of ['analysis', 'workflow', 'current', 'separate-comparison']) {
+        void queryClient.invalidateQueries({ queryKey: [key, analysisId] })
+      }
+    } catch (err) {
+      setError(messageOf(err, t('errors.server')))
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const onLatest = result !== null && latestDatasetId !== null && result.dataset_id === latestDatasetId
   const changed = result ? result.slots.filter((slot) => slot.rho_before !== slot.rho_after) : []
   return (
     <div className="card" style={{ marginTop: '16px' }}>
@@ -328,9 +366,18 @@ function BreakOptimizerCard({ analysisId, datasetId }: { analysisId: number; dat
         </button>
       </div>
       {error && <div role="alert" className="alert alert-error" style={{ marginTop: '12px' }}>{error}</div>}
+      {applied && <p role="status" className="alert alert-success" style={{ marginTop: '12px' }}>{t('optimize.breaks_apply_success')}</p>}
       {result && (
         <div style={{ marginTop: '12px' }}>
           <p role="status"><strong>{t(result.status === 'improved' ? 'optimize.breaks_status_improved' : 'optimize.breaks_status_no_improvement')}</strong></p>
+          {result.moves.length > 0 && (
+            <div className="form-row" style={{ gap: '12px', alignItems: 'center' }}>
+              <button type="button" disabled={applying || !onLatest} onClick={() => void applyBreaks()}>
+                {applying ? t('optimize.breaks_apply_running') : t('optimize.breaks_apply')}
+              </button>
+              {!onLatest && <p className="form-hint">{t('optimize.breaks_apply_latest_only')}</p>}
+            </div>
+          )}
           <p>{t('optimize.breaks_peak', { before: rho(result.peak_rho.before), after: rho(result.peak_rho.after) })}</p>
           <p>{t('optimize.breaks_above_target', { target: fmt(result.target_rho), before: result.slots_above_target.before, after: result.slots_above_target.after })}</p>
           <div className="table-scroll" role="region" aria-label={t('optimize.breaks_table_label')} tabIndex={0}>
@@ -474,6 +521,10 @@ export function OptimizePage() {
     queryKey: ['datasets', analysisId],
     queryFn: () => listDatasets(analysisId),
   })
+  // The server applies break proposals only when made on this dataset (latest successfully processed).
+  const latestValidDatasetId = (datasets.data?.datasets ?? [])
+    .filter((d: DatasetOut) => d.validation?.ok)
+    .reduce<number | null>((latest, d) => (latest === null || d.id > latest ? d.id : latest), null)
   const analysis = useQuery({
     queryKey: ['analysis', analysisId],
     queryFn: () => getAnalysis(analysisId!),
@@ -1248,7 +1299,7 @@ export function OptimizePage() {
           </div>
         </div>
       )}
-      {analysisId !== undefined && isSeparateStaffing && <BreakOptimizerCard analysisId={analysisId} datasetId={datasetId} />}
+      {analysisId !== undefined && isSeparateStaffing && <BreakOptimizerCard analysisId={analysisId} datasetId={datasetId} latestDatasetId={latestValidDatasetId} />}
       {analysis.data && !isSeparateStaffing && (
         <p className="form-hint" style={{ marginTop: '16px' }}>{t('optimize.breaks_shared_note')}</p>
       )}

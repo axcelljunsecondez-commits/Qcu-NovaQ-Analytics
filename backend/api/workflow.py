@@ -14,7 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.api.analyses import _to_out as analysis_out
 from backend.api.analyses import own_analysis
+from backend.api.analysis_schemas import QueueSetup, setup_status
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.scenarios import setup_fingerprint as _setup_fingerprint
 from backend.api.settings import Settings
@@ -29,6 +31,8 @@ from backend.queueing_engine.services.break_optimization import (
     DEFAULT_MAX_SHIFT_MINUTES,
     DEFAULT_TARGET_RHO,
     optimize_separate_breaks,
+    place_breaks,
+    slot_inputs_from_setup,
 )
 from backend.queueing_engine.services.data_processing import _weighted_wait, compute_kpis
 from backend.queueing_engine.services.model_explanations import analyze_segments
@@ -144,6 +148,17 @@ class SeparateBreakOptimizeRequest(BaseModel):
     target_rho: float = Field(default=DEFAULT_TARGET_RHO, gt=0, le=1)
     max_shift_minutes: StrictInt = Field(default=DEFAULT_MAX_SHIFT_MINUTES, ge=0, le=240, multiple_of=15)
     des: SeparateBreakOptimizeDesConfig = Field(default_factory=SeparateBreakOptimizeDesConfig)
+
+
+class SeparateBreakApplyRequest(BaseModel):
+    """Re-run placement server-side; break times are never taken from the client."""
+
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
+
+    target_rho: float = Field(gt=0, le=1)
+    max_shift_minutes: StrictInt = Field(ge=0, le=240, multiple_of=15)
+    setup_hash: str = Field(min_length=1, max_length=128)
+    dataset_id: StrictInt
 
 
 def _finite_non_negative(value: Any) -> bool:
@@ -1144,7 +1159,7 @@ def run_separate_break_optimize(
     if not isinstance(records, list) or not records:
         raise HTTPException(status_code=422, detail="This Analysis has no Current evidence.")
     try:
-        return optimize_separate_breaks(
+        result = optimize_separate_breaks(
             setup,
             records,
             target=payload.target_rho,
@@ -1154,6 +1169,66 @@ def run_separate_break_optimize(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {**result, "setup_hash": _setup_fingerprint(analysis.queue_setup_json), "dataset_id": dataset.id}
+
+
+BREAK_SETUP_STALE_DETAIL = "Setup changed since this proposal was made. Run the break optimizer again."
+BREAK_DATA_STALE_DETAIL = "The data changed since this proposal was made. Run the break optimizer again."
+BREAK_NOTHING_DETAIL = "Nothing to apply: no break moves."
+
+
+@router.post(
+    "/{analysis_id}/workflow/optimize/separate/breaks/apply",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def apply_separate_breaks(
+    analysis_id: int,
+    payload: SeparateBreakApplyRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Write the break optimizer's proposed start times into the Setup.
+
+    Placement (no DES) re-runs on the current Setup and latest valid dataset,
+    which must be the ones the proposal was made on. Only each break's
+    ``scheduled_start_time`` changes; queue, duration, name, and list order
+    stay exactly as configured. Earlier evidence then fails its setup_hash.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    setup = analysis.queue_setup_json or {}
+    if setup.get("queue_structure") != "separate_queues":
+        raise HTTPException(status_code=422, detail="Break optimization is available for separate queues.")
+    if payload.setup_hash != _setup_fingerprint(analysis.queue_setup_json):
+        raise HTTPException(status_code=409, detail=BREAK_SETUP_STALE_DETAIL)
+    if payload.dataset_id != _current_valid_dataset_id(db, user, analysis):
+        raise HTTPException(status_code=409, detail=BREAK_DATA_STALE_DETAIL)
+    records = _current_dataset(db, user, analysis).normalized_json or []
+    if not isinstance(records, list) or not records:
+        raise HTTPException(status_code=422, detail="This Analysis has no Current evidence.")
+    breaks = list(setup.get("breaks") or [])
+    try:
+        slots, shifts = slot_inputs_from_setup(setup, records)
+        placed = place_breaks(slots, shifts, breaks, [str(q) for q in setup.get("queue_ids") or []],
+                              target=payload.target_rho, max_shift_minutes=payload.max_shift_minutes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not placed["moves"]:
+        raise HTTPException(status_code=409, detail=BREAK_NOTHING_DETAIL)
+    # proposed_breaks is in Setup list order (place_breaks sorts by original index).
+    updated = [
+        {**entry, "scheduled_start_time": proposed["scheduled_start_time"]} if proposed["shift_minutes"] else entry
+        for entry, proposed in zip(breaks, placed["proposed_breaks"], strict=True)
+    ]
+    try:
+        validated = QueueSetup.model_validate({**setup, "breaks": updated})
+    except ValueError as exc:  # pragma: no cover - placement keeps valid clock times
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    analysis.queue_setup_json = validated.model_dump(mode="json")
+    analysis.setup_status = setup_status(validated)
+    analysis.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(analysis)
+    return {"analysis": analysis_out(analysis), "moves_applied": len(placed["moves"])}
 
 
 def _json_number(value: Any) -> float | None:

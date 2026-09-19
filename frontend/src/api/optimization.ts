@@ -1,6 +1,6 @@
 import planningDefaults from './planning-defaults.json'
 import { http } from '../lib/http'
-import type { SegmentInput, OptimizationOut, SeparateSchedule } from './types'
+import type { AnalysisProjectOut, SegmentInput, OptimizationOut, SeparateSchedule } from './types'
 
 export interface OptimizeOptions {
   target_utilization?: number
@@ -136,6 +136,10 @@ export interface BreakOptimizeResult {
     }
   }
   notes: string[]
+  /** Fingerprint of the Setup the proposal used; Apply is refused if it changed. */
+  setup_hash: string
+  /** Dataset the proposal used; Apply is refused unless it is still the latest valid one. */
+  dataset_id: number
 }
 
 export async function optimizeSeparateBreaks(
@@ -145,6 +149,25 @@ export async function optimizeSeparateBreaks(
   const { data } = await http.post<BreakOptimizeResult>(
     `/analyses/${analysisId}/workflow/optimize/separate/breaks`,
     options,
+  )
+  return data
+}
+
+export interface BreakApplyRequest {
+  target_rho: number
+  max_shift_minutes: number
+  setup_hash: string
+  dataset_id: number
+}
+
+/** The server re-runs placement and writes only the break start times into Setup. */
+export async function applySeparateBreaks(
+  analysisId: number,
+  body: BreakApplyRequest,
+): Promise<{ analysis: AnalysisProjectOut; moves_applied: number }> {
+  const { data } = await http.post<{ analysis: AnalysisProjectOut; moves_applied: number }>(
+    `/analyses/${analysisId}/workflow/optimize/separate/breaks/apply`,
+    body,
   )
   return data
 }

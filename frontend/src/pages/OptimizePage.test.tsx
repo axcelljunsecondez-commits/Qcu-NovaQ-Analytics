@@ -10,6 +10,7 @@ const getDatasetMock = vi.fn()
 const optimizeBatchMock = vi.fn()
 const optimizeSeparateMock = vi.fn()
 const optimizeSeparateBreaksMock = vi.fn()
+const applySeparateBreaksMock = vi.fn()
 const createScenarioMock = vi.fn()
 const listScenariosMock = vi.fn()
 const getAnalysisMock = vi.fn()
@@ -26,6 +27,7 @@ vi.mock('../api/optimization', () => ({
   optimizeBatch: (...args: unknown[]) => optimizeBatchMock(...args),
   optimizeSeparate: (...args: unknown[]) => optimizeSeparateMock(...args),
   optimizeSeparateBreaks: (...args: unknown[]) => optimizeSeparateBreaksMock(...args),
+  applySeparateBreaks: (...args: unknown[]) => applySeparateBreaksMock(...args),
   DEFAULT_OPTIONS: {
     target_utilization: 0.7,
     server_cost_per_hr: 87,
@@ -105,6 +107,7 @@ beforeEach(() => {
   optimizeBatchMock.mockReset()
   optimizeSeparateMock.mockReset()
   optimizeSeparateBreaksMock.mockReset()
+  applySeparateBreaksMock.mockReset()
   createScenarioMock.mockReset()
   listScenariosMock.mockReset()
   getAnalysisMock.mockReset()
@@ -729,6 +732,8 @@ describe('break schedule optimizer', () => {
       comparison: { mean_wait_change_minutes: -1.75, proposed_better_runs: 2, runs: 2 },
     },
     notes: [],
+    setup_hash: 'hash-1',
+    dataset_id: 1,
   }
 
   it('hides the break optimizer for shared queues and shows the note', async () => {
@@ -792,6 +797,81 @@ describe('break schedule optimizer', () => {
     expect(await screen.findByText('No clear difference in waits')).toBeInTheDocument()
     expect(screen.getByText('Wait change -2.00 min (no 95% range from a single simulated day)')).toBeInTheDocument()
     expect(screen.queryByText('Shorter waits with the proposed breaks')).not.toBeInTheDocument()
+  })
+
+  const applyButton = { name: 'Apply to Setup' }
+
+  it('hides Apply to Setup when the proposal has no moves', async () => {
+    const user = userEvent.setup()
+    optimizeSeparateBreaksMock.mockResolvedValue({ ...result, status: 'no_improvement', moves: [] })
+    renderAt('separate_queues')
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    expect(await screen.findByText('Peak utilization: no cashier working → 0.80')).toBeInTheDocument()
+    expect(screen.queryByRole('button', applyButton)).not.toBeInTheDocument()
+  })
+
+  it('confirms with the list of moves, applies, and invalidates analysis and evidence', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    optimizeSeparateBreaksMock.mockResolvedValue(result)
+    applySeparateBreaksMock.mockResolvedValue({ analysis: { id: 7 }, moves_applied: 1 })
+    const { queryClient } = renderAt('separate_queues')
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    await user.click(await screen.findByRole('button', applyButton))
+    const message = confirm.mock.calls[0][0] as string
+    expect(message).toContain('c2 · Break 1: 10:00 → 11:00')
+    expect(message).not.toContain('c1 ·')
+    expect(message).toContain('This replaces the break times in Setup. Earlier Current, Simulation and Decision results will need to be rerun.')
+    await waitFor(() => expect(applySeparateBreaksMock).toHaveBeenCalledWith(
+      7, { target_rho: 0.85, max_shift_minutes: 120, setup_hash: 'hash-1', dataset_id: 1 },
+    ))
+    expect(await screen.findByText('Setup updated with the proposed breaks. Rerun the workflow from Current.')).toBeInTheDocument()
+    for (const key of [['analysis', 7], ['workflow', 7], ['current', 7], ['separate-comparison', 7]]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: key })
+    }
+    expect(screen.queryByRole('button', applyButton)).not.toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('disables Apply with a note when the proposal is not on the latest dataset', async () => {
+    const user = userEvent.setup()
+    listDatasetsMock.mockResolvedValue({ datasets: [{ ...dataset, id: 2, name: 'newer' }, dataset] })
+    optimizeSeparateBreaksMock.mockResolvedValue(result)
+    renderAt('separate_queues')
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Suggest break times' }))
+    await waitFor(() => expect(optimizeSeparateBreaksMock).toHaveBeenCalledWith(
+      7, expect.objectContaining({ dataset_id: 1 }),
+    ))
+    expect(await screen.findByRole('button', applyButton)).toBeDisabled()
+    expect(screen.getByText('Apply is available for proposals made on the latest dataset.')).toBeInTheDocument()
+  })
+
+  it('does not apply when the confirmation is cancelled', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    optimizeSeparateBreaksMock.mockResolvedValue(result)
+    renderAt('separate_queues')
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    await user.click(await screen.findByRole('button', applyButton))
+    expect(applySeparateBreaksMock).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('shows the server message when the Setup changed (409)', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const stale = 'Setup changed since this proposal was made. Run the break optimizer again.'
+    optimizeSeparateBreaksMock.mockResolvedValue(result)
+    applySeparateBreaksMock.mockRejectedValue({ response: { status: 409, data: { detail: stale } } })
+    renderAt('separate_queues')
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    await user.click(await screen.findByRole('button', applyButton))
+    expect(await screen.findByRole('alert')).toHaveTextContent(stale)
+    expect(screen.queryByText('Setup updated with the proposed breaks. Rerun the workflow from Current.')).not.toBeInTheDocument()
+    confirm.mockRestore()
   })
 })
 
