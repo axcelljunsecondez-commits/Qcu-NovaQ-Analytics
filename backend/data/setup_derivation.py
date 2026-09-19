@@ -23,6 +23,7 @@ from openpyxl.styles import Font
 from pydantic import ValidationError
 
 from backend.api.analysis_schemas import (
+    STORED_SETUP,
     AbandonmentMode,
     CapacityMode,
     EventPeriodBasis,
@@ -288,7 +289,7 @@ def derive_setup(sheets: dict[str, pd.DataFrame | None], saved_setup: dict | Non
     if errors:
         return result
 
-    saved = QueueSetup.model_validate(saved_setup or {})
+    saved = QueueSetup.model_validate(saved_setup or {}, context=STORED_SETUP)
     varies = staff is not None and any(set(seg["active_queue_ids"] or []) != set(queue_ids) for seg in segments)
     keep_capacity = saved.capacity_mode != CapacityMode.unknown
     keep_abandonment = saved.abandonment_mode != AbandonmentMode.unknown
@@ -323,7 +324,7 @@ def derive_setup(sheets: dict[str, pd.DataFrame | None], saved_setup: dict | Non
 
 def setup_diff(saved_setup: dict | None, derived_setup: dict) -> list[dict]:
     """Fields whose saved and derived values differ, in display order."""
-    saved = QueueSetup.model_validate(saved_setup or {}).model_dump(mode="json")
+    saved = QueueSetup.model_validate(saved_setup or {}, context=STORED_SETUP).model_dump(mode="json")
     derived = QueueSetup.model_validate(derived_setup).model_dump(mode="json")
     return [{"field": name, "saved": saved[name], "derived": derived[name]}
             for name in DIFF_FIELDS if saved[name] != derived[name]]
@@ -331,7 +332,7 @@ def setup_diff(saved_setup: dict | None, derived_setup: dict) -> list[dict]:
 
 def setup_workbook(setup_json: dict) -> bytes:
     """``staff`` and ``breaks`` sheets written from the Setup (re-upload derives it again)."""
-    setup = QueueSetup.model_validate(setup_json or {})
+    setup = QueueSetup.model_validate(setup_json or {}, context=STORED_SETUP)
     if setup.queue_structure != QueueStructure.separate_queues:
         raise SetupExportError("The setup workbook is available for separate queues.")
     staff_rows: list[list] = []

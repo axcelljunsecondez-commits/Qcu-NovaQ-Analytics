@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.api.analysis_schemas import QueueSetup, setup_status, unknown_queue_setup
+from backend.api.analysis_schemas import STORED_SETUP, QueueSetup, setup_status, unknown_queue_setup
 from backend.api.datasets import _to_out as dataset_out
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.scenarios import _to_out as scenario_out
@@ -58,17 +58,18 @@ class AnalysisOut(BaseModel):
 
 
 def _to_out(analysis: AnalysisProject) -> dict:
-    return AnalysisOut(
-        id=analysis.id,
-        name=analysis.name,
-        service_type=analysis.service_type,
-        location_label=analysis.location_label,
-        queue_setup=QueueSetup.model_validate(analysis.queue_setup_json),
-        setup_status=analysis.setup_status,
-        archived_at=analysis.archived_at,
-        created_at=analysis.created_at,
-        updated_at=analysis.updated_at,
-    ).model_dump(mode="json")
+    # A stored Setup is read back without the new-input break checks.
+    return AnalysisOut.model_validate({
+        "id": analysis.id,
+        "name": analysis.name,
+        "service_type": analysis.service_type,
+        "location_label": analysis.location_label,
+        "queue_setup": analysis.queue_setup_json,
+        "setup_status": analysis.setup_status,
+        "archived_at": analysis.archived_at,
+        "created_at": analysis.created_at,
+        "updated_at": analysis.updated_at,
+    }, context=STORED_SETUP).model_dump(mode="json")
 
 
 def own_analysis(db: Session, user: User, analysis_id: int) -> AnalysisProject:
@@ -208,7 +209,8 @@ def upload_analysis_dataset(
                 max_dataframe_bytes=settings.upload_max_dataframe_bytes,
             )
         )
-        records, provenance = normalize_analysis_input(frame, QueueSetup.model_validate(analysis.queue_setup_json))
+        stored = QueueSetup.model_validate(analysis.queue_setup_json, context=STORED_SETUP)
+        records, provenance = normalize_analysis_input(frame, stored)
     except (uploads.UploadError, AnalysisIngestionError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     safe_filename = uploads.safe_stem(file.filename or "upload")
@@ -303,7 +305,7 @@ def preview_analysis_dataset(
     sheets = _read_setup_sheets(file.filename or "", data, settings)
     if sheets is None:
         return {"mode": "legacy"}
-    saved = QueueSetup.model_validate(analysis.queue_setup_json or {}).model_dump(mode="json")
+    saved = QueueSetup.model_validate(analysis.queue_setup_json or {}, context=STORED_SETUP).model_dump(mode="json")
     derivation = derive_setup(sheets, saved)
     diff = setup_diff(saved, derivation.setup) if derivation.setup is not None else []
     return {

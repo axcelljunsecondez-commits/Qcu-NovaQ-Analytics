@@ -11,9 +11,14 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
+    ValidationInfo,
     model_serializer,
     model_validator,
 )
+
+# Validation context for a Setup read back from storage: the break-schedule
+# checks apply to new input only, so an older saved Analysis still loads.
+STORED_SETUP = {"stored_setup": True}
 
 
 class QueueStructure(str, Enum):
@@ -112,7 +117,7 @@ class QueueSetup(BaseModel):
     event_period_basis: EventPeriodBasis = EventPeriodBasis.per_date
 
     @model_validator(mode="after")
-    def validate_dependencies(self) -> QueueSetup:
+    def validate_dependencies(self, info: ValidationInfo) -> QueueSetup:
         if self.queue_structure == QueueStructure.single_server:
             if self.staffing_varies_by_period:
                 raise ValueError("A single-server queue cannot vary staffing by period.")
@@ -193,7 +198,66 @@ class QueueSetup(BaseModel):
                     "Fixed separate-queue staffing keeps all configured queues active; "
                     "active_queue_ids must match queue_ids for: " + ", ".join(conflicting)
                 )
+        if self.breaks and not (info.context or {}).get("stored_setup"):
+            _validate_break_schedule(self)
         return self
+
+
+def _minutes(value: datetime_time) -> float:
+    return value.hour * 60 + value.minute + value.second / 60
+
+
+def _clock(minutes: float) -> str:
+    return f"{int(minutes) // 60:02d}:{int(minutes) % 60:02d}"
+
+
+def _shift_runs(setup: QueueSetup, queue_id: str) -> list[tuple[float, float]]:
+    """Continuous runs of segments in which ``queue_id`` is scheduled active."""
+    runs: list[tuple[float, float]] = []
+    for segment in sorted(setup.segments, key=lambda item: item.start_time):
+        active = segment.active_queue_ids if segment.active_queue_ids is not None else setup.queue_ids
+        if queue_id not in active:
+            continue
+        low, high = _minutes(segment.start_time), _minutes(segment.end_time)
+        if runs and runs[-1][1] == low:
+            runs[-1] = (runs[-1][0], high)
+        else:
+            runs.append((low, high))
+    return runs
+
+
+def _validate_break_schedule(setup: QueueSetup) -> None:
+    """The three-sheet upload's break rules (``setup_derivation.derive_setup``).
+
+    A break must lie inside one continuous run of its cashier's active
+    segments (the operating day when staffing is fixed), and one cashier's
+    breaks must not overlap. Different cashiers may overlap. Without
+    segments there is no shift to check, so only the overlap rule applies.
+    """
+    by_queue: dict[str, list[QueueBreak]] = {}
+    for entry in setup.breaks:
+        by_queue.setdefault(entry.queue_id, []).append(entry)
+    where = "its shift" if setup.staffing_varies_by_period else "the operating day"
+    for queue_id, entries in by_queue.items():
+        ordered = sorted(entries, key=lambda item: item.scheduled_start_time)
+        for previous, current in zip(ordered, ordered[1:]):
+            if _minutes(current.scheduled_start_time) < (
+                    _minutes(previous.scheduled_start_time) + previous.duration_minutes):
+                raise ValueError(
+                    f"Breaks for {queue_id} overlap: {_clock(_minutes(previous.scheduled_start_time))} "
+                    f"({previous.duration_minutes} minutes) and {_clock(_minutes(current.scheduled_start_time))} "
+                    f"({current.duration_minutes} minutes).")
+        if not setup.segments:
+            continue
+        runs = _shift_runs(setup, queue_id)
+        for entry in ordered:
+            start = _minutes(entry.scheduled_start_time)
+            end = start + entry.duration_minutes
+            if not any(low <= start and end <= high for low, high in runs):
+                spans = ", ".join(f"{_clock(low)}–{_clock(high)}" for low, high in runs) or "none"
+                raise ValueError(
+                    f"The {queue_id} break at {_clock(start)} for {entry.duration_minutes} minutes "
+                    f"is outside {where} {spans}.")
 
 
 def setup_status(setup: QueueSetup) -> str:
