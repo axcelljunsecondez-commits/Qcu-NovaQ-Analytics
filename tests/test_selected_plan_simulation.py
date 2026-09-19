@@ -278,6 +278,17 @@ def test_scenario_change_stales_old_simulation_evidence(db_engine, client):
     assert workflow["mc"] is None
 
 
+def test_workflow_exposes_selected_plan_schema_for_page_routing(db_engine, client):
+    # The Simulation page shows the Separate-plan view only when it can see
+    # settings.calculation.schema_version == 2 on the selected scenario.
+    analysis_id, _, scenario_id = _workspace(db_engine, "u@example.com")
+    login(client, "u@example.com", "pw")
+    assert _select(client, analysis_id, scenario_id).status_code == 200
+    workflow = client.get(f"/analyses/{analysis_id}/workflow",
+                          headers=csrf_header(client)).json()
+    assert workflow["scenario"]["settings"]["calculation"]["schema_version"] == 2
+
+
 def test_simulation_runs_leave_scenario_immutable_and_reproducible(db_engine, client):
     from backend.db.models import Scenario as _Scenario
 

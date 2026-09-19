@@ -577,6 +577,8 @@ def _current_evidence(
             "name": scenario.name,
             "dataset_id": scenario.dataset_id,
             "provenance": "verified_snapshot",
+            # The page routes a schema-v2 Separate plan to its own view.
+            "settings": scenario.settings_json or {},
         } if scenario else None,
         "des": _job_out(des),
         "des_current": _job_out(des_current),
