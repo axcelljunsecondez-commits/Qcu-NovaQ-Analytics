@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from backend.queueing_engine.simulation.simulation import (
     simulate_segments,
     simulate_segments_with_trace,
@@ -128,7 +130,7 @@ def test_parallel_des_long_stable_case_matches_pollaczek_khinchine():
         simulated_wq.append(result["Wq_sim"])
     mean_simulated_wq = sum(simulated_wq) / len(simulated_wq)
     assert rho < 1.0
-    assert analytical_wq == 0.03571428571428571
+    assert analytical_wq == pytest.approx(0.03571428571428571)
     assert abs(mean_simulated_wq - analytical_wq) < 0.02
 
 
