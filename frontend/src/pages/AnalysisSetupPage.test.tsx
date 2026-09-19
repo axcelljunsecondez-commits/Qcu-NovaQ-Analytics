@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import type { QueueSetup } from '../api/types'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
 
 const getAnalysisMock = vi.fn()
+const patchMock = vi.fn()
 const uploadMock = vi.fn()
 const previewMock = vi.fn()
 const downloadMock = vi.fn()
 
 vi.mock('../api/analyses', () => ({
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
-  patchAnalysis: vi.fn(),
+  patchAnalysis: (...args: unknown[]) => patchMock(...args),
   listAnalysisDatasets: vi.fn(async () => ({ datasets: [] })),
   getAnalysisCurrent: vi.fn(),
   uploadAnalysisDataset: (...args: unknown[]) => uploadMock(...args),
@@ -106,6 +107,7 @@ async function uploadFile(name: string) {
 
 beforeEach(() => {
   getAnalysisMock.mockReset().mockResolvedValue(analysisWith(unknownSetup))
+  patchMock.mockReset().mockResolvedValue({ analysis: { id: 7 } })
   uploadMock.mockReset().mockResolvedValue(dataset)
   previewMock.mockReset().mockResolvedValue(preview())
   downloadMock.mockReset().mockResolvedValue(undefined)
@@ -194,5 +196,34 @@ describe('setup workbook export and break labels', () => {
     renderPage()
     const editor = (await screen.findByRole('heading', { name: 'Server break schedule' })).closest('.card') as HTMLElement
     expect(within(editor).getAllByTestId('break-label').map((node) => node.textContent)).toEqual(['Break 2', 'Break 1', 'Lunch'])
+  })
+})
+
+describe('time segment checks', () => {
+  // A saved Setup returns times as HH:MM:SS; new or edited segments hold HH:MM.
+  async function renderSaved() {
+    getAnalysisMock.mockResolvedValue(analysisWith(derived))
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: 'Add time segment' })
+    return user
+  }
+
+  it('saves touching segments when saved and new times use different formats', async () => {
+    const user = await renderSaved()
+    await user.click(screen.getByRole('button', { name: 'Add time segment' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchMock).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('Time segments cannot overlap.')).not.toBeInTheDocument()
+  })
+
+  it('still blocks segments that really overlap', async () => {
+    const user = await renderSaved()
+    await user.click(screen.getByRole('button', { name: 'Add time segment' }))
+    fireEvent.change(screen.getByLabelText('Start time', { selector: '#segment-start-2' }), { target: { value: '06:30' } })
+    fireEvent.change(screen.getByLabelText('End time', { selector: '#segment-end-2' }), { target: { value: '07:30' } })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Time segments cannot overlap.')).toBeInTheDocument()
+    expect(patchMock).not.toHaveBeenCalled()
   })
 })

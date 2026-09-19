@@ -126,9 +126,11 @@ export function AnalysisSetupPage() {
     }
     if (setup.queue_structure === 'separate_queues' && setup.staffing_varies_by_period && setup.segments.some((segment) => !segment.active_queue_ids?.length)) return t('analyses.active_queue_required')
     if (setup.queue_structure === 'separate_queues' && (setup.breaks ?? []).some((entry) => !entry.queue_id.trim() || !entry.scheduled_start_time || !Number.isFinite(entry.duration_minutes) || entry.duration_minutes <= 0)) return t('analyses.break_invalid')
-    const ordered = [...setup.segments].sort((left, right) => left.start_time.localeCompare(right.start_time))
-    if (ordered.some((segment) => !segment.start_time || !segment.end_time || segment.end_time <= segment.start_time)) return t('analyses.segment_time_error')
-    if (ordered.slice(1).some((segment, index) => segment.start_time < ordered[index].end_time)) return t('analyses.segment_overlap_error')
+    // Saved times arrive as HH:MM:SS, typed ones as HH:MM; compare on HH:MM only.
+    const hhmm = (value: string) => value.slice(0, 5)
+    const ordered = [...setup.segments].sort((left, right) => hhmm(left.start_time).localeCompare(hhmm(right.start_time)))
+    if (ordered.some((segment) => !segment.start_time || !segment.end_time || hhmm(segment.end_time) <= hhmm(segment.start_time))) return t('analyses.segment_time_error')
+    if (ordered.slice(1).some((segment, index) => hhmm(segment.start_time) < hhmm(ordered[index].end_time))) return t('analyses.segment_overlap_error')
     return null
   }
   function submit(event: FormEvent) {
