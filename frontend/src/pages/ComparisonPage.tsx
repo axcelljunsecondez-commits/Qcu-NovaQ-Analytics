@@ -136,16 +136,36 @@ function SeparateComparisonView({ analysisId }: { analysisId: number }) {
                   </tr>
                   <tr>
                     <th scope="row">{t('compare.sep_row_peak')}</th>
-                    <td>{formatPercent(data.current.util_max)}</td>
+                    <td>
+                      {formatPercent(data.current.util_max)}
+                      {data.current.wait_basis_kind === 'analytical' && (
+                        <small style={{ display: 'block', color: 'var(--text-secondary)' }}>{t('compare.sep_basis_current_model')}</small>
+                      )}
+                    </td>
                     {data.plans.map((plan) => (
-                      <td key={plan.scenario_id}>{formatPercent(plan.totals?.peak_util ?? null)}</td>
+                      <td key={plan.scenario_id}>
+                        {formatPercent(plan.totals?.peak_util ?? null)}
+                        {plan.wait_basis_kind === 'simulation' && (
+                          <small style={{ display: 'block', color: 'var(--text-secondary)' }}>{t('compare.sep_basis_plan')}</small>
+                        )}
+                      </td>
                     ))}
                   </tr>
                   <tr>
                     <th scope="row">{t('compare.sep_row_waiting_cost')}</th>
-                    <td>{formatMetric(data.current.waiting_cost)}</td>
+                    <td>
+                      {formatMetric(data.current.waiting_cost)}
+                      {data.current.wait_basis_kind === 'analytical' && (
+                        <small style={{ display: 'block', color: 'var(--text-secondary)' }}>{t('compare.sep_basis_current_model')}</small>
+                      )}
+                    </td>
                     {data.plans.map((plan) => (
-                      <td key={plan.scenario_id}>{formatMetric(plan.totals?.waiting_cost_mean ?? null)}</td>
+                      <td key={plan.scenario_id}>
+                        {formatMetric(plan.totals?.waiting_cost_mean ?? null)}
+                        {plan.wait_basis_kind === 'simulation' && (
+                          <small style={{ display: 'block', color: 'var(--text-secondary)' }}>{t('compare.sep_basis_plan')}</small>
+                        )}
+                      </td>
                     ))}
                   </tr>
                   <tr>

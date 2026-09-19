@@ -145,3 +145,16 @@ Refines (does not rewrite) the 2026-09-13 separate-queue conflict note. Tree-ver
 ## Problem 6B Freeze - Separate-Queue MC/Validation Semantics
 
 Separate MC/Validation stay unavailable until proven. Frozen contract: `docs/superpowers/specs/2026-09-17-separate-mc-validation-semantics.md` — per-row `(time, queue_id)` execution, existing math/CI/failure definition reused unchanged, no pooled failure rates, missing stays missing, Decision taxonomy unchanged.
+
+## Separate-Queue Status (2026-09-19, supersedes the "STILL LIMITED" and "unsupported" notes above)
+
+The notes above are kept as history. Verified in source and tests at 9b1f95a4:
+
+- Workflow: Setup → Current → Optimize → Compare → Simulate → Decision → Reports.
+- Current: each (time, queue_id) is analysed on its own through centralized model selection (analytical estimate, not a measurement).
+- Staffing optimization: `POST /analyses/{id}/workflow/optimize/separate`. Fewer-lane sets have no analytical model, so each period's candidates are judged by replicated routing DES (shortest-queue routing, one server per lane) over the operating day. A candidate is feasible when its highest mean lane utilization is at or below the target. Feasible means meeting the target, not a statistically proven improvement.
+- Break optimization (separate from staffing optimization): `POST .../optimize/separate/breaks` (read-only) and `.../breaks/apply`. Placement is greedy, so the result is a local improvement, not a proven global optimum.
+- Selected-plan evidence: `.../simulation/des/selected` (with playback trace), `.../simulation/mc/selected`, `.../simulation/validation/selected`, `.../decision/selected`.
+- Compare: Current values are analytical and plan values are simulated. Waits, waiting costs and peak utilization are labelled with their basis and never subtracted. Current total cost, savings and ROI are N/A, with the reason shown.
+- Model scope: the separate-queue DES has no finite capacity and no abandonment (`abandonment_supported: false`). K and theta affect only the per-lane analytical Current rows.
+- Known finding: the selected-plan Monte Carlo Decision depends on the base seed for NovaMart with breaks applied (cashier_2 at 13:00 passes on seeds 7-8 and fails on 9-11). It is recorded as a strict xfail in `tests/test_selected_mc_load.py` and not yet fixed.

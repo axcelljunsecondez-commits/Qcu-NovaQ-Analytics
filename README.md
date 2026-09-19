@@ -14,6 +14,8 @@ Production queueing-analytics platform for analyzing service queues with M/M/1, 
 - Compare scenarios and export PDF/Excel reports.
 - English and Filipino (tl) localization.
 
+**Separate cashier queues:** Current is analysed per queue with the models above. Staffing and break plans are evaluated with a replicated routing simulation that has no finite capacity and no abandonment. Analytical Current and simulated plan values are shown side by side with their basis labelled; savings and ROI are not computed across the two bases.
+
 ## Architecture
 
 | Component | Tech | Endpoint |

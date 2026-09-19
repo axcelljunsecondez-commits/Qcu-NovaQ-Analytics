@@ -586,7 +586,12 @@ describe('separate comparison', () => {
     const waitRow = screen.getByRole('rowheader', { name: 'Modeled waiting (demand-weighted mean, min)' }).parentElement as HTMLElement
     expect(waitRow).toHaveTextContent('Modeled current wait (analytical)')
     expect(waitRow).toHaveTextContent('Simulation (replicated DES)')
-    expect(screen.getByText('Current and plan waits use different methods; they are not subtracted or ranked.')).toBeInTheDocument()
+    for (const name of ['Peak utilization', 'Waiting cost']) {
+      const row = screen.getByRole('rowheader', { name }).parentElement as HTMLElement
+      expect(row).toHaveTextContent('Analytical model (Current)')
+      expect(row).toHaveTextContent('Simulation (replicated DES)')
+    }
+    expect(screen.getByText('Current and plan waits, waiting costs and peak utilization use different methods; they are not subtracted or ranked, and a lower plan value is not a saving.')).toBeInTheDocument()
     expect(container.textContent).not.toMatch(/better|improvement|shorter by/i)
     expect(screen.queryByText('Observed wait')).not.toBeInTheDocument()
     expect(screen.queryByText(banner)).not.toBeInTheDocument()

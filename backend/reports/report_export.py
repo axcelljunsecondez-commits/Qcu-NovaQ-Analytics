@@ -304,9 +304,9 @@ def generate_separate_pdf_report(model: dict) -> io.BytesIO:
 
     elements.append(Paragraph(headings[3], h2))
     for label, value in [
-        ("Current waiting cost", _money(cost.get("current_waiting"))),
+        ("Current waiting cost (analytical)", _money(cost.get("current_waiting"))),
         ("Selected staffing cost", _money(cost.get("selected_staffing"))),
-        ("Selected waiting cost", _money(cost.get("selected_waiting"))),
+        ("Selected waiting cost (simulation)", _money(cost.get("selected_waiting"))),
         ("Selected total modeled cost", _money(cost.get("selected_total"))),
         ("Savings", "N/A"),
         ("ROI", "N/A"),
@@ -513,10 +513,10 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
          ", ".join(decision.get("failed_periods") or []) or "N/A")
 
     ws_cost = _sheet("Cost", ["Metric", "Value"])
-    _put(ws_cost, 2, "Current waiting cost", cost.get("current_waiting"), money_fmt)
+    _put(ws_cost, 2, "Current waiting cost (analytical)", cost.get("current_waiting"), money_fmt)
     _put(ws_cost, 3, "Current total modeled cost", cost.get("current_total"))
     _put(ws_cost, 4, "Selected staffing cost", cost.get("selected_staffing"), money_fmt)
-    _put(ws_cost, 5, "Selected waiting cost", cost.get("selected_waiting"), money_fmt)
+    _put(ws_cost, 5, "Selected waiting cost (simulation)", cost.get("selected_waiting"), money_fmt)
     _put(ws_cost, 6, "Selected total modeled cost", cost.get("selected_total"), money_fmt)
     _put(ws_cost, 7, "Savings", cost.get("savings"))
     _put(ws_cost, 8, "ROI", cost.get("roi"))

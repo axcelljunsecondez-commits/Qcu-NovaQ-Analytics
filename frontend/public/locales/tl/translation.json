@@ -182,7 +182,7 @@
   "reports.sep_row_roi_reason": "Bakit",
   "reports.sep_row_current_total": "Current total modeled cost",
   "reports.sep_row_selected_total": "Selected total modeled cost",
-  "reports.sep_row_waiting": "Waiting cost",
+  "reports.sep_row_waiting": "Kasalukuyang waiting cost (analytical)",
   "reports.sep_limitations": "Mga limitasyon",
   "reports.sep_provenance": "Provenance",
   "reports.sep_cost_title": "Ebidensya ng gastos",
@@ -989,7 +989,8 @@
   "current.observed_banner": "Mas mahaba nang malaki ang naobserbahang paghihintay kaysa sa maipapaliwanag ng trabaho ng mga cashier. Inilalarawan ng mga resulta ang modeled na sistema; suriin kung paano naitala ang mga paghihintay.",
   "compare.sep_basis_current": "Modeled na kasalukuyang paghihintay (analytical)",
   "compare.sep_basis_plan": "Simulation (replicated DES)",
-  "compare.sep_basis_no_difference": "Magkaibang paraan ang ginamit sa paghihintay ng Current at ng mga plan; hindi sila pinagbabawas o niraranggo.",
+  "compare.sep_basis_no_difference": "Magkaibang paraan ang ginamit sa paghihintay, waiting cost at peak utilization ng Current at ng mga plan; hindi sila pinagbabawas o niraranggo, at ang mas mababang value ng plan ay hindi savings.",
+  "compare.sep_basis_current_model": "Analytical na modelo (Current)",
   "simulation.sep_mc_threshold_plan": "Failure threshold (target ng plan: {{target}})",
   "simulation.sep_mc_threshold_below_target": "Mas mababa ang threshold na ito kaysa sa target ng plan, kaya maaaring mag-fail ang mga lane na sadyang pinuno ng plan hanggang sa target nito."
 }
