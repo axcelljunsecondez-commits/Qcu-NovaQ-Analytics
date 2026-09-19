@@ -116,3 +116,61 @@ def test_novamart_optimizer_peaks_match_the_continuous_day():
         expected = max(mean(min(1.0, lane["rho"]) for lane in day[(period["time"], queue_id)])
                        for queue_id in lanes)
         assert candidate["candidate_utilization"] == pytest.approx(expected), period["time"]
+
+
+# --- The day must be laid out or the schedule is rejected (finding K2) -----------------
+
+def _no_break_setup(basis="representative_day"):
+    return {**_setup(basis), "breaks": []}
+
+
+def _assert_rejected(schedule, *reason_parts):
+    assert schedule["overall"] == "INVALID_INPUT"
+    assert schedule["periods"] == []
+    assert "utilization_basis" not in schedule
+    for part in reason_parts:
+        assert part in schedule["reason"]
+
+
+def test_period_labels_missing_from_the_segments_are_rejected_not_run_for_24_hours(monkeypatch):
+    # Setup renamed the segment ids without re-uploading: records keep the old labels.
+    setup = _no_break_setup()
+    setup["segments"] = [{**segment, "id": f"renamed-{segment['id']}"} for segment in setup["segments"]]
+    per_period_calls = []
+    monkeypatch.setattr(sep, "evaluate_candidate_with_des",
+                        lambda *args, **kwargs: per_period_calls.append(args))
+    _assert_rejected(_schedule(setup), "10:00, 11:00, 12:00", "match no configured operating segment")
+    assert per_period_calls == []
+
+
+def test_one_unmatched_period_rejects_the_whole_day():
+    records = [{**row, "time": "13:00", "segment_id": "13:00"} if row["time"] == "12:00" else row
+               for row in _records()]
+    _assert_rejected(_schedule(_no_break_setup(), records), "period(s) 13:00 match")
+
+
+def test_representative_day_without_segments_is_rejected():
+    setup = {**_no_break_setup(), "segments": []}
+    _assert_rejected(_schedule(setup), "needs configured operating segments")
+
+
+def test_representative_day_with_a_malformed_segment_end_is_rejected():
+    setup = _no_break_setup()
+    setup["segments"] = [*setup["segments"][:2], {**setup["segments"][2], "end_time": "noon"}]
+    _assert_rejected(_schedule(setup), "invalid start or end time")
+
+
+def test_per_date_basis_with_unmatched_labels_is_unchanged():
+    setup = _no_break_setup("per_date")
+    setup["segments"] = [{**segment, "id": f"renamed-{segment['id']}"} for segment in setup["segments"]]
+    schedule = _schedule(setup)
+    assert schedule["overall"] != "INVALID_INPUT"
+    assert [p["time"] for p in schedule["periods"]] == list(LABELS)
+    assert "utilization_basis" not in schedule
+
+
+
+def test_rejection_survives_the_pruning_the_optimize_api_returns():
+    setup = _no_break_setup()
+    setup["segments"] = [{**segment, "id": f"renamed-{segment['id']}"} for segment in setup["segments"]]
+    _assert_rejected(sep.prune_separate_schedule(_schedule(setup)), "match no configured operating segment")

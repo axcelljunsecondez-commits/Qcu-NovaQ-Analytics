@@ -1654,17 +1654,25 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
     Validation. A lane's utilization is its busy time in the period over the
     period length (clamped at 1 as in ``evaluate_candidate_with_des``);
     waiting cost keeps the ``served / horizon * Wq * rate`` formula with the
-    period as the horizon. Each seed's day runs once and is cached. Returns
-    None when the day cannot be laid out (existing per-period runs apply).
+    period as the horizon. Each seed's day runs once and is cached. Raises
+    ValueError when the day cannot be laid out; the caller rejects the
+    schedule rather than falling back to 24 h per-period runs (finding K2).
     """
     origin = des_day_start_minutes(queue_setup)
     if origin is None:
-        return None
-    segment_windows = {key: (low, high) for key, low, high in
-                       (_segment_window(seg) for seg in queue_setup.get("segments") or []
-                        if isinstance(seg, dict))}
-    if any(label not in segment_windows for label in order):
-        return None
+        raise ValueError("Representative-day optimization needs configured operating segments "
+                         "to lay out the operating day.")
+    try:
+        segment_windows = {key: (low, high) for key, low, high in
+                           (_segment_window(seg) for seg in queue_setup.get("segments") or []
+                            if isinstance(seg, dict))}
+    except (TypeError, ValueError):
+        raise ValueError("Representative-day optimization cannot lay out the operating day: "
+                         "an operating segment has an invalid start or end time.") from None
+    unmatched = [label for label in order if label not in segment_windows]
+    if unmatched:
+        raise ValueError("Representative-day optimization cannot lay out the operating day: "
+                         f"period(s) {', '.join(unmatched)} match no configured operating segment.")
     windows = []
     for label in order:
         low, high = segment_windows[label]
@@ -1804,8 +1812,14 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             scaled_rows = {label: [{**row, "lambda": float(row["lambda"]) * factor
                                     if _is_number(row.get("lambda")) else row.get("lambda")}
                                    for row in grouped[label]] for label in order}
-            day_run_fn = _day_candidate_runner(
-                queue_setup, order, scaled_rows, {label: list(lanes or []) for label, lanes in scheduled.items()})
+            try:
+                day_run_fn = _day_candidate_runner(
+                    queue_setup, order, scaled_rows,
+                    {label: list(lanes or []) for label, lanes in scheduled.items()})
+            except ValueError as exc:
+                return {"overall": "INVALID_INPUT", "reason": str(exc),
+                        "target_utilization": ceiling, "evaluation_method": None,
+                        "periods": [], "des": settings}
     periods: list[dict] = []
     for label in order:
         period_rows = []
