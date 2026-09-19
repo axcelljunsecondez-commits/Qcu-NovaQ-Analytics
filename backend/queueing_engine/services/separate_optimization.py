@@ -1638,6 +1638,118 @@ def _period_current_active(queue_setup: dict, period_rows: list) -> list[str] | 
     return configured
 
 
+DAY_UTILIZATION_BASIS = "continuous-day DES"
+
+
+def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict[str, list],
+                          scheduled: dict[str, list[str]]):
+    """A ``run_fn`` that reads each period's replication from one continuous-day DES.
+
+    Finding K: a period run alone for ``duration_hours`` (24 h) dilutes a
+    break that fills that period. Here replication ``i`` of every period
+    comes from the same day run (``run_routing_day_des`` with that
+    replication's seed and the setup's breaks), as in selected-plan
+    Validation. A lane's utilization is its busy time in the period over the
+    period length (clamped at 1 as in ``evaluate_candidate_with_des``);
+    waiting cost keeps the ``served / horizon * Wq * rate`` formula with the
+    period as the horizon. Each seed's day runs once and is cached. Returns
+    None when the day cannot be laid out (existing per-period runs apply).
+    """
+    origin = des_day_start_minutes(queue_setup)
+    if origin is None:
+        return None
+    segment_windows = {key: (low, high) for key, low, high in
+                       (_segment_window(seg) for seg in queue_setup.get("segments") or []
+                        if isinstance(seg, dict))}
+    if any(label not in segment_windows for label in order):
+        return None
+    windows = []
+    for label in order:
+        low, high = segment_windows[label]
+        windows.append({"time": label, "start_hours": (low - origin) / 60.0,
+                        "end_hours": (high - origin) / 60.0,
+                        "active_queue_ids": list(scheduled[label]),
+                        "queues_by_id": {str(row.get("queue_id")): row for row in period_rows[label]}})
+    tie_order = [str(queue_id) for queue_id in queue_setup.get("queue_ids") or []]
+    day_breaks = resolve_des_breaks(queue_setup)
+    days: dict[Any, dict] = {}
+
+    def run(candidate, queues_by_id, *, duration_hours, seed, target, server_cost, waiting_cost,
+            max_events):
+        label = candidate.get("time")
+        active = list(candidate.get("active_queue_ids") or [])
+        available = list(candidate.get("available_queue_ids") or [])
+        base = {"time": label, "available_queue_ids": available, "active_queue_ids": active,
+                "inactive_queue_ids": list(candidate.get("inactive_queue_ids") or []),
+                "target_utilization": target}
+        if label not in scheduled or set(active) != set(scheduled[label]):
+            return {**base, "status": "INVALID_INPUT",
+                    "reason": "Continuous-day evaluation needs the scheduled lanes of every period.",
+                    "evaluations": None, "total_cost": None}
+        if seed not in days:
+            try:
+                days[seed] = run_routing_day_des(windows, tie_order=tie_order, seed=seed,
+                                                 max_events=max_events, breaks=day_breaks)
+            except ValueError as exc:
+                days[seed] = {"error": str(exc)}
+        day = days[seed]
+        if "error" in day:
+            return {**base, "status": "INVALID_INPUT", "reason": day["error"],
+                    "evaluations": None, "total_cost": None}
+        period = next(item for item in day["periods"] if item["time"] == label)
+        horizon = period["duration_hours"]
+        evaluations = []
+        for lane in period["lanes"]:
+            queue_id = lane["queue_id"]
+            if queue_id not in available:
+                continue
+            row = queues_by_id.get(queue_id) or {}
+            if queue_id in active:
+                samples = _validated_samples(row) or []
+                evaluations.append({
+                    "queue_id": queue_id, "active": True, "lambda": row.get("lambda"),
+                    "lambda_routed_sim": lane["lambda_routed_sim"],
+                    "mu": len(samples) / sum(samples) if samples else row.get("mu"), "c": 1,
+                    "server_id": lane["server_id"], "arrivals": lane["arrivals"],
+                    "served": lane["served"], "waiting": max(0, lane["arrivals"] - lane["served"]),
+                    "in_service": 0, "Wq": lane["Wq"], "rho": min(1.0, lane["rho"]),
+                    "stable": bool(lane["rho"] < 1.0), "max_queue": lane["max_queue"]})
+            else:
+                evaluations.append({
+                    "queue_id": queue_id, "active": False, "lambda": row.get("lambda"),
+                    "lambda_routed_sim": 0.0, "mu": row.get("mu"), "c": 1,
+                    "server_id": lane["server_id"], "arrivals": 0, "served": 0, "waiting": 0,
+                    "in_service": 0, "Wq": None, "rho": None, "stable": True, "max_queue": 0})
+        shared = {"evaluations": evaluations,
+                  "total_lambda": sum(float(queues_by_id[q].get("lambda") or 0.0) for q in active),
+                  "customer_conservation": day["customer_conservation"] is True,
+                  "metric_provenance": "simulated", "utilization_basis": DAY_UTILIZATION_BASIS,
+                  "seed": seed, "duration_hours": horizon,
+                  "trace_events": [e for e in day["trace_events"] if e.get("segment_id") == label],
+                  "trace_truncated": day["trace_truncated"]}
+        over_target = sorted(item["queue_id"] for item in evaluations if item["active"]
+                             and float(item["rho"]) > target + _UTILIZATION_TOLERANCE)
+        if over_target:
+            return {**base, **shared, "status": "INFEASIBLE", "total_cost": None,
+                    "reason": (f"Simulated utilization exceeds the {target:.0%} ceiling for: "
+                               + ", ".join(over_target) + ".")}
+        server_total = 0.0
+        waiting_total = 0.0
+        for item in evaluations:
+            if not item["active"]:
+                continue
+            server_total += _segment_server_cost(
+                _validate_queue_row(queues_by_id[item["queue_id"]]) or {}, server_cost)
+            if item["served"] and item["Wq"] is not None:
+                waiting_total += _compute_waiting_cost(
+                    item["served"] / horizon, item["Wq"], waiting_cost) or 0.0
+        return {**base, **shared, "status": "FEASIBLE", "reason": None,
+                "total_cost": server_total + waiting_total,
+                "server_cost": server_total, "waiting_cost": waiting_total, "demand_conserved": True}
+
+    return run
+
+
 def optimize_separate_schedule(queue_setup: dict, records: list, *, target: float | None,
                                server_cost: float = DEFAULT_SERVER_COST_HR,
                                waiting_cost: float = DEFAULT_WAIT_COST_HR,
@@ -1681,6 +1793,17 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             grouped[label] = []
             order.append(label)
         grouped[label].append(row)
+    # Finding K: representative-day full coverage reads every period from one
+    # continuous day per replication (see _day_candidate_runner).
+    day_run_fn = None
+    if run_fn is None and full_coverage and queue_setup.get("event_period_basis") == "representative_day":
+        scheduled = {label: _period_current_active(queue_setup, grouped[label]) for label in order}
+        if all(scheduled.values()):
+            scaled_rows = {label: [{**row, "lambda": float(row["lambda"]) * factor
+                                    if _is_number(row.get("lambda")) else row.get("lambda")}
+                                   for row in grouped[label]] for label in order}
+            day_run_fn = _day_candidate_runner(
+                queue_setup, order, scaled_rows, {label: list(lanes or []) for label, lanes in scheduled.items()})
     periods: list[dict] = []
     for label in order:
         period_rows = []
@@ -1709,7 +1832,7 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             label, period_rows, target=ceiling, min_lanes=period_min, max_lanes=max_lanes,
             current_active=len(current) if current else None,
             server_cost=server_cost, waiting_cost=waiting_cost,
-            des_replications=settings, run_fn=run_fn, breaks=period_breaks)
+            des_replications=settings, run_fn=day_run_fn or run_fn, breaks=period_breaks)
         optimum = result.get("optimum")
         optimal_count = optimum.get("active_lane_count") if optimum else None
         periods.append({
@@ -1727,11 +1850,13 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             "base_seed": result.get("base_seed"),
             "replication_seeds": result.get("replication_seeds"),
             "target_utilization": ceiling,
+            **({"utilization_basis": DAY_UTILIZATION_BASIS} if day_run_fn else {}),
         })
     methods = {period.get("evaluation_method") for period in periods}
     method = "DES_REPLICATIONS" if methods == {"DES_REPLICATIONS"} else None
     shell = {"target_utilization": ceiling, "evaluation_method": method,
-             "periods": periods, "des": settings}
+             "periods": periods, "des": settings,
+             **({"utilization_basis": DAY_UTILIZATION_BASIS} if day_run_fn else {})}
     bad_input = [str(p["time"]) for p in periods if p["overall"] == "INVALID_INPUT"]
     if bad_input:
         return {**shell, "overall": "INVALID_INPUT",
