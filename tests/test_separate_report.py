@@ -615,3 +615,50 @@ def test_report_with_forbidden_engines_disabled_still_succeeds(db_engine, client
         f"/reports/analyses/{analysis_id}/selected/excel", headers=headers).status_code == 200
     assert "validate_selected_plan" in inspect.getsource(workflow_api.run_selected_validation)
     assert "optimize_separate" not in inspect.getsource(reports_api)
+
+
+# --- Execution basis (finding K3) ------------------------------------------------------
+
+def _continuous_chain():
+    chain = _chain()
+    chain["analysis"] = {**chain["analysis"], "operating_day_hours": 13.0}
+    chain["schedule"] = {**chain["schedule"], "utilization_basis": "continuous-day DES",
+                         "des": {**chain["schedule"]["des"], "duration_hours": 24.0}}
+    return chain
+
+
+def test_continuous_day_schedule_reports_the_operating_day_not_the_24_hour_default():
+    model = build_separate_report_model(_continuous_chain())
+    assert model["optimization"]["duration_hours"] == 13.0
+    assert "continuous" in model["optimization"]["execution"]
+    assert "carry across periods" in model["optimization"]["execution"]
+    text = " ".join(model["limitations"])
+    assert "continuous run" in text
+    assert "queues and breaks carried across period boundaries" in text
+    assert "period-independent" not in text
+
+
+def test_continuous_day_without_a_derivable_day_is_unavailable_not_24():
+    chain = _continuous_chain()
+    chain["analysis"] = {**chain["analysis"], "operating_day_hours": None}
+    assert build_separate_report_model(chain)["optimization"]["duration_hours"] is None
+
+
+def test_per_date_schedule_keeps_the_period_independent_wording():
+    model = build_separate_report_model(_chain())
+    assert model["optimization"]["duration_hours"] == 8.0
+    assert model["optimization"]["execution"] == "period-independent; no cross-period carryover"
+    assert "continuous" not in " ".join(model["limitations"]).lower()
+
+
+def test_operating_day_hours_spans_the_novamart_periods():
+    from backend.api.reports import operating_day_hours
+    from backend.data.setup_derivation import derive_setup
+    from tests.test_setup_derivation import sheets
+
+    derived = derive_setup(sheets(), None)
+    assert derived.errors == []
+    labels = sorted({str(row["time"]) for row in derived.records})
+    schedule = {"periods": [{"time": label} for label in labels]}
+    assert operating_day_hours(derived.setup, schedule) == pytest.approx(13.0)
+    assert operating_day_hours(derived.setup, {"periods": [{"time": "no-such-period"}]}) is None

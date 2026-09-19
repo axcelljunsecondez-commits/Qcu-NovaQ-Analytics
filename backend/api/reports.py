@@ -25,6 +25,7 @@ from backend.queueing_engine.services.optimization import (
     summarize_optimization,
     unstable_current_reason,
 )
+from backend.queueing_engine.services.separate_optimization import _segment_window
 from backend.reports.report_export import current_only_blocked_lines, generate_excel_report, generate_pdf_report
 from backend.reports.separate_report import build_separate_report_model
 
@@ -99,6 +100,22 @@ def separate_break_overload_note(setup: dict, records: list | None) -> str | Non
 
 PDF_MEDIA_TYPE = "application/pdf"
 EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def operating_day_hours(setup: dict, schedule: dict) -> float | None:
+    """Length of the operating day the schedule's periods span, from the configured segments.
+
+    None when a period has no matching segment (never the 24 h candidate default).
+    """
+    try:
+        windows = {key: (low, high) for key, low, high in
+                   (_segment_window(seg) for seg in setup.get("segments") or [] if isinstance(seg, dict))}
+    except ValueError:
+        return None
+    labels = [str(p.get("time")) for p in schedule.get("periods") or [] if isinstance(p, dict)]
+    if not labels or any(label not in windows for label in labels):
+        return None
+    return (max(windows[label][1] for label in labels) - min(windows[label][0] for label in labels)) / 60.0
 
 
 def _own_dataset(db: Session, user: User, dataset_id: int, analysis_id: int | None = None) -> Dataset:
@@ -293,6 +310,7 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
             "queue_structure": setup.get("queue_structure"),
             "queue_ids": [str(q) for q in setup.get("queue_ids", [])],
             "closure_policy": setup.get("separate_queue_closure_policy"),
+            "operating_day_hours": operating_day_hours(setup, schedule),
         },
         "dataset": {
             "id": dataset.id,

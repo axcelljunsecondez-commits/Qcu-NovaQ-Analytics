@@ -174,9 +174,21 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
     )
     truncated_any = any(p["trace"].get("truncated") is True for p in des_periods)
 
+    # The optimizer marks a schedule whose candidates came from one continuous
+    # operating day per replication (representative-day basis, finding K).
+    continuous_day = schedule.get("utilization_basis") == "continuous-day DES"
+    operating_day_hours = _finite_or_none(analysis.get("operating_day_hours"))
+    if continuous_day:
+        execution_limitation = (
+            "Each optimization replication simulated the whole operating day as one continuous "
+            "run; queues and breaks carried across period boundaries, and each period's "
+            "utilization, waits and waiting cost come from that period's part of the day.")
+    else:
+        execution_limitation = (
+            "Each optimized period was simulated independently from an empty initial state "
+            "(period-independent execution); customer carryover between periods was not modeled.")
     limitations = [
-        "Each optimized period was simulated independently from an empty initial state "
-        "(period-independent execution); customer carryover between periods was not modeled.",
+        execution_limitation,
         "Optimized routing DES requires empirical service samples for every active lane.",
         "Replication count is a configurable product setting, not a statistical guarantee.",
         "Simulation estimates contain stochastic uncertainty; cost intervals are supporting evidence only.",
@@ -238,13 +250,16 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
             "evaluation_method": schedule.get("evaluation_method"),
             "replications": des_cfg.get("replications"),
             "base_seed": des_cfg.get("base_seed"),
-            "duration_hours": _finite_or_none(des_cfg.get("duration_hours")),
+            "duration_hours": (operating_day_hours if continuous_day
+                               else _finite_or_none(des_cfg.get("duration_hours"))),
             "routing_policy": "Arrivals were routed to the active queue with the smallest "
                               "live system size (waiting + in service), with seeded fair "
                               "handling of ties.",
             "arrival_method": "single conserved Poisson stream at total lambda",
             "service_sampling": "empirical per-lane resampling",
-            "execution": "period-independent; no cross-period carryover",
+            "execution": ("continuous operating day per replication; queues and breaks "
+                          "carry across periods" if continuous_day
+                          else "period-independent; no cross-period carryover"),
         },
         "comparison_plans": [
             {"scenario_id": p.get("scenario_id"), "name": p.get("name"),
