@@ -8,13 +8,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
-
 from backend.api.scenarios import setup_fingerprint
 from backend.db.models import AnalysisProject, Dataset, Job
 from tests.helpers import create_user, csrf_header, login, make_sessionmaker
 from tests.test_break_optimize_api import SHARED_NOTE, _run, _setup, _workspace
-from tests.test_setup_derivation import novamart_workbook
+from tests.test_setup_derivation import expected_novamart_setup, novamart_workbook
 from tests.test_upload_setup_api import _analysis, _upload
 
 STALE = "Setup changed since this proposal was made. Run the break optimizer again."
@@ -40,6 +38,10 @@ def _dataset_id(db_engine, analysis_id) -> int:
 def _stored_setup(db_engine, analysis_id) -> dict:
     with make_sessionmaker(db_engine)() as db:
         return db.get(AnalysisProject, analysis_id).queue_setup_json
+
+
+def _minutes(clock: str) -> int:
+    return int(clock[:2]) * 60 + int(clock[3:5])
 
 
 def _named_setup() -> dict:
@@ -82,8 +84,14 @@ def test_apply_keeps_names_durations_and_order(db_engine, client):
     assert proposal["moves"]
     assert _apply(client, analysis_id, _from(proposal)).status_code == 200
     stored = _stored_setup(db_engine, analysis_id)["breaks"]
-    strip = [{k: v for k, v in b.items() if k != "scheduled_start_time"} for b in stored]
-    assert strip == [{k: v for k, v in b.items() if k != "scheduled_start_time"} for b in setup["breaks"]]
+    kept = ("scheduled_start_time", "original_start_time")
+    strip = [{k: v for k, v in b.items() if k not in kept} for b in stored]
+    assert strip == [{k: v for k, v in b.items() if k not in kept} for b in setup["breaks"]]
+    for before, after, proposed in zip(setup["breaks"], stored, proposal["proposed_breaks"], strict=True):
+        if proposed["shift_minutes"]:
+            assert after["original_start_time"] == before["scheduled_start_time"]
+        else:
+            assert "original_start_time" not in after
     assert stored[0]["break_name"] == "Coffee" and "break_name" not in stored[1]
     assert [b["scheduled_start_time"] for b in stored] == [
         b["scheduled_start_time"] for b in proposal["proposed_breaks"]]
@@ -210,15 +218,20 @@ def test_novamart_apply_then_rerun_starts_from_the_earlier_after_peak(db_engine,
     assert second["peak_rho"]["after"] <= second["peak_rho"]["before"]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "R12: placement is not idempotent — each run's ±max_shift window is measured from the current "
-    "Setup, so repeated apply can move breaks beyond the original ±120 min (NovaMart: 2 applies, "
-    "peak 0.6253→0.5507, cashier_5 lunch 12:00→15:00); fixed-point placement anchored to "
-    "original times is a separate fix."))
 def test_novamart_apply_then_rerun_reports_no_moves(db_engine, client):
     first, _, second = _novamart_apply_and_rerun(db_engine, client)
     assert second["moves"] == []
     assert second["peak_rho"]["after"] == first["peak_rho"]["after"]
+    assert second["peak_rho"]["after"] <= 0.6253
+    originals = [b["scheduled_start_time"] for b in expected_novamart_setup()["breaks"]]
+    finals = [b["scheduled_start_time"] for b in second["proposed_breaks"]]
+    distance = [abs(_minutes(f) - _minutes(o)) for f, o in zip(finals, originals, strict=True)]
+    assert max(distance) <= 120
+    print(f"\nNovaMart R12: first peak {first['peak_rho']} passes={first['passes']} "
+          f"moves={len(first['moves'])} "
+          f"{[(m['queue_id'], m['label'], m['from'], m['to']) for m in first['moves']]} "
+          f"rerun moves={len(second['moves'])} rerun passes={second['passes']} "
+          f"max distance={max(distance)} min")
 
 
 def test_new_upload_between_optimize_and_apply_is_409(db_engine, client):
@@ -235,3 +248,53 @@ def test_new_upload_between_optimize_and_apply_is_409(db_engine, client):
     assert response.status_code == 409
     assert response.json()["detail"] == DATA_STALE
     assert _stored_setup(db_engine, analysis_id) == setup
+
+
+# --- R12: original_start_time anchor ------------------------------------------------------
+
+
+def test_apply_sets_the_anchor_only_on_moved_breaks(db_engine, client):
+    analysis_id, setup = _workspace(db_engine)
+    login(client, "brk@example.com", "pw")
+    proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
+    assert _apply(client, analysis_id, _from(proposal)).status_code == 200
+    stored = _stored_setup(db_engine, analysis_id)["breaks"]
+    assert any(p["shift_minutes"] for p in proposal["proposed_breaks"])
+    for before, after, proposed in zip(setup["breaks"], stored, proposal["proposed_breaks"], strict=True):
+        if proposed["shift_minutes"]:
+            assert after["original_start_time"] == before["scheduled_start_time"]
+        else:
+            assert "original_start_time" not in after
+
+
+def test_apply_never_overwrites_an_existing_anchor(db_engine, client):
+    anchored = _setup(breaks=[
+        {"queue_id": "a", "scheduled_start_time": "10:00:00", "duration_minutes": 30,
+         "original_start_time": "09:30:00"},
+        {"queue_id": "b", "scheduled_start_time": "10:00:00", "duration_minutes": 30},
+    ])
+    analysis_id, _ = _workspace(db_engine, setup=anchored)
+    login(client, "brk@example.com", "pw")
+    proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
+    assert proposal["moves"]
+    assert _apply(client, analysis_id, _from(proposal)).status_code == 200
+    stored = _stored_setup(db_engine, analysis_id)["breaks"]
+    assert stored[0]["original_start_time"] == "09:30:00"
+    for entry, proposed in zip(stored, proposal["proposed_breaks"], strict=True):
+        anchor = entry.get("original_start_time", "10:00:00")
+        assert abs(_minutes(proposed["scheduled_start_time"]) - _minutes(anchor)) <= 120
+
+
+def test_anchor_round_trips_and_is_omitted_when_absent(db_engine, client):
+    create_user(db_engine, "anchor@example.com", "pw")
+    login(client, "anchor@example.com", "pw")
+    plain = _analysis(client, _setup())
+    assert all("original_start_time" not in b for b in plain["queue_setup"]["breaks"])
+    explicit_null = _setup(breaks=[{"queue_id": "a", "scheduled_start_time": "10:00:00", "duration_minutes": 30,
+                                    "original_start_time": None}])
+    assert "original_start_time" not in _analysis(client, explicit_null)["queue_setup"]["breaks"][0]
+    anchored = {**_setup(), "breaks": [{"queue_id": "a", "scheduled_start_time": "11:00:00",
+                                        "duration_minutes": 30, "original_start_time": "10:00"}]}
+    patched = client.patch(f"/analyses/{plain['id']}", headers=csrf_header(client), json={"queue_setup": anchored})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["analysis"]["queue_setup"]["breaks"][0]["original_start_time"] == "10:00:00"

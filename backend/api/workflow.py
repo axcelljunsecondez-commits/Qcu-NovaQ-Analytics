@@ -1217,8 +1217,12 @@ def apply_separate_breaks(
     if not placed["moves"]:
         raise HTTPException(status_code=409, detail=BREAK_NOTHING_DETAIL)
     # proposed_breaks is in Setup list order (place_breaks sorts by original index).
+    # A moved break keeps its first anchor; without one, its pre-apply start
+    # becomes the anchor, so later runs cannot drift beyond ±max_shift of it.
     updated = [
-        {**entry, "scheduled_start_time": proposed["scheduled_start_time"]} if proposed["shift_minutes"] else entry
+        {**entry, "scheduled_start_time": proposed["scheduled_start_time"],
+         "original_start_time": entry.get("original_start_time") or entry.get("scheduled_start_time")}
+        if proposed["shift_minutes"] else entry
         for entry, proposed in zip(breaks, placed["proposed_breaks"], strict=True)
     ]
     try:

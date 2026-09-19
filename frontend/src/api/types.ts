@@ -131,6 +131,8 @@ export interface QueueBreak {
   scheduled_start_time: string
   duration_minutes: number
   break_name?: string | null
+  /** Baseline start set by the break optimizer's Apply; its move window is measured from it. */
+  original_start_time?: string | null
 }
 
 export interface SetupStaffRow {

@@ -42,6 +42,15 @@ export function BreakEditor({ queueIds, breaks, onChange }: BreakEditorProps) {
     onChange(breaks.map((entry, position) => (position === index ? { ...entry, ...update } : entry)))
   }
 
+  // A typed start is the store's new baseline, so the optimizer's anchor is dropped.
+  function updateStart(index: number, scheduled_start_time: string) {
+    onChange(breaks.map((entry, position) => {
+      if (position !== index) return entry
+      const { original_start_time: _anchor, ...rest } = entry
+      return { ...rest, scheduled_start_time }
+    }))
+  }
+
   function remove(index: number) {
     onChange(breaks.filter((_, position) => position !== index))
   }
@@ -78,7 +87,7 @@ export function BreakEditor({ queueIds, breaks, onChange }: BreakEditorProps) {
               id={`break-start-${index}`}
               type="time"
               value={entry.scheduled_start_time}
-              onChange={(e) => update(index, { scheduled_start_time: e.target.value })}
+              onChange={(e) => updateStart(index, e.target.value)}
             />
           </div>
           <div className="form-field" style={{ flex: 1 }}>

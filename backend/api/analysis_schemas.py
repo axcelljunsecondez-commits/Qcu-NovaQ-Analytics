@@ -81,13 +81,17 @@ class QueueBreak(BaseModel):
     scheduled_start_time: datetime_time
     duration_minutes: int = Field(gt=0)
     break_name: str | None = Field(default=None, max_length=50)
+    # The store's baseline start, set once by the break optimizer's Apply; the
+    # optimizer's move window is measured from it. Editing the start clears it.
+    original_start_time: datetime_time | None = None
 
     @model_serializer(mode="wrap")
     def _omit_missing_name(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        # Unnamed breaks serialize exactly as before break_name existed.
+        # Unnamed/unanchored breaks serialize exactly as before these fields existed.
         data = handler(self)
-        if data.get("break_name") is None:
-            data.pop("break_name", None)
+        for key in ("break_name", "original_start_time"):
+            if data.get(key) is None:
+                data.pop(key, None)
         return data
 
 

@@ -239,3 +239,65 @@ def test_slot_inputs_reject_per_date_off_grid_split_shift_no_breaks():
     split[2]["active_queue_ids"] = ["a", "b"]
     with pytest.raises(ValueError, match="more than one shift"):
         bo.slot_inputs_from_setup({**setup, "segments": split}, records)
+
+
+# --- R12: anchored window + fixed-point passes ---------------------------------------------
+
+
+def _clock_of(minutes: int) -> str:
+    return f"{minutes // 60:02d}:{minutes % 60:02d}:00"
+
+
+def _anchored(proposed, current):
+    """Proposed starts as the next Setup, anchored at the original starts (what Apply stores)."""
+    return [{"queue_id": p["queue_id"], "scheduled_start_time": p["scheduled_start_time"],
+             "duration_minutes": p["duration_minutes"], "original_start_time": c["scheduled_start_time"]}
+            for p, c in zip(proposed, current)]
+
+
+def test_one_run_reaches_a_fixed_point():
+    result = _place()
+    again = bo.place_breaks(_reference_slots(), SHIFTS, _anchored(result["proposed_breaks"], CURRENT), QUEUES)
+    assert again["moves"] == []
+    assert again["peak_rho"]["before"] == result["peak_rho"]["after"]
+    assert result["pass_cap_reached"] is False
+    assert result["passes"] >= 1
+
+
+def test_every_proposed_start_stays_within_the_window_of_the_anchor():
+    result = _place()
+    for before, after in zip(CURRENT, result["proposed_breaks"]):
+        assert abs(_m(after["scheduled_start_time"]) - _m(before["scheduled_start_time"])) <= 120
+    # A Setup already moved late by an earlier apply can never drift further from its anchor.
+    drifted = [dict(b, scheduled_start_time=_clock_of(_m(b["scheduled_start_time"]) + 60),
+                    original_start_time=b["scheduled_start_time"]) for b in CURRENT]
+    moved = bo.place_breaks(_reference_slots(), SHIFTS, drifted, QUEUES)
+    for entry, after in zip(drifted, moved["proposed_breaks"]):
+        assert abs(_m(after["scheduled_start_time"]) - _m(entry["original_start_time"])) <= 120
+
+
+def test_window_is_measured_from_original_start_time():
+    slots = [{"start": s, "end": s + 15, "lambda": 2.0, "mu": 5.0} for s in range(480, 960, 15)]
+    slots = [dict(s, **{"lambda": 8.0}) if 720 <= s["start"] < 780 else s for s in slots]  # 12:00-13:00 hot
+    shifts = {"a": (480, 960), "b": (480, 960)}
+    entry = dict(_brk("a", "12:00", 30), original_start_time="10:00:00")
+    result = bo.place_breaks(slots, shifts, [entry], ["a", "b"], max_shift_minutes=30)
+    start = _m(result["proposed_breaks"][0]["scheduled_start_time"])
+    assert 570 <= start <= 630                                   # 10:00 +/- 30, not 12:00 +/- 30
+    assert result["proposed_breaks"][0]["current_start_time"] == "12:00:00"
+    assert [m["from"] for m in result["moves"]] == ["12:00"]
+
+
+def test_peak_never_increases_between_passes():
+    result = _place()
+    peaks = result["pass_peak_rho"]
+    assert len(peaks) == result["passes"]
+    assert all(later <= earlier for earlier, later in zip(peaks, peaks[1:]))
+    assert peaks[-1] == result["peak_rho"]["after"]
+
+
+def test_pass_cap_is_reported():
+    capped = _place(max_passes=1)
+    assert capped["passes"] == 1
+    assert capped["pass_cap_reached"] is True
+    assert bo.MAX_PLACEMENT_PASSES == 10

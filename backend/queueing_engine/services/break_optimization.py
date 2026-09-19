@@ -30,6 +30,7 @@ SLOT_MINUTES = 15
 EDGE_MINUTES = 60
 DEFAULT_TARGET_RHO = 0.85
 DEFAULT_MAX_SHIFT_MINUTES = 120
+MAX_PLACEMENT_PASSES = 10
 _TOL = 1e-9
 
 NOTES = [
@@ -78,8 +79,14 @@ def _parse_breaks(breaks: list[dict], shifts: dict) -> list[dict]:
         duration = entry.get("duration_minutes")
         if isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration <= 0:
             raise ValueError(f"Break for {queue_id} needs a positive duration in minutes.")
+        original = entry.get("original_start_time")
+        try:
+            anchor = start if original in (None, "") else _minutes(original)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Break for {queue_id} has an invalid original_start_time: {original!r}.") from None
         parsed.append({"index": index, "queue_id": queue_id, "start": start, "duration": float(duration),
-                       "raw_duration": duration})
+                       "raw_duration": duration, "anchor": anchor})
     return parsed
 
 
@@ -119,30 +126,21 @@ def _better(score: float, tie: tuple, best: tuple[float, tuple] | None) -> bool:
     return score < best_score
 
 
-def place_breaks(slots: list[dict], shifts: dict, breaks: list[dict], queue_order: list[str], *,
-                 target: float = DEFAULT_TARGET_RHO,
-                 max_shift_minutes: int = DEFAULT_MAX_SHIFT_MINUTES,
-                 edge_minutes: int = EDGE_MINUTES,
-                 step_minutes: int = SLOT_MINUTES) -> dict:
-    """Greedy break placement (spec §Placement algorithm).
+def _placement_pass(slots: list[dict], shifts: dict, schedule: list[dict], position: dict, *,
+                    max_shift_minutes: int, edge_minutes: int, step_minutes: int) -> list[dict]:
+    """One greedy pass from ``schedule`` (the pass input), in Setup list order.
 
     Breaks are placed one at a time onto an empty schedule: longest first,
-    then queue order, then current start. Each candidate start
-    (current ± k·step, |k·step| ≤ max_shift_minutes) is scored by the day's
-    peak slot rho with only already-placed breaks; ties go to the smallest
-    move, then the earlier start. A candidate must lie inside the cashier's
-    shift outside its first/last ``edge_minutes`` and keep order without
-    overlap against the cashier's already-placed breaks.
+    then queue order, then input start. Each candidate start
+    (anchor ± k·step, |k·step| ≤ max_shift_minutes, where the anchor is the
+    break's original start) is scored by the day's peak slot rho with only
+    already-placed breaks; ties go to the smallest move from the input start,
+    then the earlier start. A candidate must lie inside the cashier's shift
+    outside its first/last ``edge_minutes`` and keep order without overlap
+    against the cashier's already-placed breaks.
     """
-    if not (isinstance(target, (int, float)) and not isinstance(target, bool) and 0 < target <= 1):
-        raise ValueError("Target utilization must be greater than 0 and at most 1.")
-    if (isinstance(max_shift_minutes, bool) or not isinstance(max_shift_minutes, int)
-            or max_shift_minutes < 0 or max_shift_minutes % step_minutes):
-        raise ValueError(f"The maximum move must be a non-negative multiple of {step_minutes} minutes.")
-    current = _parse_breaks(breaks, shifts)
-    position = {queue_id: rank for rank, queue_id in enumerate(queue_order)}
-    order = sorted(current, key=lambda b: (-b["duration"], position.get(b["queue_id"], len(position)),
-                                           b["start"], b["index"]))
+    order = sorted(schedule, key=lambda b: (-b["duration"], position.get(b["queue_id"], len(position)),
+                                            b["start"], b["index"]))
     steps = max_shift_minutes // step_minutes
     placed: list[dict] = []
     for item in order:
@@ -151,7 +149,7 @@ def place_breaks(slots: list[dict], shifts: dict, breaks: list[dict], queue_orde
         best: tuple[float, tuple] | None = None
         best_start = None
         for k in range(-steps, steps + 1):
-            start = item["start"] + k * step_minutes
+            start = item["anchor"] + k * step_minutes
             end = start + item["duration"]
             if start < low + edge_minutes - _TOL or end > high - edge_minutes + _TOL:
                 continue
@@ -166,7 +164,7 @@ def place_breaks(slots: list[dict], shifts: dict, breaks: list[dict], queue_orde
                 continue
             candidate = {**item, "start": start}
             score = _peak(slot_rho(slots, shifts, placed + [candidate]))
-            tie = (abs(k), start)
+            tie = (abs(start - item["start"]), start)
             if _better(score, tie, best):
                 best, best_start = (score, tie), start
         if best_start is None:
@@ -175,15 +173,58 @@ def place_breaks(slots: list[dict], shifts: dict, breaks: list[dict], queue_orde
                 f"within ±{max_shift_minutes} minutes, inside the shift, and outside the first and last "
                 f"{edge_minutes} minutes of the shift.")
         placed.append({**item, "start": best_start, "start_current": item["start"]})
+    return [{key: value for key, value in entry.items() if key != "start_current"}
+            for entry in sorted(placed, key=lambda b: b["index"])]
 
+
+def place_breaks(slots: list[dict], shifts: dict, breaks: list[dict], queue_order: list[str], *,
+                 target: float = DEFAULT_TARGET_RHO,
+                 max_shift_minutes: int = DEFAULT_MAX_SHIFT_MINUTES,
+                 edge_minutes: int = EDGE_MINUTES,
+                 step_minutes: int = SLOT_MINUTES,
+                 max_passes: int = MAX_PLACEMENT_PASSES) -> dict:
+    """Greedy break placement repeated to a fixed point (spec §Placement algorithm; R12).
+
+    Each pass (``_placement_pass``) re-places every break starting from the
+    previous pass's result, always inside the window around the break's
+    ORIGINAL start (``original_start_time``, else the current start), so
+    breaks never drift beyond ±max_shift_minutes however often they are
+    applied. A pass is kept only when it strictly lowers the day's peak rho;
+    otherwise the previous schedule stands and it is the fixed point, so the
+    peak never increases between passes. The fixed point is a local optimum
+    of these greedy passes within the anchored window, not a proven global
+    optimum. At most ``max_passes`` passes run; ``pass_cap_reached`` reports
+    a run that stopped without confirming a fixed point. Moves and current
+    times are reported against the schedule at the start of the run.
+    """
+    if not (isinstance(target, (int, float)) and not isinstance(target, bool) and 0 < target <= 1):
+        raise ValueError("Target utilization must be greater than 0 and at most 1.")
+    if (isinstance(max_shift_minutes, bool) or not isinstance(max_shift_minutes, int)
+            or max_shift_minutes < 0 or max_shift_minutes % step_minutes):
+        raise ValueError(f"The maximum move must be a non-negative multiple of {step_minutes} minutes.")
+    if isinstance(max_passes, bool) or not isinstance(max_passes, int) or max_passes < 1:
+        raise ValueError("The pass limit must be a positive whole number.")
+    current = _parse_breaks(breaks, shifts)
+    position = {queue_id: rank for rank, queue_id in enumerate(queue_order)}
     before_rows = slot_rho(slots, shifts, current)
-    proposed = sorted(placed, key=lambda b: b["index"])
-    after_rows = slot_rho(slots, shifts, proposed)
-    peak_before, peak_after = _peak(before_rows), _peak(after_rows)
+    peak_before = _peak(before_rows)
+    schedule, peak_after = current, peak_before
+    pass_peaks: list[float] = []
+    converged = False
+    while len(pass_peaks) < max_passes:
+        candidate = _placement_pass(slots, shifts, schedule, position, max_shift_minutes=max_shift_minutes,
+                                    edge_minutes=edge_minutes, step_minutes=step_minutes)
+        candidate_peak = _peak(slot_rho(slots, shifts, candidate))
+        moved = any(abs(new["start"] - old["start"]) > _TOL for new, old in zip(candidate, schedule))
+        if not moved or not candidate_peak < peak_after - _TOL:
+            pass_peaks.append(peak_after)
+            converged = True
+            break
+        schedule, peak_after = candidate, candidate_peak
+        pass_peaks.append(peak_after)
     improved = peak_after < peak_before - _TOL
-    if not improved:
-        proposed = [{**b, "start_current": b["start"]} for b in current]
-        after_rows, peak_after = before_rows, peak_before
+    after_rows = slot_rho(slots, shifts, schedule)
+    proposed = [{**entry, "start_current": start["start"]} for entry, start in zip(schedule, current)]
 
     labels: dict[int, str] = {}
     for queue_id in shifts:
@@ -230,6 +271,9 @@ def place_breaks(slots: list[dict], shifts: dict, breaks: list[dict], queue_orde
         "peak_rho": {"before": _finite(peak_before), "after": _finite(peak_after)},
         "slots_above_target": {"before": above(before_rows), "after": above(after_rows)},
         "staffing_gaps": gaps,
+        "passes": len(pass_peaks),
+        "pass_cap_reached": not converged,
+        "pass_peak_rho": [_finite(value) for value in pass_peaks],
     }
 
 
@@ -436,6 +480,7 @@ def optimize_separate_breaks(setup: dict, records: list, *, target: float = DEFA
 __all__ = [
     "DEFAULT_MAX_SHIFT_MINUTES",
     "DEFAULT_TARGET_RHO",
+    "MAX_PLACEMENT_PASSES",
     "compare_break_schedules_des",
     "optimize_separate_breaks",
     "place_breaks",

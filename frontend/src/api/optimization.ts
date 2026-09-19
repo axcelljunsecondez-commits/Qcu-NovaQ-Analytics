@@ -124,6 +124,12 @@ export interface BreakOptimizeResult {
   peak_rho: { before: number | null; after: number | null }
   slots_above_target: { before: number; after: number }
   staffing_gaps: Array<{ start: string; end: string; on_shift: number; rho_no_breaks: number | null }>
+  /** Greedy placement passes run, including the one confirming the fixed point. */
+  passes: number
+  /** True when placement stopped at the pass limit before confirming a fixed point. */
+  pass_cap_reached: boolean
+  /** Peak rho after each pass (never increasing); null when nobody is working. */
+  pass_peak_rho: Array<number | null>
   des: {
     seeds: number[]
     current: BreakDesSchedule
