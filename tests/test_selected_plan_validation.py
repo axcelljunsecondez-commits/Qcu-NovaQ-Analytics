@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from backend.api.scenarios import setup_fingerprint
 from backend.api.workflow import validate_selected_plan
+from backend.queueing_engine.services.separate_optimization import SEPARATE_DES_ENGINE_VERSION
 from tests.helpers import csrf_header, login
 
 
@@ -167,7 +168,7 @@ def _api_calculation(dataset_id):
     }
     return {**options, "calculation": {
         "schema_version": 2,
-        "engine_version": "novaq-2026-09-separate-des-v1",
+        "engine_version": SEPARATE_DES_ENGINE_VERSION,
         "dataset_id": dataset_id, "dataset_row_count": 2,
         "options": options, "calculated_at": "2026-09-18T00:00:00+00:00",
         "setup_hash": setup_fingerprint(_setup())}}

@@ -564,7 +564,7 @@ describe('selected separate plan simulation', () => {
     name: 'Optimal @ 70%',
     dataset_id: 2,
     provenance: 'verified_snapshot',
-    settings: { calculation: { schema_version: 2, engine_version: 'novaq-2026-09-separate-des-v1' } },
+    settings: { calculation: { schema_version: 2, engine_version: 'novaq-2026-09-separate-des-v2' } },
   }
 
   const selectedLane = {
@@ -953,7 +953,7 @@ describe('selected separate plan simulation', () => {
 
   const targetScenario = {
     ...v2scenario,
-    settings: { calculation: { schema_version: 2, engine_version: 'novaq-2026-09-separate-des-v1', options: { target_utilization: 0.85 } } },
+    settings: { calculation: { schema_version: 2, engine_version: 'novaq-2026-09-separate-des-v2', options: { target_utilization: 0.85 } } },
   }
 
   it('starts the selected MC threshold at the plan target and lets the backend apply it', async () => {

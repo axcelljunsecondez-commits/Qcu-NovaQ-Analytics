@@ -674,7 +674,7 @@ export function OptimizePage() {
           ...inputOptions,
           calculation: {
             schema_version: 2,
-            engine_version: 'novaq-2026-09-separate-des-v1',
+            engine_version: 'novaq-2026-09-separate-des-v2',
             analysis_id: analysisId,
             dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
             dataset_row_count: sepSnapshot.rowCount,

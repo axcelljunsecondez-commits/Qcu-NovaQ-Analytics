@@ -663,7 +663,7 @@ describe('separate staffing optimization', () => {
     expect(createScenarioMock).toHaveBeenCalledTimes(1)
     const payload = createScenarioMock.mock.calls[0][0]
     expect(payload.settings.calculation.schema_version).toBe(2)
-    expect(payload.settings.calculation.engine_version).toBe('novaq-2026-09-separate-des-v1')
+    expect(payload.settings.calculation.engine_version).toBe('novaq-2026-09-separate-des-v2')
     expect(payload.results.schedule.overall).toBe('COMPLETE')
   })
 

@@ -340,3 +340,56 @@ def test_saved_separate_plan_without_setup_hash_is_stale(db_engine, client):
                 if p["scenario_id"] == legacy_id)
     assert plan["stale"] is True and plan["valid"] is False
     assert _select(client, analysis_id, legacy_id).status_code == 422
+
+
+PRE_DAY_DES_ENGINE_VERSION = "novaq-2026-09-separate-des-v1"
+
+
+def test_pre_day_des_engine_plan_is_unsupported_everywhere(db_engine, client):
+    # v1 snapshots were sized with 24 h per-period DES before 9b1f95a4; their
+    # utilization, wait and cost figures are not the current engine's.
+    analysis_id, dataset_id, scenario_id = _workspace(db_engine, "v1@example.com")
+    login(client, "v1@example.com", "pw")
+    assert _select(client, analysis_id, scenario_id).status_code == 200
+    with make_sessionmaker(db_engine)() as db:
+        scenario = db.get(Scenario, scenario_id)
+        settings = dict(scenario.settings_json)
+        settings["calculation"] = {**settings["calculation"],
+                                   "engine_version": PRE_DAY_DES_ENGINE_VERSION}
+        scenario.settings_json = settings
+        db.commit()
+    plan = next(p for p in _comparison(client, analysis_id).json()["plans"]
+                if p["scenario_id"] == scenario_id)
+    assert plan["stale"] is False
+    assert plan["valid"] is False
+    assert plan["valid_reason"] == "not a supported Separate optimization snapshot"
+    assert _select(client, analysis_id, scenario_id).status_code == 422
+    workflow = client.get(f"/analyses/{analysis_id}/workflow",
+                          headers=csrf_header(client)).json()
+    assert workflow["scenario"] is None
+    with make_sessionmaker(db_engine)() as db:
+        stored = db.get(Scenario, scenario_id)
+        assert stored.settings_json["calculation"]["engine_version"] == PRE_DAY_DES_ENGINE_VERSION
+        assert stored.results_json == {"schedule": _schedule()}
+
+
+def test_current_engine_plan_stays_valid_and_old_engine_snapshot_cannot_be_saved(db_engine, client):
+    from backend.api.scenarios import ScenarioIn, _verify_separate_calculation
+
+    analysis_id, dataset_id, scenario_id = _workspace(db_engine, "v2@example.com")
+    login(client, "v2@example.com", "pw")
+    plan = next(p for p in _comparison(client, analysis_id).json()["plans"]
+                if p["scenario_id"] == scenario_id)
+    assert SEPARATE_DES_ENGINE_VERSION != PRE_DAY_DES_ENGINE_VERSION
+    assert plan["valid"] is True and plan["stale"] is False
+    assert _select(client, analysis_id, scenario_id).status_code == 200
+    settings = _calculation(dataset_id)
+    settings["calculation"]["engine_version"] = PRE_DAY_DES_ENGINE_VERSION
+    payload = ScenarioIn(name="Old engine", dataset_id=dataset_id, analysis_id=analysis_id,
+                         settings=settings, results={"schedule": _schedule()})
+    try:
+        _verify_separate_calculation(payload)
+    except ValueError as exc:
+        assert "engine version" in str(exc)
+    else:
+        raise AssertionError("an old-engine snapshot was accepted")

@@ -62,7 +62,9 @@ from backend.queueing_engine.simulation.queue_lifecycle import (
 )
 
 # Engine version stamped on verified Separate-Queue DES optimization snapshots.
-SEPARATE_DES_ENGINE_VERSION = "novaq-2026-09-separate-des-v1"
+# v2: representative-day candidates are read from one continuous-day DES
+# (9b1f95a4); v1 snapshots hold 24 h per-period figures and are unsupported.
+SEPARATE_DES_ENGINE_VERSION = "novaq-2026-09-separate-des-v2"
 
 SEPARATE_MIN_UTILIZATION = 0.40
 SEPARATE_MAX_UTILIZATION = 0.90
