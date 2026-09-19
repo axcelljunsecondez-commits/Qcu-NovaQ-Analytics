@@ -208,7 +208,7 @@ jobs:
           docker compose -p novaq-ci -f docker-compose.integration.yml down -v
           mkdir -p "$NOVAQ_REHEARSAL_CERT_DIR"
           chmod 777 "$NOVAQ_REHEARSAL_CERT_DIR"
-          docker run --rm --entrypoint openssl -v "$NOVAQ_REHEARSAL_CERT_DIR:/certs" novaq-ci-api req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 -keyout /certs/localhost.key -out /certs/localhost.crt -subj /CN=localhost -addext subjectAltName=DNS:localhost -addext basicConstraints=critical,CA:TRUE
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 -keyout "$NOVAQ_REHEARSAL_CERT_DIR/localhost.key" -out "$NOVAQ_REHEARSAL_CERT_DIR/localhost.crt" -subj /CN=localhost -addext subjectAltName=DNS:localhost -addext basicConstraints=critical,CA:TRUE
           docker compose -p novaq-ci -f docker-compose.integration.yml -f docker-compose.rehearsal.yml up -d --no-build --wait --wait-timeout 180
       - name: Verify HTTPS, Secure cookies and CORS
         run: python scripts/stack_smoke.py --https --ca-file "$NOVAQ_REHEARSAL_CERT_DIR/localhost.crt"
