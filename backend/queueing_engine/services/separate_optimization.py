@@ -444,7 +444,9 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
     mirror ``evaluate_candidate``: FEASIBLE/INFEASIBLE carry measured evidence,
     UNSUPPORTED marks missing empirical inputs, INVALID_INPUT marks malformed
     data. Never fabricates numbers. An optional ``breaks`` candidate entry
-    carries pre-converted DES offset records for active lanes.
+    carries pre-converted DES offset records for active lanes. Both measured
+    verdicts return the run's ``trace_events``/``trace_truncated`` playback
+    evidence; only the refusal statuses, which never reach the DES, omit it.
     """
     ceiling = validate_separate_target(target)
     available = candidate.get("available_queue_ids") or []
@@ -587,11 +589,17 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
         item["queue_id"] for item in evaluations if item["active"]
         and (item["rho"] is None or float(item["rho"]) > ceiling + _UTILIZATION_TOLERANCE)
     )
+    # The run has already produced its trace by the time feasibility is decided, so
+    # both verdicts carry it, as the continuous-day runner does. Dropping it on
+    # INFEASIBLE left selected-plan playback with an empty floor for exactly the
+    # busy periods the operator most needs to watch.
+    trace_evidence = {"trace_events": trace, "trace_truncated": trace_truncated}
     if over_target:
         return {**base, "status": "INFEASIBLE",
                 "reason": f"Simulated utilization exceeds the {ceiling:.0%} ceiling for: {', '.join(over_target)}.",
                 "evaluations": evaluations, "total_cost": None, "total_lambda": total_lambda,
-                "customer_conservation": conserved, "metric_provenance": "simulated"}
+                "customer_conservation": conserved, "metric_provenance": "simulated",
+                **trace_evidence}
     server_total = 0.0
     waiting_total = 0.0
     for item in evaluations:
@@ -614,8 +622,7 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
             "routing_rule": "shortest waiting count with configured-order ties",
             "seed": seed, "duration_hours": horizon,
             "demand_conserved": True,
-            "trace_events": trace,
-            "trace_truncated": trace_truncated}
+            **trace_evidence}
 
 
 def total_arrivals(lanes: dict) -> int:
