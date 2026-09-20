@@ -1781,6 +1781,13 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
     """
     ceiling = validate_separate_target(target)
     settings = validate_des_replication_config(des_settings)
+    # Validation fills default costs; the caller's rates win unless the DES
+    # config itself pinned them (as a saved scenario's snapshot does).
+    pinned = des_settings if isinstance(des_settings, dict) else {}
+    if "server_cost" not in pinned:
+        settings["server_cost"] = float(server_cost)
+    if "waiting_cost" not in pinned:
+        settings["waiting_cost"] = float(waiting_cost)
     if not _is_number(lambda_multiplier) or float(lambda_multiplier) <= 0:
         raise ValueError("lambda_multiplier must be a finite positive number.")
     factor = float(lambda_multiplier)

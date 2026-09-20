@@ -104,3 +104,26 @@ def test_schedule_blocks_when_a_period_is_incomplete_and_maps_infeasible():
     assert schedule["overall"] == "BLOCKED"
     assert "08:00" in schedule["reason"]
     assert schedule["periods"][0]["optimal_active_lanes"] is None
+
+
+def test_schedule_prices_candidates_at_the_callers_cost_rates():
+    records = [_row("08:00", "a", 1.0), _row("08:00", "b", 1.0)]
+    schedule = sep.optimize_separate_schedule(
+        _setup(["a", "b"]), records, target=0.70,
+        server_cost=94.375, waiting_cost=121.67,
+        min_lanes=2, max_lanes=None, lambda_multiplier=1.0,
+        des_settings=_config())
+    assert schedule["overall"] == "COMPLETE"
+    assert schedule["des"]["server_cost"] == 94.375
+    assert schedule["des"]["waiting_cost"] == 121.67
+    optimum = schedule["periods"][0]["optimum"]
+    assert optimum["server_cost"] == 2 * 94.375
+
+    # A cost pinned in the DES config (a saved scenario's snapshot) still wins.
+    pinned = sep.optimize_separate_schedule(
+        _setup(["a", "b"]), records, target=0.70,
+        server_cost=94.375, waiting_cost=121.67,
+        min_lanes=2, max_lanes=None, lambda_multiplier=1.0,
+        des_settings=_config(server_cost=87.0, waiting_cost=100.0))
+    assert pinned["des"]["server_cost"] == 87.0
+    assert pinned["periods"][0]["optimum"]["server_cost"] == 2 * 87.0
