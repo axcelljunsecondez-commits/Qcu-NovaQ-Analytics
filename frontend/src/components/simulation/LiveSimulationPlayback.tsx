@@ -9,7 +9,7 @@ import {
   nextPlaybackTime,
 } from '../../lib/simulationPlayback'
 
-const SPEEDS = [0.5, 1, 2, 5, 10, 25, 50]
+const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
 const MAX_VISIBLE_CUSTOMERS = 8
 const PLAYBACK_SECONDS_AT_1X = 60
 

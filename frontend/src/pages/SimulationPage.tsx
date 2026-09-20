@@ -608,7 +608,7 @@ function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
         </table>
       </div>
       <div style={{ marginTop: '12px' }}>
-        <SeparateSimulationPlayback trace={period.trace} />
+        <SeparateSimulationPlayback trace={period.trace} inactiveQueueIds={period.inactive_queue_ids} />
       </div>
     </div>
   )

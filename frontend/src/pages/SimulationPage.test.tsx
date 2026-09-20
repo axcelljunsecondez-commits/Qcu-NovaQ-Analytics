@@ -696,7 +696,7 @@ describe('selected separate plan simulation', () => {
     await user.click(await screen.findByRole('button', { name: 'Run selected DES' }))
     await waitFor(() => expect(runSelectedDesMock).toHaveBeenCalledTimes(1))
     expect(await screen.findByTestId('lane-east-07')).toBeInTheDocument()
-    expect(screen.getByText('east-07')).toBeInTheDocument()
+    expect(screen.getAllByText('east-07').length).toBeGreaterThan(0)
     expect(screen.getByText('lane-A')).toBeInTheDocument()
     expect(optimizeSpy).not.toHaveBeenCalled()
     expect(runDesMock).not.toHaveBeenCalled()
@@ -715,7 +715,7 @@ describe('selected separate plan simulation', () => {
     await user.selectOptions(speed, '10')
     expect(speed).toHaveValue('10')
     expect(screen.getByTestId('lane-east-07')).toBeInTheDocument()
-    expect(screen.getByText('east-07')).toBeInTheDocument()
+    expect(screen.getAllByText('east-07').length).toBeGreaterThan(0)
   })
 
   it('runs selected MC against the same scenario with measured loads', async () => {

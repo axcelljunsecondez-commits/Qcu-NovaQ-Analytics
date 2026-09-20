@@ -160,3 +160,22 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Known finding: the selected-plan Monte Carlo Decision depends on the base seed for NovaMart with breaks applied (cashier_2 at 13:00 passes on seeds 7-8 and fails on 9-11). It is recorded as a strict xfail in `tests/test_selected_mc_load.py` and not yet fixed.
 - Known limitation (K1, per-date basis): a single-date upload (`event_period_basis: per_date`) still judges each period's staffing candidates, and simulates the selected plan, one period at a time over the 24 h default (`DES_DEFAULT_DURATION_HOURS`). A break that fills a period is only a small part of that run, so break-hour utilization and waits are understated and a break hour can be marked FEASIBLE when the same hour inside a continuous day is not (`tests/test_separate_day_feasibility.py::test_per_date_basis_keeps_the_24_hour_candidate_runs`: below 0.55 per-date vs above 0.70 on the continuous day). Optimizer and selected-plan DES agree with each other on this basis. Not fixed; the representative-day path (NovaMart) is not affected.
 - Representative-day layout (K2-a): the optimizer rejects a representative-day schedule with `INVALID_INPUT` (no periods, no `utilization_basis`) when the operating day cannot be laid out: no operating segments, a malformed segment time, or a period label that matches no segment id (e.g. Setup segments renamed without re-uploading). It never falls back to independent 24 h per-period runs. The per-date basis is unchanged (K1).
+
+## Store Floor Playback View (2026-09-20)
+
+- The separate-queue playback renders as a checkout floor by default; the stacked diagram
+  remains behind a "Floor layout" selector. Both are presentation-only readers of the same
+  pure snapshot reducer and must stay that way: no queueing values may be generated in the
+  browser.
+- Lane identity comes from `trace.segments` first and from trace events second, so a lane
+  the run declared but never used is still drawn.
+- `inactive_queue_ids` means **closed / not staffed in this plan**. It must not be
+  presented as a break. The trace schema emits no break transition, so an ON_BREAK window
+  cannot be shown on the playback clock even though the DES models one internally.
+- Locale catalogues must declare each key exactly once. Duplicate keys silently killed the
+  earlier value until 2026-09-20; `frontend/src/lib/translationKeys.test.ts` now guards
+  both uniqueness and en/tl symmetry.
+- The former empty-playback defect for INFEASIBLE periods is resolved:
+  `evaluate_candidate_with_des` returns `trace_events` and `trace_truncated` for both
+  FEASIBLE and INFEASIBLE measured verdicts, with evaluator and selected-plan endpoint
+  regression coverage.

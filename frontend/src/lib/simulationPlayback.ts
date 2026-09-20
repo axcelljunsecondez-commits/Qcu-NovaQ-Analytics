@@ -22,6 +22,7 @@ export interface SeparateLaneSnapshot {
   arrived: number
   waitingCustomerIds: number[]
   servingByServer: Record<string, number>
+  serviceStartByServer: Record<string, number>
   servedCustomerIds: number[]
   abandonedCustomerIds: number[]
 }
@@ -36,6 +37,8 @@ function laneKeyFor(queueId: string | number | null | undefined, serverId: strin
  * Pure per-queue reducer over the authoritative backend trace.
  * Presentation-only: filters by simulation time and groups by traced
  * queue_id/server_id. Never regenerates arrivals, never reroutes customers.
+ * Lane identity comes from the run's own segments first and from events
+ * second, so a lane the run declared but never used still appears.
  */
 export function deriveSeparateLaneSnapshots(
   trace: SimulationTrace,
@@ -43,6 +46,15 @@ export function deriveSeparateLaneSnapshots(
 ): SeparateLaneSnapshot[] {
   const laneOrder: string[] = []
   const serverByLane = new Map<string, string | number | null>()
+  // Lanes the run declared come first, so a lane that is closed for this
+  // period (no events at all) is still shown instead of silently vanishing.
+  trace.segments.forEach((segment) => {
+    const queueId = segment.queue_id
+    if (queueId === null || queueId === undefined) return
+    const key = String(queueId)
+    if (!laneOrder.includes(key)) laneOrder.push(key)
+    if (!serverByLane.has(key)) serverByLane.set(key, segment.server_id ?? null)
+  })
   trace.trace.forEach((event) => {
     const key = laneKeyFor(event.queue_id, event.server_id)
     if (!laneOrder.includes(key)) laneOrder.push(key)
@@ -60,6 +72,7 @@ export function deriveSeparateLaneSnapshots(
     const arrivedIds = new Set<number>()
     const waitingCustomerIds: number[] = []
     const servingByServer: Record<string, number> = {}
+    const serviceStartByServer: Record<string, number> = {}
     const servedCustomerIds: number[] = []
     const abandonedCustomerIds: number[] = []
 
@@ -73,6 +86,7 @@ export function deriveSeparateLaneSnapshots(
         const waitingIndex = waitingCustomerIds.indexOf(event.customer_id)
         if (waitingIndex >= 0) waitingCustomerIds.splice(waitingIndex, 1)
         servingByServer[event.server_id] = event.customer_id
+        serviceStartByServer[event.server_id] = event.t
         return
       }
       if (event.type === 'service_end') {
@@ -80,6 +94,7 @@ export function deriveSeparateLaneSnapshots(
         if (waitingIndex >= 0) waitingCustomerIds.splice(waitingIndex, 1)
         if (event.server_id !== null && servingByServer[event.server_id] === event.customer_id) {
           delete servingByServer[event.server_id]
+          delete serviceStartByServer[event.server_id]
         }
         servedCustomerIds.push(event.customer_id)
         return
@@ -97,6 +112,7 @@ export function deriveSeparateLaneSnapshots(
       arrived: arrivedIds.size,
       waitingCustomerIds,
       servingByServer,
+      serviceStartByServer,
       servedCustomerIds,
       abandonedCustomerIds,
     }

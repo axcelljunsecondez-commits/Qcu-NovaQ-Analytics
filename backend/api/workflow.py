@@ -1114,6 +1114,9 @@ def run_separate_optimize(
         des_settings = validate_des_replication_config(
             {key: value for key, value in payload.des.model_dump().items() if value is not None}
         )
+        # The request's cost rates price every candidate, not the config defaults.
+        des_settings["server_cost"] = payload.server_cost_per_hr
+        des_settings["waiting_cost"] = payload.customer_waiting_cost
         full_coverage_min_lanes(setup, payload.min_active_lanes)
         schedule = optimize_separate_schedule(
             setup,

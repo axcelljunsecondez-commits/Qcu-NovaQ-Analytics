@@ -202,6 +202,35 @@ def test_overloaded_reduced_candidate_is_infeasible_with_named_lanes():
     assert result["evaluations"] is not None
 
 
+def test_infeasible_candidate_still_carries_its_playback_trace():
+    """INFEASIBLE is a measured verdict, not a refusal: the DES has already
+    produced the trace by the time the ceiling is checked, so the events ride
+    along exactly as they do on the FEASIBLE path. Dropping them left the
+    selected-plan playback with an empty floor for the busiest periods."""
+    by_id = {
+        "cashier-east": _sampled("cashier-east", 8.0, 13.0, [0.05, 0.08, 0.10]),
+        "express": _sampled("express", 4.0, 13.0, [0.05, 0.08, 0.10]),
+    }
+    candidate = _candidate(["cashier-east"], ["cashier-east", "express"])
+    result = sep.evaluate_candidate_with_des(
+        candidate, by_id, duration_hours=24.0, seed=5)
+    assert result["status"] == "INFEASIBLE"
+    events = result["trace_events"]
+    assert result["trace_truncated"] is False
+    assert {event["queue_id"] for event in events} == {"cashier-east"}
+    assert {event["type"] for event in events} == {
+        "arrival", "service_start", "service_end"}
+    active = next(item for item in result["evaluations"]
+                  if item["queue_id"] == "cashier-east")
+    arrivals = [event for event in events if event["type"] == "arrival"]
+    assert len(arrivals) == active["arrivals"] > 0
+    bounded = sep.evaluate_candidate_with_des(
+        candidate, by_id, duration_hours=24.0, seed=5, max_events=10)
+    assert bounded["status"] == "INFEASIBLE"
+    assert bounded["trace_truncated"] is True
+    assert len(bounded["trace_events"]) == 10
+
+
 def test_feasible_result_reports_server_plus_measured_waiting_cost():
     from backend.queueing_engine.config import DEFAULT_SERVER_COST_HR
 

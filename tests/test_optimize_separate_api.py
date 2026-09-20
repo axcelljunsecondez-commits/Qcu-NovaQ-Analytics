@@ -129,3 +129,17 @@ def test_separate_optimize_blocked_keeps_nulls_not_zeros(db_engine, client):
 def test_separate_optimize_requires_auth(client):
     assert client.post("/analyses/1/workflow/optimize/separate",
                        json={"target_utilization": 0.70}).status_code in (401, 403)
+
+
+def test_separate_optimize_prices_candidates_at_the_requested_cost_rates(db_engine, client):
+    analysis_id, _ = _workspace(db_engine, "u@example.com", rows=_light_rows())
+    login(client, "u@example.com", "pw")
+    response = _run(client, analysis_id, {
+        "target_utilization": 0.70, "server_cost_per_hr": 94.375, "customer_waiting_cost": 121.67,
+        "min_active_lanes": 2})
+    assert response.status_code == 200, response.text
+    schedule = response.json()["schedule"]
+    assert schedule["des"]["server_cost"] == 94.375
+    assert schedule["des"]["waiting_cost"] == 121.67
+    for period in schedule["periods"]:
+        assert period["optimum"]["server_cost"] == 2 * 94.375

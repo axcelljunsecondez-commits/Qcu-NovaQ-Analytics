@@ -105,7 +105,7 @@ def _calculation(dataset_id, target=0.70):
         "setup_hash": setup_fingerprint(_setup())}}
 
 
-def _workspace(db_engine, email, periods=None):
+def _workspace(db_engine, email, periods=None, rows=None):
     user = create_user(db_engine, email, "pw")
     with make_sessionmaker(db_engine)() as db:
         analysis = AnalysisProject(
@@ -116,7 +116,7 @@ def _workspace(db_engine, email, periods=None):
         dataset = Dataset(
             user_id=user.id, analysis_id=analysis.id, name="Lanes",
             source_filename="lanes.csv", source_format="csv", row_count=2,
-            normalized_json=_dataset_rows(),
+            normalized_json=_dataset_rows() if rows is None else rows,
             validation_report_json={"ok": True, "message": "ok"})
         db.add(dataset)
         db.flush()
@@ -190,6 +190,33 @@ def test_selected_des_executes_persisted_active_ids_with_conservation(db_engine,
     assert trace["truncated"] is False
     assert trace["event_count"] == len(trace["trace"]) > 0
     assert {event["queue_id"] for event in trace["trace"]} == {"east-07"}
+    assert trace["segments"][0]["queue_structure"] == "separate"
+
+
+def test_selected_des_infeasible_period_still_returns_playback_trace(db_engine, client):
+    """A period whose simulated utilization exceeds the target is measured
+    evidence, not a refusal. Playback is presentation-only, so the busiest
+    periods must replay their real event stream instead of an empty floor."""
+    overloaded = [_row("08:00", "east-07", 5.0), _row("08:00", "lane-A", 5.0)]
+    analysis_id, _, scenario_id = _workspace(
+        db_engine, "u@example.com", rows=overloaded)
+    login(client, "u@example.com", "pw")
+    assert _select(client, analysis_id, scenario_id).status_code == 200
+    response = _run_des(client, analysis_id, {"seed": 7})
+    assert response.status_code == 200, response.text
+    result = response.json()["evidence"]["result"]
+    (period,) = result["periods"]
+    assert period["evaluation_status"] == "INFEASIBLE"
+    assert period["total_cost"] is None
+    by_lane = {row["queue_id"]: row for row in period["results"]}
+    assert by_lane["east-07"]["rho_sim"] > 0.70
+    trace = period["trace"]
+    assert trace["event_count"] == len(trace["trace"]) > 0
+    assert trace["truncated"] is False
+    assert trace["abandonment_supported"] is False
+    assert {event["queue_id"] for event in trace["trace"]} == {"east-07"}
+    arrivals = [event for event in trace["trace"] if event["type"] == "arrival"]
+    assert len(arrivals) == by_lane["east-07"]["arrivals"]
     assert trace["segments"][0]["queue_structure"] == "separate"
 
 
