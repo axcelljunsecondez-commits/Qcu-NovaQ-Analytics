@@ -285,6 +285,8 @@ export interface SimulationTraceEvent {
 export interface SimulationTraceSegment {
   segment_id: string | number
   time: string
+  queue_id?: string | number | null
+  server_id?: string | number | null
   lambda: number | null
   mu: number | null
   c: number

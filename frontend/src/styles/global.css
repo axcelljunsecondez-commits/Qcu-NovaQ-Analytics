@@ -2154,6 +2154,214 @@ button.btn-good:hover {
   text-align: center;
 }
 
+/* ===== Store Floor View ===== */
+.store-floor {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 96px;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.store-rail {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.2rem;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  padding: 0.5rem 0.35rem;
+  text-align: center;
+}
+
+.store-rail strong {
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.store-rail-arrow {
+  color: var(--accent);
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.store-rail-abandoned {
+  color: var(--warning);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.store-lanes {
+  display: grid;
+  grid-template-columns: repeat(var(--store-lane-count, 1), minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.store-lane {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 222px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.store-lane.is-closed {
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.store-queue {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.45rem 0.3rem 0;
+}
+
+.store-queue-count {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.store-queue-more {
+  margin-top: auto;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.store-queue-dots {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 0.22rem;
+  margin-top: auto;
+  padding-top: 0.25rem;
+  padding-bottom: 0.35rem;
+}
+
+.store-queue-more + .store-queue-dots {
+  margin-top: 0;
+}
+
+.store-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--info);
+  border-radius: 999px;
+  background: var(--info-bg);
+  color: var(--text-primary);
+  animation: live-customer-enter 180ms ease-out;
+}
+
+.store-dot-id {
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.store-counter {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+  padding: 0.5rem 0.3rem;
+}
+
+.store-counter.is-serving {
+  border-top-color: var(--success);
+  box-shadow: inset 0 2px 0 var(--success);
+}
+
+.store-counter-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-counter .badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+}
+
+.store-counter-customer {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--success);
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--text-primary);
+}
+
+.store-counter-meta {
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.store-floor.is-static .store-dot {
+  animation: none;
+}
+
+.store-floor.is-dense .store-lanes {
+  grid-template-columns: repeat(var(--store-lane-count, 1), minmax(76px, 1fr));
+  overflow-x: auto;
+}
+
+.store-floor.is-dense .store-dot-id,
+.store-floor.is-dense .store-counter-meta {
+  display: none;
+}
+
+.store-floor.is-dense .store-dot,
+.store-floor.is-dense .store-counter-customer {
+  width: 16px;
+  height: 16px;
+  border-width: 1px;
+}
+
+.store-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (max-width: 700px) {
+  .store-floor {
+    grid-template-columns: 1fr;
+  }
+
+  .store-rail {
+    grid-auto-flow: column;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .store-dot {
+    animation: none;
+  }
+}
+
 @keyframes live-customer-enter {
   from {
     opacity: 0;

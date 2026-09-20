@@ -203,3 +203,43 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Known finding: the selected-plan Monte Carlo Decision depends on the base seed for NovaMart with breaks applied (cashier_2 at 13:00 passes on seeds 7-8 and fails on 9-11). It is recorded as a strict xfail in `tests/test_selected_mc_load.py` and not yet fixed.
 - Known limitation (K1, per-date basis): a single-date upload (`event_period_basis: per_date`) still judges each period's staffing candidates, and simulates the selected plan, one period at a time over the 24 h default (`DES_DEFAULT_DURATION_HOURS`). A break that fills a period is only a small part of that run, so break-hour utilization and waits are understated and a break hour can be marked FEASIBLE when the same hour inside a continuous day is not (`tests/test_separate_day_feasibility.py::test_per_date_basis_keeps_the_24_hour_candidate_runs`: below 0.55 per-date vs above 0.70 on the continuous day). Optimizer and selected-plan DES agree with each other on this basis. Not fixed; the representative-day path (NovaMart) is not affected.
 - Representative-day layout (K2-a): the optimizer rejects a representative-day schedule with `INVALID_INPUT` (no periods, no `utilization_basis`) when the operating day cannot be laid out: no operating segments, a malformed segment time, or a period label that matches no segment id (e.g. Setup segments renamed without re-uploading). It never falls back to independent 24 h per-period runs. The per-date basis is unchanged (K1).
+
+## Store Floor Playback View (2026-09-20)
+
+The separate-queue playback now renders as a checkout floor by default. Spec and plan:
+
+- `docs/superpowers/specs/2026-09-20-store-floor-playback-view.md`
+- `docs/superpowers/plans/2026-09-20-store-floor-playback-view-plan.md`
+
+Current verified state:
+
+- `StoreFloorView` draws lanes as grid columns with the waiting queue stacked toward its
+  own counter, the serving customer at the counter, and the elapsed service time computed
+  from the traced `service_start`. The panel stays vertically bounded; past ten lanes it
+  switches to a dense layout and the lane strip overflows horizontally only.
+- The existing stacked diagram is retained behind a "Floor layout" selector. Both views
+  read the same `deriveSeparateLaneSnapshots` output and keep the same lane, customer, and
+  server test identifiers, so separate-queue isolation stays provable in either view.
+- Lane identity is now seeded from `trace.segments` before events. A lane the run declared
+  but never used is drawn as a real empty lane instead of disappearing.
+- A lane in the period's `inactive_queue_ids` is labeled **Closed / not staffed in this
+  plan**. It is deliberately not labeled as a break: the trace schema emits no break
+  transition, so an ON_BREAK window cannot be shown truthfully on the playback clock.
+- Playback speeds now include 0.25x in both the shared and separate playbacks. Dot
+  transitions are disabled at 5x and above.
+- Presentation-only: no queueing mathematics, DES behavior, API contract, or aggregate
+  field changed.
+- Locale catalogues were de-duplicated in the same working tree: four repeated keys in
+  `en` and five in `tl` had made the earlier value dead. The shipping (later) value was
+  kept in every case and `frontend/src/lib/translationKeys.test.ts` now fails on any
+  repeated key and on any en/tl key-set difference.
+- Verification: frontend **47 files / 312 tests passed**; typecheck, oxlint, production
+  build, and locale symmetry passed. Visual check used a real selected-plan DES payload
+  (735 events over 5 lanes and 2054 over 14) in both light and dark themes; the displayed
+  service timers matched the traced `service_start` values exactly. The pre-existing large
+  Plotly chunk warning and chart canvas notices remain non-blocking.
+
+Known limitation, not fixed and out of this feature's scope: `evaluate_candidate_with_des`
+omits `trace_events` on its INFEASIBLE early return
+(`backend/queueing_engine/services/separate_optimization.py:591`), so any period whose
+simulated utilization exceeds the target renders an empty playback in both views.

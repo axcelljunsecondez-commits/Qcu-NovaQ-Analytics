@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SimulationTrace } from '../../api/types'
 import { MetricCard } from '../ui/MetricCard'
+import { StoreFloorView } from './StoreFloorView'
 import {
   advancePlaybackTime,
   deriveSeparateLaneSnapshots,
@@ -9,7 +10,8 @@ import {
   nextPlaybackTime,
 } from '../../lib/simulationPlayback'
 
-const SPEEDS = [0.5, 1, 2, 5, 10, 25, 50]
+const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
+const ANIMATION_SPEED_LIMIT = 5
 const MAX_VISIBLE_CUSTOMERS = 8
 const PLAYBACK_SECONDS_AT_1X = 60
 
@@ -27,9 +29,12 @@ function LaneTokens({ ids, empty }: { ids: number[]; empty: string }) {
   )
 }
 
-export function SeparateSimulationPlayback({ trace }: { trace: SimulationTrace }) {
+export function SeparateSimulationPlayback(
+  { trace, inactiveQueueIds }: { trace: SimulationTrace; inactiveQueueIds?: string[] },
+) {
   const { t } = useTranslation()
   const [isPlaying, setIsPlaying] = useState(false)
+  const [floorLayout, setFloorLayout] = useState<'store' | 'diagram'>('store')
   const [simulationTime, setSimulationTime] = useState(0)
   const [speed, setSpeed] = useState(1)
   const frameRef = useRef<number | null>(null)
@@ -141,6 +146,15 @@ export function SeparateSimulationPlayback({ trace }: { trace: SimulationTrace }
 
         {segment.error && <div className="alert alert-warn">{segment.error}</div>}
 
+        {floorLayout === 'store' ? (
+          <StoreFloorView
+            lanes={lanes}
+            simulationTime={simulationTime}
+            showAbandonment={showAbandonment}
+            animate={speed < ANIMATION_SPEED_LIMIT}
+            inactiveQueueIds={inactiveQueueIds}
+          />
+        ) : (
         <div className="live-flow">
           {lanes.map((lane) => {
             const servingEntries = Object.entries(lane.servingByServer)
@@ -220,6 +234,7 @@ export function SeparateSimulationPlayback({ trace }: { trace: SimulationTrace }
             )
           })}
         </div>
+        )}
 
         <div className={`live-accounting ${accountingMatches ? 'is-valid' : 'is-invalid'}`}>
           {t('simulation.live_accounting', {
@@ -253,6 +268,17 @@ export function SeparateSimulationPlayback({ trace }: { trace: SimulationTrace }
                 setSimulationTime(Number(event.target.value))
               }}
             />
+          </div>
+          <div className="store-view-toggle">
+            <label htmlFor="separate-layout">{t('simulation.store_layout')}</label>
+            <select
+              id="separate-layout"
+              value={floorLayout}
+              onChange={(event) => setFloorLayout(event.target.value === 'diagram' ? 'diagram' : 'store')}
+            >
+              <option value="store">{t('simulation.store_view')}</option>
+              <option value="diagram">{t('simulation.diagram_view')}</option>
+            </select>
           </div>
           <div className="playback-speed">
             <label htmlFor="separate-speed">{t('simulation.playback_speed')}</label>
