@@ -175,6 +175,7 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Locale catalogues must declare each key exactly once. Duplicate keys silently killed the
   earlier value until 2026-09-20; `frontend/src/lib/translationKeys.test.ts` now guards
   both uniqueness and en/tl symmetry.
-- Open defect, unfixed: the INFEASIBLE early return in `evaluate_candidate_with_des`
-  returns no `trace_events`, so playback is empty for any period above the utilization
-  target.
+- The former empty-playback defect for INFEASIBLE periods is resolved:
+  `evaluate_candidate_with_des` returns `trace_events` and `trace_truncated` for both
+  FEASIBLE and INFEASIBLE measured verdicts, with evaluator and selected-plan endpoint
+  regression coverage.

@@ -239,7 +239,7 @@ Current verified state:
   service timers matched the traced `service_start` values exactly. The pre-existing large
   Plotly chunk warning and chart canvas notices remain non-blocking.
 
-Known limitation, not fixed and out of this feature's scope: `evaluate_candidate_with_des`
-omits `trace_events` on its INFEASIBLE early return
-(`backend/queueing_engine/services/separate_optimization.py:591`), so any period whose
-simulated utilization exceeds the target renders an empty playback in both views.
+Resolved after this feature landed: `evaluate_candidate_with_des` now returns the DES
+`trace_events` and `trace_truncated` evidence for both FEASIBLE and INFEASIBLE measured
+verdicts. The selected-plan endpoint therefore keeps real playback events for periods
+above the utilization target; evaluator-level and endpoint regression tests cover it.
