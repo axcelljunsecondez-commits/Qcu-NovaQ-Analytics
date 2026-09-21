@@ -7,6 +7,7 @@ import unittest
 
 import pandas as pd
 
+from backend.queueing_engine.config import DEFAULT_SERVER_COST_HR
 from backend.queueing_engine.services.costing import (
     compute_all_costs,
     compute_cost_summary,
@@ -212,7 +213,7 @@ class CostingTests(unittest.TestCase):
             servers=1,
             arrival_rate=2,
             wq=opt["Wq_current"],
-            cost_per_server_hr=87.0,
+            cost_per_server_hr=DEFAULT_SERVER_COST_HR,
             cost_per_wait_hr=100,
             cost_per_abandonment=0,
             abandonment_rate=0,

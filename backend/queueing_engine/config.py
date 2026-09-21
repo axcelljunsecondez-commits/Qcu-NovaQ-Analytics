@@ -6,7 +6,7 @@ rather than defining literals locally.
 """
 
 # ── Server / Labor Cost ──────────────────────────────────────────────
-DEFAULT_SERVER_COST_HR = 87.0
+DEFAULT_SERVER_COST_HR = 94.375  # NCR non-agri minimum wage PHP 755/day (Wage Order NCR-28) / 8 h
 REGULAR_RATE = 87.0
 OT_RATE = 109.0
 

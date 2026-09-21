@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.queueing_engine.config import DEFAULT_SERVER_COST_HR
 from tests.helpers import create_user, login
 
 SEGMENT = {"time": "08:00-09:00", "lambda": 30, "mu": 12, "c": 3}
@@ -32,7 +33,7 @@ def test_optimize_matches_engine_values(db_engine, client):
     login(client, "u@example.com", "pw")
     expected = optimize_segment(
         {"time": "08:00-09:00", "lambda": 30, "mu": 12, "c": 3},
-        default_server_cost=87.0,
+        default_server_cost=DEFAULT_SERVER_COST_HR,
     )
     response = client.post("/optimize", json=OPTIMIZE_BODY)
     body = response.json()
@@ -47,7 +48,7 @@ def test_optimize_with_theta_uses_erlang_a(db_engine, client):
     create_user(db_engine, "u@example.com", "pw")
     login(client, "u@example.com", "pw")
     body = {"segment": {**SEGMENT, "theta": 1.0}}
-    expected = optimize_segment({**SEGMENT, "theta": 1.0}, default_server_cost=87.0)
+    expected = optimize_segment({**SEGMENT, "theta": 1.0}, default_server_cost=DEFAULT_SERVER_COST_HR)
     response = client.post("/optimize", json=body)
     assert response.status_code == 200
     assert response.json()["c_optimal"] == expected["c_optimal"]

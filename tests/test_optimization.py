@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import unittest
 
+from backend.queueing_engine.config import DEFAULT_SERVER_COST_HR
 from backend.queueing_engine.services.optimization import (
     _compute_abandonment_cost,
     _compute_waiting_cost,
@@ -27,7 +28,7 @@ class OptimizationTests(unittest.TestCase):
 
     def test_compute_blended_rate_fallback(self):
         rate = compute_blended_rate(0, 0, 0)
-        self.assertAlmostEqual(rate, 87.0)
+        self.assertAlmostEqual(rate, DEFAULT_SERVER_COST_HR)
 
     def test_compute_waiting_cost_stable(self):
         cost = _compute_waiting_cost(10, 0.5, 100)
@@ -187,7 +188,7 @@ class OptimizationTests(unittest.TestCase):
 
     def test_compute_blended_rate_negative_hours(self):
         rate = compute_blended_rate(-5, 2, -3)
-        self.assertEqual(rate, 87.0)
+        self.assertEqual(rate, DEFAULT_SERVER_COST_HR)
 
     def test_compute_waiting_cost_nan_lambda(self):
         cost = _compute_waiting_cost(math.nan, 0.5, 100)
