@@ -163,8 +163,8 @@ STATUS_LEGEND = [
     ("Lean", "< 60%"),
     ("Normal", "60%-80%"),
     ("Peak", "> 80%-< 90%"),
-    ("Critical", ">= 90%"),
-    ("Unstable", "> 100%"),
+    ("Critical", "90%-< 100%"),
+    ("Unstable", ">= 100%"),
 ]
 
 SEPARATE_OPTIMIZATION_BLOCKED_REASON = "BLOCKED — DEMAND ALLOCATION POLICY NOT DEFINED"
