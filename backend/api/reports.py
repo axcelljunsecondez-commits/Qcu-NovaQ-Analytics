@@ -26,6 +26,7 @@ from backend.queueing_engine.services.optimization import (
     unstable_current_reason,
 )
 from backend.queueing_engine.services.separate_optimization import _segment_window
+from backend.queueing_engine.utilization import is_saturated
 from backend.reports.report_export import current_only_blocked_lines, generate_excel_report, generate_pdf_report
 from backend.reports.separate_report import build_separate_report_model
 
@@ -47,10 +48,10 @@ def _clock(minutes: float) -> str:
 
 
 def _overloaded(row: dict) -> bool | None:
-    """rho >= 1, or demand with nobody working; None when rho can't be judged."""
+    """rho >= 1 (float-safe), or demand with nobody working; None when rho can't be judged."""
     rho = row.get("rho")
     if rho is not None:
-        return rho >= 1
+        return is_saturated(rho)
     if row.get("lambda", 0) > 0 and row.get("working", 1) <= 1e-9:
         return True
     return None

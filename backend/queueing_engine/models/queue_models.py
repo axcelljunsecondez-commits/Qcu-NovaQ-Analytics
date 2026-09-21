@@ -7,6 +7,7 @@ from numbers import Integral, Real
 from typing import Any
 
 from backend.queueing_engine.log import get_logger
+from backend.queueing_engine.utilization import is_saturated
 
 logger = get_logger(__name__)
 
@@ -61,7 +62,7 @@ def mm1(lambda_: float, mu: float) -> dict[str, Any]:
 
     rho = lambda_ / mu
 
-    if lambda_ >= mu:
+    if lambda_ >= mu or is_saturated(rho):
         return _result(
             rho=rho,
             stable=False,
@@ -107,7 +108,7 @@ def mg1(lambda_: float, mu: float, service_variance: float) -> dict[str, Any]:
 
     service_mean = 1.0 / mu
     rho = lambda_ * service_mean
-    if rho >= 1.0:
+    if is_saturated(rho):
         return _result(
             rho=rho,
             stable=False,
@@ -158,7 +159,9 @@ def mmc(lambda_: float, mu: float, c: int) -> dict[str, Any]:
 
     rho = lambda_ / (c * mu)
 
-    if lambda_ >= c * mu:
+    # c * mu can round up past lambda_ when the exact load is 1 (3.15 vs 3 * 1.05),
+    # so the float-safe ρ test backs up the direct comparison.
+    if lambda_ >= c * mu or is_saturated(rho):
         return _result(
             rho=rho,
             stable=False,
