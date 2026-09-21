@@ -1661,9 +1661,10 @@ button.btn-good:hover {
   margin-bottom: 12px;
 }
 
+/* Two columns when they fit a four-decimal value such as "95.3643%"; otherwise stacked. */
 .kpi-pair {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
   gap: 12px;
 }
 

@@ -65,6 +65,7 @@ from backend.queueing_engine.statistics.proportions import (
     failure_rate_precision,
     wilson_ci,
 )
+from backend.queueing_engine.utilization import utilization_band
 
 logger = get_logger(__name__)
 
@@ -72,10 +73,6 @@ logger = get_logger(__name__)
 # Simulation constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-LEAN_THRESHOLD = 0.60        # ρ < this → Lean
-NORMAL_THRESHOLD = 0.80      # 0.60 ≤ ρ < this → Normal
-CRITICAL_THRESHOLD = 0.90    # ρ ≥ this → Critical
-UNSTABLE_THRESHOLD = 1.0     # ρ > this → Unstable
 DEFAULT_QUEUE_OVERLOAD = 20  # queue depth that triggers Critical regardless of ρ
 SIM_HOURS_PER_SEGMENT = 24.0  # simulated hours per segment
 RANDOM_SEED = 42             # reproducible runs; override per call for stochastic analysis
@@ -208,23 +205,14 @@ def _validate_segment(segment: Mapping[str, Any]) -> tuple[str | None, float | N
 
 def _classify_status(rho: float, max_queue: int, queue_overload_threshold: int) -> str:
     """Map empirical utilization + queue depth to a status label.
-    
-    Categories:
-    - Lean: ρ < 60%
-    - Normal: 60% ≤ ρ < 80%
-    - Peak: 80% < ρ < 90%
-    - Critical: ρ ≥ 90% or queue depth ≥ threshold
-    - Unstable: ρ > 1 (system unstable)
+
+    Bands come from ``utilization``; a queue depth at or above the overload
+    threshold also makes a non-Unstable segment Critical.
     """
-    if rho > UNSTABLE_THRESHOLD:
-        return "Unstable"
-    if rho >= CRITICAL_THRESHOLD or max_queue >= queue_overload_threshold:
+    band = utilization_band(rho)
+    if band != "Unstable" and max_queue >= queue_overload_threshold:
         return "Critical"
-    if rho > NORMAL_THRESHOLD:
-        return "Peak"
-    if rho >= LEAN_THRESHOLD:
-        return "Normal"
-    return "Lean"
+    return band
 
 
 def _exponential(rate: float, rng: random.Random) -> float:

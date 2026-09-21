@@ -327,12 +327,12 @@ describe('AnalysisCurrentPage charts', () => {
     renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
     const chart = await screen.findByRole('img', { name: 'Customer arrivals per hour (all cashiers combined)' })
     expect(within(chart).getAllByText(/^\d\d:00-\d\d:00$/).map((node) => node.textContent)).toEqual(['05:00-06:00', '06:00-07:00', '07:00-08:00'])
-    // Four decimals, except a whole number drops its ".0000".
-    expect(Array.from(chart.querySelectorAll('.hbar-value')).map((node) => node.textContent)).toEqual(['4.8571', '7.5000', '4'])
+    // Up to four decimals; zeros drop only when the shorter value is exact.
+    expect(Array.from(chart.querySelectorAll('.hbar-value')).map((node) => node.textContent)).toEqual(['4.8571', '7.5', '4'])
     const table = screen.getByRole('table', { name: 'Combined arrival-rate data for every period' })
     expect(bodyRows(table)).toEqual([
       ['05:00-06:00', '4.8571', '2'],
-      ['06:00-07:00', '7.5000', '3'],
+      ['06:00-07:00', '7.5', '3'],
       ['07:00-08:00', '4', '2'],
     ])
   })
@@ -369,6 +369,22 @@ describe('AnalysisCurrentPage charts', () => {
     expect(within(section).queryByRole('img')).not.toBeInTheDocument()
     expect(within(section).queryByText(/%/)).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Queue models used' })).not.toBeInTheDocument()
+  })
+
+  it('never rounds utilization onto a status line in the results table or KPIs', async () => {
+    mockRows([
+      { time: '09-10', lambda: 10, mu: 12, c: 1, Wq: 0.1, rho: 0.8951, model: 'M/M/1', status: 'Peak' },
+      { time: '10-11', lambda: 10, mu: 12, c: 1, Wq: 0.1, rho: 0.8999996, model: 'M/M/1', status: 'Peak' },
+    ], 'shared_queue')
+    renderWithProviders(<AnalysisCurrentPage />, { route: '/analyses/7/current' })
+    const table = await screen.findByRole('table', { name: 'Complete current-state analytical results by interval' })
+    // Whole-percent rounding would show "90%" beside Peak, whose line starts at 90%.
+    expect(bodyRows(table).map((cells) => [cells[5], cells[7]])).toEqual([
+      ['89.51%', 'Peak'],
+      ['90.0000%', 'Peak'],
+    ])
+    expect(screen.getByText('Average Utilization').nextElementSibling).toHaveTextContent('60%')
+    expect(screen.getByText('Highest Utilization').nextElementSibling).toHaveTextContent('90.0000%')
   })
 
   it('keeps model distribution and one bar per shared row for shared queues', async () => {

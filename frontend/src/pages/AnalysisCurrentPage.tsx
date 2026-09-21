@@ -8,7 +8,7 @@ import type { ObservedWaitSummary } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { PeriodFilter } from '../components/analysis/PeriodFilter'
 import { summarizeCashierWorkload } from '../lib/cashierWorkload'
-import { fmtDecimal, fmtPct, fmtPctDecimal } from '../lib/format'
+import { fmtDecimal, fmtPctDecimal } from '../lib/format'
 import { groupPeriodDemand, pickLeanPeriod, pickPeakPeriod } from '../lib/periodDemand'
 import { ALL, matchesFilter } from '../lib/periodFilter'
 
@@ -173,8 +173,8 @@ export function AnalysisCurrentPage() {
         <section className="card kpi-card" aria-labelledby="current-util-title">
           <h2 id="current-util-title" className="kpi-group-title">{t('analyses.utilization_summary')}</h2>
           <div className="kpi-pair">
-            <div><div className="kpi-label">{t('analyses.avg_rho')}</div><div className="kpi-value state-current">{avgRho !== null ? fmtPct(avgRho) : t('common.not_available')}</div></div>
-            <div><div className="kpi-label">{t('analyses.max_rho')}</div><div className="kpi-value state-current">{maxRho !== null ? fmtPct(maxRho) : t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{t('analyses.avg_rho')}</div><div className="kpi-value state-current">{avgRho !== null ? fmtPctDecimal(avgRho) : t('common.not_available')}</div></div>
+            <div><div className="kpi-label">{t('analyses.max_rho')}</div><div className="kpi-value state-current">{maxRho !== null ? fmtPctDecimal(maxRho) : t('common.not_available')}</div></div>
           </div>
           <p className="kpi-hint">{t('current.utilization_basis', { count: numericRho.length })}</p>
         </section>
@@ -320,7 +320,7 @@ export function AnalysisCurrentPage() {
                 const kind = statusKind(row.status)
                 return (
                   <tr key={`${String(row.time ?? index)}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`} className={kind === 'critical' ? 'row-warning' : undefined}>
-                    <th scope="row">{shown(row.time)}</th>{showQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : t('common.not_available')}</td>}<td>{lambda ?? t('common.not_available')}</td><td>{mu ?? t('common.not_available')}</td><td>{shown(row.c)}</td><td>{shown(row.model)}</td><td>{rho !== null ? fmtPct(rho) : t('common.not_available')}</td><td>{wq !== null ? (wq * 60).toFixed(2) : t('common.not_available')}</td><td><span className={`status-badge status-${kind}`}>{shown(row.status)}</span></td>
+                    <th scope="row">{shown(row.time)}</th>{showQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : t('common.not_available')}</td>}<td>{lambda ?? t('common.not_available')}</td><td>{mu ?? t('common.not_available')}</td><td>{shown(row.c)}</td><td>{shown(row.model)}</td><td>{rho !== null ? fmtPctDecimal(rho) : t('common.not_available')}</td><td>{wq !== null ? (wq * 60).toFixed(2) : t('common.not_available')}</td><td><span className={`status-badge status-${kind}`}>{shown(row.status)}</span></td>
                   </tr>
                 )
               })}

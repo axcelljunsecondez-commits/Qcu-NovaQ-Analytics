@@ -4,7 +4,7 @@ import { runAnalysis, type AnalysisModel, type AnalysisRequest } from '../api/an
 import type { AnalysisOut } from '../api/types'
 import { MetricCard } from '../components/ui/MetricCard'
 import { ApiState } from '../components/ui/ApiState'
-import { fmt } from '../lib/format'
+import { fmt, fmtPctDecimal } from '../lib/format'
 
 const MODELS: AnalysisModel[] = ['mm1', 'mmc', 'mgc', 'mmck', 'mgck', 'erlang_a']
 
@@ -196,7 +196,7 @@ export function AnalysisPage() {
       {result && (
         <>
           <div className="card-grid">
-            <MetricCard label={t('analysis.rho')} value={fmt(result.rho * 100) + '%'} />
+            <MetricCard label={t('analysis.rho')} value={fmtPctDecimal(result.rho)} />
             <MetricCard label="L" value={fmt(result.L)} />
             <MetricCard label="Lq" value={fmt(result.Lq)} />
             <MetricCard label="W (min)" value={fmt(result.W == null ? null : result.W * 60)} />

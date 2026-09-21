@@ -20,8 +20,9 @@ import {
   comparisonComplete,
   comparisonTotals,
 } from '../lib/comparison'
-import { fmt, fmtPct, messageOf } from '../lib/format'
+import { fmt, fmtDecimal, fmtPctDecimal, messageOf } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
+import { utilizationBand } from '../lib/utilization'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
@@ -69,11 +70,9 @@ function utilizationStatus(
 ): UtilizationStatus {
   if (analyticallyStable === false) return 'Unstable'
   if (rho === null || rho === undefined || !Number.isFinite(rho)) return 'Unavailable'
-  if (rho >= 1) return 'Critical'
-  if (rho >= 0.9) return 'Critical'
-  if (rho > 0.8) return 'Peak'
-  if (rho >= 0.6) return 'Normal'
-  return 'Lean'
+  // Only the analytical stability flag marks Unstable here; ρ above 100% alone stays Critical.
+  const band = utilizationBand(rho)
+  return band === 'Unstable' ? 'Critical' : band
 }
 
 function statusBadgeClass(status: UtilizationStatus): string {
@@ -91,7 +90,7 @@ function StatusBadge({ status }: { status: UtilizationStatus }) {
 const COLUMNS: Column[] = [
   { label: 'segment', current: (r) => r.time, optimized: (r) => r.time },
   { label: 'λ', current: (r) => fmt(r.lambda_), optimized: (r) => fmt(r.lambda_) },
-  { label: 'ρ', current: (r) => fmt(r.rho_current == null ? null : r.rho_current * 100) + '%', optimized: (r) => fmt(r.rho_optimal == null ? null : r.rho_optimal * 100) + '%' },
+  { label: 'ρ', current: (r) => fmtPctDecimal(r.rho_current), optimized: (r) => fmtPctDecimal(r.rho_optimal) },
   {
     label: 'Status',
     current: (r) => utilizationStatus(r.rho_current),
@@ -178,7 +177,7 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
     }}>
       <h3 className="section-title">{t('optimize.sep_estimated_plan')}</h3>
       <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-        <span>{t('optimize.sep_target')}: {Math.round(schedule.target_utilization * 100)}%</span>
+        <span>{t('optimize.sep_target')}: {fmtPctDecimal(schedule.target_utilization)}</span>
         {' · '}<span>{t('optimize.sep_method')}</span>
         {' · '}<span>{t('optimize.sep_replications')}: {schedule.des.replications}</span>
       </div>
@@ -217,7 +216,7 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
                   <td>{formatLaneCount(period.optimal_active_lanes)}</td>
                   <td>{formatAdjustment(period.adjustment, t)}</td>
                   <td>
-                    {fmtPct(period.optimum?.candidate_utilization ?? null)}
+                    {fmtPctDecimal(period.optimum?.candidate_utilization ?? null)}
                     {period.optimum?.near_target_noise === true && (
                       <small role="note" style={{ display: 'block', color: 'var(--warning)' }}>
                         {t('optimize.sep_near_target_noise')}
@@ -257,7 +256,7 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
                 <tr key={candidate.active_lane_count}>
                   <td>{candidate.active_lane_count}</td>
                   <td>{candidate.status}</td>
-                  <td>{fmtPct(candidate.candidate_utilization)}</td>
+                  <td>{fmtPctDecimal(candidate.candidate_utilization)}</td>
                   <td>{fmt(candidate.mean_total_cost)}</td>
                 </tr>
               ))}
@@ -294,7 +293,7 @@ function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
   const [result, setResult] = useState<BreakOptimizeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
-  const rho = (value: number | null) => (value === null ? t('optimize.breaks_nobody_working') : fmt(value))
+  const rho = (value: number | null) => (value === null ? t('optimize.breaks_nobody_working') : fmtDecimal(value))
   const change = result?.des.comparison.paired_wait_change ?? null
 
   async function runBreaks() {
@@ -379,7 +378,7 @@ function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
             </div>
           )}
           <p>{t('optimize.breaks_peak', { before: rho(result.peak_rho.before), after: rho(result.peak_rho.after) })}</p>
-          <p>{t('optimize.breaks_above_target', { target: fmt(result.target_rho), before: result.slots_above_target.before, after: result.slots_above_target.after })}</p>
+          <p>{t('optimize.breaks_above_target', { target: fmtDecimal(result.target_rho), before: result.slots_above_target.before, after: result.slots_above_target.after })}</p>
           <div className="table-scroll" role="region" aria-label={t('optimize.breaks_table_label')} tabIndex={0}>
             <table aria-label={t('optimize.breaks_table_label')}>
               <thead>
@@ -786,7 +785,7 @@ export function OptimizePage() {
             <h3 className="section-title">{t('optimize.sep_target')}</h3>
             <div className="form-field">
               <label htmlFor="opt-sep-target" style={{ fontSize: '14px', fontWeight: 800 }}>
-                {t('optimize.sep_target')} ({Math.round(sepTarget * 100)}%)
+                {t('optimize.sep_target')} ({fmtPctDecimal(sepTarget)})
               </label>
               <input
                 id="opt-sep-target"

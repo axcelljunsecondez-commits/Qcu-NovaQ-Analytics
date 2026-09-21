@@ -14,31 +14,29 @@ export function fmt(value: number | null | undefined, digits = 2): string {
 }
 
 /**
- * Chart value with exactly `digits` decimal places, except that a value that
- * is truly a whole number (allowing only float noise) is shown without
- * decimals (2.4285714 → "2.4286", 2.5 → "2.5000", 3 → "3"). A value that
- * merely rounds to a whole number keeps its zeros (2.99996 → "3.0000") so it
- * never looks exact. Display only.
+ * Value rounded to `digits` decimal places. Trailing zeros are dropped only
+ * when the shorter number is exact (allowing float noise), so a zero on screen
+ * always means rounding happened: 2.4285714 → "2.4286", 2.5 → "2.5", 3 → "3",
+ * but 2.99996 → "3.0000" and 89.510002 → "89.5100". A rounded value therefore
+ * never looks like it sits exactly on a threshold or target. Display only.
  * Returns '—' for null, undefined, or NaN values.
  */
 export function fmtDecimal(value: number | null | undefined, digits = 4): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return '—'
   }
-  const whole = Math.round(value)
-  // Tolerance absorbs float noise such as 0.29 * 100 = 28.999999999999996.
-  if (Math.abs(value - whole) <= 1e-9 * Math.max(1, Math.abs(value))) {
-    // Math.round(-0.0) is -0; `+ 0` normalises it so we never show "-0".
-    return String(whole + 0)
-  }
   const fixed = value.toFixed(digits)
   // A tiny negative such as -0.00001 would otherwise show as "-0.0000".
-  return Number(fixed) === 0 ? (0).toFixed(digits) : fixed
+  const rounded = Number(fixed) === 0 ? (0).toFixed(digits) : fixed
+  const short = rounded.includes('.') ? rounded.replace(/\.?0+$/, '') : rounded
+  // Tolerance absorbs float noise such as 0.29 * 100 = 28.999999999999996.
+  const exact = Math.abs(Number(short) - value) <= 1e-9 * Math.max(1, Math.abs(value))
+  return exact ? short : rounded
 }
 
 /**
  * A 0-1 ratio as a percentage with the fmtDecimal rule
- * (0.7142857 → "71.4286%", 0.5 → "50%").
+ * (0.7142857 → "71.4286%", 0.8951 → "89.51%", 0.5 → "50%").
  * Returns '—' for null, undefined, or NaN values.
  */
 export function fmtPctDecimal(value: number | null | undefined, digits = 4): string {
