@@ -70,9 +70,7 @@ function utilizationStatus(
 ): UtilizationStatus {
   if (analyticallyStable === false) return 'Unstable'
   if (rho === null || rho === undefined || !Number.isFinite(rho)) return 'Unavailable'
-  // Only the analytical stability flag marks Unstable here; ρ above 100% alone stays Critical.
-  const band = utilizationBand(rho)
-  return band === 'Unstable' ? 'Critical' : band
+  return utilizationBand(rho)
 }
 
 function statusBadgeClass(status: UtilizationStatus): string {

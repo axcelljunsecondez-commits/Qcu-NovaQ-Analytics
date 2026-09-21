@@ -41,8 +41,10 @@ CLASSIFIERS = {
         (0.9, "Critical"),
         (0.8999999999999999, "Critical"),
         (0.9000000000000001, "Critical"),
-        (1.0, "Critical"),
-        (1.0000000000000002, "Critical"),
+        (0.99999, "Critical"),
+        (0.9999999999999999, "Unstable"),
+        (1.0, "Unstable"),
+        (1.0000000000000002, "Unstable"),
         (1.00001, "Unstable"),
     ],
 )
