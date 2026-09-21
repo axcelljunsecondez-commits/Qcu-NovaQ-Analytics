@@ -1107,6 +1107,16 @@ button.btn-good:hover {
   flex-wrap: wrap;
 }
 
+/* The switcher sizes to its longest analysis name; let it shrink instead of overflowing phones. */
+.analysis-context > .form-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.analysis-context select {
+  max-width: 100%;
+}
+
 .button-link {
   display: inline-block;
   border-radius: 0.5rem;
@@ -1157,12 +1167,12 @@ button.btn-good:hover {
 
   .g4,
   .g6 {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .g3,
   .g2 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1623,8 +1633,9 @@ button.btn-good:hover {
   margin-bottom: 1.5rem;
 }
 
+/* Three cards when they fit, then two, then one; 15rem keeps each card's value pair side by side. */
 .kpi-row-summary {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
 }
 
 .kpi-card {
@@ -3155,6 +3166,9 @@ body {
 
 .page-stack {
   display: grid;
+  /* minmax(0, …) stops a wide table (620px min) from widening the page past the screen;
+     the table scrolls inside its .table-scroll wrapper instead. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-md);
 }
 
