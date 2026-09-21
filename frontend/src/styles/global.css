@@ -3547,49 +3547,93 @@ th {
   font-size: 0.875rem;
 }
 
-.arrival-figure {
-  max-width: 100%;
-  margin: var(--space-md) 0;
-  overflow-x: auto;
-}
-
-.arrival-bars {
-  min-width: max(100%, calc(var(--arrival-count, 12) * 54px));
-  min-height: 240px;
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  padding: 12px 8px 0;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--bg-secondary);
-}
-
-.arrival-bar-item {
-  min-width: 42px;
-  flex: 1;
+/* Horizontal bar charts on Current: one row per period or cashier line, with
+   the label and value on their own line so nothing overlaps at narrow widths. */
+.hbar-chart {
   display: grid;
-  grid-template-rows: 24px 160px auto;
-  gap: 6px;
-  text-align: center;
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0;
 }
 
-.arrival-value,
-.arrival-label {
+.hbar-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px var(--space-sm);
+  margin-bottom: var(--space-xs);
   font-size: 0.875rem;
 }
 
-.arrival-bar-track {
-  display: flex;
-  align-items: end;
-  border-bottom: 1px solid var(--border);
+.hbar-label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
-.arrival-bar {
-  width: 100%;
-  min-height: 2px;
-  border-radius: 4px 4px 0 0;
+.hbar-value {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.hbar-track {
+  position: relative;
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+}
+
+.hbar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
   background: var(--state-current);
+}
+
+/* Busiest-hour marker: a tall thin line, so it differs from the bar by shape, not only color. */
+.hbar-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--text-primary);
+  transform: translateX(-50%);
+}
+
+.hbar-axis-note {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.hbar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.hbar-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.hbar-legend-bar {
+  width: 24px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--state-current);
+}
+
+.hbar-legend-marker {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--text-primary);
 }
 
 .chart-data-table {
@@ -3731,3 +3775,18 @@ th {
     justify-content: flex-start;
   }
 }
+
+/* Collapsible long per-period lists. Summaries keep display: list-item so the
+   native disclosure marker stays visible. */
+.collapsible-card > summary,
+.collapsible-inline > summary {
+  min-height: 44px;
+  padding-block: var(--space-sm);
+  cursor: pointer;
+}
+.collapsible-inline > summary { font-weight: 600; }
+.collapsible-card > summary .section-title { display: inline; margin: 0; }
+.collapsible-count { margin-left: var(--space-sm); color: var(--text-secondary); font-size: 0.875rem; font-weight: 400; }
+.period-filter { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-block: var(--space-sm); }
+.table-scroll-capped { max-height: 480px; overflow-y: auto; }
+.table-scroll-capped thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-secondary); }
