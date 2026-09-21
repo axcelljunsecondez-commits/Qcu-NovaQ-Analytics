@@ -3319,10 +3319,10 @@ th {
   background: linear-gradient(135deg, var(--bg-page), var(--state-current-bg));
 }
 
-.onboarding-shell {
-  width: min(1060px, 100%);
+.onboarding-wizard {
+  width: min(820px, 100%);
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  grid-template-rows: auto 1fr auto;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -3330,21 +3330,20 @@ th {
   box-shadow: var(--shadow-md);
 }
 
-.onboarding-intro,
-.onboarding-preferences {
-  padding: clamp(24px, 5vw, 48px);
+.onboarding-wizard-header,
+.onboarding-wizard-body,
+.onboarding-wizard .onboarding-actions {
+  padding-inline: clamp(20px, 5vw, 48px);
 }
 
-.onboarding-preferences {
-  align-content: center;
-  display: grid;
-  gap: var(--space-md);
-  border-left: 1px solid var(--border);
-  background: var(--bg-secondary);
+.onboarding-wizard-header {
+  padding-top: clamp(20px, 4vw, 36px);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
 }
 
 .onboarding-brand {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-sm);
   font-size: 1.5rem;
   font-weight: 900;
 }
@@ -3353,8 +3352,104 @@ th {
   color: var(--accent);
 }
 
+.onboarding-progress {
+  display: flex;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0 var(--space-xs);
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding-progress li {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.onboarding-progress-dot {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 4px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.onboarding-progress-dot:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.onboarding-progress-dot:disabled {
+  background: transparent;
+  opacity: 0.55;
+}
+
+.onboarding-progress-dot.is-done {
+  border-top-color: var(--state-current);
+}
+
+.onboarding-progress-dot.is-current {
+  border-top-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.onboarding-progress-dot > span:first-child {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  font-weight: 800;
+}
+
+.onboarding-progress-dot.is-current > span:first-child {
+  background: var(--accent);
+  color: #1b2a4a;
+}
+
+.onboarding-progress-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onboarding-progress-count {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.onboarding-wizard-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  min-height: 420px;
+  padding-block: var(--space-lg);
+}
+
+.onboarding-wizard-body > * {
+  margin: 0;
+}
+
+.onboarding-wizard-body .section-title {
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
+  line-height: 1.2;
+}
+
+.onboarding-wizard .form-hint {
+  max-width: none;
+}
+
 .onboarding-title {
-  margin: 0 0 var(--space-sm);
   font-size: clamp(2rem, 5vw, 3rem);
   line-height: 1.1;
 }
@@ -3363,14 +3458,51 @@ th {
   color: var(--text-secondary);
 }
 
-.onboarding-workflow {
-  justify-content: flex-start;
-  margin-block: var(--space-xl);
+.onboarding-pillars {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+  padding: 0;
+  list-style: none;
 }
 
-.onboarding-step {
-  min-width: 80px;
+.onboarding-pillar {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: var(--space-md);
   border: 1px solid var(--border);
+  border-top: 4px solid var(--accent);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.onboarding-pillar span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.onboarding-wizard .onboarding-workflow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.onboarding-wizard .onboarding-step {
+  min-width: 0;
+  padding: 10px 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.onboarding-wizard .onboarding-step:hover {
+  background: var(--bg-secondary);
+}
+
+.onboarding-wizard .onboarding-step.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
 }
 
 .onboarding-facts {
@@ -3379,7 +3511,152 @@ th {
   background: var(--state-current-bg);
 }
 
-.onboarding-facts ul,
+.onboarding-facts > * {
+  margin: 0;
+}
+
+.onboarding-facts p {
+  margin-top: var(--space-xs);
+}
+
+.onboarding-structures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.onboarding-structure {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: var(--space-md);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.onboarding-structure:hover {
+  background: var(--bg-secondary);
+}
+
+.onboarding-structure.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.onboarding-structure:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The whole card is the touch target, so the radio drops the global 44px input height. */
+.onboarding-structure input {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.onboarding-diagram {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+}
+
+.onboarding-diagram .diagram-server {
+  fill: var(--state-current-bg);
+  stroke: var(--state-current);
+  stroke-width: 2;
+}
+
+.onboarding-diagram .diagram-person {
+  fill: var(--accent);
+}
+
+.onboarding-diagram .diagram-line {
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+.onboarding-guide {
+  display: grid;
+  gap: var(--space-sm);
+  padding: 0;
+  list-style: none;
+  counter-reset: guide;
+}
+
+.onboarding-guide li {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 10px var(--space-md) 10px 52px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  counter-increment: guide;
+}
+
+.onboarding-guide li::before {
+  content: counter(guide);
+  position: absolute;
+  top: 10px;
+  left: var(--space-md);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #1b2a4a;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.onboarding-guide li span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.onboarding-switch {
+  justify-self: start;
+}
+
+.onboarding-custom {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-sm);
+  min-width: 0;
+  margin: var(--space-sm) 0 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 0;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-secondary);
+}
+
+.onboarding-preview {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 8px;
+  background: var(--state-current-bg);
+  font-weight: 600;
+}
+
+.onboarding-wizard .onboarding-actions {
+  flex-wrap: wrap;
+  margin: 0;
+  padding-block: var(--space-md);
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
 .help-workflow-list {
   padding-left: 1.25rem;
 }
@@ -3488,13 +3765,8 @@ th {
     padding: 20px;
   }
 
-  .onboarding-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .onboarding-preferences {
-    border-top: 1px solid var(--border);
-    border-left: 0;
+  .onboarding-wizard .onboarding-workflow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -3508,14 +3780,32 @@ th {
     padding: 0;
   }
 
-  .onboarding-shell {
+  .onboarding-wizard {
     border: 0;
     border-radius: 0;
   }
 
-  .onboarding-intro,
-  .onboarding-preferences {
-    padding: 24px 16px;
+  .onboarding-wizard-header,
+  .onboarding-wizard-body,
+  .onboarding-wizard .onboarding-actions {
+    padding-inline: 16px;
+  }
+
+  .onboarding-pillars,
+  .onboarding-structures {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-progress-label {
+    display: none;
+  }
+
+  .onboarding-wizard-body {
+    min-height: 0;
+  }
+
+  .onboarding-wizard .onboarding-actions > * {
+    flex: 1 1 auto;
   }
 
   .workflow-footer-actions > * {
