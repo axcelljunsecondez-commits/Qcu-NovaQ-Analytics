@@ -1,3 +1,6 @@
+import { fmtDecimal } from './format'
+import { utilizationBand } from './utilization'
+
 export interface Insight {
   type: 'warning' | 'success' | 'info' | 'recommendation'
   title: string
@@ -58,12 +61,14 @@ export function generateOptimizationInsights(
     }
   }
 
-  if (currentUtilization !== null && currentUtilization > 0.9) {
+  // Same line as the Critical badge (ρ ≥ 90%), so the warning and the badge never disagree.
+  if (currentUtilization !== null && Number.isFinite(currentUtilization)
+    && ['Critical', 'Unstable'].includes(utilizationBand(currentUtilization))) {
     insights.push({
       type: 'warning',
       title: t('insights.high_utilization_title'),
       message: t('insights.high_utilization_message', {
-        utilization: Math.round(currentUtilization * 100),
+        utilization: fmtDecimal(currentUtilization * 100),
       }),
     })
   }

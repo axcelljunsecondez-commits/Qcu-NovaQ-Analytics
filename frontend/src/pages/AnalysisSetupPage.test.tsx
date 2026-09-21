@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import type { QueueSetup } from '../api/types'
+import { getAnalysisCurrent, listAnalysisDatasets } from '../api/analyses'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
 
 const getAnalysisMock = vi.fn()
@@ -225,5 +226,32 @@ describe('time segment checks', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByText('Time segments cannot overlap.')).toBeInTheDocument()
     expect(patchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Why This Model?', () => {
+  beforeEach(() => {
+    vi.mocked(listAnalysisDatasets).mockResolvedValue({ datasets: [{ id: 3 }] } as never)
+    vi.mocked(getAnalysisCurrent).mockResolvedValue({
+      selected_model: 'Parallel M/G/1',
+      explanations: ['cashier_1', 'cashier_2'].map((queue_id) => ({
+        time: '05:00-06:00', queue_id, selected_model: 'Parallel M/G/1', selection_reason: `reason ${queue_id}`,
+        operational_facts: [], measured_characteristics: [], model_assumptions: [],
+      })),
+    } as never)
+  })
+
+  afterEach(() => {
+    vi.mocked(listAnalysisDatasets).mockReset().mockImplementation(async () => ({ datasets: [] }))
+    vi.mocked(getAnalysisCurrent).mockReset()
+  })
+
+  it('keeps per-period reasons behind one closed disclosure and names each service line', async () => {
+    renderPage()
+    const toggle = await screen.findByText('Show per-period details (2)')
+    const disclosure = toggle.closest('details')!
+    expect(disclosure).not.toHaveAttribute('open')
+    expect(within(disclosure).getByText('05:00-06:00 · cashier_1: Parallel M/G/1')).toBeInTheDocument()
+    expect(within(disclosure).getByText('05:00-06:00 · cashier_2: Parallel M/G/1')).toBeInTheDocument()
   })
 })

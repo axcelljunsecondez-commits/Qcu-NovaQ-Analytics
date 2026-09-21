@@ -14,6 +14,7 @@ logger = get_logger(__name__)
 
 from backend.queueing_engine.config import DEFAULT_WAIT_COST_HR, UNSTABLE_PENALTY_MULTIPLIER
 from backend.queueing_engine.services.model_selection import select_model
+from backend.queueing_engine.utilization import utilization_band
 
 CURRENT_COLUMNS = [
     "time",
@@ -43,26 +44,10 @@ def _empty_frame(columns: list[str]) -> pd.DataFrame:
 
 
 def _classify_utilization_status(rho) -> str:
-    """Classify queue utilization status based on rho value.
-    
-    Categories:
-    - Lean: ρ < 60%
-    - Normal: 60% ≤ ρ ≤ 79%
-    - Peak: 80% < ρ ≤ 89%
-    - Critical: ρ > 90%
-    - Unstable: ρ > 1 (system unstable)
-    """
+    """Classify queue utilization status; bands are defined in ``utilization``."""
     if rho is None:
         return "—"
-    if rho > 1.0:
-        return "Unstable"
-    if rho >= 0.90:
-        return "Critical"
-    if rho > 0.80:
-        return "Peak"
-    if rho >= 0.60:
-        return "Normal"
-    return "Lean"
+    return utilization_band(rho)
 
 
 def _current_row(time_label, lambda_, mu, c, model_name, metrics, theta=None, model_id=None, queue_structure=None) -> dict:

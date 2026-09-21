@@ -2,7 +2,7 @@
   "min_servers": 1,
   "max_servers": 24,
   "max_wait_minutes": null,
-  "server_cost_per_hr": 87.0,
+  "server_cost_per_hr": 94.375,
   "target_utilization": 0.7,
   "customer_waiting_cost": 100.0,
   "cost_per_abandonment": 0.0,

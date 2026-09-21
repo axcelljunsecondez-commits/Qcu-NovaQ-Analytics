@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from .simulation import (
+from backend.queueing_engine.utilization import (
     CRITICAL_THRESHOLD,
-    DEFAULT_QUEUE_OVERLOAD,
     LEAN_THRESHOLD,
+    NORMAL_THRESHOLD,
+    UNSTABLE_THRESHOLD,
+)
+
+from .simulation import (
+    DEFAULT_QUEUE_OVERLOAD,
     MC_ARRIVAL_NOISE,
     MC_DEFAULT_FAILURE_THRESHOLD,
     MC_DEFAULT_TRIALS,
     MC_MAX_TRIALS,
     MC_SERVICE_NOISE,
-    NORMAL_THRESHOLD,
     RANDOM_SEED,
     SIM_HOURS_PER_SEGMENT,
-    UNSTABLE_THRESHOLD,
     SegmentResult,
     mc_simulate_segment,
     mc_simulate_segments,

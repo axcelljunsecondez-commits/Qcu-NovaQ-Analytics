@@ -38,6 +38,14 @@ describe('generateOptimizationInsights null-vs-zero semantics', () => {
     expect(mapped).toContain('insights.high_utilization_title')
   })
 
+  it('warns on high utilization from the same 90% line as the Critical badge', () => {
+    const warning = (rho: number) => generateOptimizationInsights(null, null, null, null, rho, t)
+      .find((i) => i.title === 'insights.high_utilization_title')
+    expect(warning(0.9)).toBeDefined()
+    expect(warning(0.99 / 1.1)).toBeDefined() // exact 0.9 that computes as 0.8999999999999999
+    expect(warning(0.8999)).toBeUndefined()
+  })
+
   it('does not divide by a zero wait or warn on missing inputs', () => {
     expect(generateOptimizationInsights(3, 4, 0, 0, null, t)
       .map((i) => i.title)).not.toContain('insights.wait_improvement_title')

@@ -40,7 +40,7 @@ import {
   RhoMeanP95Lines,
   UtilizationHeatmap,
 } from '../components/charts/Charts'
-import { downloadCsv, fmt, fmtFrCi, fmtPct } from '../lib/format'
+import { downloadCsv, fmt, fmtDecimal, fmtFrCi, fmtPct, fmtPctDecimal } from '../lib/format'
 
 type Tab = 'des' | 'mc' | 'validate'
 
@@ -390,7 +390,7 @@ function SelectedSeparateSimulationView({
                     <th scope="row">{row.time}</th>
                     <td>{row.queue_id ?? '—'}</td>
                     <td>{fmt(row.lambda)}</td>
-                    <td>{fmt(row.rho_mean)}</td>
+                    <td>{fmtDecimal(row.rho_mean)}</td>
                     <td>{fmt(row.Wq_mean === null ? null : row.Wq_mean * 60)}</td>
                     <td>{fmt(row.failure_rate)}</td>
                   </tr>
@@ -485,7 +485,7 @@ function SelectedSeparateSimulationView({
                     {period.queues.map((queue) => (
                       <tr key={String(queue.queue_id)}>
                         <th scope="row">{queue.queue_id ?? '—'}</th>
-                        <td>{fmt(queue.rho_sim)}</td>
+                        <td>{fmtDecimal(queue.rho_sim)}</td>
                         <td>{fmt(queue.Wq_sim === null || queue.Wq_sim === undefined ? null : queue.Wq_sim * 60)}</td>
                         <td>{queue.mc_failure_rate === null || queue.mc_failure_rate === undefined ? '—' : fmt(queue.mc_failure_rate)}</td>
                         <td>{queue.validation_verdict === 'pass' ? '✓' : queue.validation_verdict === 'fail' ? 'FAIL' : '—'}</td>
@@ -543,7 +543,7 @@ function SelectedSeparateSimulationView({
                   </tr>
                   <tr>
                     <th scope="row">{t('compare.sep_row_target')}</th>
-                    <td>{decision.facts?.selected_target === null || decision.facts?.selected_target === undefined ? '—' : fmtPct(decision.facts.selected_target)}</td>
+                    <td>{decision.facts?.selected_target === null || decision.facts?.selected_target === undefined ? '—' : fmtPctDecimal(decision.facts.selected_target)}</td>
                   </tr>
                   <tr>
                     <th scope="row">{t('simulation.sep_col_validation')}</th>
@@ -601,7 +601,7 @@ function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
                 <td>{row.arrivals ?? '—'}</td>
                 <td>{row.served ?? '—'}</td>
                 <td>{fmt(row.Wq_sim === null || row.Wq_sim === undefined ? null : row.Wq_sim * 60)}</td>
-                <td>{fmt(row.rho_sim)}</td>
+                <td>{fmtDecimal(row.rho_sim)}</td>
               </tr>
             ))}
           </tbody>
@@ -976,7 +976,7 @@ export function SimulationPage() {
                         <th scope="row">{row.time}</th>
                         {showDesQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}
                         <td>{row.error ?? row.status}</td>
-                        <td>{fmt(row.rho_sim, 3)}</td>
+                        <td>{fmtDecimal(row.rho_sim)}</td>
                         <td>{fmt(row.Lq_sim, 3)}</td>
                         <td>{fmt(row.Wq_sim == null ? null : row.Wq_sim * 60, 2)}</td>
                         <td>{row.max_queue}</td>
@@ -1017,7 +1017,7 @@ export function SimulationPage() {
             <>
               <div className="card table-scroll" role="region" aria-label={t('simulation.mc_table_caption')} tabIndex={0}>
                 <table><caption className="sr-only">{t('simulation.mc_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th>{showMcQueueColumn && <th scope="col">{t('analyses.service_line')}</th>}<th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.rho_mean')}</th><th scope="col">{t('simulation.rho_p95_label')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.failure_rate_ci')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
-                  <tbody>{mcRows.map((row, index) => <tr key={`${row.time}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`}><th scope="row">{row.time}</th>{showMcQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}<td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmt(row.rho_mean, 3)}</td><td>{fmt(row.rho_p95, 3)}</td><td>{fmtPct(row.failure_rate)}</td><td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
+                  <tbody>{mcRows.map((row, index) => <tr key={`${row.time}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`}><th scope="row">{row.time}</th>{showMcQueueColumn && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}<td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmtDecimal(row.rho_mean)}</td><td>{fmtDecimal(row.rho_p95)}</td><td>{fmtPct(row.failure_rate)}</td><td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
                 </table>
               </div>
               <div className="card-grid"><div className="card"><RhoMeanP95Lines rows={mcRows} /></div><div className="card"><FailureRateBars rows={mcRows} /></div></div>

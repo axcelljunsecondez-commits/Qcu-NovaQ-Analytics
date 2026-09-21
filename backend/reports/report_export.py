@@ -12,6 +12,7 @@ import openpyxl
 import pandas as pd
 
 from backend.queueing_engine.log import get_logger
+from backend.queueing_engine.utilization import utilization_band
 
 logger = get_logger(__name__)
 from openpyxl.styles import Font, PatternFill
@@ -68,15 +69,7 @@ def _utilization_status(rho: object) -> str:
     value = _number(rho)
     if value is None:
         return "Unavailable"
-    if value > 1:
-        return "Unstable"
-    if value >= 0.9:
-        return "Critical"
-    if value > 0.8:
-        return "Peak"
-    if value >= 0.6:
-        return "Normal"
-    return "Lean"
+    return utilization_band(value)
 
 
 def _status_color(status: str):

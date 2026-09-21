@@ -20,6 +20,7 @@ import {
 } from '../api/reports'
 import { ApiState } from '../components/ui/ApiState'
 import { getWorkflow } from '../api/workflow'
+import { fmtPctDecimal } from '../lib/format'
 
 interface ReportPreviewEntry {
   id: string
@@ -165,7 +166,7 @@ function SeparateReportView({ analysisId }: { analysisId: number }) {
                       )}
                     </td>
                     <td>{period.adjustment === null || period.adjustment === undefined ? '—' : String(period.adjustment)}</td>
-                    <td>{typeof period.peak_utilization === 'number' ? `${Math.round((period.peak_utilization as number) * 100)}%` : '—'}</td>
+                    <td>{typeof period.peak_utilization === 'number' ? fmtPctDecimal(period.peak_utilization) : '—'}</td>
                   </tr>
                 )
               })}
