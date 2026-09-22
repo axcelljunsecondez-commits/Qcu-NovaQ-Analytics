@@ -24,11 +24,12 @@ describe('Sidebar global navigation', () => {
     expect(container.querySelector('a[href*="/latest/"]')).not.toBeInTheDocument()
   })
 
-  it('links My Analyses filtered by queue structure', async () => {
+  it('keeps queue-structure filters inside My Analyses instead of duplicating them', async () => {
     const { container } = renderWithProviders(<Sidebar />, { route: '/dashboard' })
     expect(await screen.findByText('Help')).toBeInTheDocument()
-    expect(container.querySelector('a[href="/analyses"]')).toBeInTheDocument()
-    expect(container.querySelector('a[href="/analyses?structure=shared_queue"]')).toBeInTheDocument()
-    expect(container.querySelector('a[href="/analyses?structure=separate_queues"]')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'My Analyses' })).toHaveAttribute('href', '/analyses')
+    expect(container.querySelectorAll('a[href^="/analyses"]')).toHaveLength(1)
+    expect(screen.queryByText('Shared queue analyses')).not.toBeInTheDocument()
+    expect(screen.queryByText('Separate queue analyses')).not.toBeInTheDocument()
   })
 })

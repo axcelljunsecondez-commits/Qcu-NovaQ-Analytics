@@ -3307,6 +3307,23 @@ th {
 .theme-toggle {
   justify-content: flex-start;
   gap: 8px;
+  transition:
+    opacity var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  .sidebar-footer .theme-toggle {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  .sidebar-footer:hover .theme-toggle,
+  .sidebar-footer:focus-within .theme-toggle,
+  .theme-toggle:focus-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .sidebar-product-note {
