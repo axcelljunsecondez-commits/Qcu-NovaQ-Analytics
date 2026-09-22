@@ -75,6 +75,9 @@
   /* Shadows */
   --shadow-sm: 0 2px 8px rgba(10, 42, 80, 0.025);
   --shadow-md: 0 12px 30px rgba(7, 39, 75, 0.08);
+
+  /* Motion */
+  --motion-fast: 120ms;
 }
 
 [data-theme='dark'] {
