@@ -291,6 +291,42 @@ def test_official_google_verifier_rejects_issuer_audience_and_expiry(monkeypatch
             verifier.verify("credential", "expected-client")
 
 
+def test_official_google_verifier_tolerates_small_clock_skew(monkeypatch):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from google.auth import crypt, jwt
+    from google.oauth2 import id_token
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    )
+    public_pem = key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    signer = crypt.RSASigner.from_string(private_pem, key_id="test-key")
+    monkeypatch.setattr(id_token, "_fetch_certs", lambda *_args, **_kwargs: {"test-key": public_pem})
+
+    def token(issued_ahead: int) -> str:
+        now = int(datetime.now(timezone.utc).timestamp())
+        claims = {
+            "iss": "https://accounts.google.com",
+            "aud": "expected-client",
+            "iat": now + issued_ahead,
+            "exp": now + 3600,
+            "sub": "sub",
+            "email": "user@gmail.com",
+            "email_verified": True,
+        }
+        return jwt.encode(signer, claims).decode()
+
+    verifier = OfficialGoogleTokenVerifier()
+    # Local clock a few seconds behind Google: the token looks issued in the future.
+    assert verifier.verify(token(6), "expected-client")["sub"] == "sub"
+    with pytest.raises(InvalidGoogleCredential):
+        verifier.verify(token(300), "expected-client")
+
+
 class auth_session:
     def __init__(self, engine) -> None:
         from tests.helpers import make_sessionmaker

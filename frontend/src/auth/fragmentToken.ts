@@ -1,9 +1,17 @@
-export function takeFragmentToken(name = 'token'): string | null {
+export function readFragmentToken(name = 'token'): string | null {
   const fragment = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
-  const token = new URLSearchParams(fragment).get(name)
+  return new URLSearchParams(fragment).get(name)
+}
+
+export function clearFragment(): void {
   if (window.location.hash) {
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`)
   }
+}
+
+export function takeFragmentToken(name = 'token'): string | null {
+  const token = readFragmentToken(name)
+  clearFragment()
   return token
 }
 

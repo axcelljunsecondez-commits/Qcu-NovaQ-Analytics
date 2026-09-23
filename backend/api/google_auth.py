@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+# google-auth defaults to zero skew, so a server clock a few seconds behind
+# Google rejects fresh tokens as "used too early".
+GOOGLE_CLOCK_SKEW_SECONDS = 30
+
 
 class InvalidGoogleCredential(ValueError):
     pass
@@ -15,7 +19,12 @@ class OfficialGoogleTokenVerifier:
             from google.auth.transport import requests
             from google.oauth2 import id_token
 
-            claims = id_token.verify_oauth2_token(credential, requests.Request(), audience)
+            claims = id_token.verify_oauth2_token(
+                credential,
+                requests.Request(),
+                audience,
+                clock_skew_in_seconds=GOOGLE_CLOCK_SKEW_SECONDS,
+            )
         except Exception as exc:
             raise InvalidGoogleCredential("Google credential validation failed.") from exc
         issuer = claims.get("iss")

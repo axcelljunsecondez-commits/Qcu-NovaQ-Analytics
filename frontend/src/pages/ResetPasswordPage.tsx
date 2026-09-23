@@ -1,12 +1,15 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { resetPassword } from '../api/auth'
-import { takeFragmentToken } from '../auth/fragmentToken'
+import { clearFragment, readFragmentToken } from '../auth/fragmentToken'
 
 export function ResetPasswordPage() {
   const { t } = useTranslation()
-  const [token] = useState(() => takeFragmentToken())
+  // Read without scrubbing during render: a suspended first render is discarded,
+  // and scrubbing there would leave the retried render with no token.
+  const [token] = useState(() => readFragmentToken())
+  useEffect(() => clearFragment(), [])
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [state, setState] = useState<'form' | 'success' | 'invalid'>(token ? 'form' : 'invalid')
