@@ -1,5 +1,6 @@
+import { Suspense } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { RegisterPage } from './RegisterPage'
@@ -83,5 +84,36 @@ describe('public authentication flows', () => {
     await user.click(screen.getByRole('button', { name: 'Reset password' }))
     await waitFor(() => expect(resetMock).toHaveBeenCalledWith('reset-token-value', 'password123'))
     expect(await screen.findByText('Password reset. You can now sign in.')).toBeInTheDocument()
+  })
+
+  it('keeps the reset token when the first render suspends', async () => {
+    window.history.replaceState({}, '', '/reset-password#token=reset-token-value')
+    let resolve!: () => void
+    let ready = false
+    const pending = new Promise<void>((r) => {
+      resolve = () => {
+        ready = true
+        r()
+      }
+    })
+    function SuspendOnce() {
+      if (!ready) throw pending
+      return null
+    }
+    renderWithProviders(
+      <Suspense fallback={null}>
+        <ResetPasswordPage />
+        <SuspendOnce />
+      </Suspense>,
+      { route: '/reset-password' },
+    )
+    await act(async () => resolve())
+    expect(await screen.findByLabelText('New password')).toBeInTheDocument()
+    expect(window.location.hash).toBe('')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('New password'), 'password123')
+    await user.type(screen.getByLabelText('Confirm password'), 'password123')
+    await user.click(screen.getByRole('button', { name: 'Reset password' }))
+    await waitFor(() => expect(resetMock).toHaveBeenCalledWith('reset-token-value', 'password123'))
   })
 })
