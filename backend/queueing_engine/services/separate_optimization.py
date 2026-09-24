@@ -430,6 +430,51 @@ def _validated_samples(row: dict) -> list[float] | None:
     return clean
 
 
+def _replication_costs(evaluations: list[dict], rows_by_id: dict, *, horizon: float,
+                       server_cost: float, waiting_cost: float) -> dict:
+    """Staffing, waiting and total cost of one simulated replication.
+
+    Priced for every measured replication, whatever its utilization verdict:
+    an over-target run is still an observation of the candidate, and leaving it
+    out biases the replicated mean cost low. Each active lane costs its server
+    rate; its waiting cost is ``served / horizon * Wq * rate``. A lane with no
+    arrivals waited 0 customer-hours. A lane whose arrivals were never served
+    has no measured wait, so the waiting and total cost are undefined (None)
+    with the reason, never zero-filled.
+    """
+    server_total = 0.0
+    waiting_total = 0.0
+    no_rate: list[str] = []
+    no_wait: list[str] = []
+    for item in evaluations:
+        if not item.get("active"):
+            continue
+        queue_id = item["queue_id"]
+        lane_cost = _segment_server_cost(rows_by_id.get(queue_id) or {}, server_cost)
+        if lane_cost is None:
+            no_rate.append(str(queue_id))
+        else:
+            server_total += lane_cost
+        served = item.get("served") or 0
+        lane_wait = (_compute_waiting_cost(served / horizon, item.get("Wq"), waiting_cost)
+                     if served and item.get("Wq") is not None else None)
+        if lane_wait is not None:
+            waiting_total += lane_wait
+        elif served or item.get("arrivals"):
+            no_wait.append(str(queue_id))
+    reasons = []
+    if no_rate:
+        reasons.append(f"Staffing cost undefined: no valid server cost for {', '.join(sorted(no_rate))}.")
+    if no_wait:
+        reasons.append("Waiting cost undefined: no measured wait for "
+                       f"{', '.join(sorted(no_wait))}, whose arrivals were not served within the run.")
+    staffing = None if no_rate else server_total
+    waiting = None if no_wait else waiting_total
+    return {"server_cost": staffing, "waiting_cost": waiting,
+            "total_cost": None if staffing is None or waiting is None else staffing + waiting,
+            "cost_undefined_reason": " ".join(reasons) or None}
+
+
 def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration_hours: float,
                                 seed: int | None = None, target: float | None = None,
                                 server_cost: float = DEFAULT_SERVER_COST_HR,
@@ -594,28 +639,19 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
     # INFEASIBLE left selected-plan playback with an empty floor for exactly the
     # busy periods the operator most needs to watch.
     trace_evidence = {"trace_events": trace, "trace_truncated": trace_truncated}
+    # Both verdicts are measured runs, so both are priced (D1).
+    costs = _replication_costs(evaluations, normalized, horizon=horizon,
+                               server_cost=server_cost, waiting_cost=waiting_cost)
     if over_target:
         return {**base, "status": "INFEASIBLE",
                 "reason": f"Simulated utilization exceeds the {ceiling:.0%} ceiling for: {', '.join(over_target)}.",
-                "evaluations": evaluations, "total_cost": None, "total_lambda": total_lambda,
+                "evaluations": evaluations, **costs, "total_lambda": total_lambda,
                 "customer_conservation": conserved, "metric_provenance": "simulated",
                 **trace_evidence}
-    server_total = 0.0
-    waiting_total = 0.0
-    for item in evaluations:
-        if not item["active"]:
-            continue
-        lane_cost = _segment_server_cost(normalized[item["queue_id"]], server_cost)
-        server_total += lane_cost
-        if item["served"] and item["Wq"] is not None:
-            lane_wait = _compute_waiting_cost(
-                item["served"] / horizon, item["Wq"], waiting_cost)
-            waiting_total += lane_wait or 0.0
     return {**base, "status": "FEASIBLE", "reason": None,
             "evaluations": evaluations,
             "total_lambda": total_lambda,
-            "total_cost": server_total + waiting_total,
-            "server_cost": server_total, "waiting_cost": waiting_total,
+            **costs,
             "customer_conservation": conserved,
             "metric_provenance": "simulated",
             "method": "conserved-arrival shortest-queue routing DES",
@@ -1270,6 +1306,18 @@ def _summarize_metric(values: list) -> dict | None:
             "n": count}
 
 
+def _summarize_every(values: list) -> dict | None:
+    """``_summarize_metric`` only when every replication supplied a finite value.
+
+    A mean over the replications that happened to report a value is not the
+    replicated estimate for the candidate (D1), so one missing value leaves the
+    whole summary undefined.
+    """
+    if not values or any(not _is_number(value) for value in values):
+        return None
+    return _summarize_metric(values)
+
+
 def _aggregate_shell(candidate: dict, config: dict, status: str, reason) -> dict:
     """Minimal aggregate result for non-evidence outcomes."""
     return {
@@ -1305,6 +1353,11 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
     the final optimizer feasibility rule stays deferred (``feasibility``
     carries FEASIBILITY_POLICY_REQUIRED) until an aggregate utilization
     statistic is approved.
+
+    Costs summarize every replication, including those whose own utilization
+    exceeded the target (counted in ``replications_over_target``); a cost that
+    any replication could not define leaves that cost undefined, with the
+    replications and reasons in ``cost_undefined_replications`` (D1).
     """
     try:
         settings = validate_des_replication_config(config)
@@ -1396,6 +1449,12 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
                   for lanes in by_rep_lane]
     lane_means = [lane["utilization"]["mean"] for lane in per_lane
                   if lane["active"] and lane["utilization"] is not None]
+    over_target = [index for index, run in enumerate(runs) if run.get("status") == "INFEASIBLE"]
+    cost_undefined = [
+        {"replication": index, "seed": seeds[index],
+         "reason": run.get("cost_undefined_reason") or "The replication reported no total cost."}
+        for index, run in enumerate(runs) if not _is_number(run.get("total_cost"))
+    ]
     first_trace = runs[0]
     return {
         "time": candidate.get("time", "segment"),
@@ -1422,11 +1481,14 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
         "waiting_time": _summarize_metric(rep_waits),
         "max_mean_lane_utilization": max(lane_means) if lane_means else None,
         "costs": {
-            "staffing": _summarize_metric([run.get("server_cost") for run in runs]),
-            "waiting": _summarize_metric([run.get("waiting_cost") for run in runs]),
+            "staffing": _summarize_every([run.get("server_cost") for run in runs]),
+            "waiting": _summarize_every([run.get("waiting_cost") for run in runs]),
             "abandonment": None,
-            "total": _summarize_metric([run.get("total_cost") for run in runs]),
+            "total": _summarize_every([run.get("total_cost") for run in runs]),
         },
+        "cost_undefined_replications": cost_undefined,
+        "replications_over_target": len(over_target),
+        "replications_over_target_seeds": [seeds[index] for index in over_target],
         "arrivals": _summarize_metric(rep_arrivals),
         "served": _summarize_metric(rep_served),
         "abandoned": None,
@@ -1550,7 +1612,8 @@ def _optimize_separate_des(time_label, available, by_id, counts, *, ceiling,
     one ranking never mixes analytical and simulated objectives. OPTIMAL here
     means the lowest estimated (mean replicated) total cost among FEASIBLE
     candidates over a complete search — a simulation estimate, not an exact
-    quantity. Any unevaluated candidate blocks the optimum claim.
+    quantity. Any unevaluated candidate blocks the optimum claim, as does a
+    feasible candidate whose replicated cost is undefined.
     """
     candidates = []
     for spec in counts:
@@ -1583,6 +1646,8 @@ def _optimize_separate_des(time_label, available, by_id, counts, *, ceiling,
             "waiting_cost": (costs.get("waiting") or {}).get("mean"),
             "cost_uncertainty": {key: total.get(key)
                                  for key in ("sd", "se", "ci_lower", "ci_upper", "n")},
+            "replications_over_target": aggregate.get("replications_over_target"),
+            "cost_undefined_replications": aggregate.get("cost_undefined_replications"),
             "evidence": aggregate,
         })
     provenance = {
@@ -1602,6 +1667,17 @@ def _optimize_separate_des(time_label, available, by_id, counts, *, ceiling,
                                "evidence. " + (completeness["reason"] or ""))
         return {"time": time_label, "target_utilization": ceiling, "overall": overall,
                 "reason": reason, "candidates": candidates, "optimum": None, **provenance}
+    # A feasible candidate without a defined replicated cost cannot be ranked by
+    # cost, and ranking the rest would compare against an unknown (D1).
+    unpriced = [candidate for candidate in candidates
+                if candidate["status"] == "FEASIBLE" and not _is_number(candidate["mean_total_cost"])]
+    if unpriced:
+        return {"time": time_label, "target_utilization": ceiling, "overall": "UNSUPPORTED",
+                "reason": ("Feasible lane count(s) "
+                           + ", ".join(str(candidate["active_lane_count"]) for candidate in unpriced)
+                           + " have no defined replicated cost, so candidates cannot be ranked "
+                             "by cost and no optimum is claimed."),
+                "candidates": candidates, "optimum": None, **provenance}
     ranking = rank_des_candidates(candidates)
     if not ranking:
         return {"time": time_label, "target_utilization": ceiling, "overall": "INFEASIBLE",
@@ -1746,23 +1822,17 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
                   "trace_truncated": day["trace_truncated"]}
         over_target = sorted(item["queue_id"] for item in evaluations if item["active"]
                              and float(item["rho"]) > target + _UTILIZATION_TOLERANCE)
+        # Both verdicts are measured runs, so both are priced (D1).
+        costs = _replication_costs(
+            evaluations,
+            {queue_id: _validate_queue_row(queues_by_id[queue_id]) or {} for queue_id in active},
+            horizon=horizon, server_cost=server_cost, waiting_cost=waiting_cost)
         if over_target:
-            return {**base, **shared, "status": "INFEASIBLE", "total_cost": None,
+            return {**base, **shared, **costs, "status": "INFEASIBLE",
                     "reason": (f"Simulated utilization exceeds the {target:.0%} ceiling for: "
                                + ", ".join(over_target) + ".")}
-        server_total = 0.0
-        waiting_total = 0.0
-        for item in evaluations:
-            if not item["active"]:
-                continue
-            server_total += _segment_server_cost(
-                _validate_queue_row(queues_by_id[item["queue_id"]]) or {}, server_cost)
-            if item["served"] and item["Wq"] is not None:
-                waiting_total += _compute_waiting_cost(
-                    item["served"] / horizon, item["Wq"], waiting_cost) or 0.0
-        return {**base, **shared, "status": "FEASIBLE", "reason": None,
-                "total_cost": server_total + waiting_total,
-                "server_cost": server_total, "waiting_cost": waiting_total, "demand_conserved": True}
+        return {**base, **shared, **costs, "status": "FEASIBLE", "reason": None,
+                "demand_conserved": True}
 
     return run
 
