@@ -264,3 +264,17 @@ Open items:
 - Remote branch `feat/cloudflare-pages-api-bridge` is merged and can be deleted.
 - Pages Functions are set to fail open: past the free 100,000 requests/day, `/api/*` would fall back to the SPA HTML.
 - Pre-login rate limits key on client IP. Through the Worker, many users may reach Render from shared Cloudflare egress IPs, so they can share one auth bucket. Watch for 429s on login.
+
+## Shared Queue Enhancement: Phase 1 Segment Foundation (2026-09-24)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-24-shared-queue-segment-foundation.md`
+- `docs/superpowers/plans/2026-09-24-shared-queue-segment-foundation-plan.md`
+
+Current verified state:
+
+- New pure module `backend/queueing_engine/services/shared_segments.py`. It keeps demand periods (λ, μ per hour) apart from staffing segments (c), in whole minutes inside one day. It rejects gaps, overlaps, out-of-order items, incomplete horizon coverage, and staffing segments that cross a demand boundary. A shorter staffing segment inherits its demand period's rates and is labelled `inherited_from_demand_period`. Each segment is evaluated through `select_model` (M/M/c, or M/M/1 when c = 1), with duration-weighted arrivals, server-hours, offered work, and steady-state waiting customer-hours. Unstable, no-capacity, and failed segments report `None`, never 0.
+- Nothing imports it yet (a test enforces this). No API, schema, database, frontend, report, legacy shared DES, or separate-queue code changed.
+- Verification: `tests/test_shared_segments.py` has 50 tests, including independent Erlang-B references, exact textbook cases, and the NovaMart 14-day rows. An in-memory mutation check confirmed that five deliberate faults are caught. Backend 1083 passed, 3 skipped, 1 xfailed (the 1033 baseline plus 50). Ruff and mypy are clean. The frontend was not re-run because it was untouched.
+- Next (needs approval): Phase 2 dynamic capacity optimization. Workforce inputs, transition and closing policies, and model scope beyond M/M/c remain open decisions.
