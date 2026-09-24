@@ -54,13 +54,20 @@ It provides:
 | Case | Status | ρ | Lq, Wq | Waiting customer-hours |
 |---|---|---|---|---|
 | c ≥ 1, λ > 0, λ < cμ | `STABLE` | λ/(cμ) | from `select_model` | λ · Wq · T |
-| c ≥ 1, λ = 0 | `ZERO_DEMAND` | 0 | the equations' λ→0 limit (0) | 0 (no arrivals) |
+| c ≥ 1, λ = 0 | `ZERO_DEMAND` | 0 | 0 (the only steady state is an empty queue) | 0 (no arrivals) |
 | c ≥ 1, ρ ≥ 1 (with the 1e-9 tolerance) | `UNSTABLE` | λ/(cμ) | `None` | `None` |
 | c = 0, λ > 0 | `NO_CAPACITY` | `None` | `None` | `None` |
-| c = 0, λ = 0 | `CLOSED` | `None` | `None` | 0 (no arrivals) |
+| c = 0, λ = 0 | `CLOSED` | `None` | `None` (every state is absorbing, so no unique steady state) | 0 (no arrivals) |
 
 Unknown or undefined values are `None`, never 0. Horizon totals that depend on an undefined
 segment value are `None`, and the affected segment ids are listed.
+
+Waiting is attributed to the segment in which a customer arrives. Segments are evaluated
+independently, so customers still waiting from an earlier segment (backlog) are not
+represented. A `ZERO_DEMAND` or `CLOSED` segment therefore does not mean the continuous
+queue is empty. Every row states `waiting_attribution: "customers_arriving_in_segment"` and
+`backlog_represented: false`, and the notes on both statuses say so. (This disclosure was
+added on 2026-09-24 before Phase 2; the numbers did not change.)
 
 ## Units
 
@@ -75,8 +82,9 @@ segment value are `None`, and the affected segment ids are listed.
 
 ## Verification
 
-- Independent references in the tests: exact Erlang C cases (A = 2, c = 3 gives
-  P(wait) = 4/9, Lq = 8/9; M/M/1 λ = 3, μ = 4 gives Lq = 2.25, Wq = 0.75 h), an Erlang-B
+- Independent references in the tests: exact Erlang C cases (λ = 2 per hour, μ = 1 per
+  hour per server, c = 3 gives P(wait) = 4/9, Lq = 8/9, Wq = 4/9 h; M/M/1 with λ = 3 and
+  μ = 4 per hour gives Lq = 2.25, Wq = 0.75 h), an Erlang-B
   recursion implemented in the test file, and rows from the NovaMart 14-day average.
 - Boundary tests for every validation rule and every outcome row above.
 - Regression: the full backend suite, ruff, and mypy. The frontend is untouched.

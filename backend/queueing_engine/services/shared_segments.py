@@ -43,6 +43,10 @@ ASSUMPTIONS = [
     "service rates (piecewise-constant rates). No sub-period demand variation is observed "
     "or implied.",
     "Rates are per hour and the service rate is per server. Durations are whole minutes.",
+    "Waiting is attributed to the segment in which a customer arrives: expected waiting "
+    "customer-hours = arrival rate x Wq x duration. Segments are evaluated independently, so "
+    "customers still waiting from an earlier segment (backlog) are not represented. A segment "
+    "with zero demand or no servers can still hold such customers in a continuous day.",
 ]
 
 # Rows carrying these inputs select a model other than M/M/c; Phase 1 does not cover them.
@@ -210,7 +214,7 @@ def validate_timeline(
         )
     if not problems:
         for segment in staffing_segments:
-            if _containing_period(segment, demand_periods) is None:
+            if containing_period(segment, demand_periods) is None:
                 problems.append(
                     f"Staffing segment {segment.segment_id} ({format_clock(segment.start_minute)}-"
                     f"{format_clock(segment.end_minute)}) crosses a demand-period boundary. Split it at the "
@@ -220,7 +224,8 @@ def validate_timeline(
         raise SharedSegmentError(problems)
 
 
-def _containing_period(segment: StaffingSegment, demand_periods: Sequence[DemandPeriod]) -> DemandPeriod | None:
+def containing_period(segment: StaffingSegment, demand_periods: Sequence[DemandPeriod]) -> DemandPeriod | None:
+    """The one demand period that holds the staffing segment, or None when it crosses a boundary."""
     return next(
         (
             period for period in demand_periods
@@ -230,7 +235,8 @@ def _containing_period(segment: StaffingSegment, demand_periods: Sequence[Demand
     )
 
 
-def _evaluate_segment(segment: StaffingSegment, period: DemandPeriod) -> dict[str, Any]:
+def evaluate_segment(segment: StaffingSegment, period: DemandPeriod) -> dict[str, Any]:
+    """Stationary evaluation of one staffing segment inside its (already validated) demand period."""
     duration_minutes = segment.end_minute - segment.start_minute
     duration_hours = duration_minutes / 60.0
     lambda_ = float(period.arrival_rate_per_hour)
@@ -267,13 +273,25 @@ def _evaluate_segment(segment: StaffingSegment, period: DemandPeriod) -> dict[st
         "server_hours": servers * duration_hours,
         "offered_work_hours": lambda_ / mu * duration_hours,
         "expected_waiting_customer_hours": None,
+        "waiting_attribution": "customers_arriving_in_segment",
+        "backlog_represented": False,
         "note": None,
     }
 
     if servers == 0:
         if lambda_ == 0:
-            row.update(status="CLOSED", expected_waiting_customer_hours=0.0,
-                       note="No servers and no arrivals.")
+            # Every state is absorbing, so there is no unique steady state: rho and the
+            # queue metrics stay None. Only the arrival-attributed waiting is known.
+            row.update(
+                status="CLOSED",
+                expected_waiting_customer_hours=0.0,
+                note=(
+                    "No servers and no arrivals. No customer arrives in this segment, so its "
+                    "arrival-attributed waiting is 0, but queue metrics have no unique steady state. "
+                    "Customers still waiting from an earlier segment would stay unserved; that backlog "
+                    "is not represented."
+                ),
+            )
         else:
             row.update(status="NO_CAPACITY",
                        note="Customers arrive but no server is scheduled, so no steady state exists.")
@@ -304,7 +322,11 @@ def _evaluate_segment(segment: StaffingSegment, period: DemandPeriod) -> dict[st
         expected_waiting_customer_hours=lambda_ * wq * duration_hours,
     )
     if lambda_ == 0:
-        row["note"] = "No arrivals; waiting values are the equations' zero-demand limit."
+        row["note"] = (
+            "No arrivals, so the stationary queue is empty and its waits are 0. Customers still "
+            "waiting from an earlier segment would carry into this one in a continuous day; that "
+            "backlog is not represented."
+        )
     return row
 
 
@@ -317,9 +339,9 @@ def evaluate_shared_segments(
     validate_timeline(horizon, demand_periods, staffing_segments)
     rows = []
     for segment in staffing_segments:
-        period = _containing_period(segment, demand_periods)
+        period = containing_period(segment, demand_periods)
         assert period is not None  # guaranteed by validate_timeline
-        rows.append(_evaluate_segment(segment, period))
+        rows.append(evaluate_segment(segment, period))
 
     undefined_waiting = [row["segment_id"] for row in rows if row["expected_waiting_customer_hours"] is None]
     status_counts: dict[str, int] = {}

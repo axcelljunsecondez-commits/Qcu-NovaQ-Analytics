@@ -66,7 +66,8 @@ def problems_of(error: pytest.ExceptionInfo[SharedSegmentError]) -> str:
 
 
 def test_exact_erlang_c_textbook_case():
-    # A = λ/μ = 2 Erlangs, c = 3: P(wait) = 4/9, Lq = 8/9, Wq = Lq/λ = 4/9 h.
+    # λ = 2 per hour, μ = 1 per hour per server, c = 3 (A = λ/μ = 2 Erlangs, ρ = 2/3):
+    # P(wait) = 4/9 and Lq = 8/9 depend only on A and c; Wq = Lq/λ = 4/9 h needs λ = 2.
     result = evaluate_shared_segments(*one_period(540, 600, 2.0, 1.0, 3))
     row = result["segments"][0]
     assert row["selected_model"] == "M/M/c"
@@ -79,7 +80,7 @@ def test_exact_erlang_c_textbook_case():
 
 
 def test_exact_mm1_case_uses_m_m_1():
-    # λ = 3, μ = 4: Lq = ρ²/(1-ρ) = 2.25, Wq = λ/(μ(μ-λ)) = 0.75 h.
+    # λ = 3 per hour, μ = 4 per hour, c = 1: Lq = ρ²/(1-ρ) = 2.25, Wq = λ/(μ(μ-λ)) = 0.75 h.
     row = evaluate_shared_segments(*one_period(0, 60, 3.0, 4.0, 1))["segments"][0]
     assert row["selected_model"] == "M/M/1"
     assert row["Lq"] == pytest.approx(2.25, abs=1e-12)
@@ -182,8 +183,23 @@ def test_no_servers_with_demand_has_no_steady_state():
 def test_closed_period_without_demand():
     row = evaluate_shared_segments(*one_period(0, 60, 0.0, 4.0, 0))["segments"][0]
     assert row["status"] == "CLOSED"
-    assert row["rho"] is None
+    # λ = 0 and c = 0: every state is absorbing, so no unique steady state exists.
+    assert row["rho"] is None and row["Lq"] is None and row["Wq_hours"] is None
+    # Only the waiting of customers arriving in the segment is known: none arrive.
     assert row["expected_waiting_customer_hours"] == 0.0
+    assert row["waiting_attribution"] == "customers_arriving_in_segment"
+
+
+def test_zero_demand_and_closed_rows_do_not_claim_an_empty_continuous_queue():
+    result = evaluate_shared_segments(
+        OperatingHorizon(0, 120),
+        [DemandPeriod("a", 0, 60, 0.0, 4.0), DemandPeriod("b", 60, 120, 0.0, 4.0)],
+        [StaffingSegment("a", 0, 60, 2), StaffingSegment("b", 60, 120, 0)],
+    )
+    for row in result["segments"]:
+        assert row["backlog_represented"] is False
+        assert "backlog is not represented" in row["note"]
+    assert any("backlog" in assumption and "arrives" in assumption for assumption in result["assumptions"])
 
 
 def test_unstable_segment_keeps_rho_and_withholds_waits():
