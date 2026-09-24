@@ -264,6 +264,22 @@ def test_every_candidate_and_the_inputs_are_kept():
     assert any("backlog" in text for text in provenance["assumptions"])
 
 
+def test_limits_and_stability_share_one_tolerance():
+    # The optimizer's limit margin is the same constant is_saturated uses for stability.
+    from backend.queueing_engine import utilization
+    from backend.queueing_engine.services import shared_capacity
+
+    assert shared_capacity.THRESHOLD_TOLERANCE is utilization.THRESHOLD_TOLERANCE == 1e-9
+    assert utilization.is_saturated(1 - 1e-9) and not utilization.is_saturated(1 - 2e-9)
+    # Behavior at the utilization limit: 5e-10 above the target passes, 2e-9 above fails.
+    base = 2.1 / 3  # ρ for λ = 2.1, μ = 1, c = 3
+    inside = single(2.1, 1.0, 3, config(target_utilization=base - 5e-10, waiting_cost_per_customer_hour=0.0))
+    outside = single(2.1, 1.0, 3, config(target_utilization=base - 2e-9, waiting_cost_per_customer_hour=0.0))
+    assert candidate(inside["segments"][0], 3)["feasible"] is True
+    assert candidate(outside["segments"][0], 3)["violations"] == ["target_utilization"]
+    assert "1e-12" in inside["provenance"]["tolerance_policy"]
+
+
 # ── Configuration validation ────────────────────────────────────────────────
 
 

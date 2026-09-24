@@ -296,3 +296,32 @@ Current verified state:
 - Nothing legacy imports either new module; a test enforces this. The legacy optimizer, `/optimize` and `/optimize/batch`, scenario schema versions, Decision, reports, the legacy shared DES, and all separate-queue code are unchanged.
 - Verification: `tests/test_shared_capacity.py` has 28 tests, covering hand-computed costs, an exact 14.5/14.5 tie, float noise at the target, the max-wait boundary, zero demand and zero capacity, unstable and infeasible segments, duration scaling, a brute-force optimum from an independent Erlang-B recursion, and agreement with the legacy optimizer's `c_optimal`, `cost_optimal`, and `cost_current` on the NovaMart 14-day average (plan 2,3,3,3,3,4,3,4,4,3,3,2,2 = 39 server-hours versus 55 current). An in-memory mutation check confirmed that seven deliberate faults are caught. Backend 1112 passed, 3 skipped (Postgres migration chain), 1 xfailed. Ruff and mypy are clean.
 - Next (needs approval): Phase 3 workforce scheduling. It is blocked on workforce inputs (availability, shift lengths, break rules, labor cost) and on the transition, closing, and sequential-versus-joint decisions.
+
+## Shared Queue Enhancement: Phase 3 Continuous Shared DES (2026-09-24)
+
+The product owner renumbered the phases: Phase 3 is now the continuous DES, and workforce scheduling moves later.
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-24-shared-queue-continuous-des.md`
+- `docs/superpowers/plans/2026-09-24-shared-queue-continuous-des-plan.md`
+
+Current verified state:
+
+- New pure module `backend/queueing_engine/simulation/shared_continuous_des.py`. It is one event-driven run over the whole horizon, with no restart, warm-up, or reset at boundaries.
+  - Arrivals: Poisson with the demand period's λ, exact by memorylessness.
+  - Service: each customer carries unit work Exp(1), drawn once. Service lasts work / μ, with μ from the period in which service starts, and is never redrawn or interrupted.
+  - One common first-come-first-served line; the lowest free server number serves first.
+  - Capacity decreases close idle servers first and then drain busy ones (no new customer; close at completion). Increases reactivate draining servers before opening others.
+  - Same-time order: completions, then capacity changes, then arrivals.
+  - Customers keep their ids and waits for the whole run. Conservation is reported, and so are capacity transitions, drain records, and server-hours above schedule.
+  - Seeds come from numpy `SeedSequence` with two streams; unseeded runs record their entropy.
+  - `simulate_prescribed` runs exact deterministic cases. `staffing_from_capacity_result` feeds a complete Phase 2 plan to the DES.
+- Tolerance policy: the new pipeline uses `THRESHOLD_TOLERANCE` (1e-9), the same constant `is_saturated` applies. It is stated in the Phase 2 provenance and pinned by a test. The legacy optimizer keeps its 1e-12.
+- **Closing policy is UNRESOLVED.** The engine observes the horizon only and reports customers still waiting or in service at the end. Nobody is served after closing, and nobody is removed. The separate-queue day drains after closing, but that is not approved for shared queues.
+- Nothing legacy imports the module; the isolation test covers it. The legacy shared DES, separate-queue code, APIs, scenarios, Decision, and reports are unchanged.
+- Verification:
+  - `tests/test_shared_continuous_des.py` has 49 tests: exact hand-computed cases (increase, decrease with drain, idle-first closing, zero capacity with backlog, zero demand with backlog, same-time ordering in both directions, a μ change, the horizon end), sample-path identities (∫queue = Σ waits; busy hours = Σ service), conservation, identity and first-come-first-served order on 20 seeded multi-transition runs, reproducibility, and statistical checks.
+  - The Erlang C benchmark (λ 40, μ 20, c 3, 100 × 24 h, 95,670 customers) fell within 1.05 standard errors on Lq, P(wait), and Wq.
+  - A source-level mutation check caught 9 of 9 faults after one ordering test was strengthened.
+  - Backend 1162 passed, 3 skipped, 1 xfailed. Ruff and mypy are clean.

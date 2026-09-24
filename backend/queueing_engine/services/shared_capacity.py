@@ -45,6 +45,14 @@ OBJECTIVE = (
     "stationary model, so this is the horizon minimum for this objective; it is not a workforce "
     "or payroll optimum."
 )
+TOLERANCE_POLICY = (
+    f"The shared-queue pipeline uses one float-noise tolerance, utilization.THRESHOLD_TOLERANCE "
+    f"({THRESHOLD_TOLERANCE:g}): the same tolerance is_saturated applies to the stability test inside "
+    "the M/M/c equations, so stability and the utilization and wait limits share one boundary rule. "
+    "It is far above the rounding error of lambda/(c mu) and far below the smallest displayed "
+    "utilization step (1e-6). The legacy optimizer's 1e-12 margin is unchanged and applies only "
+    "to the legacy path."
+)
 TIE_RULE = (
     f"Candidates within a relative {COST_TIE_RELATIVE_TOLERANCE:g} of the lowest total cost are "
     "tied; the tie goes to fewer servers."
@@ -261,6 +269,7 @@ def optimize_shared_capacity(
                 "utilization_and_wait_limits": THRESHOLD_TOLERANCE,
                 "cost_tie_relative": COST_TIE_RELATIVE_TOLERANCE,
             },
+            "tolerance_policy": TOLERANCE_POLICY,
             "units": {
                 "rates": "customers per hour; service rate per server",
                 "duration": "hours (whole minutes / 60)",
