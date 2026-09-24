@@ -107,6 +107,17 @@ Admin seeding is create-only: stronger environment credentials do not rotate an
 existing account. Verify the existing administrator credentials explicitly during
 deployment and use the documented seed reset procedure when rotation is needed.
 
+## Cloudflare Pages frontend
+
+Cloudflare Pages builds `frontend/` (`npm run build`, output `dist`). Static Pages
+has no nginx, so `frontend/functions/api/[[path]].ts` is the `/api` bridge: it
+strips `/api`, forwards to the `NOVAQ_API_ORIGIN` Pages variable (exact HTTPS
+origin, set for Production and Preview), passes cookies, `Origin`,
+`X-CSRF-Token` and `X-Request-ID`, and keeps each `Set-Cookie` separate.
+`frontend/public/_routes.json` limits the Function to `/api` and `/api/*`. The
+browser sees one origin, so session/CSRF cookies stay first-party. Add each Pages
+origin to the Google client's Authorized JavaScript origins. Changing
+`PUBLIC_APP_URL` (and adding the origin to `ALLOWED_ORIGINS`) belongs to cutover.
 
 ## Local HTTPS and recovery rehearsal
 
