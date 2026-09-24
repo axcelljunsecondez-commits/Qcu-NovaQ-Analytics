@@ -360,11 +360,15 @@ def test_aggregate_rows_with_a_gap_fail_validation():
 # ── Isolation ───────────────────────────────────────────────────────────────
 
 
+SHARED_QUEUE_ENHANCEMENT_MODULES = {"shared_segments.py", "shared_capacity.py"}
+
+
 def test_no_existing_module_depends_on_the_new_foundation():
+    # Only the new shared-queue enhancement modules may use each other; legacy code must not.
     importers = [
         path.relative_to(REPO_ROOT).as_posix()
         for path in (REPO_ROOT / "backend").rglob("*.py")
-        if "shared_segments" in path.read_text(encoding="utf-8")
-        and path.name != "shared_segments.py"
+        if any(name in path.read_text(encoding="utf-8") for name in ("shared_segments", "shared_capacity"))
+        and path.name not in SHARED_QUEUE_ENHANCEMENT_MODULES
     ]
     assert importers == []

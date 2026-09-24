@@ -278,3 +278,21 @@ Current verified state:
 - Nothing imports it yet (a test enforces this). No API, schema, database, frontend, report, legacy shared DES, or separate-queue code changed.
 - Verification: `tests/test_shared_segments.py` has 50 tests, including independent Erlang-B references, exact textbook cases, and the NovaMart 14-day rows. An in-memory mutation check confirmed that five deliberate faults are caught. Backend 1083 passed, 3 skipped, 1 xfailed (the 1033 baseline plus 50). Ruff and mypy are clean. The frontend was not re-run because it was untouched.
 - Next (needs approval): Phase 2 dynamic capacity optimization. Workforce inputs, transition and closing policies, and model scope beyond M/M/c remain open decisions.
+
+## Shared Queue Enhancement: Phase 2 Capacity Optimization (2026-09-24)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-24-shared-queue-capacity-optimization.md`
+- `docs/superpowers/plans/2026-09-24-shared-queue-capacity-optimization-plan.md`
+
+Current verified state:
+
+- Pre-Phase 2 review fix `ad8ed236`: segment rows now state `waiting_attribution` and `backlog_represented: false`. The zero-demand and closed notes say that backlog from earlier segments is not represented, and the textbook reference case states its full λ, μ, and c. No value changed.
+- New pure module `backend/queueing_engine/services/shared_capacity.py`. For each staffing segment it evaluates every server count in [min, max] through the Phase 1 `evaluate_segment`, and costs each over the segment's duration:
+  - server cost = c × server cost per hour × T;
+  - waiting cost = λ × Wq × T × waiting cost per customer-hour, with Wq in hours.
+  It enforces stability, the utilization ceiling, and the optional maximum wait, all with the 1e-9 `THRESHOLD_TOLERANCE`. It picks the cheapest feasible count; ties within a relative 1e-9 go to fewer servers. Closing (c = 0) is possible only when `min_servers` = 0 and nobody arrives. Undefined costs stay `None`, and totals and the cost change are withheld with a reason. The module holds no operating defaults; the caller supplies every cost, target, and bound. Every candidate, the configuration, and the inputs are kept as provenance.
+- Nothing legacy imports either new module; a test enforces this. The legacy optimizer, `/optimize` and `/optimize/batch`, scenario schema versions, Decision, reports, the legacy shared DES, and all separate-queue code are unchanged.
+- Verification: `tests/test_shared_capacity.py` has 28 tests, covering hand-computed costs, an exact 14.5/14.5 tie, float noise at the target, the max-wait boundary, zero demand and zero capacity, unstable and infeasible segments, duration scaling, a brute-force optimum from an independent Erlang-B recursion, and agreement with the legacy optimizer's `c_optimal`, `cost_optimal`, and `cost_current` on the NovaMart 14-day average (plan 2,3,3,3,3,4,3,4,4,3,3,2,2 = 39 server-hours versus 55 current). An in-memory mutation check confirmed that seven deliberate faults are caught. Backend 1112 passed, 3 skipped (Postgres migration chain), 1 xfailed. Ruff and mypy are clean.
+- Next (needs approval): Phase 3 workforce scheduling. It is blocked on workforce inputs (availability, shift lengths, break rules, labor cost) and on the transition, closing, and sequential-versus-joint decisions.
