@@ -179,3 +179,11 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   `evaluate_candidate_with_des` returns `trace_events` and `trace_truncated` for both
   FEASIBLE and INFEASIBLE measured verdicts, with evaluator and selected-plan endpoint
   regression coverage.
+
+## Deployment Topology (2026-09-24)
+
+- Public frontend: Cloudflare Pages project `novaq-frontend` at `https://novaq.site` (`www` redirects to the apex). API: Render web service `Qcu-NovaQ-Analytics` (`https://qcu-novaq-analytics.onrender.com`). Local Docker Compose with nginx remains the development and rehearsal stack.
+- Static Pages has no nginx proxy. The `/api` bridge is the Pages Function `frontend/functions/api/[[path]].ts`, limited by `frontend/public/_routes.json`. It must keep nginx's contract: strip only the leading `/api`, forward cookies, `Origin`, `X-CSRF-Token` and `X-Request-ID`, drop client-supplied proxy and `cf-*` headers, keep each `Set-Cookie` as its own header, and rewrite API-origin redirects under `/api`.
+- The browser sees one origin, so session and CSRF cookies stay first-party and the CSRF double-submit check is unchanged. `ALLOWED_ORIGINS` only needs the origin that `PUBLIC_APP_URL` names (production refuses to start otherwise), plus any origin that calls the API cross-origin.
+- `main` deploys both Cloudflare Pages and Render, so pushing `main` is a production release. Test on a branch preview first.
+- Each new public origin must be added to the Google OAuth client's authorized JavaScript origins, or Google Sign-In fails with `origin_mismatch`.

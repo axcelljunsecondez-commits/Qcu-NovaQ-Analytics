@@ -243,3 +243,24 @@ Resolved after this feature landed: `evaluate_candidate_with_des` now returns th
 `trace_events` and `trace_truncated` evidence for both FEASIBLE and INFEASIBLE measured
 verdicts. The selected-plan endpoint therefore keeps real playback events for periods
 above the utilization target; evaluator-level and endpoint regression tests cover it.
+
+## Public Deployment: Cloudflare Pages + novaq.site (2026-09-24)
+
+The public frontend moved from the Render static site to Cloudflare Pages; the Render API is unchanged.
+
+Current verified state:
+
+- Public URL: `https://novaq.site`. `https://www.novaq.site` returns a 301 to the same path and query on `novaq.site` (Cloudflare zone Single Redirect "Redirect from WWW to root"). `http://` upgrades to `https://`.
+- Domain registered at Spaceship; nameservers are Cloudflare (`gail.ns.cloudflare.com`, `maxim.ns.cloudflare.com`). DNSSEC is off at Spaceship (it can be re-enabled later through Cloudflare).
+- Cloudflare Pages project `novaq-frontend` builds `main` (root `frontend`, `npm run build`, output `dist`) and serves `novaq.site`, `www.novaq.site` and `novaq-frontend.pages.dev`. Every non-`main` branch gets a preview deployment; use the hash URL from the Deployments list (the branch alias URL returned 404).
+- `/api` bridge: `frontend/functions/api/[[path]].ts` strips `/api` and forwards to the `NOVAQ_API_ORIGIN` Pages variable (`https://qcu-novaq-analytics.onrender.com`, set for Production and Preview). `frontend/public/_routes.json` limits the Function to `/api` and `/api/*`. See `docs/operations.md` "Cloudflare Pages frontend". Merged to `main` in `2d063c91`.
+- Render API service `Qcu-NovaQ-Analytics`: the user set `PUBLIC_APP_URL` to `https://novaq.site` and added `https://novaq.site` to `ALLOWED_ORIGINS`. Neither environment-variable value was inspected directly. Observed externally only: a CORS preflight from the API accepts `https://novaq-frontend.onrender.com` and `https://novaq.site` and rejects `https://www.novaq.site`, `https://novaq-frontend.pages.dev` and an unrelated origin; the user reported that the password-reset email link opens `novaq.site`. `www` and `pages.dev` do not need to be allowed because the bridge makes API calls same-origin.
+- Google OAuth client "NovaQ Web" authorized JavaScript origins: `http://localhost:5173`, `http://localhost`, `https://novaq-frontend.onrender.com`, `https://novaq-frontend.pages.dev`, `https://novaq.site`, `https://www.novaq.site`. Local Docker must be opened at `http://localhost`, not `127.0.0.1` (Google returns `origin_mismatch`).
+- Verification: frontend 51 files / 350 tests, typecheck, lint and build passed; bridge e2e against the local Docker API (config, Google nonce, password login, session, CSRF-refused and CSRF-accepted logout, M/M/c, M/M/1 and Erlang-A outputs byte-identical to direct calls); live checks on `novaq.site` and `www` (pages, `/api` JSON, `Secure; HttpOnly` cookies, HTTPS). User confirmed password login, Google login, a calculation, logout and a password-reset email linking to `novaq.site`.
+
+Open items:
+
+- The Render static site `novaq-frontend` (`novaq-frontend.onrender.com`) is still live as a fallback. Suspend it after a few stable days; keep `Qcu-NovaQ-Analytics` running.
+- Remote branch `feat/cloudflare-pages-api-bridge` is merged and can be deleted.
+- Pages Functions are set to fail open: past the free 100,000 requests/day, `/api/*` would fall back to the SPA HTML.
+- Pre-login rate limits key on client IP. Through the Worker, many users may reach Render from shared Cloudflare egress IPs, so they can share one auth bucket. Watch for 429s on login.
