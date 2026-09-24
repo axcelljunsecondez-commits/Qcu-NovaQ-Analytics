@@ -201,12 +201,16 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
               <th scope="col">{t('optimize.sep_col_optimal')}</th>
               <th scope="col">{t('optimize.sep_col_adjustment')}</th>
               <th scope="col">{t('optimize.sep_col_peak')}</th>
-              <th scope="col">{t('optimize.sep_col_cost')}</th>
+              <th scope="col">{t('optimize.sep_col_cost_rate')}</th>
+              <th scope="col">{t('optimize.sep_col_period_cost')}</th>
             </tr>
           </thead>
           <tbody>
             {schedule.periods.map((period) => {
               const uncertainty = period.optimum?.cost_uncertainty
+              const periodCosts = period.optimum?.period_costs ?? null
+              const periodTotal = periodCosts?.total ?? null
+              const hours = periodCosts?.duration_hours ?? null
               return (
                 <tr key={period.time}>
                   <th scope="row">{period.time}</th>
@@ -221,11 +225,29 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
                       </small>
                     )}
                   </td>
-                  <td>
+                  <td data-testid={`sep-cost-rate-${period.time}`}>
                     {fmt(period.optimum?.total_cost ?? null)}
                     {uncertainty && uncertainty.ci_lower !== null && uncertainty.ci_upper !== null && (
                       <small style={{ display: 'block', color: 'var(--text-secondary)' }}>
                         {t('optimize.sep_cost_ci')}: {fmt(uncertainty.ci_lower)}–{fmt(uncertainty.ci_upper)}
+                      </small>
+                    )}
+                  </td>
+                  <td data-testid={`sep-period-cost-${period.time}`}>
+                    {fmt(periodTotal?.mean ?? null)}
+                    {periodTotal && typeof periodTotal.ci_lower === 'number' && typeof periodTotal.ci_upper === 'number' && (
+                      <small style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                        {t('optimize.sep_cost_ci')}: {fmt(periodTotal.ci_lower)}–{fmt(periodTotal.ci_upper)}
+                      </small>
+                    )}
+                    {hours !== null && Number.isFinite(hours) && (
+                      <small style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                        {t('optimize.sep_period_minutes', { minutes: Math.round(hours * 60) })}
+                      </small>
+                    )}
+                    {periodCosts && periodTotal === null && (
+                      <small style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                        {t(hours === null ? 'optimize.sep_period_cost_no_duration' : 'optimize.sep_period_cost_undefined')}
                       </small>
                     )}
                   </td>
@@ -235,6 +257,7 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
           </tbody>
         </table>
       </div>
+      <p className="page-caption" style={{ marginTop: '8px' }}>{t('optimize.sep_cost_basis_note')}</p>
       {schedule.periods.map((period) => (
         <details key={period.time} style={{ marginTop: '8px' }}>
           <summary style={{ fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
@@ -246,7 +269,7 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
                 <th scope="col">{t('optimize.sep_col_lanes')}</th>
                 <th scope="col">{t('optimize.sep_col_status')}</th>
                 <th scope="col">{t('optimize.sep_col_peak')}</th>
-                <th scope="col">{t('optimize.sep_col_mean_cost')}</th>
+                <th scope="col">{t('optimize.sep_col_mean_cost_rate')}</th>
               </tr>
             </thead>
             <tbody>

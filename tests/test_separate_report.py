@@ -38,7 +38,11 @@ def _chain(**over):
                 "optimum": {"active_queue_ids": ["east-07"],
                             "inactive_queue_ids": ["lane-A"],
                             "candidate_utilization": 0.55,
-                            "total_cost": 180.0},
+                            "total_cost": 180.0,
+                            # D5: a 60-minute period, so its period cost equals the hourly rate.
+                            "period_costs": {"duration_hours": 1.0, "staffing": None,
+                                             "waiting": None, "total": {"mean": 180.0},
+                                             "unavailable_reason": None}},
             }],
         },
         "current": {

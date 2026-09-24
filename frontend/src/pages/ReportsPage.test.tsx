@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { renderWithProviders } from '../test/test-utils'
+import { periodCostReportTotal } from '../test/separatePeriodCosts.fixture'
 import { ReportsPage } from './ReportsPage'
 
 const listDatasetsMock = vi.fn()
@@ -322,6 +323,15 @@ describe('separate full report', () => {
     expect(screen.getByRole('rowheader', { name: '08:00' })).toBeInTheDocument()
     expect(screen.getAllByText(/east-07/).length).toBeGreaterThan(0)
     expect(fetchReportMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the selected total as the sum of the Optimize period costs (D5)', async () => {
+    fetchSelectedPreviewMock.mockResolvedValue({
+      model: { ...previewModel, cost: { ...previewModel.cost, selected_total: periodCostReportTotal } },
+    })
+    renderSeparateReports()
+    expect(await screen.findByText('₱180.60')).toBeInTheDocument()
+    expect(screen.queryByText('₱240.80')).not.toBeInTheDocument()  // the two hourly rates summed
   })
 
   it('blocks export with the exact missing stage and keeps buttons disabled', async () => {

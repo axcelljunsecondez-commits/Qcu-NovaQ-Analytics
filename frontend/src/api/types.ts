@@ -485,33 +485,56 @@ export interface SeparateUncertainty {
   n: number | null
 }
 
+/** A cost for the whole period in PHP: the hourly rate summary times the period's hours. */
+export interface SeparateCostSummary {
+  mean: number | null
+  sd?: number | null
+  se?: number | null
+  ci_lower?: number | null
+  ci_upper?: number | null
+  n?: number | null
+}
+
+export interface SeparatePeriodCosts {
+  duration_hours: number | null
+  staffing: SeparateCostSummary | null
+  waiting: SeparateCostSummary | null
+  total: SeparateCostSummary | null
+  unavailable_reason: string | null
+}
+
 export interface SeparateCandidate {
   active_lane_count: number
   status: string
   reason: string | null
   candidate_utilization: number | null
   near_target_noise?: boolean | null
+  /** Hourly cost rates (PHP per hour); `period_costs` holds the whole-period costs. */
   total_cost: number | null
   mean_total_cost: number | null
   server_cost: number | null
   waiting_cost: number | null
   evaluation_method?: string | null
+  period_costs?: SeparatePeriodCosts | null
 }
 
 export interface SeparateOptimum {
   active_lane_count: number
   recommendation: string | null
+  /** Hourly cost rate (PHP per hour). */
   total_cost: number | null
   candidate_utilization: number | null
   near_target_noise?: boolean | null
   estimated_optimal?: boolean | null
   cost_uncertainty?: SeparateUncertainty | null
+  period_costs?: SeparatePeriodCosts | null
 }
 
 export interface SeparatePeriod {
   time: string
   overall: string
   reason: string | null
+  duration_hours?: number | null
   current_active_lanes: string[] | null
   optimal_active_lanes: number | null
   adjustment: number | null

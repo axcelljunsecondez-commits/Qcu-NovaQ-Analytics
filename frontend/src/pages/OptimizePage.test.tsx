@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
+import { periodCostPeriod, periodCostSchedule } from '../test/separatePeriodCosts.fixture'
 import { OptimizePage } from './OptimizePage'
 
 const listDatasetsMock = vi.fn()
@@ -665,6 +666,83 @@ describe('separate staffing optimization', () => {
     expect(payload.settings.calculation.schema_version).toBe(2)
     expect(payload.settings.calculation.engine_version).toBe('novaq-2026-09-separate-des-v2')
     expect(payload.results.schedule.overall).toBe('COMPLETE')
+  })
+
+  describe('period costs (D5)', () => {
+    async function runWith(schedule: unknown) {
+      const user = userEvent.setup()
+      optimizeSeparateMock.mockResolvedValue({ schedule })
+      renderSeparate()
+      await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+      await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+      await user.click(screen.getByRole('button', { name: 'Optimize' }))
+      await screen.findByText('Estimated Optimal Plan')
+    }
+
+    it('shows the hourly rate and the whole-period cost for 60- and 30-minute periods', async () => {
+      await runWith(periodCostSchedule)
+      expect(screen.getByRole('columnheader', { name: 'Estimated modeled cost rate (PHP per hour)' })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: 'Estimated modeled period cost (PHP)' })).toBeInTheDocument()
+      expect(screen.queryByText('Estimated total modeled cost')).not.toBeInTheDocument()
+      expect(screen.getByTestId('sep-cost-rate-08:00-09:00')).toHaveTextContent('120.40')
+      expect(screen.getByTestId('sep-period-cost-08:00-09:00')).toHaveTextContent('120.40')
+      expect(screen.getByTestId('sep-period-cost-08:00-09:00')).toHaveTextContent('For this 60-minute period')
+      expect(screen.getByTestId('sep-cost-rate-09:00-09:30')).toHaveTextContent('120.40')
+      const half = screen.getByTestId('sep-period-cost-09:00-09:30')
+      expect(half).toHaveTextContent('60.20')
+      expect(half).toHaveTextContent('57.70–62.70')
+      expect(half).toHaveTextContent('For this 30-minute period')
+      expect(half).not.toHaveTextContent('120.40')
+      expect(screen.getAllByRole('columnheader', { name: 'Mean cost rate (PHP per hour)' }).length).toBeGreaterThan(0)
+      expect(screen.getByText(/Modeled costs, not payroll/)).toBeInTheDocument()
+    })
+
+    it('scales a 15-minute period to a quarter of the hourly rate', async () => {
+      await runWith({ ...periodCostSchedule, periods: [periodCostPeriod('09:30-09:45', 15)] })
+      const quarter = screen.getByTestId('sep-period-cost-09:30-09:45')
+      expect(quarter).toHaveTextContent('30.10')
+      expect(quarter).toHaveTextContent('For this 15-minute period')
+      expect(screen.getByTestId('sep-cost-rate-09:30-09:45')).toHaveTextContent('120.40')
+    })
+
+    it('shows no period cost when the period has no configured length', async () => {
+      const base = periodCostPeriod('08:00', 60)
+      await runWith({
+        ...periodCostSchedule,
+        periods: [{
+          ...base, duration_hours: null,
+          optimum: { ...base.optimum, period_costs: {
+            duration_hours: null, staffing: null, waiting: null, total: null,
+            unavailable_reason: 'Period duration unknown: the period matches no single configured operating segment.',
+          } },
+        }],
+      })
+      const cell = screen.getByTestId('sep-period-cost-08:00')
+      expect(cell).toHaveTextContent('—')
+      expect(cell).toHaveTextContent('No period cost: this period has no configured length.')
+      expect(cell).not.toHaveTextContent('120.40')
+      expect(screen.getByTestId('sep-cost-rate-08:00')).toHaveTextContent('120.40')
+    })
+
+    it('shows no period cost when the simulated waiting cost is undefined', async () => {
+      const base = periodCostPeriod('09:00-09:30', 30)
+      await runWith({
+        ...periodCostSchedule,
+        periods: [{
+          ...base,
+          optimum: { ...base.optimum, total_cost: null, cost_uncertainty: null, period_costs: {
+            duration_hours: 0.5, staffing: { mean: 87, n: 5 }, waiting: null, total: null,
+            unavailable_reason: "Period cost undefined: the candidate's replicated cost is undefined.",
+          } },
+        }],
+      })
+      const cell = screen.getByTestId('sep-period-cost-09:00-09:30')
+      expect(cell).toHaveTextContent('—')
+      expect(cell).toHaveTextContent('No period cost: the simulated cost for this period is undefined.')
+      expect(cell).toHaveTextContent('For this 30-minute period')
+      expect(cell).not.toHaveTextContent('87')
+      expect(screen.getByTestId('sep-cost-rate-09:00-09:30')).toHaveTextContent('—')
+    })
   })
 
   it('requests and records full coverage: min_active_lanes equals the configured queue count', async () => {

@@ -50,30 +50,35 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(period, dict):
             continue
         optimum = period.get("optimum") or {}
+        # Costs for the whole period (hourly rates x period hours, D5); only these add
+        # across periods of different lengths. A plan saved without them has none.
+        period_costs = optimum.get("period_costs") or {}
+        period_mean = {key: _finite_or_none((period_costs.get(key) or {}).get("mean"))
+                       for key in ("staffing", "waiting", "total")}
         sched_periods.append({
             "time": period.get("time"),
+            "duration_hours": _finite_or_none(period_costs.get("duration_hours")),
             "current_active_lanes": list(period.get("current_active_lanes") or []),
             "current_count": len(period.get("current_active_lanes") or []),
             "optimal_active_lanes": optimum.get("active_lane_count")
             if _is_number(optimum.get("active_lane_count")) else period.get("optimal_active_lanes"),
             "adjustment": period.get("adjustment"),
             "peak_utilization": _finite_or_none(optimum.get("candidate_utilization")),
-            "total_cost": _finite_or_none(optimum.get("total_cost")),
+            "total_cost": period_mean["total"],
             "optimum": {
                 "active_queue_ids": list(optimum.get("active_queue_ids") or []),
                 "inactive_queue_ids": list(optimum.get("inactive_queue_ids") or []),
                 "active_lane_count": optimum.get("active_lane_count"),
                 "candidate_utilization": _finite_or_none(optimum.get("candidate_utilization")),
-                "total_cost": _finite_or_none(optimum.get("total_cost")),
-                "server_cost": _finite_or_none(optimum.get("server_cost")),
-                "waiting_cost": _finite_or_none(optimum.get("waiting_cost")),
+                "total_cost": period_mean["total"],
+                "server_cost": period_mean["staffing"],
+                "waiting_cost": period_mean["waiting"],
                 "recommendation": optimum.get("recommendation"),
                 "estimated_optimal": optimum.get("estimated_optimal"),
             },
         })
-        for key, opt_key in (("staffing", "server_cost"), ("waiting", "waiting_cost"),
-                             ("total", "total_cost")):
-            value = _finite_or_none(optimum.get(opt_key))
+        for key in ("staffing", "waiting", "total"):
+            value = period_mean[key]
             if value is not None:
                 selected_parts[key].append(value)
 
@@ -196,6 +201,13 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
         "savings and ROI are not computed.",
         "ADOPT is therefore unavailable under current Decision economics.",
         "Abandonment is not modeled in selected DES.",
+        "Staffing cost is modeled scheduled staffing cost, not payroll: each scheduled lane is "
+        "charged its configured hourly rate for its whole scheduled period, breaks included. "
+        "Service a closing lane gives after its scheduled period is not charged, so the total "
+        "does not cover all labor time.",
+        "Waiting cost counts each customer's simulated wait once, in the period the customer arrived.",
+        "A period's cost is its hourly cost rate times the period's configured length; a period "
+        "without a configured length has no period cost, and totals that need it are not given.",
     ]
     if truncated_any:
         limitations.append(

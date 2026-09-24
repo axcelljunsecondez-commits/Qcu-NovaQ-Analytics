@@ -1441,10 +1441,14 @@ def separate_comparison(
             optimum = period.get("optimum") or {}
             evidence = optimum.get("evidence") or {}
             waiting = evidence.get("waiting_time") or {}
-            total = (evidence.get("costs") or {}).get("total") or {}
-            waiting_cost = (evidence.get("costs") or {}).get("waiting") or {}
+            # Costs for the whole period (hourly rates x period hours, D5), so the
+            # plan totals below add periods of different lengths correctly.
+            period_costs = optimum.get("period_costs") or {}
+            total = period_costs.get("total") or {}
+            waiting_cost = period_costs.get("waiting") or {}
             detail_periods.append({
                 "time": period.get("time"),
+                "duration_hours": _json_number(period_costs.get("duration_hours")),
                 "current_active_lanes": period.get("current_active_lanes"),
                 "optimal_active_lanes": period.get("optimal_active_lanes"),
                 "adjustment": period.get("adjustment"),

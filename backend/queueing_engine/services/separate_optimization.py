@@ -1723,6 +1723,64 @@ def _period_current_active(queue_setup: dict, period_rows: list) -> list[str] | 
     return configured
 
 
+def _period_duration_hours(queue_setup: dict, period_rows: list) -> tuple[float | None, str | None]:
+    """Length in hours of the configured operating segment a period's rows belong to.
+
+    Rows match segments by ``segment_id`` exactly as in ``period_des_breaks``.
+    Without one match (aggregate rows carry no segment, a setup may have none)
+    the duration is unknown, never an assumed hour.
+    """
+    setup = queue_setup if isinstance(queue_setup, dict) else {}
+    segment_ids = {str(row.get("segment_id")) for row in period_rows or []
+                   if isinstance(row, dict) and row.get("segment_id") is not None}
+    try:
+        windows = [_segment_window(segment) for segment in setup.get("segments") or []
+                   if isinstance(segment, dict)]
+    except (TypeError, ValueError):
+        return None, "Period duration unknown: a configured operating segment has an invalid time."
+    matches = [(low, high) for key, low, high in windows if key in segment_ids]
+    if len(matches) != 1:
+        return None, ("Period duration unknown: the period matches no single configured operating "
+                      f"segment (segment ids: {', '.join(sorted(segment_ids)) or 'none'}).")
+    low, high = matches[0]
+    return (high - low) / 60.0, None
+
+
+def _scale_summary(summary, factor: float) -> dict | None:
+    """A replication summary times a positive constant: mean, spread and interval scale, n does not."""
+    if not isinstance(summary, dict):
+        return None
+    return {key: value * factor if key != "n" and _is_number(value) else value
+            for key, value in summary.items()}
+
+
+def _period_costs(candidate: dict, duration_hours: float | None, reason: str | None) -> dict:
+    """The candidate's cost for its whole period (D5).
+
+    Candidate costs are hourly rates: lanes x server rate per server-hour plus
+    served / horizon x Wq x waiting rate per customer-hour. The period costs
+    rate x T for a period of T hours, which is what adds up across periods of
+    different lengths. Ranking still uses the rates: every candidate of a
+    period shares its T, so the order cannot change.
+    """
+    empty = {"duration_hours": duration_hours, "staffing": None, "waiting": None, "total": None}
+    if duration_hours is None:
+        return {**empty, "unavailable_reason": reason}
+    costs = (candidate.get("evidence") or {}).get("costs")
+    if isinstance(costs, dict):
+        parts = {key: _scale_summary(costs.get(key), duration_hours)
+                 for key in ("staffing", "waiting", "total")}
+        missing = ("Period cost undefined: the candidate's replicated cost is undefined "
+                   "(see cost_undefined_replications).")
+    else:
+        parts = {key: {"mean": float(candidate[field]) * duration_hours}
+                 if _is_number(candidate.get(field)) else None
+                 for key, field in (("staffing", "server_cost"), ("waiting", "waiting_cost"),
+                                    ("total", "total_cost"))}
+        missing = "Period cost undefined: the candidate has no evaluated cost."
+    return {**empty, **parts, "unavailable_reason": missing if parts["total"] is None else None}
+
+
 DAY_UTILIZATION_BASIS = "continuous-day DES"
 
 
@@ -1933,12 +1991,20 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             current_active=len(current) if current else None,
             server_cost=server_cost, waiting_cost=waiting_cost,
             des_replications=settings, run_fn=day_run_fn or run_fn, breaks=period_breaks)
+        # D5: candidate costs are hourly rates; price the whole period for totals.
+        duration, duration_reason = _period_duration_hours(queue_setup, grouped[label])
+        for candidate in result.get("candidates") or []:
+            if isinstance(candidate, dict):
+                candidate["period_costs"] = _period_costs(candidate, duration, duration_reason)
         optimum = result.get("optimum")
+        if isinstance(optimum, dict):
+            optimum["period_costs"] = _period_costs(optimum, duration, duration_reason)
         optimal_count = optimum.get("active_lane_count") if optimum else None
         periods.append({
             "time": label,
             "overall": result.get("overall"),
             "reason": result.get("reason"),
+            "duration_hours": duration,
             "current_active_lanes": current,
             "optimal_active_lanes": optimal_count,
             "adjustment": (optimal_count - len(current)

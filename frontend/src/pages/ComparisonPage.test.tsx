@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
+import { periodCostComparison, periodCostSchedule } from '../test/separatePeriodCosts.fixture'
 import { ComparisonPage } from './ComparisonPage'
 import type { OptimizationOut } from '../api/types'
 import { Route, Routes } from 'react-router-dom'
@@ -483,6 +484,28 @@ describe('separate comparison', () => {
       selected_scenario_id: selected,
     }
   }
+
+  it('shows the same period costs and total as the Optimize schedule (D5)', async () => {
+    getSeparateComparisonMock.mockResolvedValue(comparisonResponse([plan(11, 'Optimal @ 70%', 0.7, {
+      periods: periodCostComparison.periods,
+      totals: { lane_periods: 4, wait_mean: 0.05, peak_util: 0.6, waiting_cost_mean: null,
+                total_cost_mean: periodCostComparison.total_cost_mean },
+    })]))
+    renderSeparate()
+    const totalRow = (await screen.findByRole('rowheader', { name: 'Total modeled cost' })).closest('tr')
+    expect(totalRow).not.toBeNull()
+    expect(within(totalRow as HTMLElement).getByText('180.60')).toBeInTheDocument()
+    for (const period of periodCostSchedule.periods) {
+      const header = screen.getByRole('rowheader', { name: period.time, hidden: true })
+      const row = header.closest('tr') as HTMLElement
+      const costs = period.optimum.period_costs.total
+      expect(row).toHaveTextContent(costs.mean.toFixed(2))
+      expect(row).toHaveTextContent(`${costs.ci_lower.toFixed(2)}–${costs.ci_upper.toFixed(2)}`)
+    }
+    const thirty = screen.getByRole('rowheader', { name: '09:00-09:30', hidden: true }).closest('tr') as HTMLElement
+    expect(thirty).toHaveTextContent('60.20')
+    expect(thirty).not.toHaveTextContent('120.40')
+  })
 
   it('renders Current beside saved plans with staffing schedules', async () => {
     getSeparateComparisonMock.mockResolvedValue(
