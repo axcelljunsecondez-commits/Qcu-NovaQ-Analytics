@@ -14,6 +14,7 @@ from backend.api.workflow import (
     _require_selected_separate_plan,
     _require_setup_current,
     current_decision_for_report,
+    require_dependencies_current,
 )
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
@@ -206,6 +207,9 @@ def _selected_report_chain(db: Session, user: User, analysis: AnalysisProject) -
             detail="Decision evidence is stale for the latest Validation evidence.",
         )
     _require_setup_current(analysis, des_job, mc_job, validation_job, decision_job)
+    # Step 5: the report chain must resolve to live, in-scope dependencies, exactly as the
+    # workflow slots and the Decision endpoint require.
+    require_dependencies_current(db, user, analysis, des_job, mc_job, validation_job, decision_job)
     for label, job in (("DES", des_job), ("Monte Carlo", mc_job),
                        ("Validation", validation_job), ("Decision", decision_job)):
         result = job.result_json or {}

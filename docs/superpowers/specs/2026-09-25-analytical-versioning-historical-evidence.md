@@ -51,13 +51,13 @@ cost objectives, database schema (the minimum design needs no migration), produc
 
 | Identity | Mechanism | Sufficient? |
 |---|---|---|
-| Dataset | `dataset_id` | Yes. Content is immutable (section 2). A content hash is not needed for identity; it is only an option for restore-by-equivalence (decision OD-3). |
+| Dataset | `dataset_id` | **No (corrected 2026-09-26).** Content is immutable (section 2), but an integer id names a row, not a generation: after a deletion the id can be issued to a different row, and a job that recorded only the id cannot tell the two apart (VERIFIED, section 5.4). A content hash is not identity either: a byte-identical replacement is still a different record. Exact source identity needs the generation mechanism of section 5.4. |
 | Current dataset | "highest-id dataset with ok validation" | Yes, as a rule. PROPOSED: one helper used everywhere (section 5). |
 | Setup | `setup_hash` | Yes. Server-computed, canonical, on every job and schema-2 plan. |
 | Selected-plan DES basis | `result.execution` (`SELECTED_DES_PER_PERIOD_EXECUTION` / `SELECTED_DES_CONTINUOUS_DAY_EXECUTION`) | Yes. Recorded since `9cddeb55` (REPORTED in the D10 spec; the constants are VERIFIED). |
 | Selected-plan DES accounting | The plan's `SEPARATE_DES_ENGINE_VERSION` | Yes, because the selected DES runs the optimizer's own evaluators (section 2). Rule: any change to `_run_routing_des`, `evaluate_candidate_with_des` or `run_routing_day_des` accounting bumps the separate engine version. |
 | Chain linkage | `params.engine`, `des_job_id`, `mc_job_id`, `validation_job_id`, `evidence_ids` | Yes. |
-| Reference ordering | `created_at` on scenarios, datasets and jobs | Yes, as a guard: a job is never evidence for a scenario or dataset created after it (protects against a reused id on engines that reuse ids; PostgreSQL sequences do not, SQLite without AUTOINCREMENT can). |
+| Reference ordering | `created_at` on scenarios, datasets and jobs | **A guard only, not an identity proof (corrected 2026-09-26).** It rejects a reference to a record created strictly after the job. It cannot reject a replacement whose recorded `created_at` equals or precedes the job's: SQLite stores whole seconds, and any engine accepts an explicit id and timestamp. SQLite without AUTOINCREMENT reissues a deleted newest id; PostgreSQL did not reissue ids in the inspected default configuration but does after a sequence reset or an explicit-id insert (VERIFIED, section 5.4). |
 
 ### 3.2 New or changed markers (minimum set, PROPOSED)
 
@@ -265,6 +265,67 @@ D7 closes Current-mode dataset currentness only. The rest of the historical-evid
 problem is unresolved: schema-1 and scenario-bound currentness (Step 4), the missing-dependency
 guard (Step 5), version and accounting-marker policy (sections 3.2 and 6), and any historical
 display or endpoint (OD-1).
+
+### 5.4 Exact source identity (Step 5 finding) — RELEASE BLOCKER, unresolved
+
+**What the Step 5 interim repair provides (VERIFIED on its tested tree).** Every persisted workflow
+job used as evidence — every workflow slot, both Decision endpoints and the selected-plan report
+chain — must resolve each recorded dataset, scenario and job reference to an existing record of the
+same owner and analysis. The referenced record must not be recorded as created after the job, and
+its own recorded dataset must resolve in turn. When no eligible scenario is selected,
+`decision_stale` keeps its pre-Step-5 meaning (Option A): the stored Decision is not served, and
+the page is not asked to regenerate a Decision that no regeneration could clear.
+
+**What it does not provide.** It does not prove exact source identity. Records are referenced by
+integer id inside `params_json`/`result_json`. The chronology guard compares recorded `created_at`
+values and cannot distinguish a replacement record that carries the same id with a creation time
+equal to or earlier than the job's.
+
+Write-time consumers that the guard does not cover:
+
+- Selected-plan MC and selected-plan validation pick their input DES/MC job by integer scenario
+  id, and apply no dependency gate before computing. A job built on a broken input is stored, and
+  is rejected only when it is read.
+- `run_validation_current` compares the Current MC job's `dataset_id` by integer.
+
+**Reproduced defect (VERIFIED).**
+
+- Natural timing, SQLite: delete and recreate within the same clock second, so the id is reissued
+  and `created_at` is equal. Outcomes:
+  - the deleted scenario's DES, MC, validation and Decision were served as current for the
+    replacement;
+  - a new Decision was built on them;
+  - the ID-scoped scenario PDF and Excel reports carried the deleted scenario's Decision headline;
+  - the selected-plan Decision and report returned 200;
+  - a Current DES computed on a deleted dataset was served for its replacement.
+- Deterministic construction, SQLite and a disposable PostgreSQL 16: a replacement inserted with
+  the deleted row's id and its stored `created_at`. All of these were promoted:
+  - a schema-1 scenario with different content;
+  - a byte-identical schema-1 scenario;
+  - a byte-identical schema-2 selected plan;
+  - a byte-identical dataset under a Current DES.
+- A stored selection job re-attaches to a reissued scenario id with no new selection.
+- Test coverage caveat. `test_scenario_id_reuse_does_not_inherit_the_previous_generations_evidence`
+  advances the replacement's `created_at` by a direct row edit before asserting. It therefore
+  covers only the strictly-later case, not the same-timestamp case. Its comment says the advanced
+  time is "what a real save would carry"; that is not true for a save in the same clock second.
+  The test is a chronology-guard test, not evidence of exact-generation protection.
+
+**Status.** This is an unresolved identity/provenance defect and a release blocker. The Step 5
+guard rejects broken references; it is not an exact-generation solution.
+
+**Direction approved in principle (2026-09-26); implementation not authorized.**
+
+- Immutable, independently generated generation tokens for scenario and dataset rows.
+- Every analytical job and selection records the generation of the source row it actually used.
+- A different generation is rejected even when the id, timestamp and content match.
+- Conservative legacy policy:
+  - existing rows may receive new identities for the rows that exist at migration time;
+  - historical jobs' generations are never inferred by joining integer ids;
+  - legacy scenario-to-dataset generation links are never inferred from a resolving foreign key;
+  - missing provenance stays missing, and current use requires recalculation into a new artifact.
+- The transition is coordinated with the separate-plan engine v3 release. Generation-identity and
+  engine-version reasons stay separate.
 
 ## 6. Current DES accounting marker policy (requirement E)
 
@@ -493,7 +554,7 @@ To be run only after explicit authorization, by the owner, against production:
 | 5 | Old Current DES classified | Job without M3 → `MISSING_PROVENANCE`; with M3 on current dataset/setup → `CURRENT`; pooled Current DES needs no M3 | backend |
 | 6 | Dataset replacement | After a new upload: `des_current`, `mc_current`, `validation_current`, schema-1 and schema-2 scenarios all non-current; Current MC from dataset A cannot feed validation (revised probe tests) | backend |
 | 7 | Setup change | Every job and plan → `STALE_SETUP`; break apply path included | backend |
-| 8 | Deleted references | Delete a dataset (cascade removes scenarios): selection/DES/MC/validation/decision jobs → `MISSING_DEPENDENCY`, never current; job created before a reused id is refused | backend |
+| 8 | Deleted references | Delete a dataset (cascade removes scenarios): selection/DES/MC/validation/decision jobs → `MISSING_DEPENDENCY`, never current; a job created strictly before a reused id's new record is refused (an equal or earlier recorded time is not, section 5.4) | backend |
 | 9 | Schema-1 dataset scope | Scenario-12 fixture: not selectable, not decidable, report labelled historical | backend |
 | 10 | Compare does not mix | Separate comparison returns no values for non-current plans in current positions; shared Compare hides totals of non-current scenarios; frontend test renders historical plans without numbers | backend + frontend |
 | 11 | Reports preserve provenance | Evidence block present and correct; v2 wording fix; historical label on scenario/dataset reports | backend |

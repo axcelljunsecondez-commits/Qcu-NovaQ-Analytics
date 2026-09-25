@@ -20,15 +20,19 @@ from backend.api.analysis_schemas import QueueSetup, setup_status
 from backend.api.current_dataset import resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.evidence_status import (
+    SELECTED_DES_ENGINE,
+    SELECTED_MC_ENGINE,
     ArtifactRef,
     CurrentContext,
     Dependency,
     EvidencePolicy,
     EvidenceRecord,
+    SetupBinding,
     VersionFamily,
     classify,
     job_record,
     job_references,
+    recorded_text,
 )
 from backend.api.scenarios import setup_fingerprint as _setup_fingerprint
 from backend.api.settings import Settings
@@ -548,23 +552,30 @@ def _selected_scenario(
         return None, selection
 
 
-# ── D7: Current-mode evidence must belong to the current dataset ────────────
+# ── D7 + Step 5: persisted evidence must resolve to live, in-scope dependencies ──
 
-_NOT_CONSULTED = "<not consulted on the Current-evidence path>"
+_NOT_CONSULTED = "<not consulted on the persisted-evidence path>"
 
 
 def _current_evidence_policy() -> EvidencePolicy:
-    """The version knowledge D7 applies to Current-mode evidence: the job kind only.
+    """The version knowledge applied to persisted workflow evidence: recorded job identity only.
 
-    D7 is a dataset-identity and dependency-integrity rule. Version policy — the recorded
-    workflow engine version and the Current DES accounting marker (spec M3, written by no code
-    yet) — belongs to the separately authorized versioning phase, so ``workflow_engine`` and
-    ``current_des_accounting`` stay unset: no stored Current job is made unusable here by a
-    version rule.
+    D7 (Step 3) and Step 5 are dataset-identity and dependency-integrity rules. Analytical
+    version policy — the recorded workflow engine version and the Current DES accounting marker
+    (spec M3, written by no code yet) — belongs to the separately authorized versioning phase,
+    so ``workflow_engine`` and ``current_des_accounting`` stay unset: no stored job is made
+    unusable here by a version rule.
 
-    The families ``job_record`` never reads for a Current kind (the scenario and selected-plan
-    families, and ``job_engine``, which only applies when a job records ``params.engine``) carry
-    a sentinel no stored value can match, so a caller that did reach one would fail closed
+    ``job_engine`` and ``selected_des_basis`` name the values the backend actually records
+    (``workflow.py`` writes exactly two ``params.engine`` values and two ``result.execution``
+    values). Listing them is a statement of recorded fact, not a new version policy: it makes a
+    job carrying an *unrecognized* engine or basis fail closed, and changes nothing for the
+    jobs the current code writes.
+
+    The scenario families stay sentinels. Step 5 resolves a scenario reference for existence,
+    scope, chronology and its own dataset identity, and deliberately applies no engine or schema
+    rule to it (that is plan Step 9); ``_scenario_evidence_record`` therefore records no version
+    requirement, so these families are never read. A caller that did reach one would fail closed
     instead of passing silently.
     """
     sentinel = VersionFamily.of(_NOT_CONSULTED, current={_NOT_CONSULTED})
@@ -573,8 +584,11 @@ def _current_evidence_policy() -> EvidencePolicy:
         separate_plan_engine=sentinel,
         schema1_engine=sentinel,
         job_kind=VersionFamily.of("workflow job kind", current=WORKFLOW_KINDS),
-        job_engine=sentinel,
-        selected_des_basis=sentinel,
+        job_engine=VersionFamily.of(
+            "selected-plan job engine", current={SELECTED_DES_ENGINE, SELECTED_MC_ENGINE}),
+        selected_des_basis=VersionFamily.of(
+            "selected-plan DES basis",
+            current={SELECTED_DES_PER_PERIOD_EXECUTION, SELECTED_DES_CONTINUOUS_DAY_EXECUTION}),
         workflow_engine=None,
         current_des_accounting=None,
     )
@@ -621,13 +635,53 @@ def _job_dependency(
     )
 
 
+def _scenario_evidence_record(db: Session, scenario: Scenario) -> EvidenceRecord:
+    """Recorded identity of a saved Scenario, for use as a job's resolved dependency.
+
+    Step 5 asks one question of a referenced scenario: is it a real, in-scope record that could
+    have produced the job that names it? So this record carries owner, analysis, creation time,
+    the dataset it was calculated on (resolved in turn) and its recorded Setup binding —
+    ``setup_hash`` for a schema-2 plan, the snapshot queue type for schema 1, exactly as
+    ``_scenario_setup_problem`` reads them.
+
+    It records **no version requirement**. Whether a scenario's recorded engine or schema is
+    still current is plan Step 9's decision; asserting one here would retire stored plans under
+    a rule this step was not authorized to make. A scenario's own eligibility for selection is
+    enforced where it always was, in ``_own_verified_scenario``.
+    """
+    snapshot = (scenario.settings_json or {}).get("calculation") or {}
+    if snapshot.get("schema_version") == 2:
+        setup = SetupBinding("hash", recorded_text(snapshot.get("setup_hash")))
+    else:
+        setup = SetupBinding("queue_type", _legacy_snapshot_queue_type(snapshot))
+    dataset_id = _recorded_id(scenario.dataset_id)
+    dependencies = [_dataset_dependency(db, dataset_id)] if dataset_id is not None else []
+    return EvidenceRecord(
+        ref=ArtifactRef("scenario", scenario.id), owner_id=scenario.user_id,
+        analysis_id=scenario.analysis_id, created_at=scenario.created_at,
+        dataset_id=dataset_id, setup=setup, versions=(),
+        dependencies=tuple(dependencies),
+    )
+
+
+def _scenario_dependency(db: Session, ref: ArtifactRef) -> Dependency:
+    """Resolve a job's recorded scenario id. A deleted scenario resolves to nothing."""
+    scenario = db.get(Scenario, ref.id) if ref.id is not None else None
+    if scenario is None:
+        return Dependency(ref, exists=False)
+    return Dependency(
+        ref, True, scenario.user_id, scenario.analysis_id, scenario.created_at,
+        record=_scenario_evidence_record(db, scenario),
+    )
+
+
 def _job_evidence_record(
     db: Session, job: Job, policy: EvidencePolicy, seen: frozenset[int]
 ) -> EvidenceRecord:
     """A stored job's recorded identity with its references resolved against the database.
 
-    Only the dataset and job links a job actually records are resolved. A reference of any other
-    kind is left unresolved, which the classifier reports as unassessed (fail closed).
+    The dataset, scenario and job links a job actually records are resolved. A reference of any
+    other kind is left unresolved, which the classifier reports as unassessed (fail closed).
     """
     params = job.params_json or {}
     result = job.result_json or {}
@@ -638,6 +692,8 @@ def _job_evidence_record(
     for ref in job_references(job.kind, params, result).refs:
         if ref.kind.startswith("job:"):
             dependencies.append(_job_dependency(db, ref, policy, seen))
+        elif ref.kind == "scenario":
+            dependencies.append(_scenario_dependency(db, ref))
     return job_record(
         job_id=job.id, kind=job.kind, status=job.status, owner_id=job.user_id,
         created_at=job.created_at, params=params, result=result, policy=policy,
@@ -645,10 +701,36 @@ def _job_evidence_record(
     )
 
 
-def _current_mode_evidence_is_current(
+MISSING_DEPENDENCY_DETAIL = (
+    "Evidence references a record that no longer exists or is not this Analysis's. "
+    "Rerun the affected step."
+)
+
+
+def require_dependencies_current(
+    db: Session, user: User, analysis: AnalysisProject, *jobs: Job
+) -> None:
+    """Refuse a chain whose stored evidence no longer resolves to live, in-scope dependencies.
+
+    The same rule ``_current_evidence`` applies to the workflow slots, so a broken reference
+    cannot be rejected on the Simulate page and still support a Decision or a final report.
+    """
+    context = _evidence_context(db, user, analysis)
+    policy = _current_evidence_policy()
+    for job in jobs:
+        if not _evidence_is_current(db, job, context, policy):
+            raise HTTPException(status_code=409, detail=MISSING_DEPENDENCY_DETAIL)
+
+
+def _evidence_is_current(
     db: Session, job: Job, context: CurrentContext, policy: EvidencePolicy
 ) -> bool:
-    """D7: a Current-mode job is current evidence only for the current dataset and live links."""
+    """A stored job is current evidence only on the current dataset with live, in-scope links.
+
+    D7 (Step 3) established this for the Current kinds. Step 5 applies the same resolution to
+    every persisted kind, so a reference that is missing, out of scope, unrecorded or newer than
+    the job that cites it cannot support a current result through any endpoint.
+    """
     record = _job_evidence_record(db, job, policy, frozenset({job.id}))
     return classify(record, context).is_current
 
@@ -662,26 +744,28 @@ def _current_evidence(
     policy = _current_evidence_policy()
 
     def current(job: Job | None) -> Job | None:
-        # Evidence produced under a different (or unrecorded) Setup is absent.
-        return job if _job_setup_current(job, analysis) else None
+        """One rule for every slot, scenario-bound and Current-mode alike.
 
-    def current_mode(job: Job | None) -> Job | None:
-        # D7: the Setup is not enough. The recorded dataset must exist, be this analysis's and
-        # be the current one, and every recorded link must resolve to current evidence.
+        A matching Setup is not enough. D7 (Step 3) added the recorded dataset; Step 5 adds the
+        rest of the chain: the dataset, scenario and linked jobs a job names must still exist,
+        be this analysis's and this owner's, and be no newer than the job itself -- an id freed
+        by a deletion can be handed to a later record, and evidence computed before that record
+        was saved is not evidence about it.
+        """
         if job is None:
             return None
-        return job if _current_mode_evidence_is_current(db, job, context, policy) else None
+        return job if _evidence_is_current(db, job, context, policy) else None
 
     des = current(_latest_job(db, user, "workflow_des", analysis.id, scenario_id)) if scenario_id else None
-    des_current = current_mode(_latest_job(db, user, "workflow_des_current", analysis.id))
-    mc_current = current_mode(_latest_job(db, user, "workflow_mc_current", analysis.id))
+    des_current = current(_latest_job(db, user, "workflow_des_current", analysis.id))
+    mc_current = current(_latest_job(db, user, "workflow_mc_current", analysis.id))
     mc = current(_latest_job(db, user, "workflow_mc", analysis.id, scenario_id)) if scenario_id else None
     validation = (
         current(_latest_job(db, user, "workflow_validation", analysis.id, scenario_id))
         if scenario_id
         else None
     )
-    validation_current = current_mode(_latest_job(db, user, "workflow_validation_current", analysis.id))
+    validation_current = current(_latest_job(db, user, "workflow_validation_current", analysis.id))
     selected_id = (selection.params_json or {}).get("scenario_id") if selection else None
     raw_decision = (
         _latest_job(db, user, "workflow_decision", analysis.id, selected_id)
@@ -690,9 +774,15 @@ def _current_evidence(
     )
     decision = raw_decision if scenario_id else None
     decision_stale = False
-    if raw_decision is not None and not _job_setup_current(raw_decision, analysis):
+    if raw_decision is not None and not _evidence_is_current(db, raw_decision, context, policy):
+        # Step 5: a Decision whose recorded selection, DES, MC or validation reference no longer
+        # resolves is not a current Decision, whatever its Setup hash says.
         decision = None
-        decision_stale = True
+        # `decision_stale` asks for the selected plan's Decision to be generated again. With no
+        # eligible selected scenario there is no plan to generate one for, so the flag keeps its
+        # established meaning (a changed Setup) instead of asking for a regeneration that could
+        # never clear it.
+        decision_stale = scenario_id is not None or not _job_setup_current(raw_decision, analysis)
     if decision is not None:
         references = (decision.result_json or {}).get("evidence_ids") or {}
         decision_stale = (
@@ -2584,6 +2674,7 @@ def create_selected_decision(
             detail="Validation evidence is stale for the latest Simulation evidence. Rerun Validation.",
         )
     _require_setup_current(analysis, des_job, mc_job, validation_job)
+    require_dependencies_current(db, user, analysis, des_job, mc_job, validation_job)
     validation_result = validation_job.result_json or {}
     if validation_result.get("scenario_id") != scenario.id:
         raise HTTPException(

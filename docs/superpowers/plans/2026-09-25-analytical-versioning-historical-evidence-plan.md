@@ -171,6 +171,18 @@ changed `workflow.py`. Recommended: (a).
 - Historical compatibility: orphaned jobs become `MISSING_DEPENDENCY`.
 - Engine version: none.
 - Stop: full gates.
+- Status (2026-09-26): INTERIM, committed locally.
+  - Done:
+    - one dependency gate across every workflow slot, both Decision endpoints and the
+      selected-plan report chain;
+    - `decision_stale` keeps its pre-Step-5 meaning when no eligible scenario is selected
+      (Option A).
+  - Not done:
+    - the error detail is one generic `MISSING_DEPENDENCY_DETAIL`, not per dependency;
+    - there is no frontend "source deleted" text.
+  - **Open release blocker:** exact source identity (spec section 5.4). The `created_at` guard
+    is not an exact-generation solution, and the generation-token mechanism is approved in
+    principle only.
 
 ## Step 6 — Historical read-only access (only if OD-1 approves)
 

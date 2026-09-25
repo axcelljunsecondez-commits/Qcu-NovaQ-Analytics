@@ -203,7 +203,17 @@ def test_apply_makes_earlier_evidence_stale(db_engine, client):
         db.commit()
     login(client, "brk@example.com", "pw")
     before = client.get(f"/analyses/{analysis_id}/workflow").json()
-    assert before["des_current"] is not None and before["decision_stale"] is False
+    # The Current-mode chain is real evidence on the current dataset, so it is current here and
+    # must stop being current after the apply: that is this test's subject.
+    assert before["des_current"] is not None
+    assert before["mc_current"] is not None and before["validation_current"] is not None
+    # The selection and decision fixtures name scenario 999, which does not exist, so there is no
+    # eligible selected scenario. The stored Decision is not served (Step 5), and `decision_stale`
+    # keeps its established meaning: with nothing selected there is no Decision to regenerate, so
+    # it stays False until the Setup changes (asserted after the apply below). Step 5 had briefly
+    # asserted True here; that value told the page to "generate again" a Decision that no
+    # generation could clear (Step 5 final review, Option A).
+    assert before["decision"] is None and before["decision_stale"] is False
     proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
     assert _apply(client, analysis_id, _from(proposal)).status_code == 200
     after = client.get(f"/analyses/{analysis_id}/workflow").json()
