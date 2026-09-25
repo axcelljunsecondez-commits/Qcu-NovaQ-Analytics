@@ -194,3 +194,11 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - File roles: `AGENTS.md` holds permanent engineering rules and repository guardrails. `CLAUDE.md` holds Claude-specific configuration and imports only. `memory.md` holds approved durable decisions and technical context. `handoff.md` holds current status, verified completed work, unresolved defects, and authorized next actions. Skills hold repeatable procedures and refer to the protocol instead of restating it.
 - The "Engineering Rules" list above is a short summary. Where it and the protocol differ, the protocol governs.
 - The protocol sets evidence and verification requirements. It does not guarantee error-free work.
+
+## Shared-Queue Closing Policy (2026-09-25)
+
+- The product owner approved two closing policies for the new continuous shared-queue DES (`simulation/shared_continuous_des.py`, Phase 3A). Every run must name one; there is no default. DRAIN: arrivals stop at closing, and the servers on duty at closing serve everyone still waiting, with no overrun cap. A server draining at closing only finishes its own customer. When nobody is on duty, waiting customers are recorded as unserved (`no_eligible_server`). HARD_CUTOFF: arrivals stop at closing, waiting customers are recorded as unserved (`hard_cutoff`), and services already under way finish.
+- Services that start after closing use the final demand period's service rate.
+- Day cost comes only from `services/shared_day_cost.py`, with four caller-supplied rates that have no defaults: regular server, overtime (server-hours after closing), waiting (customer-hours), and unserved customer. The unserved term applies only when the configured closing can leave customers unserved: HARD_CUTOFF, or DRAIN with 0 servers in the final segment. A missing rate withholds the total; it is never replaced by 0. The legacy `REGULAR_RATE`/`OT_RATE` are not used here.
+- Server-hours in this pipeline are modeled service-capacity hours, not necessarily paid employee-hours.
+- The separate-queue day DES drain rule was not used to derive the shared rule; the shared rule comes from this approval.

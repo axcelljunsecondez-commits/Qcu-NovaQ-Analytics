@@ -360,7 +360,9 @@ def test_aggregate_rows_with_a_gap_fail_validation():
 # ── Isolation ───────────────────────────────────────────────────────────────
 
 
-SHARED_QUEUE_ENHANCEMENT_MODULES = {"shared_segments.py", "shared_capacity.py", "shared_continuous_des.py"}
+SHARED_QUEUE_ENHANCEMENT_MODULES = {
+    "shared_segments.py", "shared_capacity.py", "shared_continuous_des.py", "shared_day_cost.py",
+}
 
 
 def test_no_existing_module_depends_on_the_new_foundation():

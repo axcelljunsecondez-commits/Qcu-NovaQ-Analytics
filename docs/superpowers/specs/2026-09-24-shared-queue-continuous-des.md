@@ -78,6 +78,10 @@ sees the new capacity. Ties among arrivals follow customer id.
 
 ## Horizon end and closing
 
+> **Resolved 2026-09-25 by Phase 3A** (`2026-09-25-shared-queue-closing-policy.md`): every run
+> now names DRAIN or HARD_CUTOFF, and `horizon_end` became `closing`. The text below records
+> the Phase 3 state.
+
 - The run observes [start, end). Arrivals exist only inside the horizon because the demand
   data covers only the horizon. This is data coverage, not a closing rule.
 - **Closing policy: UNRESOLVED.** No approved shared-queue closing rule exists. The

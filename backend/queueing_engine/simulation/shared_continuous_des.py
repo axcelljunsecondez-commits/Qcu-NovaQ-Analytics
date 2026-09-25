@@ -5,7 +5,11 @@ piecewise-constant arrival and service rates and a staffing schedule that may ch
 between segments. There is no restart, warm-up, or reset at any boundary: customers keep
 their identity, arrival time, and waiting history for the whole run.
 
-Spec: docs/superpowers/specs/2026-09-24-shared-queue-continuous-des.md.
+Specs: docs/superpowers/specs/2026-09-24-shared-queue-continuous-des.md and, for closing,
+docs/superpowers/specs/2026-09-25-shared-queue-closing-policy.md (Phase 3A).
+
+The engine reports hours and counts only; it holds no monetary assumption. Costs come from
+``services/shared_day_cost.py`` with rates the caller supplies.
 
 Nothing legacy imports this module, and it imports nothing from the legacy simulation.
 The legacy shared DES in ``simulation.py`` and all separate-queue code are unchanged.
@@ -33,7 +37,7 @@ from backend.queueing_engine.services.shared_segments import (
     validate_timeline,
 )
 
-ENGINE_VERSION = "novaq-shared-continuous-des-v1"
+ENGINE_VERSION = "novaq-shared-continuous-des-v2"
 
 # Same-time order: a completion frees its server before a capacity change is applied, and an
 # arrival at a boundary sees the new capacity. Ties among arrivals follow customer id.
@@ -41,10 +45,28 @@ _COMPLETION, _CAPACITY, _ARRIVAL = 0, 1, 2
 
 CLOSED, IDLE, BUSY, DRAINING = "CLOSED", "IDLE", "BUSY", "DRAINING"
 
-CLOSING_POLICY_STATUS = (
-    "UNRESOLVED: no approved shared-queue closing rule exists. The run observes the horizon only; "
-    "customers still waiting or in service at the end are reported as unfinished. They are not "
-    "served after closing and not removed."
+# Closing policies approved by the product owner on 2026-09-25 (Phase 3A). There is no default.
+DRAIN, HARD_CUTOFF = "DRAIN", "HARD_CUTOFF"
+CLOSING_POLICIES = (DRAIN, HARD_CUTOFF)
+CLOSING_RULES = {
+    DRAIN: (
+        "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. "
+        "The accepting servers on duty at closing keep serving the line first come, first served, with "
+        "no overrun cap; a server draining at closing only finishes its own customer. Each server closes "
+        "once it is idle and nobody is waiting. Services that start after closing use the final demand "
+        "period's service rate. If no accepting server is on duty at closing, customers still waiting "
+        "are recorded as unserved_at_close (reason no_eligible_server)."
+    ),
+    HARD_CUTOFF: (
+        "HARD_CUTOFF: arrivals stop at closing, and completions at the closing time are processed first. "
+        "Customers still waiting are recorded as unserved_at_close (reason hard_cutoff). Services already "
+        "under way finish; no service starts at or after closing. Each server closes when it is idle."
+    ),
+}
+SERVER_HOURS_MEANING = (
+    "Server-hours are modeled service-capacity hours: the time a modeled server position is open. "
+    "They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time "
+    "outside open positions are not modeled."
 )
 
 EVENT_ORDER = (
@@ -67,8 +89,11 @@ ASSUMPTIONS = [
     "with mu the service rate of the demand period in which service starts. A started service is "
     "never redrawn, rescaled, or interrupted.",
     "The system is empty at the horizon start (initial condition).",
-    "Waiting-time means are over customers who started service; customers still waiting at the "
-    "end are counted separately and their elapsed waits are lower bounds.",
+    "The horizon end is the closing time. Services that start after closing (DRAIN only) use the "
+    "final demand period's service rate, because no demand data exists after closing.",
+    "Waiting-time means are over customers who started service, including starts after closing "
+    "under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are "
+    "censored, not completed waits.",
     "Simulated values are one stochastic realization of the configured model, not observations "
     "and not steady-state expectations.",
 ]
@@ -85,6 +110,7 @@ class _Server:
 class _Clock:
     last: float = 0.0  # time up to which areas have been accumulated
     segment: int = 0  # index of the staffing segment in force
+    closed: bool = False  # True from the closing time (the horizon end) onward
 
 
 @dataclass
@@ -97,6 +123,7 @@ class _Customer:
     service_end: float | None = None
     server_id: int | None = None
     departed: bool = False
+    unserved_reason: str | None = None
 
 
 def _is_finite_real(value: object) -> bool:
@@ -113,11 +140,13 @@ def simulate_prescribed(
     staffing_segments: Sequence[StaffingSegment],
     arrivals: Sequence[tuple[float, float]],
     *,
+    closing_policy: str,
     max_trace_events: int | None = None,
 ) -> dict[str, Any]:
     """Run the continuous engine on prescribed (arrival hour, unit work) pairs.
 
-    Arrival hours are measured from the horizon start. This entry point is deterministic;
+    Arrival hours are measured from the horizon start. ``closing_policy`` (``DRAIN`` or
+    ``HARD_CUTOFF``) has no default. This entry point is deterministic;
     ``simulate_shared_day`` draws the pairs from seeded random streams.
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
@@ -127,6 +156,8 @@ def simulate_prescribed(
     segment_hours = [(segment.end_minute - segment.start_minute) / 60.0 for segment in staffing_segments]
 
     problems = []
+    if closing_policy not in CLOSING_POLICIES:
+        problems.append("closing_policy must be DRAIN or HARD_CUTOFF; there is no default.")
     if max_trace_events is not None and (
         not isinstance(max_trace_events, Integral) or isinstance(max_trace_events, bool) or max_trace_events < 0
     ):
@@ -157,6 +188,7 @@ def simulate_prescribed(
         return bisect.bisect_right(segment_starts, hour) - 1
 
     def mu_at(hour: float) -> float:
+        # At or after closing this is the final demand period's rate (approved Phase 3A rule).
         return float(demand_periods[bisect.bisect_right(period_starts, hour) - 1].service_rate_per_hour)
 
     servers: list[_Server] = []
@@ -178,8 +210,13 @@ def simulate_prescribed(
     drains: dict[int, dict[str, Any]] = {}
     drain_records: list[dict[str, Any]] = []
     areas = [{"queue": 0.0, "busy": 0.0, "present": 0.0} for _ in staffing_segments]
+    after_close = {"queue": 0.0, "busy": 0.0, "present": 0.0}
     max_queue = [0 for _ in staffing_segments]
     clock = _Clock()
+
+    def segment_id_now() -> str | None:
+        # Events at or after closing belong to no staffing segment.
+        return None if clock.closed else staffing_segments[clock.segment].segment_id
 
     def record(at: float, kind: str, customer_id: int | None, server_id: int | None) -> None:
         nonlocal truncated
@@ -187,14 +224,14 @@ def simulate_prescribed(
             truncated = True
             return
         trace.append({
-            "t": at, "type": kind, "segment_id": staffing_segments[clock.segment].segment_id,
+            "t": at, "type": kind, "segment_id": segment_id_now(),
             "customer_id": customer_id, "server_id": server_id, "queue_len_after": len(queue),
         })
 
     def advance(now: float) -> None:
         elapsed = now - clock.last
         if elapsed > 0:
-            area = areas[clock.segment]
+            area = after_close if clock.closed else areas[clock.segment]
             area["queue"] += len(queue) * elapsed
             area["busy"] += sum(1 for server in servers if server.state in (BUSY, DRAINING)) * elapsed
             area["present"] += sum(1 for server in servers if server.state != CLOSED) * elapsed
@@ -203,7 +240,7 @@ def simulate_prescribed(
     def transition(at: float, kind: str, server: _Server) -> None:
         transitions.append({
             "t": at, "kind": kind, "server_id": server.server_id,
-            "segment_id": staffing_segments[clock.segment].segment_id,
+            "segment_id": segment_id_now(),
             "customer_id": server.customer_id,
         })
         record(at, f"server_{kind}", server.customer_id, server.server_id)
@@ -221,8 +258,9 @@ def simulate_prescribed(
             server.state, server.customer_id = BUSY, customer.customer_id
             heapq.heappush(heap, (customer.service_end, _COMPLETION, next(sequence), customer.customer_id))
             record(now, "service_start", customer.customer_id, server.server_id)
-        segment = clock.segment
-        max_queue[segment] = max(max_queue[segment], len(queue))
+        if not clock.closed:
+            segment = clock.segment
+            max_queue[segment] = max(max_queue[segment], len(queue))
 
     def apply_capacity(now: float, index: int) -> None:
         clock.segment = index
@@ -293,10 +331,59 @@ def simulate_prescribed(
         assign(now)
     advance(end)
 
+    # Closing (Phase 3A). Every arrival and capacity change lies before closing, so only service
+    # completions remain in the heap. Completions at exactly the closing time are processed first,
+    # without assigning anyone, so those customers depart at closing without overtime.
+    clock.closed = True
+    while heap and heap[0][0] == end:
+        now, _, _, payload = heapq.heappop(heap)
+        complete(now, payload)
+    at_close = {
+        "waiting_customer_ids": list(queue),
+        "in_service_customer_ids": sorted(
+            int(server.customer_id) for server in servers  # type: ignore[arg-type]
+            if server.state in (BUSY, DRAINING)
+        ),
+        "accepting_server_ids": [server.server_id for server in servers if server.state in (IDLE, BUSY)],
+        "draining_server_ids": [server.server_id for server in servers if server.state == DRAINING],
+    }
+    record(end, "closing", None, None)
+
+    def release_idle(now: float) -> None:
+        # After closing a server closes once it is idle and nobody is waiting.
+        if queue:
+            return
+        for server in servers:
+            if server.state == IDLE:
+                server.state = CLOSED
+                transition(now, "close", server)
+
+    if closing_policy == HARD_CUTOFF or not at_close["accepting_server_ids"]:
+        # HARD_CUTOFF, or DRAIN with nobody on duty: waiting customers cannot be served, so they
+        # are recorded now instead of waiting forever.
+        reason = "hard_cutoff" if closing_policy == HARD_CUTOFF else "no_eligible_server"
+        while queue:
+            customer = customers[queue.popleft() - 1]
+            customer.unserved_reason = reason
+            record(end, "unserved_at_close", customer.customer_id, None)
+    else:
+        assign(end)
+    release_idle(end)
+    while heap:
+        now, _, _, payload = heapq.heappop(heap)
+        advance(now)
+        complete(now, payload)
+        if closing_policy == DRAIN:
+            assign(now)
+        release_idle(now)
+    # The run ends with every customer resolved and every server closed.
+    assert not queue and all(server.state == CLOSED for server in servers)
+    assert all(customer.departed or customer.unserved_reason for customer in customers)
+
     return _summarize(
-        horizon, demand_periods, staffing_segments, arrivals, customers, servers, queue,
+        horizon, demand_periods, staffing_segments, arrivals, customers, servers,
         segment_hours, areas, max_queue, transitions, drain_records, trace, truncated, end,
-        max_trace_events,
+        max_trace_events, closing_policy, at_close, after_close,
     )
 
 
@@ -304,20 +391,30 @@ def _mean(values: Sequence[float]) -> float | None:
     return math.fsum(values) / len(values) if values else None
 
 
+def _unserved_possible(closing_policy: str, staffing_segments) -> tuple[bool, str]:
+    """Whether the configured closing can leave customers unserved, with the reason."""
+    if closing_policy == HARD_CUTOFF:
+        return True, "HARD_CUTOFF records every customer still waiting at closing as unserved."
+    final = staffing_segments[-1]
+    if int(final.servers) == 0:
+        return True, (
+            f"DRAIN with 0 servers scheduled in the final staffing segment ({final.segment_id}): nobody "
+            "is on duty at closing to serve customers still waiting."
+        )
+    return False, (
+        f"DRAIN with {int(final.servers)} accepting server(s) on duty at closing serves every admitted "
+        "customer, so no customer can be left unserved."
+    )
+
+
 def _summarize(
-    horizon, demand_periods, staffing_segments, arrivals, customers, servers, queue,
+    horizon, demand_periods, staffing_segments, arrivals, customers, servers,
     segment_hours, areas, max_queue, transitions, drain_records, trace, truncated, end,
-    max_trace_events,
+    max_trace_events, closing_policy, at_close, after_close,
 ) -> dict[str, Any]:
-    waiting_ids = set(queue)
     customer_rows = []
     for customer in customers:
-        if customer.departed:
-            status = "departed"
-        elif customer.service_start is not None:
-            status = "in_service_at_end"
-        else:
-            status = "waiting_at_end"
+        status = "departed" if customer.departed else "unserved_at_close"
         wait = None if customer.service_start is None else customer.service_start - customer.arrival
         customer_rows.append({
             "customer_id": customer.customer_id,
@@ -328,10 +425,12 @@ def _summarize(
             "service_end_hours": customer.service_end,
             "server_id": customer.server_id,
             "wait_hours": wait,
-            "elapsed_wait_at_end_hours": end - customer.arrival if status == "waiting_at_end" else None,
+            "elapsed_wait_at_close_hours": end - customer.arrival if status == "unserved_at_close" else None,
             "status": status,
+            "unserved_reason": customer.unserved_reason,
         })
-    assert waiting_ids == {row["customer_id"] for row in customer_rows if row["status"] == "waiting_at_end"}
+    # Unserved customers never started service, and everyone who started service departed.
+    assert all((row["status"] == "unserved_at_close") == (row["service_start_hours"] is None) for row in customer_rows)
 
     segments = []
     for index, segment in enumerate(staffing_segments):
@@ -348,7 +447,7 @@ def _summarize(
             "service_starts": len(started),
             "mean_wait_hours": _mean(started),
             "waited_count": sum(1 for wait in started if wait > 0),
-            "waiting_at_end": sum(1 for row in rows if row["status"] == "waiting_at_end"),
+            "unserved_at_close": sum(1 for row in rows if row["status"] == "unserved_at_close"),
             "time_average_queue": area["queue"] / hours,
             "max_queue": max_queue[index],
             "busy_server_hours": area["busy"],
@@ -360,8 +459,15 @@ def _summarize(
 
     started_waits = [row["wait_hours"] for row in customer_rows if row["wait_hours"] is not None]
     counts = {status: sum(1 for row in customer_rows if row["status"] == status)
-              for status in ("departed", "in_service_at_end", "waiting_at_end")}
+              for status in ("departed", "unserved_at_close")}
     total_hours = end
+    unserved_ids = [row["customer_id"] for row in customer_rows if row["status"] == "unserved_at_close"]
+    unserved_possible, unserved_possible_reason = _unserved_possible(closing_policy, staffing_segments)
+    assert unserved_possible or not unserved_ids
+    closing_releases = [item["t"] for item in transitions if item["segment_id"] is None]
+    last_release = max(closing_releases, default=end)
+    in_horizon_present = math.fsum(area["present"] for area in areas)
+    in_horizon_queue = math.fsum(area["queue"] for area in areas)
     return {
         "customers": customer_rows,
         "segments": segments,
@@ -372,23 +478,59 @@ def _summarize(
             "service_starts": len(started_waits),
             "mean_wait_hours": _mean(started_waits),
             "waited_count": sum(1 for wait in started_waits if wait > 0),
-            "time_average_queue": math.fsum(area["queue"] for area in areas) / total_hours,
-            "queue_customer_hours": math.fsum(area["queue"] for area in areas),
+            "time_average_queue": in_horizon_queue / total_hours,
+            "queue_customer_hours": in_horizon_queue,
             "max_queue": max(max_queue),
             "busy_server_hours": math.fsum(area["busy"] for area in areas),
-            "present_server_hours": math.fsum(area["present"] for area in areas),
+            "present_server_hours": in_horizon_present,
             "scheduled_server_hours": math.fsum(row["scheduled_server_hours"] for row in segments),
             "server_hours_above_schedule": math.fsum(row["server_hours_above_schedule"] for row in segments),
             "servers_used": len(servers),
+            "scope": (
+                "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; "
+                "after-closing values are under closing. Customer counts and waits cover the whole run."
+            ),
         },
         "capacity_transitions": transitions,
         "drains": drain_records,
-        "horizon_end": {
-            "hours": end,
-            "waiting_customer_ids": [row["customer_id"] for row in customer_rows if row["status"] == "waiting_at_end"],
-            "in_service_customer_ids": [row["customer_id"] for row in customer_rows if row["status"] == "in_service_at_end"],
-            "draining_server_ids": [server.server_id for server in servers if server.state == DRAINING],
-            "closing_policy": CLOSING_POLICY_STATUS,
+        "closing": {
+            "policy": closing_policy,
+            "rule": CLOSING_RULES[closing_policy],
+            "closing_hours": end,
+            "at_close": at_close,
+            "unserved_customer_ids": unserved_ids,
+            "unserved_possible": unserved_possible,
+            "unserved_possible_reason": unserved_possible_reason,
+            "service_starts_after_close": sum(
+                1 for row in customer_rows
+                if row["service_start_hours"] is not None and row["service_start_hours"] >= end
+            ),
+            "completions_after_close": sum(
+                1 for row in customer_rows if row["service_end_hours"] is not None and row["service_end_hours"] > end
+            ),
+            "after_close_server_hours": after_close["present"],
+            "after_close_busy_server_hours": after_close["busy"],
+            "after_close_waiting_customer_hours": after_close["queue"],
+            "last_server_release_hours": last_release,
+            "overrun_hours": last_release - end,
+        },
+        "cost_quantities": {
+            "closing_policy": closing_policy,
+            "regular_server_hours": in_horizon_present,
+            "overtime_server_hours": after_close["present"],
+            "total_waiting_customer_hours": math.fsum([in_horizon_queue, after_close["queue"]]),
+            "unserved_customer_count": len(unserved_ids),
+            "unserved_possible": unserved_possible,
+            "definitions": {
+                "regular_server_hours": (
+                    "Present server-hours inside the horizon: scheduled hours plus above-schedule drain "
+                    "time during the day."
+                ),
+                "overtime_server_hours": "Present server-hours after closing.",
+                "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+                "unserved_customer_count": "Customers recorded as unserved_at_close.",
+            },
+            "server_hours_meaning": SERVER_HOURS_MEANING,
         },
         "trace": trace,
         "trace_truncated": truncated,
@@ -398,11 +540,14 @@ def _summarize(
             "time_unit": "hours from the horizon start",
             "trace_fields": (
                 "queue_len_after is the number of waiting customers right after the event; an arriving "
-                "customer counts as waiting until its service_start event, which may share the arrival time."
+                "customer counts as waiting until its service_start event, which may share the arrival time. "
+                "Events and capacity transitions at or after closing carry segment_id None."
             ),
             "event_order": EVENT_ORDER,
             "transition_policy": TRANSITION_POLICY,
-            "closing_policy": CLOSING_POLICY_STATUS,
+            "closing_policy": closing_policy,
+            "closing_rule": CLOSING_RULES[closing_policy],
+            "server_hours_meaning": SERVER_HOURS_MEANING,
             "assumptions": list(ASSUMPTIONS),
             "max_trace_events": max_trace_events,
             "inputs": {
@@ -421,12 +566,13 @@ def simulate_shared_day(
     staffing_segments: Sequence[StaffingSegment],
     *,
     seed: int | None,
+    closing_policy: str,
     max_trace_events: int | None = None,
 ) -> dict[str, Any]:
     """Draw arrivals and unit work from seeded streams, then run the continuous engine.
 
     ``seed=None`` draws fresh entropy; it is recorded in the provenance so the run can be
-    repeated exactly by passing it back as ``seed``.
+    repeated exactly by passing it back as ``seed``. ``closing_policy`` has no default.
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
     if seed is not None and (not isinstance(seed, Integral) or isinstance(seed, bool) or seed < 0):
@@ -447,7 +593,8 @@ def simulate_shared_day(
     works = [float(work) for work in work_stream.exponential(1.0, size=len(times))]
 
     result = simulate_prescribed(
-        horizon, demand_periods, staffing_segments, list(zip(times, works)), max_trace_events=max_trace_events
+        horizon, demand_periods, staffing_segments, list(zip(times, works)),
+        closing_policy=closing_policy, max_trace_events=max_trace_events,
     )
     result["provenance"].update({
         "seed": seed,

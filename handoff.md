@@ -326,6 +326,37 @@ Current verified state:
   - A source-level mutation check caught 9 of 9 faults after one ordering test was strengthened.
   - Backend 1162 passed, 3 skipped, 1 xfailed. Ruff and mypy are clean.
 
+## Shared Queue Enhancement: Phase 3A Closing Policy and Day Cost (2026-09-25)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-25-shared-queue-closing-policy.md`
+- `docs/superpowers/plans/2026-09-25-shared-queue-closing-policy-plan.md`
+
+The product owner approved the closing policy on 2026-09-25. It replaces the Phase 3 UNRESOLVED state.
+
+Current verified state:
+
+- `simulation/shared_continuous_des.py` (engine `novaq-shared-continuous-des-v2`): `simulate_prescribed` and `simulate_shared_day` require `closing_policy` (`DRAIN` or `HARD_CUTOFF`); there is no default. Events before closing are unchanged from Phase 3.
+  - At closing, completions at exactly that time are processed first. The at-close state is recorded: waiting customers, customers in service, and accepting and draining servers.
+  - HARD_CUTOFF: waiting customers become `unserved_at_close` (`hard_cutoff`). Services already under way finish, and nobody starts service at or after closing.
+  - DRAIN: the accepting servers on duty serve the line first come, first served, with no cap. Services that start after closing use the final demand period's μ. A draining server only finishes its own customer. With nobody on duty, waiting customers become `unserved_at_close` (`no_eligible_server`), so draining cannot run forever. The engine asserts that every customer is resolved and every server closed.
+  - Outputs: statuses are `departed` and `unserved_at_close`. The `closing` block replaces `horizon_end` and reports overrun, after-close server-hours, and after-close waits. `cost_quantities` holds hours and counts only. Events at or after closing carry `segment_id: None`. In-horizon keys keep their Phase 3 meaning.
+- New `services/shared_day_cost.py`: `DayCostRates` takes four required rates, and `None` means not supplied. `cost_shared_day` computes regular server-hours × rate + overtime server-hours × rate + waiting customer-hours × rate + unserved count × rate. The unserved term applies only when `unserved_possible` (HARD_CUTOFF, or DRAIN with 0 servers in the final segment). A missing applicable rate withholds the total with a reason; it is never replaced by 0. Server-hours are modeled capacity hours, not necessarily paid employee-hours.
+- Nothing legacy imports either module; the isolation test now covers the cost module too. The legacy shared DES, separate-queue code, APIs, scenarios, reports, config rates, and frontend are unchanged.
+- Verification:
+  - `tests/test_shared_continuous_des.py` grew from 49 to 111 tests.
+    - Every Phase 3 exact case now runs under both policies and must agree.
+    - New exact closing cases: an empty system; waiting customers under both policies; a completion exactly at closing; a server draining at closing; a zero-capacity final segment under both policies; a backlog from a zero-capacity period; an increase just before closing; the final-μ rule; arrivals stopping at closing; and a required, validated policy.
+    - Whole-run sample-path identities, including overtime = service time after closing.
+    - Cross-policy equivalence before closing on 40 seeded multi-transition runs.
+    - An independent first-come-first-served recursion from the at-close state agrees on 30 seeded overloaded runs (every run closes with a line; 5 of 15 per policy with a draining server; 144 after-close starts under DRAIN).
+    - The Erlang C benchmark passes under both policies.
+  - `tests/test_shared_day_cost.py` has 16 tests: hand totals (DRAIN 255, HARD_CUTOFF 247.5 at rates 80, 120, 100, 50), missing and zero rates, the applicability rule, invalid rates, no defaults, and no config import.
+  - A source-level mutation check caught 14 of 15 faults. The miss, a max-queue update after closing, is an equivalent mutant: the line cannot grow after closing.
+  - Backend 1240 passed, 3 skipped, 1 xfailed (1162 + 78 new). Ruff is clean. `mypy .` reports 5 errors, all in the gitignored, untracked `outputs/technical-paper/build_chapters_4_5.py` (last modified 2026-09-20, imports only docx, matplotlib, and pandas). `mypy . --exclude '^outputs/'` is clean on 157 files. Frontend not run: nothing under `frontend/` changed.
+- Next (needs approval): Phase 4. Monte Carlo and playback have not started.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:
