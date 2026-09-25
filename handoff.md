@@ -343,5 +343,5 @@ Open items:
 
 - CONFLICTING: `POST /onboarding/complete` writes user state (`backend/api/onboarding.py`), but the CSRF middleware docstring in `backend/api/main.py` says exempt families never mutate server state. The session and CSRF cookies are `SameSite=lax` (`backend/api/auth.py`); whether that is enough was not assessed. The exemption was not changed and needs an owner decision.
 - The `fix/d1-replication-costs`, `claude/clever-boyd-87ff32`, and `claude/nervous-hodgkin-2b6ef1` worktrees have their own `AGENTS.md` without the protocol and no `CLAUDE.md`. Merging those branches will need care in `AGENTS.md`.
-- With the import, Claude Code loads the whole `AGENTS.md` (about 290 lines, including the Session History) at session start. The official guidance targets under 200 lines per `CLAUDE.md` file.
+- Resolved: the Session History moved unchanged to `docs/history/agents-session-history.md`, so the `AGENTS.md` that Claude Code loads at session start is now 220 lines, down from 290. The official guidance targets under 200 lines per `CLAUDE.md` file.
 - `.claude/launch.json` is untracked and was left alone.
