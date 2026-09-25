@@ -210,3 +210,10 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Intervals follow NovaQ conventions: Student-t for continuous replication metrics (as in the separate-queue DES replications), and Wilson for proportions. Undefined values are counted, never zero-filled.
 - Failure criteria are optional and supplied by the caller: mean wait, utilization, unserved count, and overrun, with no default thresholds. Violation proportions are descriptive. No approved PASS/FAIL rule exists for this engine, so no verdict is produced; the legacy 0.75/0.05 rule is not applied.
 - Playback (`simulation/shared_playback.py`) shows exactly one regenerated replication. Its events are the engine trace, checked by an independent replay; it never combines replications. There is no API or frontend yet.
+
+## Shared-Queue Workforce Foundation (2026-09-26)
+
+- `services/shared_workforce.py` (Phase 5B-1) validates pseudonymous employees, availability, shift and break rules, pay parameters, registers, and a roster. It works in whole minutes since midnight with half-open intervals, and has no operating defaults: a missing value is `None` and reported, never 0.
+- Definitions: paid = scheduled - unpaid breaks; scheduled active server time = scheduled - all breaks; regular = min(paid, daily_regular_paid_minutes); overtime = paid - regular, taken in clock order, so the two never overlap. These are scheduled quantities, never simulated service time. The module builds no optimized roster and computes no cost.
+- Roster status: INVALID (any coded violation), INCOMPLETE (a pay value or break-rule coverage is missing), or COMPLETE. A coverage shortfall against the required staffing is reported but is not a violation. Registers are counted, not identified.
+- The separate-queue staff and break sheets, lane breaks, and the 3-minute pre-break cutoff are not used for shared queues. The Phase 5A decisions D1-D16 (solver approach, DES employee model, break-delay and overtime rules, and so on) remain open.

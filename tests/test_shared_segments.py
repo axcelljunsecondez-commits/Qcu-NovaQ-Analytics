@@ -362,7 +362,7 @@ def test_aggregate_rows_with_a_gap_fail_validation():
 
 SHARED_QUEUE_ENHANCEMENT_MODULES = {
     "shared_segments.py", "shared_capacity.py", "shared_continuous_des.py", "shared_day_cost.py",
-    "shared_replications.py", "shared_playback.py",
+    "shared_replications.py", "shared_playback.py", "shared_workforce.py",
 }
 
 

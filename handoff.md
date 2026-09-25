@@ -411,6 +411,46 @@ Current verified state (backend only; no API, frontend, Decision, Report, scenar
   - Backend 1307 passed, 3 skipped, 1 xfailed (1240 + 67 new; all 16 separate-queue test files included). The run's 6 h 29 min wall time includes a system sleep from 01:44 to 06:02. Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 161 files; the gitignored `outputs/technical-paper/build_chapters_4_5.py` errors from Phase 3A remain. Frontend not run: nothing under `frontend/` changed.
 - Not implemented: a parameter-uncertainty experiment, an acceptance (PASS/FAIL) rule, production API endpoints, the frontend player, Decision and Report integration, and workforce scheduling. Each needs approval.
 
+## Shared Queue Enhancement: Phase 5B-1 Workforce Foundation (2026-09-26)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-26-shared-queue-workforce-foundation.md`
+- `docs/superpowers/plans/2026-09-26-shared-queue-workforce-foundation-plan.md`
+
+Phase 5A (2026-09-25) was a read-only design report delivered in chat. Its decisions D1-D16 remain open.
+
+Current verified state (one pure module; no solver, DES, cost, API, schema, scenario, frontend, Decision, or Report change):
+
+- New `services/shared_workforce.py`:
+  - Inputs:
+    - `Employee`: a pseudonymous id, availability windows, and `EmployeePay` (regular rate, overtime rate, daily regular paid minutes). Every pay value may be `None` (not supplied) and is never read as 0.
+    - `ShiftRules`: boundaries, length range, boundary granularity, maximum shifts, and rest between shifts (required only when split shifts are allowed).
+    - `BreakRule` / `BreakRequirement`: a length range, a minimum gap, and named breaks with a duration, an explicit paid flag, and start-offset windows.
+    - `WorkforceRules.register_count`.
+    - A roster of `ScheduledShift` / `ScheduledBreak`. Break length and paid status come from the rule.
+  - Validation:
+    - Malformed inputs raise `SharedSegmentError` with every problem listed.
+    - Roster rule breaches are returned as 17 coded violations with reasons. Status is INVALID, INCOMPLETE (missing pay values or break-rule coverage), or COMPLETE.
+    - Hours are withheld, not guessed, for an employee whose time has no well-defined active/break split: overlapping shifts or breaks, a break outside its shift, or an unknown break length.
+  - Outputs, all scheduled (not simulated):
+    - scheduled, paid, break (paid and unpaid), and active server minutes (split inside and outside the horizon);
+    - regular and overtime paid minutes, with the overtime start minute;
+    - active-server steps, the register check, and coverage shortfall and surplus against optional required staffing segments.
+  - No cost, no optimized roster. Registers are counted, not identified.
+- Nothing legacy imports the module; the isolation test covers it. The separate-queue staff and break sheets, lane breaks, and pre-break cutoff are not used.
+- Verification:
+  - `tests/test_shared_workforce.py` has 53 tests on labeled synthetic data:
+    - hand-computed hours, overtime start, steps, register intervals, and coverage;
+    - split shifts;
+    - four threshold edges;
+    - every violation code with its exact code list;
+    - malformed employees, rules, roster, and staffing;
+    - identities and an independent minute-by-minute brute force (active count, coverage, register check, active minutes, and overtime start) on 200 generated rosters.
+  - A first fault-injection pass caught 10 of 12 faults. The two misses exposed missing tests (an overtime-start boundary and a too-late break); after adding them, 12 of 12 were caught.
+  - Backend 1360 passed, 3 skipped, 1 xfailed (1307 + 53; all 16 separate-queue test files included). Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 163 files. Frontend not run: nothing under `frontend/` changed.
+- Next (needs approval): Phase 5B-2 and later (sequential and integrated MILP, named-server DES, workforce cost), plus the open Phase 5A decisions.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:
