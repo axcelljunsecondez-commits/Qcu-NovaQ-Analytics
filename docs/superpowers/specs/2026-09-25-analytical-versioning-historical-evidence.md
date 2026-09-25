@@ -131,13 +131,22 @@ and its upstream statuses.
 
 | Artifact | Status after this design | Reasons |
 |---|---|---|
-| Scenario 30 (v2, dataset 35 current, setup current) | `HISTORICAL_REQUIRES_RECALCULATION` | engine v2; optimum cost of 9/13 periods priced from 2-4 of 5 replications; no period costs |
+| Scenario 30 (v2, dataset 35 current, setup current) | `HISTORICAL_REQUIRES_RECALCULATION` once v3 is the current plan engine (`CURRENT` under today's v2 policy) | `VERSION_HISTORICAL`: the recorded engine string is v2. Supporting explanation, not a status reason: the optimum cost of 9/13 periods was priced from 2-4 of 5 replications, and there are no period costs (Milestone 5 replay). |
 | Jobs 74-89 (scenario 30 chain) | `HISTORICAL_REQUIRES_RECALCULATION` via the chain; superseded ones also carry `HISTORICAL_VIEWABLE` reasons | upstream plan v2 |
 | Jobs 90-91 (scenario 31, deleted) | `MISSING_DEPENDENCY` | scenario missing |
 | 13 `workflow_des_current` jobs | `MISSING_DEPENDENCY` | dataset missing (also M3 absent; 12 of 13 are capability-error only) |
 | Scenario 12 (schema 1, dataset 7; current is 8) | `STALE_DATASET` | selectable today (section 2) |
 | Scenario 13 (schema 1, dataset 8) | `CURRENT` if no other check fails | — |
 | Scenario 32 + jobs 92-97 (analysis 22) | `CURRENT` (setup hash of all six jobs equals the current fingerprint `5bb80650…`, dataset 37 is current) | — |
+
+The "Reasons" column separates three kinds of evidence:
+
+- **Recorded engine identity determines version compatibility.** A status reason comes only from a
+  recorded field compared with the supplied version policy.
+- **Numerical discrepancies support the engineering explanation only.** Examples are
+  replications per period, missing `period_costs` and cost totals. They never set or change a status.
+- **Missing provenance is never replaced by inferred history.** An absent field is
+  `MISSING_PROVENANCE`, not an assumed earlier version.
 
 ## 5. D7 dataset-currentness correction (requirement C)
 
@@ -263,6 +272,18 @@ values beside Current (section 9.2). Needs an additive endpoint (OD-1).
 - Scenarios with `dataset_id` NULL stay `MISSING_PROVENANCE` (already unselectable,
   `workflow.py:286`).
 - Nothing is deleted or invalidated in storage; the status is computed on read.
+
+**Known limitation (unresolved; no new policy is implemented).** A schema-1 scenario records no
+`setup_hash`. Its only Setup identity is the queue type of its snapshot.
+
+- The queue type is computed by `_legacy_snapshot_queue_type`: "separate" if any input segment is
+  a separate-queue or `parallel_mg1` row, otherwise "shared".
+- It is compared with the Setup's `queue_structure`.
+- Any other Setup change leaves a schema-1 scenario's Setup check passing. That includes server
+  counts, capacity, abandonment, segments, breaks and queue ids.
+- The Step 1 classifier mirrors this rule (`SetupBinding("queue_type")`) and does not strengthen it.
+- A stronger schema-1 Setup identity needs a separate decision. It cannot be derived
+  retroactively, because the stored snapshots carry no setup fingerprint.
 - Restore investigation (VERIFIED behavior):
   - There is no explicit "make this dataset current" action.
   - Deleting newer datasets makes an older one current again, but the cascade deletes the newer

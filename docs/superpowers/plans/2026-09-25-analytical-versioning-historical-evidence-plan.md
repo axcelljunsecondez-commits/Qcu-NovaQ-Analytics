@@ -1,8 +1,8 @@
 # Plan: Analytical Versioning and Historical Evidence Integrity
 
 Spec: `docs/superpowers/specs/2026-09-25-analytical-versioning-historical-evidence.md`.
-Status: **Step 1 implemented (committed with this plan). Steps 2-13 PROPOSED — not started. Each
-step needs explicit authorization.**
+Status: **Steps 1 and 2 implemented. Steps 3-13 PROPOSED — not started. Each step needs explicit
+authorization.**
 
 Base: a new branch from `fix/d1-replication-costs` (`d4bca6af`) unless a step says otherwise.
 Test numbers (T1-T15) refer to spec section 14. Every step ends with the full gates: `python -m
@@ -86,18 +86,33 @@ changed `workflow.py`. Recommended: (a).
   - no backend module other than `evidence_status.py` mentions it (a test checks this);
   - in-memory fault injection is caught by the tests.
 
-## Step 2 — One current-dataset helper
+## Step 2 — One current-dataset helper — IMPLEMENTED
 
-- Files: `backend/api/workflow.py` (`_current_valid_dataset_id`, `_current_dataset`),
-  `backend/api/analyses.py` (`current_analysis` inline selection).
-  - The database query stays outside `evidence_status.py`, which keeps no database access.
-  - At most, a pure selection rule over already-loaded rows may live there.
+- Files:
+  - new `backend/api/current_dataset.py` (`resolve_current_dataset`);
+  - `backend/api/workflow.py`: `_current_valid_dataset_id` delegates to it, and `_current_dataset`
+    is unchanged and calls it;
+  - `backend/api/analyses.py`: `current_analysis` replaces its inline copy with the resolver;
+  - new `tests/test_current_dataset.py`.
+  - `evidence_status.py` keeps no database access.
+- Rule (verified identical in both former copies, unchanged): among the Analysis's datasets owned
+  by the user, the highest id whose validation report has a truthy `ok`.
+  - Ordering is by id, not `created_at`.
+  - Legacy rows with `analysis_id` NULL and deleted rows are never selected.
+  - Archival does not change the result.
+- The resolver also tells "no dataset" apart from "no valid dataset". Existing callers keep their
+  single 404 message for both.
 - Analytical implications: none (identical rule).
 - Persisted evidence: none. API: none. Frontend: none.
-- Tests: existing Current and workflow tests unchanged; one equivalence test for the helper.
+- Not changed: the frontend's own copy of the rule (`OptimizePage.tsx`, `latestValidDatasetId`), and
+  scenario selection, Decision and Reports.
+- Tests:
+  - existing Current and workflow tests unchanged;
+  - the new tests check the resolver, both former copies and `GET /analyses/{id}/current` against
+    literal expectations.
 - Historical compatibility: unchanged.
 - Engine version: none.
-- Stop: no test changes other than the added test; full gates green.
+- Stop: no test changes other than the added tests; full gates green.
 
 ## Step 3 — D7: Current kinds bound to the current dataset
 

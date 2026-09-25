@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api.analysis_schemas import STORED_SETUP, QueueSetup, setup_status, unknown_queue_setup
+from backend.api.current_dataset import resolve_current_dataset
 from backend.api.datasets import _to_out as dataset_out
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.scenarios import _to_out as scenario_out
@@ -346,12 +347,7 @@ def current_analysis(
     user: User = Depends(get_current_user),
 ) -> dict:
     analysis = own_analysis(db, user, analysis_id)
-    candidates = db.execute(
-        select(Dataset)
-        .where(Dataset.user_id == user.id, Dataset.analysis_id == analysis_id)
-        .order_by(Dataset.id.desc())
-    ).scalars()
-    dataset = next((item for item in candidates if (item.validation_report_json or {}).get("ok")), None)
+    dataset = resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis_id).dataset
     if dataset is None:
         raise HTTPException(status_code=404, detail="This Analysis has no successfully processed dataset.")
     frame, explanations, selected_model = analyze_segments(

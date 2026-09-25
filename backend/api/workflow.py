@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from backend.api.analyses import _to_out as analysis_out
 from backend.api.analyses import own_analysis
 from backend.api.analysis_schemas import QueueSetup, setup_status
+from backend.api.current_dataset import resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.scenarios import setup_fingerprint as _setup_fingerprint
 from backend.api.settings import Settings
@@ -376,14 +377,8 @@ def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[di
 
 
 def _current_valid_dataset_id(db: Session, user: User, analysis: AnalysisProject) -> int | None:
-    """Latest successfully processed dataset id, or None when absent."""
-    candidates = db.execute(
-        select(Dataset)
-        .where(Dataset.user_id == user.id, Dataset.analysis_id == analysis.id)
-        .order_by(Dataset.id.desc())
-    ).scalars()
-    match = next((item for item in candidates if (item.validation_report_json or {}).get("ok")), None)
-    return match.id if match is not None else None
+    """Latest successfully processed dataset id, or None when absent (backend.api.current_dataset)."""
+    return resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis.id).dataset_id
 
 
 def _current_dataset(db: Session, user: User, analysis: AnalysisProject) -> Dataset:
