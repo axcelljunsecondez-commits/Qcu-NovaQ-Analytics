@@ -225,18 +225,46 @@ reasons, no values) or a separate read-only endpoint serves them is decision OD-
 Dataset replacement then makes every dataset-bound artifact `STALE_DATASET` in one step; a setup
 change makes every job `STALE_SETUP` (as today). Nothing is recomputed.
 
-### 5.3 Tests that must change deliberately (when implementation is authorized)
+### 5.3 Deliberate test changes
 
-- `test_separate_current_jobs_stay_visible_after_replacement`: the assertion that
-  `workflow["des_current"]["id"] == old_des` inverts; the Dataset-A lambda fingerprint moves to the
-  historical listing (if OD-1 approves one) with status `STALE_DATASET`.
-- `test_shared_scenario_evidence_stays_pinned_to_dataset_a`: `workflow["scenario"]` becomes `None`
-  (or the history entry `STALE_DATASET`); the scenario row stays unchanged.
+**Completed under `bc303109` (Current mode only).**
+
+- `test_separate_current_jobs_stay_visible_after_replacement` is renamed
+  `test_separate_current_jobs_stop_being_current_after_replacement` in
+  `tests/test_dataset_staleness_probe.py`. The assertion that `workflow["des_current"]["id"]`
+  equals the old job inverted: `workflow["des_current"]` and `workflow["mc_current"]` are now
+  `None`. The Dataset-A lambda fingerprint assertions are kept, but read from the stored job rows,
+  **not** from a historical listing: OD-1 was not approved, no endpoint serves historical evidence,
+  and no payload exposes a `STALE_DATASET` status. The statuses and reasons the classifier computes
+  are used only to decide eligibility and are then discarded.
+- New `tests/test_d7_current_evidence_dataset.py` (21 test functions, 27 cases with
+  parametrization) covers the rule directly: recorded dataset identity, replacement, deletion, no
+  valid current dataset, setup change, the DES, MC and validation dependency paths, owner and
+  analysis isolation, historical rows remaining stored, and the absence of any fallback that would
+  promote an older matching job.
+- `tests/test_evidence_status.py`: the Step 1 guard asserting the classifier was referenced by no
+  backend module now expects exactly `["backend/api/workflow.py"]`, so it still guards against
+  unreviewed integration by the later steps.
+- `tests/test_break_apply_api.py`: the `_add_job` fixture now records `dataset_id` and the
+  validation-to-MC link, as the real endpoints do. It previously recorded no dataset at all — a
+  state D7 correctly rejects — so it no longer stood in for a real run.
+
+**Pending Step 4 (schema-1 and scenario-bound evidence).**
+
+- `test_shared_scenario_evidence_stays_pinned_to_dataset_a` is **unchanged and still passes**: it
+  still asserts `workflow["scenario"]["id"]` is the Dataset-A scenario. Under Step 4
+  `workflow["scenario"]` becomes `None` (or a history entry `STALE_DATASET`) and the scenario row
+  stays unchanged. D7 did not touch this path.
 - `test_separate_decision_after_replacement_stays_insufficient` and
-  `test_historical_dataset_report_stays_available_after_replacement` keep passing; the report gains
-  the historical label of section 10.
+  `test_historical_dataset_report_stays_available_after_replacement` are unchanged and still pass.
+  The historical report label of section 10 is not implemented.
 
-Neither test is deleted; each keeps its dataset fingerprint assertions under the new expectation.
+No test is deleted; each keeps its dataset fingerprint assertions under its current expectation.
+
+D7 closes Current-mode dataset currentness only. The rest of the historical-evidence compatibility
+problem is unresolved: schema-1 and scenario-bound currentness (Step 4), the missing-dependency
+guard (Step 5), version and accounting-marker policy (sections 3.2 and 6), and any historical
+display or endpoint (OD-1).
 
 ## 6. Current DES accounting marker policy (requirement E)
 
