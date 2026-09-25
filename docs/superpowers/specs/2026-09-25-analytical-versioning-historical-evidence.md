@@ -269,8 +269,8 @@ values beside Current (section 9.2). Needs an additive endpoint (OD-1).
 
 - A schema-1 scenario is `CURRENT` only when its `dataset_id` is the current dataset, in addition to
   the existing snapshot, queue-type and completeness checks. Scenario 12 is the local reference.
-- Scenarios with `dataset_id` NULL stay `MISSING_PROVENANCE` (already unselectable,
-  `workflow.py:286`).
+- Scenarios with `dataset_id` NULL stay `MISSING_PROVENANCE` (already unselectable, in
+  `_own_verified_scenario`, `workflow.py:298`).
 - Nothing is deleted or invalidated in storage; the status is computed on read.
 
 **Known limitation (unresolved; no new policy is implemented).** A schema-1 scenario records no

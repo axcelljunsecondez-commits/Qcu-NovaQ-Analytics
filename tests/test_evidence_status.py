@@ -575,12 +575,18 @@ def test_malformed_inputs_are_rejected():
                    deps=[dataset_dep(), Dependency(ArtifactRef("scenario", 301), True, OWNER, ANALYSIS, at(1), other)]))
 
 
-def test_module_is_not_wired_into_the_application():
-    # Step 1 keeps the classifier isolated until its integration is reviewed.
+def test_only_the_reviewed_consumer_is_wired_into_the_application():
+    """Step 1 kept the classifier isolated; Step 3 (D7) wired exactly one consumer.
+
+    Previous expectation: no backend module referenced ``evidence_status`` at all.
+    Corrected expectation: ``workflow.py`` does, and nothing else yet. The remaining consumers
+    named in spec section 5.2 (scenario selection, reports, decisions) are later steps, so this
+    list still guards against unreviewed integration.
+    """
     importers = [path.relative_to(REPO_ROOT).as_posix()
                  for path in (REPO_ROOT / "backend").rglob("*.py")
                  if path.name != "evidence_status.py" and "evidence_status" in path.read_text(encoding="utf-8")]
-    assert importers == []
+    assert importers == ["backend/api/workflow.py"]
 
 
 # ── RECORDED reference cases ────────────────────────────────────────────────

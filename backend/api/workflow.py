@@ -19,6 +19,17 @@ from backend.api.analyses import own_analysis
 from backend.api.analysis_schemas import QueueSetup, setup_status
 from backend.api.current_dataset import resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
+from backend.api.evidence_status import (
+    ArtifactRef,
+    CurrentContext,
+    Dependency,
+    EvidencePolicy,
+    EvidenceRecord,
+    VersionFamily,
+    classify,
+    job_record,
+    job_references,
+)
 from backend.api.scenarios import setup_fingerprint as _setup_fingerprint
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
@@ -527,26 +538,140 @@ def _selected_scenario(
         return None, selection
 
 
+# ── D7: Current-mode evidence must belong to the current dataset ────────────
+
+_NOT_CONSULTED = "<not consulted on the Current-evidence path>"
+
+
+def _current_evidence_policy() -> EvidencePolicy:
+    """The version knowledge D7 applies to Current-mode evidence: the job kind only.
+
+    D7 is a dataset-identity and dependency-integrity rule. Version policy — the recorded
+    workflow engine version and the Current DES accounting marker (spec M3, written by no code
+    yet) — belongs to the separately authorized versioning phase, so ``workflow_engine`` and
+    ``current_des_accounting`` stay unset: no stored Current job is made unusable here by a
+    version rule.
+
+    The families ``job_record`` never reads for a Current kind (the scenario and selected-plan
+    families, and ``job_engine``, which only applies when a job records ``params.engine``) carry
+    a sentinel no stored value can match, so a caller that did reach one would fail closed
+    instead of passing silently.
+    """
+    sentinel = VersionFamily.of(_NOT_CONSULTED, current={_NOT_CONSULTED})
+    return EvidencePolicy(
+        scenario_schema=sentinel,
+        separate_plan_engine=sentinel,
+        schema1_engine=sentinel,
+        job_kind=VersionFamily.of("workflow job kind", current=WORKFLOW_KINDS),
+        job_engine=sentinel,
+        selected_des_basis=sentinel,
+        workflow_engine=None,
+        current_des_accounting=None,
+    )
+
+
+def _evidence_context(db: Session, user: User, analysis: AnalysisProject) -> CurrentContext:
+    """What is current for this analysis, read from stored rows only."""
+    setup = analysis.queue_setup_json or {}
+    resolution = resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis.id)
+    return CurrentContext(
+        analysis_id=analysis.id,
+        owner_id=user.id,
+        current_dataset_id=resolution.dataset_id,
+        setup_fingerprint=_setup_fingerprint(analysis.queue_setup_json),
+        setup_queue_type=_SETUP_QUEUE_TYPE.get(setup.get("queue_structure")),
+    )
+
+
+def _recorded_id(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _dataset_dependency(db: Session, dataset_id: int) -> Dependency:
+    """Resolve a job's recorded dataset id. A deleted dataset resolves to nothing."""
+    ref = ArtifactRef("dataset", dataset_id)
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        return Dependency(ref, exists=False)
+    return Dependency(ref, True, dataset.user_id, dataset.analysis_id, dataset.created_at)
+
+
+def _job_dependency(
+    db: Session, ref: ArtifactRef, policy: EvidencePolicy, seen: frozenset[int]
+) -> Dependency:
+    """Resolve one job link. Anything unresolvable is absent, never assumed current."""
+    job = db.get(Job, ref.id) if ref.id is not None else None
+    if job is None or f"job:{job.kind}" != ref.kind or job.id in seen:
+        # A missing row, a link pointing at another kind, or a cycle: fail closed.
+        return Dependency(ref, exists=False)
+    params = job.params_json or {}
+    return Dependency(
+        ref, True, job.user_id, _recorded_id(params.get("analysis_id")), job.created_at,
+        record=_job_evidence_record(db, job, policy, seen | {job.id}),
+    )
+
+
+def _job_evidence_record(
+    db: Session, job: Job, policy: EvidencePolicy, seen: frozenset[int]
+) -> EvidenceRecord:
+    """A stored job's recorded identity with its references resolved against the database.
+
+    Only the dataset and job links a job actually records are resolved. A reference of any other
+    kind is left unresolved, which the classifier reports as unassessed (fail closed).
+    """
+    params = job.params_json or {}
+    result = job.result_json or {}
+    dependencies: list[Dependency] = []
+    dataset_id = _recorded_id(params.get("dataset_id"))
+    if dataset_id is not None:
+        dependencies.append(_dataset_dependency(db, dataset_id))
+    for ref in job_references(job.kind, params, result).refs:
+        if ref.kind.startswith("job:"):
+            dependencies.append(_job_dependency(db, ref, policy, seen))
+    return job_record(
+        job_id=job.id, kind=job.kind, status=job.status, owner_id=job.user_id,
+        created_at=job.created_at, params=params, result=result, policy=policy,
+        dependencies=dependencies,
+    )
+
+
+def _current_mode_evidence_is_current(
+    db: Session, job: Job, context: CurrentContext, policy: EvidencePolicy
+) -> bool:
+    """D7: a Current-mode job is current evidence only for the current dataset and live links."""
+    record = _job_evidence_record(db, job, policy, frozenset({job.id}))
+    return classify(record, context).is_current
+
+
 def _current_evidence(
     db: Session, user: User, analysis: AnalysisProject
 ) -> dict[str, Any]:
     scenario, selection = _selected_scenario(db, user, analysis)
     scenario_id = scenario.id if scenario is not None else None
+    context = _evidence_context(db, user, analysis)
+    policy = _current_evidence_policy()
 
     def current(job: Job | None) -> Job | None:
         # Evidence produced under a different (or unrecorded) Setup is absent.
         return job if _job_setup_current(job, analysis) else None
 
+    def current_mode(job: Job | None) -> Job | None:
+        # D7: the Setup is not enough. The recorded dataset must exist, be this analysis's and
+        # be the current one, and every recorded link must resolve to current evidence.
+        if job is None:
+            return None
+        return job if _current_mode_evidence_is_current(db, job, context, policy) else None
+
     des = current(_latest_job(db, user, "workflow_des", analysis.id, scenario_id)) if scenario_id else None
-    des_current = current(_latest_job(db, user, "workflow_des_current", analysis.id))
-    mc_current = current(_latest_job(db, user, "workflow_mc_current", analysis.id))
+    des_current = current_mode(_latest_job(db, user, "workflow_des_current", analysis.id))
+    mc_current = current_mode(_latest_job(db, user, "workflow_mc_current", analysis.id))
     mc = current(_latest_job(db, user, "workflow_mc", analysis.id, scenario_id)) if scenario_id else None
     validation = (
         current(_latest_job(db, user, "workflow_validation", analysis.id, scenario_id))
         if scenario_id
         else None
     )
-    validation_current = current(_latest_job(db, user, "workflow_validation_current", analysis.id))
+    validation_current = current_mode(_latest_job(db, user, "workflow_validation_current", analysis.id))
     selected_id = (selection.params_json or {}).get("scenario_id") if selection else None
     raw_decision = (
         _latest_job(db, user, "workflow_decision", analysis.id, selected_id)

@@ -1,18 +1,20 @@
 """Problem 9 audit probes: dataset replacement vs workflow evidence freshness.
 
-Classification under test (see report, not code changes):
+Classification under test:
 - Shared scenario-pinned evidence stays self-consistent for Dataset A
-  (SAFE HISTORICAL): jobs reference scenario/dataset A explicitly.
-- Current-kind jobs (des_current/mc_current/validation_current) keep returning
-  the latest job even after a new upload (STALE-VISIBLE, P2): displayed but
-  not consumable as fresh evidence (validation_current refuses stale MC).
+  (SAFE HISTORICAL): jobs reference scenario/dataset A explicitly. Scenario-bound
+  currentness is a later step (plan Step 4) and is unchanged here.
+- Current-kind jobs (des_current/mc_current/validation_current) no longer return a
+  job whose dataset has been replaced (D7, corrected in plan Step 3). The rows stay
+  stored; only their eligibility as *current* evidence ends.
 - Decision never mixes datasets: it derives from explicitly referenced jobs.
 
-Distinct lambdas (4 vs 14) fingerprint which dataset produced each result.
+Distinct lambdas (4 vs 14, and 2 vs 6 north arrivals) fingerprint which dataset
+produced each result.
 """
 from __future__ import annotations
 
-from backend.db.models import AnalysisProject, Dataset, Scenario
+from backend.db.models import AnalysisProject, Dataset, Job, Scenario
 from tests.helpers import create_user, csrf_header, login, make_sessionmaker
 
 
@@ -138,7 +140,23 @@ def _upload_events(client, analysis_id, headers, north_count, name="e.csv"):
     return response.json()["dataset"]["id"]
 
 
-def test_separate_current_jobs_stay_visible_after_replacement(db_engine, client):
+def test_separate_current_jobs_stop_being_current_after_replacement(db_engine, client):
+    """D7 corrected (was test_separate_current_jobs_stay_visible_after_replacement).
+
+    Previous behavior (the P2 defect this probe recorded): `_current_evidence` gated the Current
+    kinds on the recorded setup hash alone, so after a new upload `des_current` and `mc_current`
+    still returned the Dataset-A jobs and their Dataset-A numbers.
+
+    Corrected behavior: a Current-mode job is current evidence only for the current dataset, so
+    both slots are empty until the user reruns. The jobs themselves are untouched.
+
+    Why the expectation changed: a matching Setup is not proof of a matching dataset. Serving
+    Dataset-A numbers in a slot the page labels "CURRENT" misstates which dataset they describe.
+
+    The Dataset-A fingerprint assertions are kept, read from the stored rows: this step adds no
+    historical listing endpoint (spec decision OD-1 is not approved), so the rows are reachable
+    only by id.
+    """
     create_user(db_engine, "stale@example.com", "pw")
     login(client, "stale@example.com", "pw")
     headers = csrf_header(client)
@@ -155,19 +173,25 @@ def test_separate_current_jobs_stay_visible_after_replacement(db_engine, client)
             f"/analyses/{analysis_id}/workflow/simulation/{kind}/current", headers=headers, json=payload,
         )
         assert run.status_code == 200, run.text
-    old_des = client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"]
+    before = client.get(f"/analyses/{analysis_id}/workflow").json()
+    old_des, old_mc = before["des_current"]["id"], before["mc_current"]["id"]
+    assert before["des_current"]["params"]["dataset_id"] == dataset_a
+
     dataset_b = _upload_events(client, analysis_id, headers, 6, "b.csv")
     assert dataset_b != dataset_a
     workflow = client.get(f"/analyses/{analysis_id}/workflow").json()
-    # Old jobs are still returned (STALE-VISIBLE): they reference Dataset A.
-    assert workflow["des_current"]["id"] == old_des
-    assert workflow["des_current"]["params"]["dataset_id"] == dataset_a
-    assert workflow["mc_current"]["params"]["dataset_id"] == dataset_a
-    # Numerical fingerprint: old DES rows carry Dataset-A lambdas (2 north
-    # arrivals/hour), while Current moved to Dataset B (6 north arrivals/hour).
-    old_lambdas = {row["lambda"] for row in workflow["des_current"]["result"]["results"]}
-    assert old_lambdas == {2.0, 1.0}
-    # But Current itself moved to Dataset B.
+    # The Dataset-A jobs are no longer current evidence for either kind.
+    assert workflow["des_current"] is None
+    assert workflow["mc_current"] is None
+    # They are still stored, unchanged, with their Dataset-A identity and numbers: the old DES
+    # rows carry Dataset-A lambdas (2 north arrivals/hour).
+    with make_sessionmaker(db_engine)() as db:
+        stored_des, stored_mc = db.get(Job, old_des), db.get(Job, old_mc)
+        assert stored_des is not None and stored_mc is not None
+        assert stored_des.params_json["dataset_id"] == dataset_a
+        assert stored_mc.params_json["dataset_id"] == dataset_a
+        assert {row["lambda"] for row in stored_des.result_json["results"]} == {2.0, 1.0}
+    # And Current itself moved to Dataset B (6 north arrivals/hour).
     current = client.get(f"/analyses/{analysis_id}/current").json()
     assert current["dataset"]["id"] == dataset_b
     current_lambdas = {row["lambda"] for row in current["rows"]}
