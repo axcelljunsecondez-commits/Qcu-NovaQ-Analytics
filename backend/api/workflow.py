@@ -336,6 +336,16 @@ def _own_verified_scenario(
         )
     if not _operationally_complete(_scenario_rows(scenario)):
         raise HTTPException(status_code=422, detail="Scenario comparison evidence is incomplete.")
+    # Step 4: a schema-1 snapshot is evidence of the dataset it was calculated on. It is checked
+    # last so that a missing dataset, a changed Setup or incomplete evidence keeps reporting its
+    # own reason instead of being reported as staleness. The current dataset comes from the one
+    # resolver (backend.api.current_dataset, via _current_valid_dataset_id); nothing here infers
+    # identity from queue types or from matching results.
+    if scenario.dataset_id != _current_valid_dataset_id(db, user, analysis):
+        raise HTTPException(
+            status_code=422,
+            detail="Scenario is stale for the current dataset.",
+        )
     return scenario
 
 

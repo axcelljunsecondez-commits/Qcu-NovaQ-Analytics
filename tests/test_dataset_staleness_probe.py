@@ -1,9 +1,8 @@
 """Problem 9 audit probes: dataset replacement vs workflow evidence freshness.
 
 Classification under test:
-- Shared scenario-pinned evidence stays self-consistent for Dataset A
-  (SAFE HISTORICAL): jobs reference scenario/dataset A explicitly. Scenario-bound
-  currentness is a later step (plan Step 4) and is unchanged here.
+- A schema-1 scenario and its scenario-bound jobs stay pinned to Dataset A in storage,
+  but stop being served as current evidence once Dataset B replaces it (plan Step 4).
 - Current-kind jobs (des_current/mc_current/validation_current) no longer return a
   job whose dataset has been replaced (D7, corrected in plan Step 3). The rows stay
   stored; only their eligibility as *current* evidence ends.
@@ -68,7 +67,24 @@ def _seed_shared_scenario(db_engine, user_id, analysis_id, dataset_id):
         return scenario.id
 
 
-def test_shared_scenario_evidence_stays_pinned_to_dataset_a(db_engine, client):
+def test_shared_scenario_stops_being_current_but_stays_pinned_to_dataset_a(db_engine, client):
+    """Step 4 corrected (was test_shared_scenario_evidence_stays_pinned_to_dataset_a).
+
+    Previous behavior: `_own_verified_scenario` never compared a schema-1 scenario's dataset with
+    the current one, so after a new upload `workflow["scenario"]` still returned the Dataset-A
+    scenario and `workflow["des"]` its Dataset-A run.
+
+    Corrected behavior: both slots are empty. The scenario and its DES job are untouched in the
+    database and still reference Dataset A.
+
+    Why the expectation changed: a saved scenario is evidence of the dataset it was calculated on.
+    Serving it as the current scenario after a replacement silently restates it as evidence for a
+    dataset it never saw.
+
+    The Dataset-A pinning assertions are kept, read from the stored rows: this step adds no
+    historical listing endpoint (spec decision OD-1 is not approved), so they are reachable only
+    by id.
+    """
     user = create_user(db_engine, "stale@example.com", "pw")
     login(client, "stale@example.com", "pw")
     headers = csrf_header(client)
@@ -88,14 +104,23 @@ def test_shared_scenario_evidence_stays_pinned_to_dataset_a(db_engine, client):
         json={"sim_hours": 1, "max_events": 50},
     )
     assert des.status_code == 200, des.text
+    des_id = des.json()["evidence"]["id"]
     dataset_b = _upload(client, analysis_id, headers, 14, "b.csv")
     assert dataset_b != dataset_a
     workflow = client.get(f"/analyses/{analysis_id}/workflow").json()
-    # The scenario still references Dataset A explicitly: historical, consistent.
-    assert workflow["scenario"]["id"] == scenario_id
-    # The DES job still references the Dataset-A scenario run, not Dataset B.
-    assert workflow["des"]["params"]["scenario_id"] == scenario_id
-    assert workflow["des"]["params"]["dataset_id"] != dataset_b
+    # The Dataset-A scenario is no longer the current scenario, and its scenario-bound DES
+    # is no longer served with it.
+    assert workflow["scenario"] is None
+    assert workflow["des"] is None
+    # Both rows are still stored, still pinned to Dataset A, and nothing was recomputed.
+    with make_sessionmaker(db_engine)() as db:
+        kept = db.get(Scenario, scenario_id)
+        assert kept is not None and kept.dataset_id == dataset_a
+        stored_des = db.get(Job, des_id)
+        assert stored_des is not None
+        assert stored_des.params_json["scenario_id"] == scenario_id
+        assert stored_des.params_json["dataset_id"] == dataset_a
+        assert stored_des.params_json["dataset_id"] != dataset_b
     # Current dataset pointer moved to B.
     current = client.get(f"/analyses/{analysis_id}/current").json()
     assert current["dataset"]["id"] == dataset_b
