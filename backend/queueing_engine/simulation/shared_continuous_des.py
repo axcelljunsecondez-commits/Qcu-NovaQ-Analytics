@@ -578,8 +578,23 @@ def simulate_shared_day(
     if seed is not None and (not isinstance(seed, Integral) or isinstance(seed, bool) or seed < 0):
         raise SharedSegmentError(["seed must be a whole number, 0 or more, or omitted."])
     seed_sequence = np.random.SeedSequence(seed)
-    arrival_stream, work_stream = (np.random.default_rng(child) for child in seed_sequence.spawn(2))
+    result = simulate_prescribed(
+        horizon, demand_periods, staffing_segments, _draw_arrivals(horizon, demand_periods, seed_sequence),
+        closing_policy=closing_policy, max_trace_events=max_trace_events,
+    )
+    result["provenance"].update({
+        "seed": seed,
+        "seed_entropy": seed_sequence.entropy,
+        "random_streams": "numpy SeedSequence(seed).spawn(2): arrival gaps, then unit work (PCG64)",
+    })
+    return result
 
+
+def _draw_arrivals(
+    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], seed_sequence: np.random.SeedSequence
+) -> list[tuple[float, float]]:
+    """(arrival hour, unit work) pairs from the two streams ``seed_sequence.spawn(2)``."""
+    arrival_stream, work_stream = (np.random.default_rng(child) for child in seed_sequence.spawn(2))
     times: list[float] = []
     for period in demand_periods:
         rate = float(period.arrival_rate_per_hour)
@@ -591,15 +606,39 @@ def simulate_shared_day(
                 break
             times.append(at)
     works = [float(work) for work in work_stream.exponential(1.0, size=len(times))]
+    return list(zip(times, works))
 
+
+def simulate_shared_replication(
+    horizon: OperatingHorizon,
+    demand_periods: Sequence[DemandPeriod],
+    staffing_segments: Sequence[StaffingSegment],
+    *,
+    seed_sequence: np.random.SeedSequence,
+    closing_policy: str,
+    max_trace_events: int | None = None,
+) -> dict[str, Any]:
+    """Run one replication from a numpy ``SeedSequence`` (Phase 4 replications and playback).
+
+    Replication *i* of a run uses ``SeedSequence(entropy=root_entropy, spawn_key=(i,))``, the
+    same child that ``SeedSequence(root_entropy).spawn(n)[i]`` returns, so any replication can
+    be regenerated alone. The sequence must be unused: a sequence that has already spawned
+    children would draw different streams.
+    """
+    validate_timeline(horizon, demand_periods, staffing_segments)
+    if not isinstance(seed_sequence, np.random.SeedSequence) or seed_sequence.n_children_spawned != 0:
+        raise SharedSegmentError(["seed_sequence must be an unused numpy SeedSequence."])
     result = simulate_prescribed(
-        horizon, demand_periods, staffing_segments, list(zip(times, works)),
+        horizon, demand_periods, staffing_segments, _draw_arrivals(horizon, demand_periods, seed_sequence),
         closing_policy=closing_policy, max_trace_events=max_trace_events,
     )
     result["provenance"].update({
-        "seed": seed,
+        "seed": None,
         "seed_entropy": seed_sequence.entropy,
-        "random_streams": "numpy SeedSequence(seed).spawn(2): arrival gaps, then unit work (PCG64)",
+        "spawn_key": list(seed_sequence.spawn_key),
+        "random_streams": (
+            "numpy SeedSequence(entropy, spawn_key).spawn(2): arrival gaps, then unit work (PCG64)"
+        ),
     })
     return result
 

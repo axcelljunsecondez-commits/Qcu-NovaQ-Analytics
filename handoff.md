@@ -357,6 +357,60 @@ Current verified state:
   - Backend 1240 passed, 3 skipped, 1 xfailed (1162 + 78 new). Ruff is clean. `mypy .` reports 5 errors, all in the gitignored, untracked `outputs/technical-paper/build_chapters_4_5.py` (last modified 2026-09-20, imports only docx, matplotlib, and pandas). `mypy . --exclude '^outputs/'` is clean on 157 files. Frontend not run: nothing under `frontend/` changed.
 - Next (needs approval): Phase 4. Monte Carlo and playback have not started.
 
+## Shared Queue Enhancement: Phase 4 DES Replications and Event Playback (2026-09-25)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-25-shared-queue-des-replications-playback.md`
+- `docs/superpowers/plans/2026-09-25-shared-queue-des-replications-playback-plan.md`
+
+Current verified state (backend only; no API, frontend, Decision, Report, scenario, or workforce change):
+
+- Engine (`simulation/shared_continuous_des.py`): the random draws moved into `_draw_arrivals`, and `simulate_shared_replication(seed_sequence=...)` was added. `simulate_shared_day` output is byte-identical: a SHA-256 digest of 100 runs (2 policies × 25 seeds × 2 configurations) is unchanged.
+- New `simulation/shared_replications.py`, `run_shared_replications(...)`:
+  - Every replication runs the Phase 3A continuous DES over the whole horizon with the scenario's own rates. No ±20%/±10% perturbation is applied.
+  - `replications` (1..`config.MC_MAX_TRIALS`), `seed`, and `closing_policy` are required. Replication i uses `SeedSequence(entropy=root_entropy, spawn_key=(i,))`.
+  - Each replication keeps one scalar row (traces off):
+    - customers: arrivals, served, and unserved;
+    - waits: the sum and mean over served customers;
+    - waiting-hours before and after closing, and the in-horizon time-average queue and maximum;
+    - busy and available server-hours in the horizon and after closing (overtime);
+    - scheduled hours and hours above schedule;
+    - utilization with explicit denominators, and overrun;
+    - cost per replication and criterion outcomes, when supplied.
+  - Aggregates:
+    - Student-t 95% intervals, matching the separate-queue `_summarize_metric` convention, with `n_undefined` counts;
+    - the mean of replication mean waits and the customer-weighted wait, with numerator and denominator;
+    - summed customer totals and descriptive outcome counts;
+    - cost aggregated from per-replication costs; the total is withheld when an applicable rate is missing.
+  - `FailureCriteria` (mean wait, utilization, unserved, and overrun) has no default thresholds. Per-criterion and combined proportions carry Wilson intervals with numerator, denominator, and not-evaluable counts. `verdict` is always `None`, because no approved pass/fail rule exists.
+- New `simulation/shared_playback.py`: `prepare_shared_playback` and `playback_from_replications` regenerate one identified replication with its full trace.
+  - Events are the engine's own trace.
+  - An independent replay checks FCFS, legal server transitions, queue length at every event, schedule after staffing changes, the closing phase, and final resolution.
+  - The replay recomputes timelines, counts, and time integrals and compares them with the engine. `playback_from_replications` also requires exact equality with the stored replication row and the same engine version.
+  - Queue entry and departure are represented by the `arrival` and `service_end` events; the engine has no separate events for them.
+- Nothing legacy imports these modules; the isolation test covers both.
+- Verification:
+  - `tests/test_shared_replications.py` has 46 tests:
+    - every replication matches a recomputation from customer rows and transition intervals (both policies, including 0 servers at closing);
+    - reproducibility and recorded entropy;
+    - distinct, regenerable streams and uncorrelated counts (400 replications);
+    - a Poisson dispersion index near 1 (no perturbation);
+    - waiting-time denominators by hand;
+    - intervals matching `scipy.stats.t.interval`, the separate-queue convention, and `binomtest(...).proportion_ci(method="wilson")`;
+    - per-replication and aggregate cost;
+    - missing rates, criteria counts, not-evaluable counting, the tolerance boundary, and validation;
+    - Erlang C within 4 SE (λ 40, μ 20, c 3; 60 × 24 h).
+  - `tests/test_shared_playback.py` has 21 tests:
+    - an exact hand-computed playback, and events equal to the engine trace;
+    - 72 regenerated replications equal their stored rows (3 configurations × 2 policies);
+    - reproducibility;
+    - six tampered event streams, each rejected for its intended reason;
+    - mismatched rows, foreign engine versions, and invalid requests refused.
+  - Fault injection caught 15 of 15 faults.
+  - Backend 1307 passed, 3 skipped, 1 xfailed (1240 + 67 new; all 16 separate-queue test files included). The run's 6 h 29 min wall time includes a system sleep from 01:44 to 06:02. Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 161 files; the gitignored `outputs/technical-paper/build_chapters_4_5.py` errors from Phase 3A remain. Frontend not run: nothing under `frontend/` changed.
+- Not implemented: a parameter-uncertainty experiment, an acceptance (PASS/FAIL) rule, production API endpoints, the frontend player, Decision and Report integration, and workforce scheduling. Each needs approval.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:

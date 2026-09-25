@@ -202,3 +202,11 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Day cost comes only from `services/shared_day_cost.py`, with four caller-supplied rates that have no defaults: regular server, overtime (server-hours after closing), waiting (customer-hours), and unserved customer. The unserved term applies only when the configured closing can leave customers unserved: HARD_CUTOFF, or DRAIN with 0 servers in the final segment. A missing rate withholds the total; it is never replaced by 0. The legacy `REGULAR_RATE`/`OT_RATE` are not used here.
 - Server-hours in this pipeline are modeled service-capacity hours, not necessarily paid employee-hours.
 - The separate-queue day DES drain rule was not used to derive the shared rule; the shared rule comes from this approval.
+
+## Shared-Queue DES Replications and Playback (2026-09-25)
+
+- The new continuous shared-queue pipeline's repeated simulation (`simulation/shared_replications.py`) runs the Phase 3A DES itself for every replication. It uses the scenario's own rates, never the legacy analytical ±20%/±10% perturbation. Parameter uncertainty would be a separate, explicitly configured experiment and is not implemented.
+- Seeds: the root is `SeedSequence(seed)`, and replication i uses `SeedSequence(entropy=root_entropy, spawn_key=(i,))`, so any replication can be regenerated alone. The replication count is required (no default) and limited to 1..`config.MC_MAX_TRIALS`.
+- Intervals follow NovaQ conventions: Student-t for continuous replication metrics (as in the separate-queue DES replications), and Wilson for proportions. Undefined values are counted, never zero-filled.
+- Failure criteria are optional and supplied by the caller: mean wait, utilization, unserved count, and overrun, with no default thresholds. Violation proportions are descriptive. No approved PASS/FAIL rule exists for this engine, so no verdict is produced; the legacy 0.75/0.05 rule is not applied.
+- Playback (`simulation/shared_playback.py`) shows exactly one regenerated replication. Its events are the engine trace, checked by an independent replay; it never combines replications. There is no API or frontend yet.
