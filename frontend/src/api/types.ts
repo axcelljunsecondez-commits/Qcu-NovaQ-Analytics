@@ -267,6 +267,14 @@ export interface SimDesOut {
   warmup_end?: number
   initial_queue_depth?: number
   final_Lq?: number
+  /** Separate-queue (Current) rows only. */
+  queue_structure?: string
+  /** D2: absent from rows stored before the fixed-horizon accounting correction; never read as zero. */
+  wait_population?: string
+  started?: number
+  censored_customers?: number
+  censored_waiting_hours?: number
+  active?: boolean
 }
 
 export type SimulationTraceEventType = 'arrival' | 'service_start' | 'service_end' | 'abandon'

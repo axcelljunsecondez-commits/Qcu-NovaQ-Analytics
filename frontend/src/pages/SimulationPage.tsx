@@ -85,6 +85,21 @@ function validationPasses(row: SimValidateOut, cap: number): boolean {
   )
 }
 
+/** D2 accounting of separate-queue (Current) DES rows, read only from the recorded
+ * `wait_population` field: 'recorded', 'legacy' (stored before the correction), or null
+ * when there are no supported separate-queue rows. Never inferred from metric values. */
+function currentDesAccounting(rows: SimDesOut[]): 'recorded' | 'legacy' | null {
+  const separate = rows.filter(
+    (row) => row.queue_structure === 'separate' && row.simulation_supported !== false && !row.error,
+  )
+  if (separate.length === 0) return null
+  return separate.every((row) => typeof row.wait_population === 'string') ? 'recorded' : 'legacy'
+}
+
+function customerCount(value: unknown): number | string {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : '—'
+}
+
 function storedNumberDiffers(raw: string, stored: unknown): boolean {
   return typeof stored === 'number' && Number.isFinite(stored) && Number(raw) !== stored
 }
@@ -835,6 +850,7 @@ export function SimulationPage() {
     : desRun.data?.evidence.result ?? workflow.data.des?.result ?? null
   const desRows: SimDesOut[] = trace?.results ?? []
   const showDesQueueColumn = desRows.some((row) => typeof row.queue_id === 'string' && row.queue_id.trim() !== '')
+  const desAccounting = currentDesAccounting(desRows)
   const activePlaybackSegment = trace?.segments.find(
     (item) => item.simulation_supported && !item.error,
   ) ?? trace?.segments[0] ?? null
@@ -1038,6 +1054,8 @@ export function SimulationPage() {
                       <th scope="col">{t('system.sim_wait_minutes')}</th>
                       <th scope="col">{t('simulation.max_queue')}</th>
                       <th scope="col">{t('simulation.served')}</th>
+                      {desAccounting === 'recorded' && <th scope="col">{t('simulation.sep_started')}</th>}
+                      {desAccounting === 'recorded' && <th scope="col">{t('simulation.sep_waiting_at_horizon')}</th>}
                       <th scope="col">{t('simulation.dropped')}</th>
                     </tr>
                   </thead>
@@ -1052,12 +1070,24 @@ export function SimulationPage() {
                         <td>{fmt(row.Wq_sim == null ? null : row.Wq_sim * 60, 2)}</td>
                         <td>{row.max_queue}</td>
                         <td>{row.served}</td>
+                        {desAccounting === 'recorded' && <td>{customerCount(row.started)}</td>}
+                        {desAccounting === 'recorded' && <td>{customerCount(row.censored_customers)}</td>}
                         <td>{row.dropped}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {desAccounting === 'recorded' && (
+                <p className="form-hint" data-testid="current-des-accounting">
+                  {t('simulation.current_des_wait_population')} {t('simulation.current_des_busy_basis')}
+                </p>
+              )}
+              {desAccounting === 'legacy' && (
+                <div className="alert alert-warn" data-testid="current-des-accounting-legacy">
+                  {t('simulation.current_des_legacy_accounting')}
+                </div>
+              )}
               <div className="card-grid">
                 <div className="card"><UtilizationHeatmap rows={desRows} /></div>
                 <div className="card"><RhoLqLines rows={desRows} /></div>

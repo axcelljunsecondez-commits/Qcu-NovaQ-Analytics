@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { SimulationPage } from './SimulationPage'
@@ -555,6 +555,111 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
     expect(screen.getAllByText('cashier-east').length).toBeGreaterThanOrEqual(2)
     expect(runValidationCurrentMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Current DES accounting disclosure (D2)', () => {
+  const population = 'customers who arrived in the period and started service before the simulation horizon'
+
+  function currentRow(overrides: Record<string, unknown>) {
+    return {
+      time: '05:00-06:00', queue_id: 'cashier_1', queue_structure: 'separate', lambda: 3, mu: 5, c: 1,
+      rho_sim: 0.4034, Lq_sim: null, Wq_sim: 0, max_queue: 1, arrivals: 3, served: 3, started: 3,
+      censored_customers: 0, censored_waiting_hours: 0, active: true, wait_population: population,
+      simulation_supported: true, error: null, ...overrides,
+    }
+  }
+
+  function showCurrent(results: unknown[]) {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: job('workflow_des_current', { ...separateTrace, results, provenance: 'CURRENT' }, { scenario_id: null }),
+    }))
+  }
+
+  async function desTableRows() {
+    const table = await screen.findByRole('region', { name: 'Discrete-event simulation results by interval' })
+    return within(table).getAllByRole('row').map((row) =>
+      Array.from(row.querySelectorAll('th, td')).map((cell) => cell.textContent ?? ''))
+  }
+
+  it('shows started and still-waiting counts, keeps true zero apart from undefined, and states the population', async () => {
+    showCurrent([
+      currentRow({}),
+      currentRow({ time: '17:00-18:00', queue_id: 'cashier_5', rho_sim: 1, Wq_sim: null, served: 0, started: 0,
+                   arrivals: 2, censored_customers: 2, censored_waiting_hours: 0.9 }),
+    ])
+    renderPage()
+    const [header, zeroWait, undefinedWait] = await desTableRows()
+    expect(header).toEqual(['Time', 'Service line', 'Status', 'ρ', 'Lq', 'Simulated wait (min)', 'Maximum queue',
+      'Served', 'Started service', 'Still waiting at horizon', 'Dropped'])
+    // Observed zero wait among started customers: 0.00, not blank.
+    expect(zeroWait.slice(3, 10)).toEqual(['0.4034', '—', '0.00', '1', '3', '3', '0'])
+    // No customer from the period started service: undefined (—), never 0.
+    expect(undefinedWait.slice(3, 10)).toEqual(['1', '—', '—', '1', '0', '0', '2'])
+    const note = screen.getByTestId('current-des-accounting')
+    expect(note).toHaveTextContent('mean queue wait of customers who arrived in the period and started service before the simulation ended')
+    expect(note).toHaveTextContent('including customers who arrived in an earlier period and service still running when the simulation ended')
+    expect(note).not.toHaveTextContent(/observed/i)
+    expect(screen.queryByTestId('current-des-accounting-legacy')).not.toBeInTheDocument()
+  })
+
+  it('flags a run stored before the correction without inferring counts from its values', async () => {
+    // Stored before D2: the row has no population statement and no started/censored counts.
+    const legacy: Record<string, unknown> = currentRow({ Wq_sim: 0 })
+    for (const key of ['wait_population', 'started', 'censored_customers', 'censored_waiting_hours']) delete legacy[key]
+    showCurrent([legacy])
+    renderPage()
+    expect(await screen.findByTestId('current-des-accounting-legacy')).toHaveTextContent(
+      'stored before the simulation accounting correction')
+    const [header] = await desTableRows()
+    expect(header).not.toContain('Started service')
+    expect(header).not.toContain('Still waiting at horizon')
+    expect(screen.queryByTestId('current-des-accounting')).not.toBeInTheDocument()
+  })
+
+  it('adds nothing to pooled rows or to capability-error runs', async () => {
+    showCurrent([{ ...desRow }])
+    const { unmount } = renderPage()
+    await desTableRows()
+    expect(screen.queryByTestId('current-des-accounting')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('current-des-accounting-legacy')).not.toBeInTheDocument()
+    unmount()
+    showCurrent([{ time: '05:00-06:00', queue_structure: 'separate', simulation_supported: false,
+                   selected_model: 'Parallel M/G/1', error: 'Parallel M/G/1 DES requires configured queue_ids.' }])
+    renderPage()
+    expect(await screen.findByText('Parallel M/G/1 DES requires configured queue_ids.')).toBeInTheDocument()
+    expect(screen.queryByTestId('current-des-accounting')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('current-des-accounting-legacy')).not.toBeInTheDocument()
+  })
+
+  it('uses Tagalog labels', async () => {
+    showCurrent([currentRow({})])
+    renderPage('tl')
+    expect(await screen.findByTestId('current-des-accounting')).toHaveTextContent(
+      'ang average na paghihintay sa pila ng mga customer na dumating sa period')
+    expect(screen.getByRole('columnheader', { name: 'Nagsimula ang serbisyo' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Naghihintay pa sa horizon' })).toBeInTheDocument()
+  })
+})
+
+describe('Current DES legacy accounting in Tagalog (D2)', () => {
+  it('shows the rerun note in Tagalog', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      selection: null,
+      scenario: null,
+      des_current: job('workflow_des_current', {
+        ...separateTrace,
+        results: [{ ...desRow, c: 1, queue_id: 'cashier_1', queue_structure: 'separate' }],
+        provenance: 'CURRENT',
+      }, { scenario_id: null }),
+    }))
+    renderPage('tl')
+    expect(await screen.findByTestId('current-des-accounting-legacy')).toHaveTextContent(
+      'Na-save ang run na ito bago ang pagwawasto sa accounting ng simulation')
   })
 })
 
