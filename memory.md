@@ -187,3 +187,10 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - The browser sees one origin, so session and CSRF cookies stay first-party and the CSRF double-submit check is unchanged. `ALLOWED_ORIGINS` only needs the origin that `PUBLIC_APP_URL` names (production refuses to start otherwise), plus any origin that calls the API cross-origin.
 - `main` deploys both Cloudflare Pages and Render, so pushing `main` is a production release. Test on a branch preview first.
 - Each new public origin must be added to the Google OAuth client's authorized JavaScript origins, or Google Sign-In fails with `origin_mismatch`.
+
+## Engineering Governance (2026-09-25)
+
+- The product owner adopted the Zero-Fabrication Engineering Protocol as a permanent project instruction. Its only copy is the "Mandatory Zero-Fabrication Engineering Protocol" section of `AGENTS.md`. `CLAUDE.md` imports `AGENTS.md` instead of repeating it.
+- File roles: `AGENTS.md` holds permanent engineering rules and repository guardrails. `CLAUDE.md` holds Claude-specific configuration and imports only. `memory.md` holds approved durable decisions and technical context. `handoff.md` holds current status, verified completed work, unresolved defects, and authorized next actions. Skills hold repeatable procedures and refer to the protocol instead of restating it.
+- The "Engineering Rules" list above is a short summary. Where it and the protocol differ, the protocol governs.
+- The protocol sets evidence and verification requirements. It does not guarantee error-free work.

@@ -325,3 +325,23 @@ Current verified state:
   - The Erlang C benchmark (λ 40, μ 20, c 3, 100 × 24 h, 95,670 customers) fell within 1.05 standard errors on Lq, P(wait), and Wq.
   - A source-level mutation check caught 9 of 9 faults after one ordering test was strengthened.
   - Backend 1162 passed, 3 skipped, 1 xfailed. Ruff and mypy are clean.
+
+## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
+
+Current verified state:
+
+- `AGENTS.md` holds the only copy of the protocol. The product owner's 2026-09-25 directive was merged into it. It adds evidence citation, three more evidence labels (APPROVED SPECIFICATION, INFERRED, NOT TESTED, next to VERIFIED, REPORTED, PROPOSED, UNKNOWN, CONFLICTING), protected mathematics, data integrity, supported analytical conclusions, scope-controlled commits, and a complete, partial, or blocked status in the final report. Every earlier requirement is kept.
+- `CLAUDE.md` no longer repeats the protocol. It imports `AGENTS.md` with `@AGENTS.md`. Reason: with a `CLAUDE.md` present, Claude Code reads `CLAUDE.md` and not `AGENTS.md` under the default Project instructions setting (official memory documentation, read 2026-09-25). The 2026-09-25 session on Claude Code 2.1.281 showed the same: its loaded project instructions held `CLAUDE.md` only. The layout, gates, and constraints in `AGENTS.md` reached Claude only when it chose to open the file.
+- Stale `AGENTS.md` statements were corrected against source. Model-selection dispatch now names the separate-queue branch that runs first (`model_selection.py`). The CSRF exemptions now include `/onboarding`, as `backend/api/main.py` and `tests/test_production_hardening.py` show. The frontend line names the Cloudflare Pages public deployment. The Session History now says that the Streamlit files it names were removed in `8b0df382`.
+- `memory.md` records the adoption and the role of each governance file.
+- Skills: none added. Claude Code loads no project skills here (`.claude/skills/` does not exist; `.agents/skills/` holds design skills for other agents). The proposed `novaq-verification`, `novaq-engineering-audit`, and `novaq-workflow-audit` skills were rejected: the Gates section and protocol sections 1, 2, 9, and 11 already cover their procedures, and no repeatable gap was shown.
+- Verification (static only): a script checked encoding and CRLF preservation, trailing whitespace, final newlines, fence and inline-code balance, the single `@AGENTS.md` import, that no nested imports exist, that the protocol exists only in `AGENTS.md`, that section numbering is 1 to 11, that every earlier protocol line is still present or deliberately reworded, that outside the protocol only the three corrected lines and the Session History note changed, that every cited path and commit exists, and that only the four governance files changed. No tests or tools read these files, so application tests were not required and were not run.
+- NOT TESTED: runtime loading of the import. Headless `claude -p` runs, including `/context`, failed with "Credit balance is too low" before any answer. In the next interactive session, run `/context` (Memory files) or `/memory` and confirm that `AGENTS.md` is listed through `CLAUDE.md`.
+- No application source, test, queueing, optimization, DES, Monte Carlo, authentication, schema, API, or report file changed.
+
+Open items:
+
+- CONFLICTING: `POST /onboarding/complete` writes user state (`backend/api/onboarding.py`), but the CSRF middleware docstring in `backend/api/main.py` says exempt families never mutate server state. The session and CSRF cookies are `SameSite=lax` (`backend/api/auth.py`); whether that is enough was not assessed. The exemption was not changed and needs an owner decision.
+- The `fix/d1-replication-costs`, `claude/clever-boyd-87ff32`, and `claude/nervous-hodgkin-2b6ef1` worktrees have their own `AGENTS.md` without the protocol and no `CLAUDE.md`. Merging those branches will need care in `AGENTS.md`.
+- With the import, Claude Code loads the whole `AGENTS.md` (about 290 lines, including the Session History) at session start. The official guidance targets under 200 lines per `CLAUDE.md` file.
+- `.claude/launch.json` is untracked and was left alone.
