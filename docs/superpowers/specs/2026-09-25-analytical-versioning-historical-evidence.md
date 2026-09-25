@@ -150,23 +150,52 @@ The "Reasons" column separates three kinds of evidence:
 
 ## 5. D7 dataset-currentness correction (requirement C)
 
-### 5.1 Existing checks (VERIFIED)
+### 5.1 Dataset-currentness checks (VERIFIED against `bc303109`)
+
+Line references are verified against the committed source at `bc303109`, in which Step 3 (D7)
+added the Current-mode gate. They shift whenever `workflow.py` changes, so each entry names its
+function as well.
 
 | Check | Location | Scope |
 |---|---|---|
-| Setup hash on every returned job | `_current_evidence` via `_job_setup_current` (`workflow.py:231-242`, `541-554`) | all kinds |
-| Plan dataset is current | `_own_verified_scenario` (`workflow.py:309-313`) | schema-2 only |
-| Plan dataset is current (Compare flag) | `separate_comparison` (`workflow.py:1434-1439`) | schema-2 only |
-| Current MC dataset at validation time | `run_validation_current` (`workflow.py:880-884`) | creation of `workflow_validation_current` only |
-| Proposal dataset at break apply | `apply_separate_breaks` (`workflow.py:1211-1212`) | break apply |
-| Decision staleness by evidence ids | `_current_evidence` (`workflow.py:562-574`) | legacy decision |
+| Setup hash on every returned job | `_job_setup_current` (`workflow.py:243-249`), applied by `_current_evidence.current` (`workflow.py:654-656`) | scenario-bound kinds |
+| Recorded dataset is the current dataset, plus owner, analysis, setup and dependency chain | `_current_evidence.current_mode` (`workflow.py:658-663`), applied at `workflow.py:666`, `667`, `674` via `_current_mode_evidence_is_current` (`workflow.py:638-643`) | `des_current`, `mc_current`, `validation_current` (**D7, corrected in Step 3**) |
+| Plan dataset is current | `_own_verified_scenario` (`workflow.py:321-325`) | schema-2 only |
+| Plan dataset is current (Compare flag) | `separate_comparison`, against `_current_dataset` (`workflow.py:1502`), flagged at `workflow.py:1546`, `1554`, `1558-1559` | schema-2 only |
+| Current MC dataset at validation time | `run_validation_current` (`workflow.py:1000-1004`) | creation of `workflow_validation_current` only |
+| Proposal dataset at break apply | `apply_separate_breaks` (`workflow.py:1331-1332`) | break apply |
+| Decision staleness by evidence ids | `_current_evidence` (`workflow.py:686-694`) | legacy decision |
 | Report chain linkage + setup | `_selected_report_chain` (`reports.py:152-230`) | selected report |
-| **None** | `_current_evidence` for `des_current`, `mc_current`, `validation_current` | **dataset never compared (D7)** |
-| **None** | `_own_verified_scenario` schema-1 path (`workflow.py:320-327`) | **dataset never compared** |
+| **None** | `_own_verified_scenario` schema-1 path (`workflow.py:332-339`) | **dataset never compared with the current dataset** |
 
-The defect is locked in as expected behavior by
-`tests/test_dataset_staleness_probe.py::test_separate_current_jobs_stay_visible_after_replacement`
-and `::test_shared_scenario_evidence_stays_pinned_to_dataset_a` (both pass today, VERIFIED).
+**The pre-D7 defect (historical).** Before `bc303109`, `_current_evidence` gated `des_current`,
+`mc_current` and `validation_current` on the recorded setup hash alone and never compared the
+recorded `dataset_id` with anything. A job produced from a replaced, invalidated or deleted dataset
+therefore stayed visible in a slot the page labels "CURRENT". The defect was locked in as expected
+behavior by `tests/test_dataset_staleness_probe.py::test_separate_current_jobs_stay_visible_after_replacement`.
+
+**Corrected Current-mode behavior (VERIFIED).** That probe is now
+`::test_separate_current_jobs_stop_being_current_after_replacement`, asserting the inverted
+expectation and keeping its Dataset-A fingerprint assertions against the stored rows.
+`tests/test_d7_current_evidence_dataset.py` covers the rule directly. Step 3 enforces dataset
+identity and dependency integrity only: it deliberately applies no version rule (the workflow
+engine version and the Current DES accounting marker of section 6 are left to their own phase),
+and it changes no stored row.
+
+**Still unresolved.** Schema-1 saved-scenario dataset currentness is **not** addressed by D7: a
+schema-1 scenario's dataset is checked for existence and validity (`workflow.py:305-312`) but never
+compared with the current dataset, so `::test_shared_scenario_evidence_stays_pinned_to_dataset_a`
+still passes unchanged (VERIFIED). D7 resolves Current-mode evidence only; it does not resolve
+historical-evidence compatibility across NovaQ's other workflows — scenario-bound evidence,
+selected-plan chains, decisions and reports keep their existing rules. Section 5.3 and plan Step 4
+carry the remaining work.
+
+**Release blocker (recorded, not implemented).** The backend now suppresses incompatible Current
+evidence, but the user interface does not yet distinguish a never-run analysis from one whose
+historical Current results are no longer eligible: both render as an empty slot. No endpoint serves
+historical evidence either (decision OD-1 is not approved), so a superseded Current job is stored
+but unreachable. The coordinated frontend compatibility phase must address this distinction before
+the D7 repair is deployed.
 
 ### 5.2 One currentness policy (PROPOSED)
 
