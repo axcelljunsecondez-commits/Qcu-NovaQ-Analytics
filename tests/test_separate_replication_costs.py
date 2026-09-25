@@ -168,30 +168,67 @@ def test_ranking_is_unchanged_when_every_candidate_is_priced():
 # --- live evaluators --------------------------------------------------------------
 
 def _hand_cost(evaluations, horizon, server_rate, wait_rate):
-    """Independent restatement of the per-replication cost formula."""
+    """Independent restatement of the per-replication cost formula.
+
+    Waiting exposure covers every customer whose service started (D10): a customer still in
+    service at the horizon has a known, complete queue wait.
+    """
     active = [item for item in evaluations if item["active"]]
     staffing = server_rate * len(active)
-    waiting = math.fsum(item["served"] / horizon * item["Wq"] * wait_rate
-                        for item in active if item["served"])
+    waiting = math.fsum(item["started"] / horizon * item["Wq"] * wait_rate
+                        for item in active if item["started"])
     return staffing, waiting
 
 
 def test_live_replications_average_every_run_including_over_target_runs():
-    by_id = {row["queue_id"]: row for row in _live_rows()}
+    """Uncensored runs (every customer's wait is complete), some over the target."""
+    samples = [0.05, 0.08, 0.10, 0.12]
+    by_id = {"a": {"queue_id": "a", "lambda": 3.0, "mu": 11.0, "c": 1, "service_samples_hours": samples},
+             "b": {"queue_id": "b", "lambda": 2.0, "mu": 11.0, "c": 1, "service_samples_hours": samples}}
     candidate = {"time": "08:00", "available_queue_ids": ["a", "b"],
                  "active_queue_ids": ["a"], "inactive_queue_ids": ["b"]}
-    config = {"replications": 5, "base_seed": 42, "duration_hours": 8.0, "target": 0.70}
+    seeds = [30, 31, 32, 33, 34]
     singles = [sep.evaluate_candidate_with_des(candidate, by_id, duration_hours=8.0, seed=seed,
-                                               target=0.70)
-               for seed in SEEDS]
-    assert all(single["status"] == "INFEASIBLE" for single in singles)  # 9/h on one lane
+                                               target=0.40)
+               for seed in seeds]
+    # Preconditions of the case: no customer still waiting at the horizon, and a mix of verdicts.
+    assert all(single["censored_customers"] == 0 for single in singles)
+    over = [single["status"] == "INFEASIBLE" for single in singles]
+    assert any(over) and not all(over)
     hand = [sum(_hand_cost(single["evaluations"], 8.0, sep.DEFAULT_SERVER_COST_HR,
                            sep.DEFAULT_WAIT_COST_HR)) for single in singles]
     assert [single["total_cost"] for single in singles] == pytest.approx(hand)
-    outcome = sep.evaluate_candidate_with_des_replications(candidate, by_id, config)
-    assert outcome["replications_over_target"] == 5
+    outcome = sep.evaluate_candidate_with_des_replications(
+        candidate, by_id, {"replications": 5, "base_seed": 30, "duration_hours": 8.0, "target": 0.40})
+    assert outcome["replications_over_target"] == sum(over)
     assert outcome["costs"]["total"]["n"] == 5
     assert outcome["costs"]["total"]["mean"] == pytest.approx(statistics.fmean(hand))
+
+
+def test_censored_replications_leave_the_complete_cost_undefined():
+    """D10: customers still waiting at the horizon have unknown complete waits."""
+    by_id = {row["queue_id"]: row for row in _live_rows()}  # 9/h on one lane
+    candidate = {"time": "08:00", "available_queue_ids": ["a", "b"],
+                 "active_queue_ids": ["a"], "inactive_queue_ids": ["b"]}
+    singles = [sep.evaluate_candidate_with_des(candidate, by_id, duration_hours=8.0, seed=seed,
+                                               target=0.70)
+               for seed in SEEDS]
+    censored = [single for single in singles if single["censored_customers"] > 0]
+    assert censored
+    for single in censored:
+        assert single["waiting_cost"] is None and single["total_cost"] is None
+        assert "still waiting at the horizon" in single["cost_undefined_reason"]
+    for single in singles:
+        # The disclosed started-service cohort: complete waits of customers who started.
+        active = [e for e in single["evaluations"] if e["active"]]
+        hand = math.fsum(e["started"] * e["Wq"] for e in active if e["started"]) / 8.0 * sep.DEFAULT_WAIT_COST_HR
+        assert single["started_cohort_waiting_cost"] == pytest.approx(hand)
+    outcome = sep.evaluate_candidate_with_des_replications(
+        candidate, by_id, {"replications": 5, "base_seed": 42, "duration_hours": 8.0, "target": 0.70})
+    assert outcome["costs"]["total"] is None
+    assert outcome["replications_with_censoring"] == len(censored)
+    assert outcome["started_cohort_waiting_cost"]["n"] == 5
+    assert outcome["wait_population"] == sep.WAIT_POPULATION_STARTED
 
 
 def test_arrivals_that_are_never_served_leave_waiting_cost_undefined_not_zero():
@@ -201,11 +238,15 @@ def test_arrivals_that_are_never_served_leave_waiting_cost_undefined_not_zero():
                  "active_queue_ids": ["a"], "inactive_queue_ids": []}
     result = sep.evaluate_candidate_with_des(candidate, by_id, duration_hours=1.0, seed=5)
     (lane,) = result["evaluations"]
-    assert lane["arrivals"] > 0 and lane["served"] == 0 and lane["Wq"] is None
+    # One customer started (the queue was empty, so that wait is a genuine 0); the rest are
+    # still waiting at the horizon, so the complete waiting cost is unknown.
+    assert lane["arrivals"] > 1 and lane["served"] == 0 and lane["started"] == 1
+    assert lane["Wq"] == 0.0
+    assert lane["censored_customers"] == lane["arrivals"] - 1 == result["censored_customers"]
     assert result["server_cost"] == pytest.approx(sep.DEFAULT_SERVER_COST_HR)
     assert result["waiting_cost"] is None
     assert result["total_cost"] is None
-    assert "no measured wait for a" in result["cost_undefined_reason"]
+    assert "still waiting at the horizon" in result["cost_undefined_reason"]
 
 
 def test_a_lane_without_arrivals_waited_zero_customer_hours():

@@ -15,6 +15,7 @@ cost (None with the reason), never an assumed hour.
 from __future__ import annotations
 
 import math
+import random
 import statistics
 
 import pytest
@@ -162,8 +163,23 @@ def test_arrivals_never_served_leave_the_period_cost_undefined():
     records = [_row("p60", "a", 6.0, samples=[10.0]), _row("p60", "b", 6.0, samples=[10.0])]
     schedule = _schedule(setup, records, duration_hours=1.0)
     (period,) = schedule["periods"]
-    assert period["overall"] == "UNSUPPORTED"  # D1: no defined cost, no optimum
     (candidate,) = period["candidates"]
+    # The first two arrivals (a1 < a2) start 10 h services on the two lanes that run
+    # through the 1 h horizon, so the lanes are busy (1 - a1) + (1 - a2) hours in total
+    # (D10: busy time is credited up to the horizon; the old accounting credited nothing
+    # and read 0%). Arrival times regenerated independently from each replication seed.
+    evidence = candidate["evidence"]
+    hand = []
+    for seed in evidence["replication_seeds"]:
+        gaps = random.Random(random.Random(seed).getrandbits(64))
+        a1 = gaps.expovariate(12.0)
+        a2 = a1 + gaps.expovariate(12.0)
+        hand.append(max(0.0, 1.0 - a1) + max(0.0, 1.0 - a2))
+    lane_means = [lane["utilization"]["mean"] for lane in evidence["per_lane"]]
+    assert math.fsum(lane_means) == pytest.approx(statistics.fmean(hand))
+    assert candidate["candidate_utilization"] == pytest.approx(max(lane_means))
+    assert candidate["candidate_utilization"] > 0.90
+    assert period["overall"] == "INFEASIBLE"  # over the target, so no optimum either way
     costs = candidate["period_costs"]
     assert costs["staffing"]["mean"] == pytest.approx(2 * SERVER * 1.0)
     assert costs["waiting"] is None and costs["total"] is None

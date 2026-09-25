@@ -33,6 +33,12 @@ import { LiveSimulationPlayback } from '../components/simulation/LiveSimulationP
 import { SeparateSimulationPlayback } from '../components/simulation/SeparateSimulationPlayback'
 import { selectPlaybackLayout } from '../lib/simulationPlayback'
 import {
+  periodWaitCoverage,
+  selectedDesWaitCoverage,
+  type PeriodWaitCoverage,
+  type WaitCoverage,
+} from '../lib/selectedDesWait'
+import {
   FailureRateBars,
   LqHistogram,
   MaxQueueBars,
@@ -218,6 +224,14 @@ function SelectedSeparateSimulationView({
   const decision = freshDecision ?? persistedDecision
   const periods = desResult?.periods ?? []
   const activePeriod = periods.find((period) => period.time === periodTime) ?? periods[0] ?? null
+  const desCoverage = desResult ? selectedDesWaitCoverage(desResult) : null
+  // Validation shows its linked DES job's Wq: that job's recorded provenance says who it
+  // covers. Older validation jobs lack it; the loaded DES job stands in only when it is
+  // exactly the linked one.
+  const linkedDes = validationResult && desEvidence && desResult
+    && validationResult.des_job_id === desEvidence.id ? desResult : null
+  const validationCoverage: WaitCoverage | null = validationResult?.des_wait_disclosure
+    ?? (linkedDes ? selectedDesWaitCoverage(linkedDes) : null)
   const running = desRun.isPending || mcRun.isPending || validationRun.isPending || decisionRun.isPending
   return (
     <div>
@@ -284,8 +298,8 @@ function SelectedSeparateSimulationView({
               </button>
             ))}
           </div>
-          {activePeriod && (
-            <SelectedPeriodDetail period={activePeriod} />
+          {activePeriod && desCoverage && (
+            <SelectedPeriodDetail period={activePeriod} coverage={periodWaitCoverage(desCoverage, activePeriod.time)} />
           )}
         </div>
       )}
@@ -493,6 +507,9 @@ function SelectedSeparateSimulationView({
                     ))}
                   </tbody>
                 </table>
+                <ValidationWaitNote
+                  coverage={validationCoverage === null ? null : periodWaitCoverage(validationCoverage, period.time)}
+                />
               </details>
             ))}
           </div>
@@ -577,8 +594,33 @@ function SelectedSeparateSimulationView({
   )
 }
 
-function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
+/** Who the validation table's Wq_sim covers, for one period; null when the linked DES run
+ * is not available to say. */
+function ValidationWaitNote({ coverage }: { coverage: PeriodWaitCoverage | null }) {
   const { t } = useTranslation()
+  let text: string
+  if (coverage === null) {
+    text = t('simulation.sep_wait_des_not_linked')
+  } else if (coverage.basis === 'continuous_day') {
+    text = t('simulation.sep_wait_population_day')
+  } else if (coverage.basis === 'per_period' && coverage.status === 'recorded' && coverage.censored !== null) {
+    text = `${t('simulation.sep_wq_population')} ${t('simulation.sep_censored_count', { customers: coverage.censored })}`
+  } else if (coverage.basis === 'per_period') {
+    text = t('simulation.sep_validation_wait_not_recorded')
+  } else {
+    text = t('simulation.sep_wait_basis_unknown')
+  }
+  return <p className="form-hint" data-testid="sep-validation-wait" style={{ marginTop: '6px' }}>{text}</p>
+}
+
+function SelectedPeriodDetail({ period, coverage }: { period: SelectedDesPeriod; coverage: PeriodWaitCoverage }) {
+  const { t } = useTranslation()
+  // Who Wq covers comes from the run's recorded basis, never from its metric values.
+  const censored = coverage.status === 'recorded' ? coverage.censored : null
+  const coverageRecorded = coverage.basis === 'per_period' && censored !== null
+  const hasCensored = censored !== null && censored > 0
+  const waitingCostKnown = typeof period.waiting_cost === 'number' && Number.isFinite(period.waiting_cost)
+  const count = (value: number | null | undefined) => (typeof value === 'number' ? value : '—')
   return (
     <div style={{ marginTop: '12px' }}>
       <div className="table-scroll" role="region" aria-label={period.time} tabIndex={0}>
@@ -589,6 +631,8 @@ function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
               <th scope="col">{t('simulation.sep_active')}</th>
               <th scope="col">{t('simulation.sep_arrivals')}</th>
               <th scope="col">{t('simulation.sep_served')}</th>
+              {coverageRecorded && <th scope="col">{t('simulation.sep_started')}</th>}
+              {coverageRecorded && <th scope="col">{t('simulation.sep_waiting_at_horizon')}</th>}
               <th scope="col">Wq (min)</th>
               <th scope="col">ρ</th>
             </tr>
@@ -600,6 +644,8 @@ function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
                 <td>{row.active ? '✓' : '—'}</td>
                 <td>{row.arrivals ?? '—'}</td>
                 <td>{row.served ?? '—'}</td>
+                {coverageRecorded && <td>{count(row.started)}</td>}
+                {coverageRecorded && <td>{count(row.waiting)}</td>}
                 <td>{fmt(row.Wq_sim === null || row.Wq_sim === undefined ? null : row.Wq_sim * 60)}</td>
                 <td>{fmtDecimal(row.rho_sim)}</td>
               </tr>
@@ -607,6 +653,31 @@ function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
           </tbody>
         </table>
       </div>
+      {coverageRecorded && (
+        <div data-testid="sep-wait-coverage" style={{ marginTop: '8px' }}>
+          <p className="form-hint">{t('simulation.sep_wq_population')}</p>
+          <div role="status" className={`alert ${hasCensored ? 'alert-warn' : 'alert-ok'}`}>
+            <div>{t('simulation.sep_censored_count', { customers: censored })}</div>
+            <div>
+              {waitingCostKnown
+                ? t('simulation.sep_wait_cost_available')
+                : hasCensored
+                  ? t('simulation.sep_wait_cost_unavailable_censored')
+                  : t('simulation.sep_wait_cost_unavailable')}
+            </div>
+          </div>
+        </div>
+      )}
+      {coverage.basis === 'per_period' && !coverageRecorded && (
+        <p className="form-hint" data-testid="sep-wait-coverage-legacy" style={{ marginTop: '8px' }}>
+          {t('simulation.sep_wait_coverage_not_recorded')}
+        </p>
+      )}
+      {coverage.basis === 'unknown' && (
+        <p className="form-hint" data-testid="sep-wait-basis-unknown" style={{ marginTop: '8px' }}>
+          {t('simulation.sep_wait_basis_unknown')}
+        </p>
+      )}
       <div style={{ marginTop: '12px' }}>
         <SeparateSimulationPlayback trace={period.trace} inactiveQueueIds={period.inactive_queue_ids} />
       </div>

@@ -13,6 +13,7 @@ from backend.api.scenarios import setup_fingerprint
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.queueing_engine.services.separate_optimization import (
     SEPARATE_DES_ENGINE_VERSION,
+    WAIT_POPULATION_STARTED,
 )
 from tests.helpers import (
     clear_cookies,
@@ -211,12 +212,20 @@ def test_selected_des_infeasible_period_still_returns_playback_trace(db_engine, 
     assert period["evaluation_status"] == "INFEASIBLE"
     by_lane = {row["queue_id"]: row for row in period["results"]}
     assert by_lane["east-07"]["rho_sim"] > 0.70
-    # The over-target run is priced like any measured run (D1, policy A): the
-    # plan's 87/h for its one active lane + served/8 h * Wq * 100/h.
+    # Staffing is priced at the plan's 87/h for its one active lane. At 10/h into one
+    # lane, customers are still waiting at the 8 h horizon, so their complete waits are
+    # unknown and the waiting cost is undefined (D10); the started-service cohort
+    # (started/8 h * Wq * 100/h) is disclosed separately, never as the complete cost.
     east = by_lane["east-07"]
     assert period["server_cost"] == pytest.approx(87.0)
-    assert period["waiting_cost"] == pytest.approx(east["served"] / 8.0 * east["Wq_sim"] * 100.0)
-    assert period["total_cost"] == pytest.approx(period["server_cost"] + period["waiting_cost"])
+    assert east["waiting"] > 0
+    assert period["censored_customers"] == east["waiting"] + period["unrouted_at_horizon"]
+    assert period["waiting_cost"] is None and period["total_cost"] is None
+    assert "still waiting at the horizon" in period["cost_undefined_reason"]
+    assert east["started"] == east["served"] + east["in_service"]
+    assert east["wait_population"] == WAIT_POPULATION_STARTED
+    assert period["started_cohort_waiting_cost"] == pytest.approx(
+        east["started"] / 8.0 * east["Wq_sim"] * 100.0)
     trace = period["trace"]
     assert trace["event_count"] == len(trace["trace"]) > 0
     assert trace["truncated"] is False

@@ -212,6 +212,108 @@ def test_excel_roundtrip_preserves_types_and_nas():
     assert not any("continuous" in str(line).lower() for line in limitations)
 
 
+# --- Who simulated Wq covers (D10) -----------------------------------------------------
+
+def _des_with(execution, censored=None):
+    """The chain's DES evidence with its recorded basis and, optionally, D10 counts."""
+    chain = _chain()
+    period = dict(chain["des"]["periods"][0])
+    if censored is not None:
+        period["censored_customers"] = censored
+    chain["des"] = {**chain["des"], "execution": execution, "periods": [period]}
+    return chain
+
+
+def _sheet_rows(workbook, name):
+    sheet = workbook[name]
+    header = [cell.value for cell in sheet[1]]
+    return header, [dict(zip(header, (cell.value for cell in row))) for row in sheet.iter_rows(min_row=2)]
+
+
+def _excel(chain):
+    import openpyxl
+
+    from backend.reports.report_export import generate_separate_excel_report
+
+    model = build_separate_report_model(chain)
+    return model, openpyxl.load_workbook(generate_separate_excel_report(model))
+
+
+def test_per_period_d10_wait_population_and_censoring_are_disclosed_in_both_sheets():
+    from backend.queueing_engine.services.separate_optimization import (
+        SELECTED_DES_PER_PERIOD_EXECUTION,
+        WAIT_DEFINITION_STARTED,
+    )
+
+    model, workbook = _excel(_des_with(SELECTED_DES_PER_PERIOD_EXECUTION, censored=5))
+    assert model["des"]["wait_basis"] == "per_period"
+    assert model["des"]["wait_definition"] == WAIT_DEFINITION_STARTED
+    assert model["validation"]["periods"][0]["censoring_status"] == "recorded"
+    assert model["validation"]["periods"][0]["censored_customers"] == 5
+    for name in ("DES", "Validation"):
+        header, rows = _sheet_rows(workbook, name)
+        # Existing columns keep their names and positions; the disclosure is appended.
+        assert header[-2:] == ["Wq population", "Still waiting at horizon (period)"]
+        assert "Wq (min)" in header
+        assert rows[0]["Wq population"] == "customers whose service started within the horizon"
+        assert rows[0]["Still waiting at horizon (period)"] == 5
+        assert rows[0]["Wq (min)"] == pytest.approx(5.4)  # the stored value, unchanged
+    limitations = " ".join(model["limitations"])
+    assert f"Simulated Wq (DES and Validation): {WAIT_DEFINITION_STARTED}" in limitations
+    assert "Customers still waiting at the simulation horizon, by period: 08:00 5." in limitations
+
+
+def test_a_verified_zero_is_reported_as_zero():
+    from backend.queueing_engine.services.separate_optimization import SELECTED_DES_PER_PERIOD_EXECUTION
+
+    _, workbook = _excel(_des_with(SELECTED_DES_PER_PERIOD_EXECUTION, censored=0))
+    _, rows = _sheet_rows(workbook, "Validation")
+    assert rows[0]["Still waiting at horizon (period)"] == 0
+
+
+def test_an_older_per_period_run_is_unknown_not_zero():
+    model, workbook = _excel(_chain())  # per-period basis recorded, no D10 fields
+    for name in ("DES", "Validation"):
+        _, rows = _sheet_rows(workbook, name)
+        assert rows[0]["Wq population"] == (
+            "not recorded (stored before the fixed-horizon accounting correction)")
+        assert rows[0]["Still waiting at horizon (period)"] == "unknown"
+    assert model["des"]["wait_definition"] is None
+    assert model["validation"]["periods"][0]["censored_customers"] is None
+    assert "stored before the fixed-horizon accounting correction" in " ".join(model["limitations"])
+
+
+def test_the_continuous_day_keeps_its_own_definition():
+    from backend.queueing_engine.services.separate_optimization import (
+        SELECTED_DES_CONTINUOUS_DAY_EXECUTION,
+        WAIT_DEFINITION_CONTINUOUS_DAY,
+    )
+
+    model, workbook = _excel(_des_with(SELECTED_DES_CONTINUOUS_DAY_EXECUTION))
+    _, rows = _sheet_rows(workbook, "Validation")
+    assert rows[0]["Wq population"] == "every customer who arrived in the period"
+    assert rows[0]["Still waiting at horizon (period)"] == "not applicable"
+    assert f"Simulated Wq (DES and Validation): {WAIT_DEFINITION_CONTINUOUS_DAY}" in model["limitations"]
+
+
+def test_an_unrecorded_basis_is_stated_as_unknown_not_inferred():
+    model, workbook = _excel(_des_with(None, censored=0))
+    _, rows = _sheet_rows(workbook, "Validation")
+    assert rows[0]["Wq population"] == "not recorded (simulation basis unknown)"
+    assert rows[0]["Still waiting at horizon (period)"] == "unknown"
+    assert model["des"]["wait_basis"] == "unknown"
+    assert any("does not record its simulation basis" in line for line in model["limitations"])
+
+
+def test_pdf_carries_the_wait_population_in_its_limitations():
+    from backend.queueing_engine.services.separate_optimization import SELECTED_DES_PER_PERIOD_EXECUTION
+    from backend.reports.report_export import generate_separate_pdf_report
+
+    model = build_separate_report_model(_des_with(SELECTED_DES_PER_PERIOD_EXECUTION, censored=5))
+    assert generate_separate_pdf_report(model).getvalue()[:5] == b"%PDF-"
+    assert any(line.startswith("Simulated Wq (DES and Validation):") for line in model["limitations"])
+
+
 # --- API layer -----------------------------------------------------------------------
 
 def _api_workspace(db_engine, email):

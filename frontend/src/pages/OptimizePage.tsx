@@ -258,11 +258,17 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
         </table>
       </div>
       <p className="page-caption" style={{ marginTop: '8px' }}>{t('optimize.sep_cost_basis_note')}</p>
+      <p className="page-caption" data-testid="sep-status-legend" style={{ marginTop: '4px' }}>{t('optimize.sep_status_legend')}</p>
       {schedule.periods.map((period) => (
         <details key={period.time} style={{ marginTop: '8px' }}>
           <summary style={{ fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
             {t('optimize.sep_candidate_evidence')} · {period.time}
           </summary>
+          {period.overall !== 'OPTIMAL' && period.reason && (
+            <p role="note" data-testid={`sep-period-reason-${period.time}`} style={{ margin: '6px 0 0', fontSize: '14px' }}>
+              <strong>{t('optimize.sep_period_no_optimum')}</strong> {period.reason}
+            </p>
+          )}
           <table style={{ marginTop: '6px' }}>
             <thead>
               <tr>
@@ -278,7 +284,17 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
                   <td>{candidate.active_lane_count}</td>
                   <td>{candidate.status}</td>
                   <td>{fmtPctDecimal(candidate.candidate_utilization)}</td>
-                  <td>{fmt(candidate.mean_total_cost)}</td>
+                  <td>
+                    {fmt(candidate.mean_total_cost)}
+                    {typeof candidate.replications_with_censoring === 'number' && candidate.replications_with_censoring > 0 && (
+                      <small role="note" style={{ display: 'block', color: 'var(--text-secondary)' }}>
+                        {t('optimize.sep_candidate_censored', {
+                          replications: candidate.replications_with_censoring,
+                          total: schedule.des.replications,
+                        })}
+                      </small>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

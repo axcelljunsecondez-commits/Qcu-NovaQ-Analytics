@@ -330,6 +330,11 @@ export interface SelectedDesLaneRow {
   error: string | null
   metric_provenance: string | null
   customer_conservation: boolean | null
+  /** Fixed-horizon runs only (absent from older stored jobs): customers whose service
+   * started within the horizon — the population behind Wq_sim. */
+  started?: number | null
+  censored_waiting_hours?: number | null
+  wait_population?: string | null
 }
 
 export interface SelectedDesPeriod {
@@ -342,6 +347,13 @@ export interface SelectedDesPeriod {
   total_cost: number | null
   server_cost: number | null
   waiting_cost: number | null
+  /** Fixed-horizon runs only (absent from older stored jobs): customers still waiting at
+   * the horizon, in a lane or not yet routed. */
+  censored_customers?: number | null
+  unrouted_at_horizon?: number | null
+  censored_waiting_hours?: number | null
+  started_cohort_waiting_cost?: number | null
+  cost_undefined_reason?: string | null
   results: SelectedDesLaneRow[]
   trace: SimulationTrace
 }
@@ -403,6 +415,17 @@ export interface SelectedValidationVerdict {
   total: number | null
 }
 
+/** Who a stored selected-plan DES job's Wq covers, from its recorded `execution` provenance. */
+export type SelectedDesWaitBasis = 'per_period' | 'continuous_day' | 'unknown'
+export type SelectedDesCensoringStatus = 'recorded' | 'unknown' | 'not_applicable'
+
+export interface SelectedDesWaitDisclosure {
+  basis: SelectedDesWaitBasis
+  execution: string | null
+  wait_definition: string | null
+  periods: Record<string, { censoring_status: SelectedDesCensoringStatus; censored_customers: number | null }>
+}
+
 export interface SelectedValidationResult {
   provenance: string | null
   scenario_id: number | null
@@ -413,6 +436,8 @@ export interface SelectedValidationResult {
   failure_rate_cap: number | null
   periods: SelectedValidationPeriod[]
   verdict: SelectedValidationVerdict
+  /** Absent from validation jobs stored before this disclosure existed. */
+  des_wait_disclosure?: SelectedDesWaitDisclosure | null
 }
 
 export interface SelectedDecisionFacts {
@@ -516,6 +541,8 @@ export interface SeparateCandidate {
   waiting_cost: number | null
   evaluation_method?: string | null
   period_costs?: SeparatePeriodCosts | null
+  /** Replications in which customers were still waiting at the horizon (per-date runs only). */
+  replications_with_censoring?: number | null
 }
 
 export interface SeparateOptimum {

@@ -254,6 +254,38 @@ def test_validation_passes_and_persists_with_full_identity(db_engine, client):
     assert workflow["validation"]["id"] == validated.json()["evidence"]["id"]
 
 
+def test_validation_discloses_the_linked_des_wait_population(db_engine, client):
+    """D10: validation shows the linked DES job's Wq_sim, so it carries who that Wq covers."""
+    from backend.queueing_engine.services.separate_optimization import WAIT_DEFINITION_STARTED
+
+    analysis_id, _, scenario_id = _api_workspace(db_engine, "w@example.com")
+    login(client, "w@example.com", "pw")
+    headers = csrf_header(client)
+    assert client.post(
+        f"/analyses/{analysis_id}/workflow/selection", headers=headers,
+        json={"scenario_id": scenario_id}).status_code == 200
+    des = client.post(
+        f"/analyses/{analysis_id}/workflow/simulation/des/selected",
+        headers=headers, json={"seed": 7})
+    assert des.status_code == 200, des.text
+    des_period = des.json()["evidence"]["result"]["periods"][0]
+    assert _post(client, analysis_id, "simulation/mc/selected").status_code == 200
+    validated = _post(client, analysis_id, "simulation/validation/selected")
+    assert validated.status_code == 200, validated.text
+    result = validated.json()["evidence"]["result"]
+    disclosure = result["des_wait_disclosure"]
+    # This analysis has no representative-day basis, so its DES ran period by period.
+    assert disclosure["basis"] == "per_period"
+    assert disclosure["wait_definition"] == WAIT_DEFINITION_STARTED
+    assert disclosure["periods"]["08:00"] == {
+        "censoring_status": "recorded", "censored_customers": des_period["censored_customers"]}
+    # Disclosure only: the Wq_sim shown and the verdict are the DES job's own values.
+    east = next(q for q in result["periods"][0]["queues"] if q["queue_id"] == "east-07")
+    lane = next(r for r in des_period["results"] if r["queue_id"] == "east-07")
+    assert east["Wq_sim"] == lane["Wq_sim"]
+    assert result["verdict"]["status"] == "pass"
+
+
 def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows):
     from datetime import datetime, timezone
 

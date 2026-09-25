@@ -354,6 +354,8 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
                     "time": p.get("time"),
                     "active_queue_ids": p.get("active_queue_ids"),
                     "conservation": p.get("conservation"),
+                    # D10: absent from older stored runs; never read as zero.
+                    "censored_customers": p.get("censored_customers"),
                     "lanes": [
                         {"queue_id": lane.get("queue_id"),
                          "arrivals": lane.get("arrivals"),

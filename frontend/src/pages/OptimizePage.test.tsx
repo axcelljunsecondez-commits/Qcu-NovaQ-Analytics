@@ -520,7 +520,7 @@ describe('OptimizePage', () => {
 })
 
 describe('separate staffing optimization', () => {
-  function renderSeparate() {
+  function renderSeparate(lang: 'en' | 'tl' = 'en') {
     getAnalysisMock.mockResolvedValue({
       analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['lane-a', 'lane-b'] } },
     })
@@ -528,7 +528,7 @@ describe('separate staffing optimization', () => {
       <Routes>
         <Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} />
       </Routes>,
-      { route: '/analyses/7/optimize' },
+      { route: '/analyses/7/optimize', lang },
     )
   }
 
@@ -742,6 +742,73 @@ describe('separate staffing optimization', () => {
       expect(cell).toHaveTextContent('For this 30-minute period')
       expect(cell).not.toHaveTextContent('87')
       expect(screen.getByTestId('sep-cost-rate-09:00-09:30')).toHaveTextContent('—')
+    })
+  })
+
+  describe('customers still waiting at the horizon (D10)', () => {
+    const periodReason = 'Feasible lane count(s) 1 have no defined replicated cost, so candidates cannot be '
+      + 'ranked by cost and no optimum is claimed. Customers were still waiting at the DES horizon for '
+      + 'lane count(s) 1 (in 2 of 5 replications), so their complete waits are unknown.'
+    const blocked = {
+      ...completeSchedule.schedule,
+      overall: 'BLOCKED',
+      reason: `Period(s) 08:00 cannot claim an optimum: ${periodReason}`,
+      periods: [{
+        ...completeSchedule.schedule.periods[0],
+        overall: 'UNSUPPORTED', reason: periodReason,
+        optimal_active_lanes: null, adjustment: null, optimum: null,
+        candidates: [
+          { ...candidate(1, 'FEASIBLE', 0.62, null), replications_with_censoring: 2 },
+          { ...candidate(2, 'FEASIBLE', 0.33, 190.0), replications_with_censoring: 0 },
+        ],
+      }],
+    }
+
+    async function runWith(schedule: unknown, lang: 'en' | 'tl' = 'en') {
+      const user = userEvent.setup()
+      optimizeSeparateMock.mockResolvedValue({ schedule })
+      renderSeparate(lang)
+      await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+      await user.selectOptions(
+        screen.getByLabelText(lang === 'tl' ? 'Pinagmulan ng dataset' : 'Source dataset'), '1')
+      await user.click(screen.getByRole('button', { name: lang === 'tl' ? 'I-optimize' : 'Optimize' }))
+      await screen.findByText('Estimated Optimal Plan')
+    }
+
+    it('explains why the period has no optimum and which candidates were censored', async () => {
+      await runWith(blocked)
+      const note = screen.getByTestId('sep-period-reason-08:00')
+      expect(note).toHaveTextContent('No optimum for this period:')
+      expect(note).toHaveTextContent('Customers were still waiting at the DES horizon for lane count(s) 1')
+      expect(screen.getAllByText(
+        'Customers were still waiting at the horizon in 2 of 5 replications, so the complete waiting cost is unavailable.',
+      )).toHaveLength(1)
+      expect(screen.queryByText(/in 0 of 5 replications/)).not.toBeInTheDocument()
+      // Feasibility is kept as measured; the missing cost blocks ranking, not feasibility.
+      const censoredRow = screen.getByText(
+        'Customers were still waiting at the horizon in 2 of 5 replications, so the complete waiting cost is unavailable.',
+      ).closest('tr') as HTMLElement
+      expect(censoredRow).toHaveTextContent('FEASIBLE')
+      const legend = screen.getByTestId('sep-status-legend')
+      expect(legend).toHaveTextContent("FEASIBLE means every active lane's mean utilization is at or below the target")
+      expect(legend).toHaveTextContent('UNSUPPORTED means the evidence is not enough for the requested result')
+      expect(legend).toHaveTextContent('A feasible lane count without a complete cost stays feasible but cannot be ranked')
+    })
+
+    it('adds nothing for candidates that do not report censoring', async () => {
+      await runWith(completeSchedule.schedule)
+      expect(screen.queryByTestId('sep-period-reason-08:00')).not.toBeInTheDocument()
+      expect(screen.queryByText(/still waiting at the horizon/)).not.toBeInTheDocument()
+    })
+
+    it('shows the censoring disclosure in Tagalog', async () => {
+      await runWith(blocked, 'tl')
+      expect(screen.getByTestId('sep-period-reason-08:00')).toHaveTextContent('Walang optimum para sa period na ito:')
+      expect(screen.getByText(
+        'May mga customer na naghihintay pa sa horizon sa 2 sa 5 na replication, kaya hindi available ang kumpletong waiting cost.',
+      )).toBeInTheDocument()
+      expect(screen.getByTestId('sep-status-legend')).toHaveTextContent(
+        'Nananatiling feasible ang bilang ng lane na walang kumpletong cost')
     })
   })
 

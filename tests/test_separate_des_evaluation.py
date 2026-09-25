@@ -196,15 +196,19 @@ def test_overloaded_reduced_candidate_is_infeasible_with_named_lanes():
     assert result["status"] == "INFEASIBLE"
     assert "cashier-east" in result["reason"]
     assert "70%" in result["reason"]
-    # An over-target run is still a measured run, so it is priced (D1, policy A):
-    # hourly server rate per active lane + served/horizon * Wq * waiting rate.
+    # Staffing is priced per active lane (D1, policy A). At 12/h into one lane customers
+    # are still waiting at the 24 h horizon, so the complete waiting cost is undefined
+    # (D10); the started-service cohort estimate is disclosed separately.
     active = [item for item in result["evaluations"] if item["active"]]
     assert [item["queue_id"] for item in active] == ["cashier-east"]
     assert result["server_cost"] == pytest.approx(sep.DEFAULT_SERVER_COST_HR)
-    assert result["waiting_cost"] == pytest.approx(
-        active[0]["served"] / 24.0 * active[0]["Wq"] * sep.DEFAULT_WAIT_COST_HR)
-    assert result["total_cost"] == pytest.approx(result["server_cost"] + result["waiting_cost"])
-    assert result["cost_undefined_reason"] is None
+    assert active[0]["waiting"] > 0
+    assert result["censored_customers"] == active[0]["waiting"] + result["unrouted_at_horizon"]
+    assert result["waiting_cost"] is None and result["total_cost"] is None
+    assert "cashier-east" in result["cost_undefined_reason"]
+    assert "still waiting at the horizon" in result["cost_undefined_reason"]
+    assert result["started_cohort_waiting_cost"] == pytest.approx(
+        active[0]["started"] / 24.0 * active[0]["Wq"] * sep.DEFAULT_WAIT_COST_HR)
     assert result["total_lambda"] == 12.0
     assert result["customer_conservation"] is True
     assert result["evaluations"] is not None

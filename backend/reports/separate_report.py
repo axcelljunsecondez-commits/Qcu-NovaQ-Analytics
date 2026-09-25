@@ -12,6 +12,52 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from backend.queueing_engine.services.separate_optimization import selected_des_wait_disclosure
+
+# Who simulated Wq covers, per period, from the DES job's recorded provenance (D10).
+_WAIT_POPULATION_LABELS = {
+    ("per_period", "recorded"): "customers whose service started within the horizon",
+    ("per_period", "unknown"): "not recorded (stored before the fixed-horizon accounting correction)",
+    ("continuous_day", "not_applicable"): "every customer who arrived in the period",
+    ("unknown", "unknown"): "not recorded (simulation basis unknown)",
+}
+
+
+def _wait_fields(basis: str, period_disclosure: dict | None) -> dict[str, Any]:
+    """Censoring state and Wq population label for one period; missing never means zero."""
+    item = period_disclosure or {}
+    status = item.get("censoring_status") or ("not_applicable" if basis == "continuous_day" else "unknown")
+    return {
+        "censoring_status": status,
+        "censored_customers": item.get("censored_customers") if status == "recorded" else None,
+        "wait_population": _WAIT_POPULATION_LABELS.get((basis, status), _WAIT_POPULATION_LABELS[("unknown", "unknown")]),
+    }
+
+
+def _wait_limitations(wait: dict, des_periods: list[dict[str, Any]]) -> list[str]:
+    """Report lines stating who simulated Wq covers, and who was still waiting at the horizon."""
+    basis = wait["basis"]
+    if basis == "continuous_day":
+        return [f"Simulated Wq (DES and Validation): {wait['wait_definition']}"]
+    if basis == "unknown":
+        return ["The stored selected-plan DES run does not record its simulation basis, so the "
+                "population behind simulated Wq (DES and Validation) cannot be stated."]
+    lines = []
+    if wait["wait_definition"] is not None:
+        lines.append(f"Simulated Wq (DES and Validation): {wait['wait_definition']}")
+    recorded = [p for p in des_periods if p["censoring_status"] == "recorded"]
+    unknown = [str(p.get("time")) for p in des_periods if p["censoring_status"] == "unknown"]
+    if recorded:
+        lines.append("Customers still waiting at the simulation horizon, by period: "
+                     + "; ".join(f"{p.get('time')} {p['censored_customers']}" for p in recorded) + ".")
+    if unknown:
+        lines.append(
+            f"Simulated Wq for period(s) {', '.join(unknown)} comes from a per-period DES run stored "
+            "before the fixed-horizon accounting correction: which customers it covers and how many "
+            "were still waiting at the horizon were not recorded. Rerun the selected DES, Monte "
+            "Carlo, Validation and Decision to refresh this evidence.")
+    return lines
+
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
@@ -102,6 +148,11 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
         current_periods.append({"time": period.get("time"), "queues": queues})
     kpis = current.get("kpis") or {}
 
+    # The validation job is linked to exactly this DES job (the report chain requires it),
+    # so both sections share its waiting-time population.
+    wait = selected_des_wait_disclosure(des)
+    wait_by_time = wait["periods"]
+
     des_periods: list[dict[str, Any]] = []
     for period in des.get("periods") or []:
         if not isinstance(period, dict):
@@ -125,6 +176,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
             "time": period.get("time"),
             "active_queue_ids": list(period.get("active_queue_ids") or []),
             "conservation": period.get("conservation"),
+            **_wait_fields(wait["basis"], wait_by_time.get(str(period.get("time")))),
             "lanes": lanes,
             "trace": {
                 "event_count": trace.get("event_count")
@@ -168,6 +220,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
             "time": period.get("time"),
             "active_queue_ids": list(period.get("active_queue_ids") or []),
             "status": period.get("status"),
+            **_wait_fields(wait["basis"], wait_by_time.get(str(period.get("time")))),
             "queues": queues,
         })
 
@@ -209,6 +262,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
         "A period's cost is its hourly cost rate times the period's configured length; a period "
         "without a configured length has no period cost, and totals that need it are not given.",
     ]
+    limitations.extend(_wait_limitations(wait, des_periods))
     if truncated_any:
         limitations.append(
             "Visual trace may be truncated by the event cap while summary metrics "
@@ -293,6 +347,8 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
             "duration_hours": _finite_or_none(des.get("duration_hours")),
             "overall_conservation": des.get("overall_conservation"),
             "overall_status": des.get("overall_status"),
+            "wait_basis": wait["basis"],
+            "wait_definition": wait["wait_definition"],
             "periods": des_periods,
         },
         "playback": {

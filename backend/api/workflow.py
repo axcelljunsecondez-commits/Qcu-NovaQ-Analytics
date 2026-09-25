@@ -37,6 +37,8 @@ from backend.queueing_engine.services.break_optimization import (
 from backend.queueing_engine.services.data_processing import _weighted_wait, compute_kpis
 from backend.queueing_engine.services.model_explanations import analyze_segments
 from backend.queueing_engine.services.separate_optimization import (
+    SELECTED_DES_CONTINUOUS_DAY_EXECUTION,
+    SELECTED_DES_PER_PERIOD_EXECUTION,
     SEPARATE_DES_ENGINE_VERSION,
     _period_current_active,
     _segment_window,
@@ -50,6 +52,7 @@ from backend.queueing_engine.services.separate_optimization import (
     replication_seeds,
     resolve_des_breaks,
     run_routing_day_des,
+    selected_des_wait_disclosure,
     validate_des_replication_config,
 )
 from backend.queueing_engine.simulation.simulation import (
@@ -1714,10 +1717,13 @@ def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
                 "c": 1,
                 "arrivals": item.get("arrivals"),
                 "served": item.get("served"),
+                "started": item.get("started"),
                 "waiting": item.get("waiting"),
                 "in_service": item.get("in_service"),
+                "censored_waiting_hours": _json_number(item.get("censored_waiting_hours")),
                 "abandoned": None,
                 "Wq_sim": _json_number(item.get("Wq")),
+                "wait_population": item.get("wait_population"),
                 "rho_sim": _json_number(item.get("rho")),
                 "max_queue": item.get("max_queue"),
                 "active": bool(item.get("active")),
@@ -1754,6 +1760,12 @@ def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
             "total_cost": _json_number(result.get("total_cost")),
             "server_cost": _json_number(result.get("server_cost")),
             "waiting_cost": _json_number(result.get("waiting_cost")),
+            "cost_undefined_reason": result.get("cost_undefined_reason"),
+            # D10: customers still waiting at the horizon, and the started-service cohort.
+            "censored_customers": result.get("censored_customers"),
+            "unrouted_at_horizon": result.get("unrouted_at_horizon"),
+            "censored_waiting_hours": _json_number(result.get("censored_waiting_hours")),
+            "started_cohort_waiting_cost": _json_number(result.get("started_cohort_waiting_cost")),
             "results": lane_rows,
             "trace": {
                 "results": lane_rows,
@@ -1769,7 +1781,7 @@ def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
     return {
         "provenance": "SELECTED",
         "engine_version": ENGINE_VERSION,
-        "execution": "selected-plan routing DES (period-independent, no carryover)",
+        "execution": SELECTED_DES_PER_PERIOD_EXECUTION,
         "arrival_method": "single conserved Poisson stream at total lambda",
         "routing_policy": "shortest system size with seeded fair ties",
         "service_sampling_method": "empirical per-lane resampling",
@@ -1946,7 +1958,7 @@ def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[s
     return {
         "provenance": "SELECTED",
         "engine_version": ENGINE_VERSION,
-        "execution": "selected-plan continuous-day routing DES (queues and breaks carry across periods)",
+        "execution": SELECTED_DES_CONTINUOUS_DAY_EXECUTION,
         "arrival_method": "Poisson stream per period at the period's total lambda",
         "routing_policy": "shortest system size with seeded fair ties",
         "service_sampling_method": "empirical per-lane resampling for the arrival period",
@@ -2229,6 +2241,8 @@ def run_selected_validation(
         "failure_rate_cap": float(failure_cap),
         "periods": outcome["periods"],
         "verdict": outcome["verdict"],
+        # Who the displayed Wq_sim covers, from the linked DES job's recorded provenance.
+        "des_wait_disclosure": selected_des_wait_disclosure(des_result),
     }
     job = _save_job(
         db, user, "workflow_validation", analysis, scenario,

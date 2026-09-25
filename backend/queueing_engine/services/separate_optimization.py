@@ -430,22 +430,89 @@ def _validated_samples(row: dict) -> list[float] | None:
     return clean
 
 
+WAIT_POPULATION_STARTED = "customers whose service started within the horizon"
+
+# Provenance of a stored selected-plan DES result: its ``execution`` field, which every
+# selected-plan DES result has carried since the feature was introduced.
+SELECTED_DES_PER_PERIOD_EXECUTION = "selected-plan routing DES (period-independent, no carryover)"
+SELECTED_DES_CONTINUOUS_DAY_EXECUTION = (
+    "selected-plan continuous-day routing DES (queues and breaks carry across periods)")
+WAIT_DEFINITION_STARTED = (
+    "Mean queue waiting time among customers whose service started within the simulation "
+    "horizon. Customers still waiting at the horizon are excluded from that mean.")
+WAIT_DEFINITION_CONTINUOUS_DAY = (
+    "Mean queue waiting time of every customer who arrived in the period; the continuous-day "
+    "run serves every admitted customer before it ends.")
+
+
+def selected_des_wait_disclosure(des_result: dict | None) -> dict:
+    """The waiting-time population behind a stored selected-plan DES result's Wq.
+
+    The basis comes only from the recorded ``execution`` provenance, never from metric
+    values: ``per_period`` (fixed horizon), ``continuous_day`` or ``unknown``. Each period's
+    ``censoring_status`` is ``recorded`` (a verified count, zero or positive), ``unknown``
+    (a per-period run stored without the D10 fields, or an unknown basis) or
+    ``not_applicable`` (the continuous day serves everyone). ``wait_definition`` is None
+    whenever the population cannot be stated.
+    """
+    result = des_result if isinstance(des_result, dict) else {}
+    execution = result.get("execution")
+    if execution == SELECTED_DES_PER_PERIOD_EXECUTION:
+        basis = "per_period"
+    elif execution == SELECTED_DES_CONTINUOUS_DAY_EXECUTION:
+        basis = "continuous_day"
+    else:
+        basis = "unknown"
+    periods: dict[str, dict] = {}
+    for period in result.get("periods") or []:
+        if not isinstance(period, dict):
+            continue
+        count = period.get("censored_customers")
+        if basis == "continuous_day":
+            status, value = "not_applicable", None
+        elif (basis == "per_period" and isinstance(count, int) and not isinstance(count, bool)
+              and count >= 0):
+            status, value = "recorded", count
+        else:
+            status, value = "unknown", None
+        periods[str(period.get("time"))] = {"censoring_status": status, "censored_customers": value}
+    recorded = basis == "per_period" and bool(periods) and all(
+        item["censoring_status"] == "recorded" for item in periods.values())
+    if recorded:
+        definition: str | None = WAIT_DEFINITION_STARTED
+    elif basis == "continuous_day":
+        definition = WAIT_DEFINITION_CONTINUOUS_DAY
+    else:
+        definition = None
+    return {"basis": basis, "execution": execution, "wait_definition": definition,
+            "periods": periods}
+
+
+def _wait_count(item: dict) -> int:
+    """Customers behind a lane's Wq: those who started service (D10) where the run
+    reports it, else those served (the continuous day serves everyone)."""
+    return (item["started"] if "started" in item else item.get("served")) or 0
+
+
 def _replication_costs(evaluations: list[dict], rows_by_id: dict, *, horizon: float,
-                       server_cost: float, waiting_cost: float) -> dict:
+                       server_cost: float, waiting_cost: float, unrouted_censored: int = 0) -> dict:
     """Staffing, waiting and total cost of one simulated replication.
 
     Priced for every measured replication, whatever its utilization verdict:
     an over-target run is still an observation of the candidate, and leaving it
     out biases the replicated mean cost low. Each active lane costs its server
-    rate; its waiting cost is ``served / horizon * Wq * rate``. A lane with no
-    arrivals waited 0 customer-hours. A lane whose arrivals were never served
-    has no measured wait, so the waiting and total cost are undefined (None)
-    with the reason, never zero-filled.
+    rate; its waiting cost is ``count / horizon * Wq * rate`` over the customers
+    behind Wq (``_wait_count``). A lane with no arrivals waited 0 customer-hours.
+    A lane whose arrivals were never served has no measured wait, and customers
+    still waiting at the horizon (censored, per-period runs only) leave the
+    complete waiting exposure unknown; either way the waiting and total cost are
+    undefined (None) with the reason, never zero-filled.
     """
     server_total = 0.0
     waiting_total = 0.0
     no_rate: list[str] = []
     no_wait: list[str] = []
+    censored: list[str] = []
     for item in evaluations:
         if not item.get("active"):
             continue
@@ -455,24 +522,48 @@ def _replication_costs(evaluations: list[dict], rows_by_id: dict, *, horizon: fl
             no_rate.append(str(queue_id))
         else:
             server_total += lane_cost
-        served = item.get("served") or 0
-        lane_wait = (_compute_waiting_cost(served / horizon, item.get("Wq"), waiting_cost)
-                     if served and item.get("Wq") is not None else None)
-        if lane_wait is not None:
+        count = _wait_count(item)
+        lane_wait = (_compute_waiting_cost(count / horizon, item.get("Wq"), waiting_cost)
+                     if count and item.get("Wq") is not None else None)
+        if item.get("censored_customers"):
+            censored.append(f"{queue_id} ({item['censored_customers']})")
+        elif lane_wait is not None:
             waiting_total += lane_wait
-        elif served or item.get("arrivals"):
+        elif count or item.get("arrivals"):
             no_wait.append(str(queue_id))
+    if unrouted_censored:
+        censored.append(f"not yet routed ({unrouted_censored})")
     reasons = []
     if no_rate:
         reasons.append(f"Staffing cost undefined: no valid server cost for {', '.join(sorted(no_rate))}.")
     if no_wait:
         reasons.append("Waiting cost undefined: no measured wait for "
                        f"{', '.join(sorted(no_wait))}, whose arrivals were not served within the run.")
+    if censored:
+        reasons.append("Waiting cost undefined: customers were still waiting at the horizon on "
+                       f"{', '.join(sorted(censored))}, so their complete waits are unknown; the "
+                       "started-service cohort estimate is reported separately.")
     staffing = None if no_rate else server_total
-    waiting = None if no_wait else waiting_total
+    waiting = None if no_wait or censored else waiting_total
     return {"server_cost": staffing, "waiting_cost": waiting,
             "total_cost": None if staffing is None or waiting is None else staffing + waiting,
             "cost_undefined_reason": " ".join(reasons) or None}
+
+
+def _started_cohort_waiting_cost(evaluations: list[dict], horizon: float, waiting_cost: float) -> float | None:
+    """Waiting cost per hour of the customers whose service started (complete waits only).
+
+    Disclosed beside a censored run's undefined complete cost; it excludes the
+    customers still waiting at the horizon and is not an all-customer cost.
+    None when no customer started service.
+    """
+    active = [item for item in evaluations if item.get("active")]
+    started = sum(_wait_count(item) for item in active)
+    if not started:
+        return None
+    exposure = math.fsum(_wait_count(item) * item["Wq"] for item in active
+                         if _wait_count(item) and item.get("Wq") is not None)
+    return exposure / horizon * waiting_cost
 
 
 def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration_hours: float,
@@ -492,6 +583,12 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
     carries pre-converted DES offset records for active lanes. Both measured
     verdicts return the run's ``trace_events``/``trace_truncated`` playback
     evidence; only the refusal statuses, which never reach the DES, omit it.
+
+    Fixed-horizon accounting (D10): utilization is busy time up to the horizon
+    over the horizon; Wq is the mean complete wait, from admission, of the
+    customers whose service started; customers still waiting at the horizon are
+    censored (counted with their partial waits) and leave the waiting and total
+    cost undefined, with ``started_cohort_waiting_cost`` disclosed separately.
     """
     ceiling = validate_separate_target(target)
     available = candidate.get("available_queue_ids") or []
@@ -571,7 +668,7 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
             if queue_id in active_set:
                 run_breaks.append(entry)
     try:
-        lanes, trace, trace_truncated, _ = _run_routing_des(
+        lanes, trace, trace_truncated, horizon_meta = _run_routing_des(
             active_ids=active, tie_order=available, samples_by_id=sample_lists,
             total_lambda=total_lambda, duration_hours=horizon, seed=seed,
             time_label=time_label, max_events=max_events, breaks=run_breaks,
@@ -586,9 +683,12 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
             stats = lanes[queue_id]
             mean_service = sum(sample_lists[queue_id]) / len(sample_lists[queue_id])
             served = stats["served"]
+            started = stats["started"]
             waiting_left = len(stats["lifecycle"].waiting_customer_ids)
             in_service = 1 if stats["lifecycle"].in_service_customer_id is not None else 0
-            wq = stats["wait_sum"] / served if served else None
+            # D10: the mean covers the customers whose service started (their full wait
+            # is known); busy time includes service in progress up to the horizon.
+            wq = stats["wait_sum"] / started if started else None
             rho = min(1.0, stats["busy_time"] / horizon) if horizon > 0 else 0.0
             evaluations.append({
                 "queue_id": queue_id,
@@ -600,9 +700,13 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
                 "server_id": stats["lifecycle"].server_id,
                 "arrivals": stats["arrivals"],
                 "served": served,
+                "started": started,
                 "waiting": waiting_left,
                 "in_service": in_service,
+                "censored_customers": waiting_left,
+                "censored_waiting_hours": stats["censored_waiting_hours"],
                 "Wq": wq,
+                "wait_population": WAIT_POPULATION_STARTED,
                 "rho": rho,
                 "stable": bool(rho < 1.0),
                 "max_queue": stats["max_queue"],
@@ -618,9 +722,13 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
                 "server_id": dedicated_server_id(queue_id),
                 "arrivals": 0,
                 "served": 0,
+                "started": 0,
                 "waiting": 0,
                 "in_service": 0,
+                "censored_customers": 0,
+                "censored_waiting_hours": 0.0,
                 "Wq": None,
+                "wait_population": WAIT_POPULATION_STARTED,
                 "rho": None,
                 "stable": True,
                 "max_queue": 0,
@@ -639,19 +747,34 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
     # INFEASIBLE left selected-plan playback with an empty floor for exactly the
     # busy periods the operator most needs to watch.
     trace_evidence = {"trace_events": trace, "trace_truncated": trace_truncated}
+    # D10: customers still waiting at the horizon (in a lane or not yet routed) are
+    # censored; they are counted, never given a completed wait, and make the complete
+    # waiting cost unavailable.
+    unrouted = horizon_meta["unrouted_at_horizon"]
+    horizon_accounting = {
+        "wait_population": WAIT_POPULATION_STARTED,
+        "admitted": horizon_meta["admitted"],
+        "unrouted_at_horizon": unrouted,
+        "censored_customers": sum(item["censored_customers"] for item in evaluations) + unrouted,
+        "censored_waiting_hours": math.fsum(item["censored_waiting_hours"] for item in evaluations)
+        + horizon_meta["unrouted_censored_hours"],
+        "started_cohort_waiting_cost": _started_cohort_waiting_cost(evaluations, horizon, waiting_cost),
+    }
     # Both verdicts are measured runs, so both are priced (D1).
     costs = _replication_costs(evaluations, normalized, horizon=horizon,
-                               server_cost=server_cost, waiting_cost=waiting_cost)
+                               server_cost=server_cost, waiting_cost=waiting_cost,
+                               unrouted_censored=unrouted)
     if over_target:
         return {**base, "status": "INFEASIBLE",
                 "reason": f"Simulated utilization exceeds the {ceiling:.0%} ceiling for: {', '.join(over_target)}.",
-                "evaluations": evaluations, **costs, "total_lambda": total_lambda,
+                "evaluations": evaluations, **costs, **horizon_accounting, "total_lambda": total_lambda,
                 "customer_conservation": conserved, "metric_provenance": "simulated",
                 **trace_evidence}
     return {**base, "status": "FEASIBLE", "reason": None,
             "evaluations": evaluations,
             "total_lambda": total_lambda,
             **costs,
+            **horizon_accounting,
             "customer_conservation": conserved,
             "metric_provenance": "simulated",
             "method": "conserved-arrival shortest-queue routing DES",
@@ -889,8 +1012,10 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
     configured order and starve later lanes) and served from the chosen
     lane's own empirical samples (``rng.choice``, matching the Current-state
     parallel DES convention). Queues start empty; the run ends at the horizon
-    with leftovers counted, never dropped. Event records reuse the engine
-    trace schema so playback stays compatible.
+    with leftovers counted, never dropped: service in progress there adds its
+    busy time up to the horizon, and customers still waiting (in a lane or not
+    yet routed) are reported with their partial waits. Event records reuse the
+    engine trace schema so playback stays compatible.
 
     Optional ``breaks`` maps configured per-lane breaks (absolute
     simulation-clock hour offsets) onto the lifecycle: at scheduled start
@@ -912,11 +1037,16 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
     # customer (by arrival order), and routing ties (common random numbers).
     arrival_rng, service_rng, tie_rng = _paired_streams(seed)
     stats = {
-        queue_id: {"arrivals": 0, "served": 0, "wait_sum": 0.0,
+        queue_id: {"arrivals": 0, "served": 0, "started": 0, "wait_sum": 0.0,
                    "busy_time": 0.0, "max_queue": 0, "lifecycle": lifecycles[queue_id],
-                   "breaks": []}
+                   "breaks": [], "censored_waiting_hours": 0.0}
         for queue_id in active_ids
     }
+    # D10: the horizon credits service still in progress and reports customers still
+    # waiting (censored), so each lane keeps its in-service start and waiting admissions.
+    in_service_since: dict[str, float | None] = {queue_id: None for queue_id in active_ids}
+    waiting_since: dict[str, dict[int, float]] = {queue_id: {} for queue_id in active_ids}
+    unrouted_since: list[float] = []
     trace: list[dict] = []
     truncated = False
     topology_changed = env.event()
@@ -959,18 +1089,23 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
         row = stats[queue_id]
         row["arrivals"] += 1
         row["max_queue"] = max(row["max_queue"], len(lifecycle.waiting_customer_ids))
+        waiting_since[queue_id][customer_id] = arrival
         record(env.now, "arrival", customer_id, None,
                len(lifecycle.waiting_customer_ids), queue_id)
         with resources[queue_id].request() as request:
             yield request
             lifecycle.begin_service()
             service_start = env.now
+            waiting_since[queue_id].pop(customer_id, None)
+            in_service_since[queue_id] = service_start
+            row["started"] += 1
             row["wait_sum"] += service_start - arrival
             record(env.now, "service_start", customer_id, lifecycle.server_id,
                    len(lifecycle.waiting_customer_ids), queue_id)
             service_time = _service_at_quantile(samples_by_id[queue_id], quantile)
             yield env.timeout(service_time)
             row["busy_time"] += max(0.0, min(env.now, duration_hours) - service_start)
+            in_service_since[queue_id] = None
             lifecycle.complete_service()
             row["served"] += 1
             record(env.now, "service_end", customer_id, lifecycle.server_id,
@@ -1023,11 +1158,17 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
                 break
             yield env.timeout(interval)
             admitted += 1
+            # The customer's wait runs from admission, including any wait for a lane
+            # to accept arrivals (as in run_routing_day_des).
+            admitted_at = env.now
             quantile = service_rng.random()
             eligible = _eligible_ids()
+            if not eligible:
+                unrouted_since.append(admitted_at)
             while not eligible:
                 yield topology_changed
                 eligible = _eligible_ids()
+            unrouted_since.clear()
             system_sizes = {
                 queue_id: len(lifecycles[queue_id].waiting_customer_ids)
                 + (1 if lifecycles[queue_id].in_service_customer_id is not None else 0)
@@ -1036,15 +1177,24 @@ def _run_routing_des(*, active_ids, tie_order, samples_by_id, total_lambda,
             chosen = route_arrival(eligible, system_sizes, tie_order, tie_rng)
             customer_counter += 1
             lifecycles[chosen].enqueue(str(customer_counter))
-            env.process(customer_process(chosen, customer_counter, env.now, quantile))
+            env.process(customer_process(chosen, customer_counter, admitted_at, quantile))
 
     for queue_id in active_ids:
         if queue_id in by_queue_breaks:
             env.process(break_controller(queue_id))
     env.process(arrival_process())
     env.run(until=duration_hours)
+    for queue_id in active_ids:
+        # Service in progress at the horizon counts up to the horizon, never beyond it.
+        started_at = in_service_since[queue_id]
+        if started_at is not None:
+            stats[queue_id]["busy_time"] += max(0.0, duration_hours - started_at)
+        stats[queue_id]["censored_waiting_hours"] = math.fsum(
+            max(0.0, duration_hours - admitted_at) for admitted_at in waiting_since[queue_id].values())
     routed = total_arrivals(stats)
-    return stats, trace, truncated, {"admitted": admitted, "unrouted_at_horizon": admitted - routed}
+    return stats, trace, truncated, {
+        "admitted": admitted, "unrouted_at_horizon": admitted - routed,
+        "unrouted_censored_hours": math.fsum(max(0.0, duration_hours - t) for t in unrouted_since)}
 
 
 def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int | None,
@@ -1435,9 +1585,10 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
                          "arrivals": None, "served": None, "waiting_end": None, "Wq": None})
     rep_waits = []
     for lanes in by_rep_lane:
-        weighted = [(lanes[qid]["served"], lanes[qid]["Wq"]) for qid in active
-                    if qid in lanes and _is_number(lanes[qid].get("served"))
-                    and lanes[qid]["served"] > 0 and _is_number(lanes[qid].get("Wq"))]
+        # Weight each lane's Wq by the customers it averages (D10: started service).
+        weighted = [(_wait_count(lanes[qid]), lanes[qid]["Wq"]) for qid in active
+                    if qid in lanes and _is_number(_wait_count(lanes[qid]))
+                    and _wait_count(lanes[qid]) > 0 and _is_number(lanes[qid].get("Wq"))]
         served_total = math.fsum(served for served, _ in weighted)
         rep_waits.append(math.fsum(served * wq for served, wq in weighted) / served_total
                          if served_total > 0 else None)
@@ -1455,8 +1606,20 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
          "reason": run.get("cost_undefined_reason") or "The replication reported no total cost."}
         for index, run in enumerate(runs) if not _is_number(run.get("total_cost"))
     ]
+    # D10 disclosure, only from per-period runs that report it.
+    horizon_accounting = {}
+    if any("censored_customers" in run for run in runs):
+        horizon_accounting = {
+            "wait_population": WAIT_POPULATION_STARTED,
+            "censored_customers": _summarize_metric([run.get("censored_customers") for run in runs]),
+            "censored_waiting_hours": _summarize_metric([run.get("censored_waiting_hours") for run in runs]),
+            "replications_with_censoring": sum(1 for run in runs if (run.get("censored_customers") or 0) > 0),
+            "started_cohort_waiting_cost": _summarize_every(
+                [run.get("started_cohort_waiting_cost") for run in runs]),
+        }
     first_trace = runs[0]
     return {
+        **horizon_accounting,
         "time": candidate.get("time", "segment"),
         "available_queue_ids": list(candidate.get("available_queue_ids") or []),
         "active_queue_ids": list(active),
@@ -1647,6 +1810,7 @@ def _optimize_separate_des(time_label, available, by_id, counts, *, ceiling,
             "cost_uncertainty": {key: total.get(key)
                                  for key in ("sd", "se", "ci_lower", "ci_upper", "n")},
             "replications_over_target": aggregate.get("replications_over_target"),
+            "replications_with_censoring": aggregate.get("replications_with_censoring"),
             "cost_undefined_replications": aggregate.get("cost_undefined_replications"),
             "evidence": aggregate,
         })
@@ -1672,11 +1836,20 @@ def _optimize_separate_des(time_label, available, by_id, counts, *, ceiling,
     unpriced = [candidate for candidate in candidates
                 if candidate["status"] == "FEASIBLE" and not _is_number(candidate["mean_total_cost"])]
     if unpriced:
+        # D10: say when the cost is undefined because customers were still waiting at the horizon.
+        censored = [candidate for candidate in unpriced if candidate.get("replications_with_censoring")]
+        censoring = ("" if not censored else
+                     " Customers were still waiting at the DES horizon for lane count(s) "
+                     + ", ".join(f"{candidate['active_lane_count']} (in "
+                                 f"{candidate['replications_with_censoring']} of "
+                                 f"{des_settings['replications']} replications)"
+                                 for candidate in censored)
+                     + ", so their complete waits are unknown.")
         return {"time": time_label, "target_utilization": ceiling, "overall": "UNSUPPORTED",
                 "reason": ("Feasible lane count(s) "
                            + ", ".join(str(candidate["active_lane_count"]) for candidate in unpriced)
                            + " have no defined replicated cost, so candidates cannot be ranked "
-                             "by cost and no optimum is claimed."),
+                             "by cost and no optimum is claimed." + censoring),
                 "candidates": candidates, "optimum": None, **provenance}
     ranking = rank_des_candidates(candidates)
     if not ranking:

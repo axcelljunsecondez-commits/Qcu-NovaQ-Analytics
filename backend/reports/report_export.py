@@ -424,9 +424,17 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
     for col in ("A", "B", "C", "D", "E"):
         ws_sched.column_dimensions[col].width = 20
 
+    def _still_waiting(period: dict) -> object:
+        # A recorded count (zero or positive); otherwise say why there is none, never 0.
+        status = period.get("censoring_status")
+        if status == "recorded" and _is_int(period.get("censored_customers")):
+            return period["censored_customers"]
+        return "not applicable" if status == "not_applicable" else "unknown"
+
     des = model.get("des") or {}
     ws_des = _sheet("DES", ["Time", "Queue", "Active", "Arrivals", "Served",
-                            "Wq (min)", "Utilization", "Peak Mean Utilization", "Max Queue"])
+                            "Wq (min)", "Utilization", "Peak Mean Utilization", "Max Queue",
+                            "Wq population", "Still waiting at horizon (period)"])
     row_idx = 2
     for period in des.get("periods") or []:
         peak = None
@@ -454,9 +462,12 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
             if _number(peak) is not None:
                 ws_des.cell(row=row_idx, column=8).number_format = pct_fmt
             ws_des.cell(row=row_idx, column=9, value=lane.get("max_queue"))
+            ws_des.cell(row=row_idx, column=10, value=period.get("wait_population") or "N/A")
+            ws_des.cell(row=row_idx, column=11, value=_still_waiting(period))
             row_idx += 1
-    for col in ("A", "B", "C", "D", "E", "F", "G", "H", "I"):
+    for col in ("A", "B", "C", "D", "E", "F", "G", "H", "I", "K"):
         ws_des.column_dimensions[col].width = 18
+    ws_des.column_dimensions["J"].width = 48
 
     ws_mc = _sheet("MonteCarlo", ["Time", "Queue", "Lambda", "Trials", "Failure Rate",
                                   "Cap", "CI Lower", "CI Upper", "Status"])
@@ -473,7 +484,8 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
         row_idx += 1
 
     ws_val = _sheet("Validation", ["Time", "Queue", "Rho", "Wq (min)",
-                                   "Failure Rate", "Verdict"])
+                                   "Failure Rate", "Verdict",
+                                   "Wq population", "Still waiting at horizon (period)"])
     row_idx = 2
     validation = model.get("validation") or {}
     for period in validation.get("periods") or []:
@@ -493,7 +505,11 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
                         value=queue.get("mc_failure_rate")
                         if _number(queue.get("mc_failure_rate")) is not None else "N/A")
             ws_val.cell(row=row_idx, column=6, value=queue.get("validation_verdict"))
+            ws_val.cell(row=row_idx, column=7, value=period.get("wait_population") or "N/A")
+            ws_val.cell(row=row_idx, column=8, value=_still_waiting(period))
             row_idx += 1
+    ws_val.column_dimensions["G"].width = 48
+    ws_val.column_dimensions["H"].width = 18
 
     ws_dec = _sheet("Decision", ["Field", "Value"])
     _put(ws_dec, 2, "Status", decision.get("status"))

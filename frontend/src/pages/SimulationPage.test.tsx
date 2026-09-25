@@ -170,12 +170,12 @@ function workflow(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function renderPage() {
+function renderPage(lang: 'en' | 'tl' = 'en') {
   return renderWithProviders(
     <Routes>
       <Route path="/analyses/:analysisId/simulate" element={<SimulationPage />} />
     </Routes>,
-    { route: '/analyses/7/simulate' },
+    { route: '/analyses/7/simulate', lang },
   )
 }
 
@@ -750,6 +750,144 @@ describe('selected separate plan simulation', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
+  describe('waiting-time coverage at the horizon (D10)', () => {
+    const population = 'customers whose service started within the horizon'
+    // 46 arrivals = 45 served + 1 in service + 0 waiting; all 46 started, so Wq is complete.
+    const completeLane = {
+      ...selectedLane, served: 45, waiting: 0, in_service: 1, started: 46,
+      censored_waiting_hours: 0, wait_population: population, Wq_sim: 0.09,
+    }
+    // 50 arrivals = 44 served + 1 in service + 5 still waiting; Wq covers the 45 who started.
+    const censoredLane = {
+      ...selectedLane, arrivals: 50, served: 44, waiting: 5, in_service: 1, started: 45,
+      censored_waiting_hours: 1.7, wait_population: population, Wq_sim: 0.2,
+    }
+    const idle = { ...idleLane, started: 0, censored_waiting_hours: 0, wait_population: population }
+    // Every stored selected-plan DES result records its basis in `execution`.
+    const PER_PERIOD = 'selected-plan routing DES (period-independent, no carryover)'
+    const CONTINUOUS_DAY = 'selected-plan continuous-day routing DES (queues and breaks carry across periods)'
+    const olderPerPeriod = { ...selectedDesResult, execution: PER_PERIOD }  // stored before D10
+
+    function fixedHorizonResult(lane: typeof completeLane, period: Record<string, unknown>) {
+      return {
+        ...selectedDesResult,
+        execution: PER_PERIOD,
+        periods: [{
+          ...selectedDesResult.periods[0],
+          results: [lane, idle],
+          trace: { ...selectedTrace, results: [lane, idle] },
+          server_cost: 87,
+          unrouted_at_horizon: 0,
+          ...period,
+        }],
+      }
+    }
+
+    const complete = fixedHorizonResult(completeLane, {
+      censored_customers: 0, censored_waiting_hours: 0,
+      waiting_cost: 51.75, total_cost: 138.75, started_cohort_waiting_cost: 51.75,
+      cost_undefined_reason: null,
+    })
+    const censored = fixedHorizonResult(censoredLane, {
+      censored_customers: 5, censored_waiting_hours: 1.7,
+      waiting_cost: null, total_cost: null, started_cohort_waiting_cost: 112.5,
+      cost_undefined_reason: 'Waiting cost undefined: customers were still waiting at the horizon on east-07 (5).',
+    })
+
+    function showStored(result: unknown) {
+      separateSelectedSetup()
+      getWorkflowMock.mockResolvedValue(workflow({
+        scenario: v2scenario,
+        selection: job('workflow_selection', { scenario_id: 9 }),
+        des: job('workflow_des', result, { scenario_id: 9, engine: 'selected-plan-routing-des' }),
+      }))
+    }
+
+    /** Active, arrivals, served, started, still waiting, Wq (min) cells of a lane row. */
+    function laneCells(queueId: string) {
+      const header = screen.getAllByRole('rowheader', { name: queueId })[0]
+      const row = header.closest('tr') as HTMLElement
+      return Array.from(row.querySelectorAll('td')).slice(0, 6).map((cell) => cell.textContent)
+    }
+
+    it('states the Wq population and a complete waiting cost when nobody is censored', async () => {
+      showStored(complete)
+      renderPage()
+      const coverage = await screen.findByTestId('sep-wait-coverage')
+      expect(coverage).toHaveTextContent(
+        'Wq covers only customers whose service started within the simulation horizon.')
+      expect(coverage).toHaveTextContent('Customers still waiting at the horizon: 0')
+      expect(coverage).toHaveTextContent('Complete waiting cost: available.')
+      expect(screen.getByRole('columnheader', { name: 'Started service' })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: 'Still waiting at horizon' })).toBeInTheDocument()
+      // 46 started (the Wq population), 0 still waiting, Wq 0.09 h = 5.40 min.
+      expect(laneCells('east-07')).toEqual(['✓', '46', '45', '46', '0', '5.40'])
+      expect(screen.queryByTestId('sep-wait-coverage-legacy')).not.toBeInTheDocument()
+    })
+
+    it('counts censored customers and marks the complete waiting cost unavailable', async () => {
+      showStored(censored)
+      renderPage()
+      const coverage = await screen.findByTestId('sep-wait-coverage')
+      expect(coverage).toHaveTextContent('Customers still waiting at the horizon: 5')
+      expect(coverage).toHaveTextContent(
+        'Complete waiting cost: unavailable, because customers were still waiting at the horizon')
+      expect(coverage).not.toHaveTextContent('Complete waiting cost: available.')
+      expect(coverage).not.toHaveTextContent('112.5')  // the started-cohort cost is never shown as the cost
+      // 45 started (the Wq population), 5 still waiting; the started-cohort Wq
+      // (0.2 h = 12.00 min) is a valid measured estimate and stays visible.
+      expect(laneCells('east-07')).toEqual(['✓', '50', '44', '45', '5', '12.00'])
+    })
+
+    it('does not invent coverage for an older stored run without the new fields', async () => {
+      showStored(olderPerPeriod)
+      renderPage()
+      const legacy = await screen.findByTestId('sep-wait-coverage-legacy')
+      expect(legacy).toHaveTextContent('This stored run was computed with the earlier horizon accounting')
+      expect(screen.queryByTestId('sep-wait-coverage')).not.toBeInTheDocument()
+      expect(screen.queryByRole('columnheader', { name: 'Started service' })).not.toBeInTheDocument()
+      // Unknown, not zero: no count and no cost verdict is shown for it.
+      expect(screen.queryByText(/Customers still waiting at the horizon/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Complete waiting cost/)).not.toBeInTheDocument()
+    })
+
+    it('adds no horizon disclosure to a continuous-day run, which serves every customer', async () => {
+      const dayLane = { ...selectedLane, waiting: null, in_service: null }
+      showStored({
+        ...selectedDesResult,
+        execution: CONTINUOUS_DAY,
+        periods: [{ ...selectedDesResult.periods[0], results: [dayLane],
+                    trace: { ...selectedTrace, results: [dayLane] } }],
+      })
+      renderPage()
+      await screen.findByTestId('lane-east-07')
+      expect(screen.queryByTestId('sep-wait-coverage')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('sep-wait-coverage-legacy')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('sep-wait-basis-unknown')).not.toBeInTheDocument()
+    })
+
+    it('states an unrecorded basis as unknown, even when counts are present', async () => {
+      showStored({ ...censored, execution: undefined })
+      renderPage()
+      expect(await screen.findByTestId('sep-wait-basis-unknown')).toHaveTextContent(
+        'The simulation basis of this stored DES run was not recorded')
+      expect(screen.queryByTestId('sep-wait-coverage')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('sep-wait-coverage-legacy')).not.toBeInTheDocument()
+    })
+
+    it('shows the disclosure in Tagalog', async () => {
+      showStored(censored)
+      renderPage('tl')
+      const coverage = await screen.findByTestId('sep-wait-coverage')
+      expect(coverage).toHaveTextContent(
+        'Sakop lang ng Wq ang mga customer na nagsimula ang serbisyo sa loob ng simulation horizon.')
+      expect(coverage).toHaveTextContent('Mga customer na naghihintay pa sa horizon: 5')
+      expect(coverage).toHaveTextContent('Kumpletong waiting cost: hindi available')
+      expect(screen.getByRole('columnheader', { name: 'Nagsimula ang serbisyo' })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: 'Naghihintay pa sa horizon' })).toBeInTheDocument()
+    })
+  })
+
   const selectedValidationResult = {
     provenance: 'SELECTED',
     scenario_id: 9,
@@ -798,6 +936,80 @@ describe('selected separate plan simulation', () => {
       validation: job('workflow_validation', validationResult, { scenario_id: 9 }),
     })
   }
+
+  describe('validation Wq population (D10)', () => {
+    const PER_PERIOD = 'selected-plan routing DES (period-independent, no carryover)'
+    const CONTINUOUS_DAY = 'selected-plan continuous-day routing DES (queues and breaks carry across periods)'
+    const disclosure = (basis: string, status: string, count: number | null) => ({
+      basis, execution: null, wait_definition: null,
+      periods: { '08:00': { censoring_status: status, censored_customers: count } },
+    })
+
+    /** Validation job linked to DES job 10; `desJobId` is the DES job loaded on the page. */
+    function showValidation(validation: unknown, des: unknown, desJobId = 10) {
+      selectedEvidenceSetup({
+        des: { ...job('workflow_des', des, { scenario_id: 9, engine: 'selected-plan-routing-des' }), id: desJobId },
+        validation: job('workflow_validation', validation, { scenario_id: 9 }),
+      })
+    }
+
+    it('states the started-service population and the recorded count', async () => {
+      showValidation({ ...selectedValidationResult, des_wait_disclosure: disclosure('per_period', 'recorded', 5) },
+        { ...selectedDesResult, execution: PER_PERIOD })
+      renderPage()
+      const note = await screen.findByTestId('sep-validation-wait')
+      expect(note).toHaveTextContent('Wq covers only customers whose service started within the simulation horizon.')
+      expect(note).toHaveTextContent('Customers still waiting at the horizon: 5')
+      expect(screen.getAllByText('5.40').length).toBeGreaterThan(0)  // the stored Wq_sim, unchanged
+    })
+
+    it('reports a verified zero as zero', async () => {
+      showValidation({ ...selectedValidationResult, des_wait_disclosure: disclosure('per_period', 'recorded', 0) },
+        { ...selectedDesResult, execution: PER_PERIOD })
+      renderPage()
+      expect(await screen.findByTestId('sep-validation-wait')).toHaveTextContent(
+        'Customers still waiting at the horizon: 0')
+    })
+
+    it('treats an older validation of an older per-period run as unknown, not zero', async () => {
+      showValidation(selectedValidationResult, { ...selectedDesResult, execution: PER_PERIOD })
+      renderPage()
+      const note = await screen.findByTestId('sep-validation-wait')
+      expect(note).toHaveTextContent('computed with the earlier horizon accounting')
+      expect(note).not.toHaveTextContent('Customers still waiting at the horizon')
+    })
+
+    it('keeps the continuous-day definition for a representative-day run', async () => {
+      showValidation(selectedValidationResult, { ...selectedDesResult, execution: CONTINUOUS_DAY })
+      renderPage()
+      expect(await screen.findByTestId('sep-validation-wait')).toHaveTextContent(
+        'Wq covers every customer who arrived in the period')
+    })
+
+    it('says nothing about coverage when the linked DES run is not the one loaded', async () => {
+      showValidation(selectedValidationResult, { ...selectedDesResult, execution: PER_PERIOD }, 99)
+      renderPage()
+      expect(await screen.findByTestId('sep-validation-wait')).toHaveTextContent(
+        'The DES run this validation used is not the one loaded here')
+    })
+
+    it('states an unrecorded basis as unknown', async () => {
+      showValidation({ ...selectedValidationResult, des_wait_disclosure: disclosure('unknown', 'unknown', null) },
+        selectedDesResult)
+      renderPage()
+      expect(await screen.findByTestId('sep-validation-wait')).toHaveTextContent(
+        'The simulation basis of this stored DES run was not recorded')
+    })
+
+    it('shows the validation disclosure in Tagalog', async () => {
+      showValidation({ ...selectedValidationResult, des_wait_disclosure: disclosure('per_period', 'recorded', 5) },
+        { ...selectedDesResult, execution: PER_PERIOD })
+      renderPage('tl')
+      const note = await screen.findByTestId('sep-validation-wait')
+      expect(note).toHaveTextContent('Sakop lang ng Wq ang mga customer na nagsimula ang serbisyo')
+      expect(note).toHaveTextContent('Mga customer na naghihintay pa sa horizon: 5')
+    })
+  })
 
   it('runs selected validation once and shows the PASS verdict with periods', async () => {
     const user = userEvent.setup()
