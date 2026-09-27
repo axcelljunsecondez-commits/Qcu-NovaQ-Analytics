@@ -217,3 +217,17 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Definitions: paid = scheduled - unpaid breaks; scheduled active server time = scheduled - all breaks; regular = min(paid, daily_regular_paid_minutes); overtime = paid - regular, taken in clock order, so the two never overlap. These are scheduled quantities, never simulated service time. The module builds no optimized roster and computes no cost.
 - Roster status: INVALID (any coded violation), INCOMPLETE (a pay value or break-rule coverage is missing), or COMPLETE. A coverage shortfall against the required staffing is reported but is not a violation. Registers are counted, not identified.
 - The separate-queue staff and break sheets, lane breaks, and the 3-minute pre-break cutoff are not used for shared queues. The Phase 5A decisions D1-D16 (solver approach, DES employee model, break-delay and overtime rules, and so on) remain open.
+
+## Shared-Queue Sequential Rostering (2026-09-26)
+
+- `services/shared_rostering.py` (Phase 5B-2) is the sequential workforce optimizer, using `scipy.optimize.milp` (HiGHS) with no new dependency.
+  - Phase 2's selected server counts are a hard coverage target: at every instant, active employees are at least the required servers and at most the registers.
+  - The objective is wages only: regular and overtime per the 5B-1 definitions.
+- Product-owner decisions:
+  - Break starts lie on a caller-supplied clock grid, `break_start_granularity_minutes`, with no default. Results are optimal over that grid only.
+  - Surplus server-minutes are counted, reported, and paid only through wages. They are not attributed to employees.
+  - Active time outside the operating horizon has no requirement and is reported separately.
+  - Solver limits (time limit, `mip_rel_gap`, pattern cap) are required inputs.
+  - This settles Phase 5A D1 (sequential for this phase), D2, D3, and D11.
+- A pay value is required only when the objective uses it. For example, the overtime rate is needed only when an admissible plan exceeds the threshold. A missing value gives INCOMPLETE, never 0.
+- OPTIMAL means HiGHS proved optimality within the reported tolerances for this model and grid, and the roster passed an exact 5B-1 re-check. It is never a claim about the real queue or a unique roster. Rosters are not yet simulated.

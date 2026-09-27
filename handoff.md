@@ -451,6 +451,62 @@ Current verified state (one pure module; no solver, DES, cost, API, schema, scen
   - Backend 1360 passed, 3 skipped, 1 xfailed (1307 + 53; all 16 separate-queue test files included). Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 163 files. Frontend not run: nothing under `frontend/` changed.
 - Next (needs approval): Phase 5B-2 and later (sequential and integrated MILP, named-server DES, workforce cost), plus the open Phase 5A decisions.
 
+## Shared Queue Enhancement: Phase 5B-2 Sequential Rostering MILP (2026-09-26)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-26-shared-queue-sequential-rostering.md`
+- `docs/superpowers/plans/2026-09-26-shared-queue-sequential-rostering-plan.md`
+
+Product-owner decisions (2026-09-26):
+
+- Sequential only: Phase 2's selected server counts are a hard coverage target, solved with `scipy.optimize.milp` (HiGHS). No dependency was added.
+- Break starts lie on a caller-supplied clock grid, `break_start_granularity_minutes`, with no default.
+- Surplus is counted and paid only through wages. There is no surplus rate.
+- Solver limits are required inputs with no defaults: time limit, `mip_rel_gap`, and a pattern cap.
+
+Current verified state (one pure module; no DES, cost-integration, API, schema, scenario, frontend, Decision, or Report change):
+
+- New `services/shared_rostering.py`:
+  - Patterns: every 5B-1-valid single shift with its breaks on the break grid. Generation stops with `PATTERN_LIMIT_EXCEEDED` rather than truncating.
+  - MILP:
+    - a binary choice per pattern;
+    - on every elementary interval, which is exact in continuous time: active ≥ required inside the horizon, and active ≤ registers all day;
+    - maximum shifts per employee, and interval-clique rows for split-shift rest;
+    - exact regular and overtime: a per-pattern cost with one shift a day, and a big-M binary switch for split shifts;
+    - a wages-only objective.
+  - `INCOMPLETE`, with nothing solved and no cost invented, when an admissible shift length has no break rule, or when the objective needs a missing pay value. The overtime rate is needed only when an admissible plan exceeds the threshold, found by an exact maximum-paid recursion.
+  - Certificates before solving: a requirement above the registers, and fewer available employees than required in an interval.
+  - Statuses: `OPTIMAL`, `FEASIBLE_NOT_PROVEN_OPTIMAL`, `NO_SOLUTION_FOUND`, `INFEASIBLE`, `INCOMPLETE`, `PATTERN_LIMIT_EXCEEDED`, `SOLVER_ERROR`, `VERIFICATION_FAILED`.
+  - Feasibility is FEASIBLE only after exact verification:
+    - integrality within 1e-6;
+    - every row holds in integer arithmetic;
+    - 5B-1 `evaluate_roster` finds no violation, shortfall, or register excess;
+    - the labor cost from the 5B-1 minutes equals the model objective.
+  - Solver status, message, objective, dual bound, gap, nodes, wall time, options, unchanged HiGHS defaults, and versions are reported. Uniqueness is `NOT_ESTABLISHED`.
+  - `optimize_roster_for_capacity_plan` takes a Phase 2 plan through `staffing_from_capacity_result`.
+- Nothing legacy imports the module; the isolation test covers it.
+- Verification:
+  - `tests/test_shared_rostering.py` has 88 tests on labeled synthetic data:
+    - all 12 required areas;
+    - an independent brute force (minute loops plus the 5B-1 oracle) for pattern-set equality and optimal-set membership;
+    - 40 seeded random instances;
+    - a Phase 2 plan as the target;
+    - simulated solver terminations.
+  - Fault injection caught 22 of 22 faults, after 3 missing tests were added.
+  - Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 165 files.
+  - The full backend suite, `python -m pytest tests/ -x`, gave 1448 passed, 3 skipped, and 1 xfailed. That run includes every Separate Queue test file.
+- Scale, on this machine with synthetic employees and the NovaMart Phase 2 plan as the target:
+  - an 8-employee, 13-hour day is proven optimal in 1.9 s with a 60-minute break grid and in 19.7 s with a 30-minute grid;
+  - a 15-minute grid gives 62,568 patterns and no solution within 180 s.
+  - Solve time on real inputs is UNKNOWN.
+- Next (needs approval):
+  - 5B-3 integrated MILP;
+  - 5B-4 named-employee DES;
+  - 5B-5 workforce cost integration;
+  - DES validation of rosters, and an acceptance rule;
+  - a formulation that scales to fine break grids.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:
