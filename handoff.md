@@ -507,6 +507,95 @@ Current verified state (one pure module; no DES, cost-integration, API, schema, 
   - DES validation of rosters, and an acceptance rule;
   - a formulation that scales to fine break grids.
 
+## Shared Queue Enhancement: Phase 5B-3 Integrated Planning MILP (2026-09-28)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-28-shared-queue-integrated-planning.md`
+- `docs/superpowers/plans/2026-09-28-shared-queue-integrated-planning-plan.md`
+
+Product-owner decision (2026-09-28), capacity semantics "every interval":
+
+- The analytical server count is the number of employees on duty on every elementary interval between shift, break, demand-period, and staffing-segment boundaries.
+- Each interval is Phase 1/2's stationary M/M/c evaluation, with its demand period's λ and μ, over its own length.
+- Waiting cost = Σ waiting rate × λ × Wq(c) × hours. Stability, the utilization target, and the maximum wait are checked on every interval.
+- Staffing segments only group the report.
+- The short-interval steady-state approximation is disclosed in the output.
+
+Current verified state (one pure module; no DES, API, schema, scenario, frontend, Decision, or Report change; the 5B-2 sequential optimizer is unchanged):
+
+- New `services/shared_integrated.py`:
+  - The objective is scheduled wages (5B-1 regular and overtime minutes at the employee's rates) plus analytical waiting cost. Phase 2's server cost per server-hour is never charged. Every employee on duty is paid and staffs the queue, so surplus is never hidden.
+  - The model is 5B-2's `_build_model`, built with zero-requirement pieces. It keeps the pattern columns, register rows, max-shift and split-shift rows, and exact regular and overtime cost. On top of it, for every in-horizon elementary interval i and every admissible count c, it adds:
+    - a binary `z[i,c]`;
+    - the link row `Σ_q a[q,i] x_q − Σ_c c z[i,c] = 0`;
+    - the choose-one row `Σ_c z[i,c] = 1`.
+    Admissible counts lie in [min_servers, min(max_servers, registers)] and pass Phase 2's `evaluate_candidate` rule.
+  - `PlanningConfig` has no defaults: waiting rate, target, maximum wait, and minimum and maximum servers. A missing waiting rate gives `INCOMPLETE` when some in-horizon λ > 0, never 0.
+  - Certificates before solving:
+    - `NO_ADMISSIBLE_CAPACITY`, which needs no patterns;
+    - `INSUFFICIENT_WORKFORCE`, only with a complete pattern set.
+    HiGHS status 2 gives `SOLVER_PROVED_INFEASIBLE`.
+  - Statuses are as in 5B-2. A time limit without a solution is `NO_SOLUTION_FOUND` with UNKNOWN feasibility, never INFEASIBLE.
+  - Feasibility is FEASIBLE only after exact verification:
+    - integrality;
+    - every row and bound in integer arithmetic;
+    - no 5B-1 violation or register excess;
+    - the selected count equals the 5B-1 on-duty count on every interval;
+    - the independent `evaluate_planning_cost` places the roster in the feasible set;
+    - R/O minutes match;
+    - wages and waiting match the model's terms within a relative 1e-9.
+  - `evaluate_planning_cost` prices any roster exactly without the MILP and states whether it is in the integrated feasible set.
+  - `compare_with_sequential` runs Phase 2 and then 5B-2, and prices both rosters on the same objective. "Integrated no worse" is claimed only when the sequential roster is in the integrated feasible set.
+- Nothing legacy imports the module; it joins the isolation list in `tests/test_shared_segments.py`.
+- Verification:
+  - `tests/test_shared_integrated.py` has 93 collected tests (43 test functions, with parametrization and 40 seeds) on labeled synthetic data:
+    - an independent brute force: 5B-2 test enumeration, a minute-by-minute on-duty count, Phase 1 tests' Erlang-B recursion, and its own wage arithmetic;
+    - hand-computed optima, including two tied rosters;
+    - all 10 required verification points;
+    - the comparison logic;
+    - 40 seeded random instances;
+    - simulated solver terminations and corrupted vectors.
+  - Fault injection (28 mutants of the formulation, the verification, the evaluation, and the comparison; scratch script, not committed) caught 28 of 28, after 4 tests and 1 assertion were added. One mutant, register-capped candidate counts, changed only the certificate's reported counts; an assertion now pins them.
+  - Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 167 files.
+  - The full backend suite, `python -m pytest tests/ -x`, gave 1541 passed, 3 skipped, and 1 xfailed (the 1448 baseline plus 93 new tests). That run includes every Separate Queue test file.
+  - `git status` shows no change to any existing backend source file. The only existing test change is one line in `tests/test_shared_segments.py`, which adds the module to the isolation list.
+- Benchmark (not a test): NovaMart 14-day-average λ and μ rows (`NOVAMART_AVERAGE_ROWS`); synthetic employees, pay, shift and break rules, and registers (the 5B-2 probe set: 8 employees, 05:00-18:00, 4 registers); waiting 100 per customer-hour, target 0.70, servers 1-24, Phase 2 server cost 94.375 per hour; time limit 300 s; mip_rel_gap 0. Phase 2 selected [2, 3, 3, 3, 3, 4, 3, 4, 4, 3, 3, 2, 2] servers per hour. The comparison prices both rosters with the same exact evaluator.
+  - Grid 60 (5,424 patterns):
+    - Integrated: OPTIMAL (HiGHS status 0, gap 0) at 3759.24 = wages 3206 + waiting 553.24, in a 4.7 s solve.
+    - Sequential: 5B-2 OPTIMAL at wages 3307, which is 3828.02 on the planning objective.
+    - The sequential roster is in the integrated feasible set, so the integrated plan is no worse, by 68.77.
+  - Grid 30 (19,528 patterns):
+    - Integrated: OPTIMAL at 3670.78 = 3047 + 623.78, in 96.5 s.
+    - Sequential: OPTIMAL at wages 3124, in 34.4 s. That is 3684.31 on the planning objective.
+    - The integrated plan is no worse, by 13.54.
+  - Grid 15 (62,568 patterns; integrated model 62,670 columns, 158 rows, 3,306,228 nonzeros): no solution within the 300 s limit, integrated or sequential.
+    - Both runs are `NO_SOLUTION_FOUND` with feasibility UNKNOWN, and nothing is compared.
+    - The integrated `milp` call returned after 342.4 s, 42 s over the limit; the cause of the overrun is UNKNOWN.
+  - Integrated on-duty counts differ from Phase 2's. For example, at grid 60 the count is 2-3 in 06:00-07:00, where Phase 2 selected 3, and 3-4 in 07:00-10:00, where Phase 2 selected 3.
+  - The grid-60 optimum is above the grid-30 optimum. That is consistent with the grid-60 patterns being a subset of the grid-30 patterns (INFERRED from the grid definition).
+  - Runtimes depend on the machine and its load. The 5B-2 grid-30 solve is recorded at 19.7 s in the 5B-2 section, took 27.6 s in the 15-minute investigation, and took 34.4 s here.
+- 15-minute-grid investigation (5B-2 sequential model, same benchmark):
+  - The model is 58 rows × 62,568 binary columns with 1,684,296 nonzeros, built in about 5 s.
+  - The LP relaxation alone is optimal at 3006.7 in 16.3 s of HiGHS time.
+  - MIP with presolve:
+    - Presolve ran from 3 s to 187 s. It made only the reductions (1,008 columns, 21,960 nonzeros) that the LP presolve made in 7 s.
+    - The root started at 199.7 s, and each root cut round took about 5-10 s.
+    - At 303 s there were 0 nodes and no incumbent (dual bound 3007).
+  - MIP without presolve: feasibility jump found 3582 at 12.8 s. At the limit the root cut loop was still running, with 0 nodes and a 16.05% gap.
+  - The time therefore goes to MIP presolve and then the root cut loop, not to the LP or the build.
+  - Which presolve rule takes the time is UNKNOWN. SciPy's HiGHS options reject `presolve_rule_logging`, and `highspy` is not installed and was not added.
+  - The grid-30 patterns are a subset of the grid-15 patterns, so the grid-15 optima are at most the grid-30 optima (INFERRED, not solved).
+  - No constraint was changed. PROPOSED only:
+    - an exact formulation with implicit break placement;
+    - dropping the in-horizon register rows of the integrated model. The link and choose-one rows already imply them, since every admissible c ≤ registers. That preserves the feasible set; the runtime effect is UNKNOWN. The link rows repeat the pattern coefficients of those rows, which is why the integrated model has about twice the nonzeros.
+- Next (needs approval):
+  - 5B-4 named-employee DES;
+  - 5B-5 workforce cost integration;
+  - DES validation of rosters, and an acceptance rule;
+  - a formulation that scales to fine break grids;
+  - API and UI exposure.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:

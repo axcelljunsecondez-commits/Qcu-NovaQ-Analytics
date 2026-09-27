@@ -231,3 +231,18 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - This settles Phase 5A D1 (sequential for this phase), D2, D3, and D11.
 - A pay value is required only when the objective uses it. For example, the overtime rate is needed only when an admissible plan exceeds the threshold. A missing value gives INCOMPLETE, never 0.
 - OPTIMAL means HiGHS proved optimality within the reported tolerances for this model and grid, and the roster passed an exact 5B-1 re-check. It is never a claim about the real queue or a unique roster. Rosters are not yet simulated.
+
+## Shared-Queue Integrated Planning (2026-09-28)
+
+- `services/shared_integrated.py` (Phase 5B-3) is the integrated planning optimizer, using `scipy.optimize.milp` (HiGHS) with no new dependency. It chooses shift-and-break patterns and, through them, the server count on duty on every interval. It minimizes wages plus analytical customer waiting cost. The 5B-2 sequential optimizer is unchanged and remains available as the reference.
+- Product-owner decision on capacity semantics ("every interval"):
+  - The analytical server count is the number of employees on duty on every elementary interval between shift, break, demand-period, and staffing-segment boundaries.
+  - Each interval is a stationary M/M/c queue with its demand period's λ and μ, over its own length.
+  - Waiting cost = waiting rate × λ × Wq(c) × hours.
+  - Stability, the utilization target, and the maximum wait are checked on every interval.
+  - Staffing segments only group the report; their server counts are not used.
+  - Short intervals, such as a break, are a stronger steady-state approximation, and backlog between intervals is not represented. The output discloses both.
+- Labor is wages only (5B-1 regular and overtime). Phase 2's server cost per server-hour is never charged in this objective. Every employee on duty is paid and counted as a server, so surplus is never hidden.
+- The planning settings (`PlanningConfig`) have no defaults. A missing waiting rate gives INCOMPLETE whenever customers arrive in the horizon, never 0.
+- The objective is analytical planning cost, not the continuous-DES operating cost. OPTIMAL holds for this model, the break grid, and the reported solver tolerances. Rosters are not yet simulated.
+- "Integrated no worse than sequential" is claimed only when the sequential roster is in the integrated feasible set and the same exact evaluator prices both rosters.
