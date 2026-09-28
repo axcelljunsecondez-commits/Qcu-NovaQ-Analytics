@@ -251,13 +251,22 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 
 - The anonymous engine's complete `simulate_prescribed` output is pinned by `tests/test_shared_continuous_des_pin.py` against `tests/fixtures/shared_continuous_des_output_pin.json`. It uses fixed, binary-exact arrivals, with no seed. Regenerate the fixture only for an authorized, documented engine change (`python -m tests.test_shared_continuous_des_pin --write`).
 - The named-employee DES contract is recorded in `docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md` (product-owner approval of P1-P9 and X1-X7, 2026-09-28). It is design, not implemented.
-- The approval did not choose among the alternatives the design offered, so those selections are UNKNOWN with no default:
-  - P1, P2, P5, P7, X1, and X5 have unselected alternatives;
-  - P3, P4, P6, P8, P9, and X6 have open sub-questions.
+- The approval did not choose among the alternatives the design offered. The Phase 5B-4.2 request (2026-09-28) then decided:
+  - P1 (a): a delayed break keeps its full duration from its actual start, and a delay pushes later breaks by the minimum gap;
+  - no pre-break cutoff and no pre-shift-end cutoff (P2, P3);
+  - a later split shift waits for the actual release plus the required rest;
+  - P4: registers identified 1..K, waiting in order of earliest wait start then employee_id, lowest-numbered free register first;
+  - P5-P7 must be representable without a selection.
 
-  Each blocks the named sub-phase listed in the spec.
+  Still UNKNOWN with no default: the P5, P6, and P7 selections, X1, X5, X6, P8, the P2 threshold, and P9 reporting. Each blocks the sub-phase listed in the spec.
 - X7: the named DES requires staffing segments (`required_staffing`, no default), validated by `validate_timeline`. They are never empty and never optional.
 - Separate Queue break behavior (`PRE_BREAK_CUTOFF_MINUTES`, `queue_lifecycle`, the separate break controller, `break_optimization.py`) is protected and not reused. Named events use an `employee_` prefix.
 - The numpy pins conflict across environments (`requirements.txt` <2.3, `requirements-lock.txt` 2.4.6, `requirements-production.lock` 2.2.6). Cross-version RNG equality is UNKNOWN.
   - The named engine adds no random process.
   - Test reference values come from prescribed arrivals, never from seeded golden values.
+- `simulation/shared_employee_states.py` (Phase 5B-4.2) is the pure employee timeline, specified in `docs/superpowers/specs/2026-09-28-shared-queue-employee-state-machine.md`.
+  - Seven mutually exclusive base states and identified registers.
+  - Closing inputs represent the P5-P7 alternatives without choosing: `hold_past_shift_end` (required, no default), `Release`, `EndBreakAtClosing`, and `CancelPendingBreaks`.
+  - No customers and no random numbers; service starts and completions are caller inputs.
+  - Undetermined cases raise `UndeterminedPolicyError` or are recorded as INFERRED in its `UNDETERMINED` list.
+- The 5B-4.1 INFERRED bound "before closing, accepting servers ≤ the 5B-1 scheduled active count" is withdrawn: the gap push can put an employee on duty during scheduled break time.

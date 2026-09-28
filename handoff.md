@@ -637,7 +637,54 @@ Current verified state (tests and docs only; no production code change):
   - Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 168 files.
   - The full backend suite, `python -m pytest tests/ -x`, gave 1550 passed, 3 skipped, and 1 xfailed (the 1541 baseline plus 9 new tests). That run includes every Separate Queue test file.
   - `git status` shows no change to any existing backend source file or existing test.
-- Next (needs approval): the open selections in the spec, then 5B-4.2 (employee timeline state machine).
+- Next (needs approval): the open selections in the spec, then 5B-4.2 (employee timeline state machine). Superseded: 5B-4.2 is done (next section).
+
+## Shared Queue Enhancement: Phase 5B-4.2 Pure Named-Employee State Machine (2026-09-28)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-28-shared-queue-employee-state-machine.md`
+- `docs/superpowers/plans/2026-09-28-shared-queue-employee-state-machine-plan.md`
+
+The Phase 5B-4.2 request approved P1-P9 and X1-X7 and supplied explicit decisions (quoted in the policy spec, "Explicit decisions of 2026-09-28"):
+
+- P1 (a): a delayed break keeps its full duration from its actual start, and a delay pushes later breaks by the minimum gap.
+- No pre-break cutoff and no pre-shift-end cutoff; service is non-preemptive.
+- A later split shift activates at its actual release plus the required rest.
+- P4: registers are identified 1..K; the wait order is earliest wait start, then employee_id; the lowest-numbered free register is assigned first.
+- P5-P7 must be representable without a selection.
+- Base states are mutually exclusive, and attributes add no elapsed time.
+
+Current verified state:
+
+- `backend/queueing_engine/simulation/shared_employee_states.py` (new) is the employee, break, shift, and register timeline of a validated 5B-1 roster (X4 precondition).
+  - Seven mutually exclusive base states, with identified registers and the X2 employee-only same-time order.
+  - `hold_past_shift_end` is required, with no default.
+  - The closing inputs `Release`, `EndBreakAtClosing`, and `CancelPendingBreaks` represent every P5, P6, and P7 alternative without choosing one.
+  - There are no customers, queue, service-time generation, or random numbers. Service starts and completions are caller inputs.
+- No existing production module changed. `tests/test_shared_segments.py` adds the module to the isolation list.
+- The policy spec was updated first:
+  - the decisions of 2026-09-28;
+  - the undetermined cases;
+  - the withdrawn capacity bound (below).
+- Tests: `tests/test_shared_employee_states.py` (new, synthetic, binary-exact).
+  - 33 test functions with hand-computed timelines cover every required case.
+  - An independent checker of invariants 1-16 runs on every successful run.
+  - The invariants are VERIFIED on these cases only, not proven for every input.
+- Fault injection: 35 source-level mutants of a module copy (a scratch script, not committed).
+  - The first run killed 32 of 35.
+  - Three tests were added for the survivors (completion order, hold before closing, not-activated check order).
+  - After that, 35 of 35 were killed.
+- Discrepancy with the 5B-4.1 spec: the INFERRED bound "before closing, accepting servers never exceed the 5B-1 scheduled active count" is false under the gap push.
+  - `test_gap_push_puts_the_employee_on_duty_in_scheduled_break_time` shows it.
+  - The bound is withdrawn in the policy spec. A weaker bound is UNKNOWN (P8).
+- Undetermined, recorded in the module's `UNDETERMINED` list:
+  - A break due before a delayed split-shift activation: UNKNOWN, and the module raises `UndeterminedPolicyError`.
+  - Closing is placed right after completions in the X2 order: INFERRED.
+  - A delayed split shift keeps its scheduled end, and is not activated when the delayed activation reaches it: INFERRED.
+  - The P5, P6, and P7 selections: UNKNOWN.
+- NOT TESTED: tolerances for non-dyadic times. A scratch probe on a 5-minute grid showed a break's end minus start differing from 10/60 at the last binary digit.
+- Next (needs explicit approval): 5B-4.3, customer and queue integration. It needs the P5, P6, and P7 selections, X1, the P8 output shape, the X6 output field, and decisions on the undetermined cases.
 
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
