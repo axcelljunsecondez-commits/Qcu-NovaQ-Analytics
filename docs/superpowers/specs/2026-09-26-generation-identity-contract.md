@@ -8,7 +8,9 @@
     configuration, engine-version or production change, and no stage in §14.
   - Only stage G1 exists in the repository: migration 0005 and the model fields, committed
     provisionally as `1f5c3ab3` (local, unpushed). Its status is **PROVISIONALLY COMMITTED —
-    SQLITE VERIFIED; POSTGRESQL VERIFICATION PENDING** (§5.5).
+    SQLITE AND LOCAL POSTGRESQL 18.6 VERIFIED; CI AND PRODUCTION GATES PENDING** (§5.5).
+  - G1 immutability hardening (G1-H: persistence-layer immutability and non-reuse of the token in
+    the unreleased 0005, §3) was authorized on 2026-09-28 and is not yet complete.
   - Nothing after G1 is implemented. Application behaviour with enforcement on is NOT TESTED, and
     the exact-generation defect is not resolved (§6.2).
 - **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
@@ -23,8 +25,9 @@
   not evidence for the committed 0005, whose own status is in §5.5.
 - **Evidence labels:** VERIFIED, APPROVED SPECIFICATION, REPORTED, PROPOSED, INFERRED, NOT TESTED,
   UNKNOWN, CONFLICTING. A VERIFIED result in §3–§6, §11 and §15 applies to the level that was
-  actually run: the prototype migration, the committed 0005 on SQLite, the ORM models, or a
-  throwaway app. It does not apply to the full NovaQ backend.
+  actually run: the prototype migration, the committed 0005 on SQLite or on local PostgreSQL 18.6,
+  the ORM models, or a throwaway app. It does not apply to the full NovaQ backend, to CI or to
+  production.
 
 ## 1. Governing rules
 
@@ -98,8 +101,9 @@
   sets it, and `PATCH` cannot reach it (`ScenarioPatch` has only `name`, `settings`, `results`)
   (VERIFIED by grep). That does not stop direct database writes. Until the persistence layer
   rejects them, a matching token alone does not prove the same record generation.
-- Persistence-layer enforcement is being assessed before G2: design only, not approved, not
-  implemented.
+- Persistence-layer enforcement (immutability and non-reuse, hardened into the unreleased 0005)
+  was authorized on 2026-09-28 as G1-H. It is not yet complete: the committed 0005 described here
+  does not enforce either property.
 - `scenarios.dataset_generation` records the dataset token that the save verified. It is nullable,
   has no default of any kind, and only the scenario save path writes it.
 
@@ -112,7 +116,7 @@
 
 - Both layers give the same 32-hex format; the random-bit count differs by generator (§3). The
   format was VERIFIED on both engines in the prototype. For the committed 0005 it is VERIFIED on
-  SQLite and NOT TESTED on PostgreSQL. An ORM insert always supplies the application value.
+  SQLite and on local PostgreSQL 18.6 (§5.5). An ORM insert always supplies the application value.
 - `create_all` builds (tests; `seed.py` on an empty database) get NOT NULL, unique and the
   application default, but no database default. This is documented and deliberate; M2 covers the
   database default.
@@ -137,7 +141,7 @@ committed provisionally in `1f5c3ab3` (local, unpushed). It follows the prototyp
   copies every row into a new table).
 - All pre-existing column values of those rows are unchanged. VERIFIED by a digest of every
   original column, before and after: in the prototype on both engines, and for the committed
-  0005 on SQLite only (§5.5).
+  0005 on SQLite and on local PostgreSQL 18.6 (§5.5).
 - `scenarios.dataset_generation` is added and left NULL for every existing row: the relationship
   cannot be established.
 - The `jobs` table is not written. VERIFIED by a digest of every stored job row, with the same
@@ -174,8 +178,8 @@ Helpers are shared by `upgrade()` and the recovery tests:
 
 ### 5.3 Recovery behaviour (VERIFIED in the prototype, §15.2)
 
-For the committed 0005, the recovery cases have passed on SQLite (§5.5). The PostgreSQL row
-below is prototype evidence only: for the committed migration it is NOT TESTED.
+For the committed 0005, the recovery cases have passed on SQLite and on local PostgreSQL 18.6
+(§5.5), and both rows below hold for it there. On PostgreSQL 16 and in CI they are NOT TESTED.
 
 | Engine | What a failed run leaves behind | Why |
 |---|---|---|
@@ -205,22 +209,33 @@ on the committed 0005 (VERIFIED):
   deployment that turns it on, for example through a connect listener, must run 0005 on a
   connection where it is off from the start. It cannot be switched off once a transaction is open.
 - PostgreSQL alters the tables in place rather than rebuilding them, so this failure is specific
-  to the SQLite batch rebuild (INFERRED; the PostgreSQL cases have not run on the committed 0005).
+  to the SQLite batch rebuild (INFERRED). On local PostgreSQL 18.6, which always enforces foreign
+  keys, the committed 0005 upgrades seeded scenarios that reference datasets (§5.5).
 - Whether any deployment uses SQLite is UNKNOWN (§16).
 
 ### 5.5 Verification status of the committed 0005
 
 | Evidence | SQLite | PostgreSQL |
 |---|---|---|
-| `tests/test_generation_identity_migration.py` (62 items: M and R cases per engine, plus SQLite-only and model tests) | 34 passed | 28 cases NOT TESTED: skipped, "`NOVAQ_TEST_DATABASE_URL` is required for the PostgreSQL variant" |
-| `tests/test_postgres_migration_chain.py` (expects head 0005) | — | 3 cases NOT TESTED: skipped |
-| Full backend suite on the G1 tree | 1275 passed, 31 skipped, 1 xfailed (the strict MC xfail) | — |
+| `tests/test_generation_identity_migration.py` (62 items: M and R cases per engine, plus SQLite-only and model tests) | 34 passed | 28 passed, 0 skipped: local PostgreSQL 18.6, at `11053465` |
+| `tests/test_postgres_migration_chain.py` (expects head 0005) | — | 3 passed, 0 skipped: local PostgreSQL 18.6, at `11053465` |
+| Full backend suite on the G1 tree | 1275 passed, 31 skipped (the PostgreSQL cases above, without `NOVAQ_TEST_DATABASE_URL`), 1 xfailed (the strict MC xfail) | — |
 | Scratchpad probes: old code on 0005 (§11.1), foreign keys (§5.4), token reassignment (§3) | VERIFIED | NOT TESTED |
+| CI `postgres-integration` job (`postgres:16-alpine`; includes both files since `11053465`) | — | **NOT RUN** |
+| PostgreSQL 16 | — | NOT TESTED: not executed locally |
+| Production PostgreSQL | — | version **UNKNOWN**; nothing run |
 
-- A skipped PostgreSQL case is not a pass. No PostgreSQL case has run against the committed 0005.
-- G1 remains **PROVISIONALLY COMMITTED — SQLITE VERIFIED; POSTGRESQL VERIFICATION PENDING** until
-  all 31 PostgreSQL cases pass on a disposable database. Any later change to the migration, the
-  models or these tests repeats every G1 gate on both engines.
+- The local PostgreSQL run: an isolated PostgreSQL 18.6 cluster in WSL Ubuntu on
+  `127.0.0.1:55432`, a non-superuser test role, and disposable databases created and dropped by the
+  tests. All 31 required PostgreSQL cases (28 + 3) passed with 0 skipped; the whole run was 65
+  passed, 0 skipped, 0 failed.
+- This is local verification only. It is not CI verification (the CI job has not run), not
+  PostgreSQL 16 verification, and not production verification.
+- G1 is **PROVISIONALLY COMMITTED — SQLITE AND LOCAL POSTGRESQL 18.6 VERIFIED; CI AND PRODUCTION
+  GATES PENDING**. Full application behaviour with enforcement on remains NOT TESTED (§6.2).
+- G1 immutability hardening (G1-H, §3) was authorized on 2026-09-28 and is not yet complete.
+- Any later change to the migration, the models or these tests repeats every G1 gate on both
+  engines. The results above do not verify a modified 0005.
 - The §15 PostgreSQL results come from the prototype and do not substitute for this gate.
 
 ## 6. Legacy and compatibility-interval eligibility, stage by stage
@@ -417,7 +432,8 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
   - Newer backend on 0004: it would refuse to start through the guard (PROPOSED). Without the
     guard, the new ORM models fail on their first query: `no such column` on SQLite (VERIFIED in
     the prototype and with the committed models), `UndefinedColumn` on PostgreSQL (VERIFIED in the
-    prototype only).
+    prototype). With the committed models on local PostgreSQL 18.6 the first query raises a
+    `DBAPIError` (VERIFIED; the test does not pin the subclass).
 - **Deploy overlap:** whether Render keeps the previous instance serving when a deploy fails, and
   whether old and new instances overlap during a deploy, is **UNKNOWN**. Until it is known, assume
   both.
@@ -623,10 +639,12 @@ production pins.
   prototyped). Likewise a full pre-G application on 0005, and the full G-A application.
 - Whether the production platform runs a migration or status step on start, restart, redeploy or
   rollback, and so whether a pre-G rollback on 0005 can start at all (§11.1).
-- PostgreSQL behaviour of the committed 0005: 0 of 31 PostgreSQL cases have run (§5.5).
+- PostgreSQL behaviour of the committed 0005 beyond local PostgreSQL 18.6: the CI job (PostgreSQL
+  16) has not run, PostgreSQL 16 has not been executed locally, and the production version is
+  UNKNOWN. Locally on 18.6, 31 of 31 required cases passed with 0 skipped (§5.5).
 - Whether any SQLite deployment enables foreign-key enforcement (§5.4).
-- Persistence-layer enforcement of token immutability and non-reuse (§3): design not approved,
-  not implemented.
+- Persistence-layer enforcement of token immutability and non-reuse (§3): authorized on
+  2026-09-28 as G1-H; not yet complete.
 - Which existing tests or stored workflows reach selected MC or validation with an input that
   fails Step 5 rules, and so would meet the new OD-G2 refusal (NOT TESTED).
 - OD-G2 itself is resolved: approved 2026-09-28 (§8.1).
