@@ -9,6 +9,9 @@ rules replace items 1-4 of "Undetermined" and change the P8 windows (engine vers
 `novaq-shared-named-des-v2`). See "Phase 5B-4.4 amendments"; statements below that the amendments
 changed are marked.
 
+Amended in Phase 5B-4.5 (2026-09-28): two trace-only changes, engine version
+`novaq-shared-named-des-v3`. See "Phase 5B-4.5 amendments".
+
 Plan: `docs/superpowers/plans/2026-09-28-shared-queue-named-des-plan.md`.
 Policy contract: `2026-09-28-shared-queue-named-employee-des-policy.md`, updated with the decisions
 below. Employee state machine: `2026-09-28-shared-queue-employee-state-machine.md`, amended in this
@@ -411,9 +414,45 @@ before implementing replications. They are quoted in
 7. `NAMED_ENGINE_VERSION` is `novaq-shared-named-des-v2`. `UNDETERMINED` now lists only the DRAIN
    release order and the before-opening window shape (INFERRED).
 
+## Phase 5B-4.5 amendments
+
+The Phase 5B-4.5 request (named playback) needs the engine's exact recording order. It also
+approves a DRAIN trace-order rule: "If several excess idle DRAIN employees are released at the same
+instant after the admitted queue is empty: they are semantically released at the same time; use
+employee_id ascending only as deterministic trace ordering; this ordering must not change any
+customer result." Engine version `novaq-shared-named-des-v3`.
+
+1. **Recording order is now recorded.** Every customer trace event carries
+   `employee_transitions_before`: the number of `employee_timeline.transitions` recorded before it.
+   The event comes after `transitions[:k]` and before `transitions[k:]`. Before this change the two
+   records were separate lists with no recorded interleaving. The value is `len(machine.transitions)`
+   at the moment `record` runs.
+   - The trace keeps its v2 keys and gains this one key only
+     (`test_trace_schema_v3_adds_only_employee_transitions_before`). The transition record is
+     unchanged.
+   - Hand values: `test_trace_records_employee_transitions_before`.
+2. **DRAIN releases in employee_id order.** At a DRAIN instant, X1 still decides which idle crew
+   members stay for the waiting customers. Those released are now recorded in employee_id order
+   (`released = sorted(idle[len(queue):])`).
+   - DISCREPANCY found at `fd67bbf2`: the releases were recorded in X1 order. In
+     `test_drain_releases_idle_crew_in_employee_id_order`, three idle crew members, AVAILABLE since
+     0.75 (A) and 0.0 (B, C), were released B, C, A; they are now released A, B, C.
+   - Evidence that no customer result changed (scratch comparison with the `fd67bbf2` module, not
+     committed): 500 seeded runs (10 scenarios, 2 policies, 25 replications) and the hand case.
+     Customers, counts, mean wait, the queue integrals, staffing, the closing time, begin, finish,
+     and the employee intervals, shifts, breaks, and state totals were identical. The trace was
+     identical apart from the new key. Transitions were equal as multisets, and every positional
+     difference was a Release inside one closing-input group (1 of 500 runs). The `at_close` blocks
+     were identical apart from the order of the Release inputs.
+   - The 5B-4.3 test `test_drain_crew_left_idle_is_released_in_x1_order` (who stays) passes
+     unchanged.
+3. `SAME_TIME_ORDER`, `DEFINITIONS["trace"]`, and `UNDETERMINED` state the rule. Which idle crew
+   members stay remains INFERRED from X1 and P5.
+
 ## Out of scope and next steps
 
 - Seeded named replications (5B-4.4) need X5 and a decision on item 4 above. (Done in 5B-4.4:
   `2026-09-28-shared-queue-named-replications.md`.)
-- Named playback (5B-4.5), attribution reporting (5B-4.6), and workforce cost (5B-5) are not
-  started. None may begin without explicit approval.
+- Named playback (5B-4.5): done, `2026-09-28-shared-queue-named-playback.md`.
+- Attribution reporting (5B-4.6) and workforce cost (5B-5) are not started. None may begin without
+  explicit approval.

@@ -291,3 +291,17 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - Provenance records the numpy version, the Python version, and the bit generator (PCG64 locally).
 - Reproducibility is claimed only under the recorded numpy version. Stream equality across numpy 2.2.6, 2.4.6, and the CI range below 2.3 is UNKNOWN.
 - Aggregation is descriptive: `summarize_metric` (Student-t, `n_undefined`), explicit denominators, and `verdict: None`. There is no acceptance rule, no 0.75 rule, no employee-level threshold, and no cost.
+
+## Shared-Queue Named Playback (2026-09-29)
+
+- Phase 5B-4.5 is specified in `docs/superpowers/specs/2026-09-28-shared-queue-named-playback.md`. `simulation/shared_named_playback.py` replays and validates one regenerated named replication. It is not a second engine: it consumes the engine's customer trace and employee transitions, synthesizes nothing, rejects unknown events, and never repairs a trace.
+- Named DES engine v3 (`novaq-shared-named-des-v3`) made two trace-only changes:
+  - Every customer trace event records `employee_transitions_before`, the number of transitions recorded before it. The playback merges the two records by it and by nothing else.
+  - Simultaneous DRAIN releases are recorded in employee_id order (approved). The engine had recorded them in X1 order (DISCREPANCY, fixed). X1 still decides who stays.
+  - A comparison with `fd67bbf2` on 500 seeded runs showed identical customers, counts, queue, staffing, and employee intervals, shifts, and breaks.
+- The event vocabulary is 5 customer types and 22 employee transition tuples, each reached on prescribed days. Two state-machine tuples are rejected because the named engine's closing inputs never produce them (INFERRED).
+- Named replications method v2: `provenance.inputs_sha256` is the SHA-256 of canonical sorted JSON (floats as `float.hex()`) over the six input blocks, the closing policy, and the employee policy.
+  - The seed and the code versions are recorded separately and checked exactly.
+  - Equal digests mean equal recorded values only; the digest is not tamper-proof and not semantic equivalence.
+- `playback_from_named_replications(run, i)` refuses when versions, the stored row's identity, the input digest, or the rebuilt inputs do not match. It then regenerates through the unchanged 5B-4.4 seed path and requires the regenerated row to equal the stored row exactly.
+- Float sums are compared with the Phase 4 playback tolerance (rel 1e-9, abs 1e-12); times are always compared exactly. Reproducibility is still claimed only under the recorded runtime.

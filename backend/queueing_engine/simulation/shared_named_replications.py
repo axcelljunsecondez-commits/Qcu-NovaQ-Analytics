@@ -10,11 +10,16 @@ same customers for the same seed (common random numbers).
 
 Spec: docs/superpowers/specs/2026-09-28-shared-queue-named-replications.md.
 No monetary cost, acceptance rule, playback, API, or frontend. Nothing legacy imports this module.
+
+Phase 5B-4.5 (docs/superpowers/specs/2026-09-28-shared-queue-named-playback.md) added
+``inputs_sha256`` to the run provenance: a digest of the recorded simulation-defining inputs, so a
+playback can check that it regenerates a replication from the inputs the run recorded.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import platform
 from collections.abc import Sequence
@@ -55,7 +60,7 @@ from backend.queueing_engine.simulation.shared_replications import (
     summarize_metric,
 )
 
-METHOD_VERSION = "novaq-shared-named-replications-v1"
+METHOD_VERSION = "novaq-shared-named-replications-v2"
 
 # The causes the state machine gives an unfulfilled break (shared_employee_states).
 UNFULFILLED_CAUSES = ("released", "shift_not_activated", "cancelled_at_closing")
@@ -84,6 +89,15 @@ NO_VERDICT_REASON = (
 CUSTOMER_INPUTS_DEFINITION = (
     "SHA-256 of the replication's (arrival hour, unit work) pairs in arrival order, one line per pair, each value "
     "written exactly with float.hex()."
+)
+INPUTS_DIGEST_DEFINITION = (
+    "SHA-256 of the recorded simulation-defining inputs: the horizon, demand periods, required staffing, employees, "
+    "workforce rules, roster (as provenance.inputs records them), closing policy, and employee policy. They are "
+    "written as JSON with sorted keys: a dataclass as an object of its fields, a list or tuple as an array, a whole "
+    "number as an integer, a string, boolean, or None as itself, and a float as {\"float\": float.hex()}; any other "
+    "value is rejected. Equal digests mean equal recorded values (an int and a float of equal value differ); the "
+    "digest makes no claim of semantic equivalence. It detects a later change to the recorded inputs or digest "
+    "within the result; it is not a tamper-proof signature."
 )
 METRIC_DEFINITIONS = {
     "customers": (
@@ -151,6 +165,47 @@ def runtime_provenance() -> dict[str, str]:
 def customer_inputs_digest(arrivals: Sequence[tuple[float, float]]) -> str:
     """SHA-256 of the (arrival hour, unit work) pairs, each value written exactly with ``float.hex()``."""
     text = "\n".join(f"{float(at).hex()} {float(work).hex()}" for at, work in arrivals)
+    return hashlib.sha256(text.encode("ascii")).hexdigest()
+
+
+def named_inputs_snapshot(
+    horizon: OperatingHorizon,
+    demand_periods: Sequence[DemandPeriod],
+    employees: Sequence[Employee],
+    rules: WorkforceRules,
+    roster: Sequence[ScheduledShift],
+    required_staffing: Sequence[StaffingSegment],
+) -> dict[str, Any]:
+    """The simulation-defining inputs as plain values (``dataclasses.asdict``), as ``provenance.inputs`` records them."""
+    return {
+        "horizon": asdict(horizon),
+        "demand_periods": [asdict(period) for period in demand_periods],
+        "required_staffing": [asdict(segment) for segment in required_staffing],
+        "employees": [asdict(employee) for employee in employees],
+        "rules": asdict(rules),
+        "roster": [asdict(item) for item in roster],
+    }
+
+
+def _canonical(value: object) -> Any:
+    """A JSON-ready copy that keeps every recorded value exactly (``INPUTS_DIGEST_DEFINITION``)."""
+    if value is None or isinstance(value, (bool, str)):
+        return value
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, float):
+        return {"float": value.hex()}
+    if isinstance(value, (list, tuple)):
+        return [_canonical(item) for item in value]
+    if isinstance(value, dict) and all(isinstance(key, str) for key in value):
+        return {key: _canonical(item) for key, item in value.items()}
+    raise SharedSegmentError([f"The input digest cannot represent a value of type {type(value).__name__}."])
+
+
+def named_inputs_digest(inputs: dict[str, Any], closing_policy: object, employee_policy: dict[str, Any]) -> str:
+    """SHA-256 of the recorded inputs, closing policy, and employee policy (``INPUTS_DIGEST_DEFINITION``)."""
+    document = {"inputs": inputs, "closing_policy": closing_policy, "employee_policy": employee_policy}
+    text = json.dumps(_canonical(document), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(text.encode("ascii")).hexdigest()
 
 
@@ -400,6 +455,8 @@ def run_named_replications(
         )
         rows.append(named_replication_row(result, index))
 
+    inputs = named_inputs_snapshot(horizon, demand_periods, employees, rules, roster, required_staffing)
+    policy = asdict(employee_policy)
     return {
         "replications": rows,
         "summary": aggregate_named_replications(rows),
@@ -421,7 +478,7 @@ def run_named_replications(
             "reproducibility": REPRODUCIBILITY,
             "runtime": runtime_provenance(),
             "closing_policy": closing_policy,
-            "employee_policy": asdict(employee_policy),
+            "employee_policy": policy,
             "confidence_level": MC_CONFIDENCE_LEVEL,
             "interval_method": CONTINUOUS_INTERVAL_METHOD,
             "metric_definitions": dict(METRIC_DEFINITIONS),
@@ -432,13 +489,8 @@ def run_named_replications(
                 "replication i in full."
             ),
             "monetary_cost": "None: no pay or cost is computed (workforce cost is Phase 5B-5).",
-            "inputs": {
-                "horizon": asdict(horizon),
-                "demand_periods": [asdict(period) for period in demand_periods],
-                "required_staffing": [asdict(segment) for segment in required_staffing],
-                "employees": [asdict(employee) for employee in employees],
-                "rules": asdict(rules),
-                "roster": [asdict(item) for item in roster],
-            },
+            "inputs": inputs,
+            "inputs_sha256": named_inputs_digest(inputs, closing_policy, policy),
+            "inputs_digest_definition": INPUTS_DIGEST_DEFINITION,
         },
     }

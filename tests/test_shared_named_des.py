@@ -547,6 +547,50 @@ def test_drain_crew_left_idle_is_released_in_x1_order():
     assert result["at_close"]["closing_inputs"][-1] == {"type": "Release", "employee_id": "B"}
 
 
+def test_drain_releases_idle_crew_in_employee_id_order():
+    # Phase 5B-4.5 trace-order rule. A, B, C 08:00-12:00, three registers. #1 (0.5, work 1) -> A (all AVAILABLE
+    # since 0.0; tie by id), 0.5-0.75, so A is AVAILABLE since 0.75 and B, C since 0.0. At closing all three are
+    # idle crew members and nobody waits, so all three are released at the same instant. X1 would rank them B, C, A
+    # (the fd67bbf2 engine recorded that order); the releases are recorded in employee_id order A, B, C, and no
+    # customer result depends on it.
+    roster = [shift(name, 480, 720) for name in "ABC"]
+    result = simulate(roster, rules(registers=3), [(0.5, 1.0)], required=[StaffingSegment("S", 480, 720, 3)])
+    assert served(result) == [(1, 0.5, 0.75, "A", 1, 0.0)]
+    assert result["at_close"]["drain_crew"] == ["A", "B", "C"]
+    assert [(row["stage"], row["employee_id"], row["from_state"], row["to_state"])
+            for row in result["employee_timeline"]["transitions"] if row["t"] == CLOSE] == [
+        ("closing_input", "A", AVAILABLE, OFF), ("closing_input", "B", AVAILABLE, OFF),
+        ("closing_input", "C", AVAILABLE, OFF)]
+    assert result["at_close"]["closing_inputs"][3:] == [{"type": "Release", "employee_id": name} for name in "ABC"]
+
+
+def test_trace_records_employee_transitions_before():
+    # Phase 5B-4.5: each customer event records how many employee transitions precede it. Same day as
+    # test_normal_service. Transitions: 0 A shift start (0.0), 1 A register 1 (0.0), 2 A starts #1 (0.5), 3 A
+    # completes #1 (0.75), 4 A starts #2 (0.75), 5 A completes #2 (0.875), 6 A starts #3 (2.0), 7 A completes #3
+    # (2.5), 8 A released at closing. Arrivals follow the instant's state-machine stages, each service_start
+    # follows its employee's start transition, and service_end and closing precede the instant's transitions.
+    result = simulate([shift("A", 480, 720)], rules(registers=1), [(0.5, 1.0), (0.625, 0.5), (2.0, 2.0)])
+    assert [row["event"] for row in result["employee_timeline"]["transitions"]] == [
+        "employee_shift_start", "employee_register_assigned", "employee_service_start", "employee_service_completion",
+        "employee_service_start", "employee_service_completion", "employee_service_start",
+        "employee_service_completion", "employee_release_input"]
+    assert [(row["type"], row["employee_transitions_before"]) for row in result["trace"]] == [
+        ("arrival", 2), ("service_start", 3), ("arrival", 3), ("service_end", 3), ("service_start", 5),
+        ("service_end", 5), ("arrival", 6), ("service_start", 7), ("service_end", 7), ("closing", 8)]
+
+
+def test_trace_schema_v3_adds_only_employee_transitions_before():
+    # Engine v3 (Phase 5B-4.5): the customer trace gained exactly one key over v2; the employee transition record
+    # (state machine, unchanged) keeps its eight keys.
+    result = _run(arrivals=[(1.0, 1.0), (2.0, 1.0)])
+    assert result["provenance"]["engine_version"] == "novaq-shared-named-des-v3"
+    v2_keys = {"t", "type", "customer_id", "employee_id", "register_id", "queue_len_after"}
+    assert all(set(event) == v2_keys | {"employee_transitions_before"} for event in result["trace"])
+    assert all(set(row) == {"t", "stage", "employee_id", "from_state", "to_state", "register_before", "register_after",
+                            "event"} for row in result["employee_timeline"]["transitions"])
+
+
 def test_break_due_service_across_closing_finishes_then_releases():
     # A 08:00-12:00 with a 30-minute break at 11:30 (3.5). #1 (3.25, work 4) is served 3.25-4.25, so the break is
     # due at 3.5 while serving. At closing A is not in the crew (a break is pending): Release comes first, so A

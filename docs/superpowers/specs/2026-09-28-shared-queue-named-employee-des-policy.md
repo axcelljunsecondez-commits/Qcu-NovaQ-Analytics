@@ -134,6 +134,16 @@ prescribed-arrival path unchanged. Seeds follow the Phase 4 convention. Rosters 
 common random numbers. No PASS/FAIL rule and no employee-level threshold are invented. The
 implementation is specified in `2026-09-28-shared-queue-named-replications.md`.
 
+### Explicit decisions of 2026-09-28 (Phase 5B-4.5)
+
+The Phase 5B-4.5 request (named playback) adds a trace-order rule. The quotation is in
+`2026-09-28-shared-queue-named-des.md`, "Phase 5B-4.5 amendments". Crew members released at one DRAIN
+instant are released at the same time, and are recorded in employee_id order. That order changes no
+customer result. X1 still decides which idle crew members stay (INFERRED, unchanged). The request
+also sets the playback rules: events are the engine's own, never synthesized; unknown event types
+are rejected; nothing is repaired; and no random number is drawn. They are implemented in
+`2026-09-28-shared-queue-named-playback.md`.
+
 ## Starting point (verified at `d5723aba`)
 
 Paths are relative to `backend/queueing_engine/` unless they start with `backend/`, `tests/`,
@@ -461,8 +471,9 @@ verification in `2026-09-28-shared-queue-employee-state-machine.md`.
 - (Implemented in 5B-4.4.) `simulate_named_replication` and `run_named_replications` live in a new
   module, `simulation/shared_named_replications.py`, not in `shared_named_des.py` as the module line
   above suggests. The engine module then stays free of numpy and of random numbers, as
-  `test_no_random_numbers_and_no_separate_queue_code` requires. `replay_named_events` (5B-4.5) is
-  not started.
+  `test_no_random_numbers_and_no_separate_queue_code` requires. (Implemented in 5B-4.5.) The replay
+  is `replay_named_trace` in a new module, `simulation/shared_named_playback.py`, not a function
+  named `replay_named_events`. It is separate from `shared_playback.replay_events`.
 - **Isolation.** The module joins `SHARED_QUEUE_ENHANCEMENT_MODULES` in
   `tests/test_shared_segments.py`, and it never imports separate-queue break code.
 
@@ -476,7 +487,7 @@ This dependency mapping is INFERRED from the transition rules above. It reflects
 | 5B-4.2 employee timeline state machine | Nothing further: P1-P4 are decided, and P5-P7 are represented without a selection |
 | 5B-4.3 named engine on prescribed arrivals | Supplied 2026-09-28; implemented |
 | 5B-4.4 seeded replications | Supplied 2026-09-28 (X5 and approved rules 1-5); implemented |
-| 5B-4.5 named playback replay | Nothing further for register identity (P4 decided) |
+| 5B-4.5 named playback replay | Supplied 2026-09-28 (DRAIN release trace order); implemented |
 | 5B-4.6 attribution quantities | P2 threshold (if chosen), P8 reporting, P9 reporting of a minute with both attributes |
 | 5B-5 workforce cost | X6 redefinition, overtime classification, the pay consequence of unfulfilled or truncated breaks (P1), D15 acceptance rule |
 | Any acceptance (PASS/FAIL) use of named replications | An approved acceptance rule; none exists, and 5B-4.4 produces no verdict |

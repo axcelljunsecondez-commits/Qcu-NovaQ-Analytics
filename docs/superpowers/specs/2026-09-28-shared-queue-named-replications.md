@@ -300,7 +300,43 @@ tests on the copy. The mutants covered:
 6. **Carried over from 5B-4.3:** the DRAIN release order and the before-opening window shape
    (INFERRED).
 
+## Phase 5B-4.5 amendments
+
+Phase 5B-4.5 (`2026-09-28-shared-queue-named-playback.md`) inspected whether a run records enough
+to prove that a playback regenerates a replication from the same inputs. The six input blocks were
+recorded, but nothing detected a later change to them. Additive changes:
+
+- `METHOD_VERSION` is `novaq-shared-named-replications-v2`. Rows, summaries, and every other
+  provenance field are unchanged.
+- `provenance.inputs` is now built by `named_inputs_snapshot` (the same six `asdict` blocks as
+  before).
+- `provenance.inputs_sha256` is `named_inputs_digest(inputs, closing_policy, employee_policy)`.
+  - It is the SHA-256 of canonical JSON of `{"inputs", "closing_policy", "employee_policy"}`, with
+    sorted keys, `(",", ":")` separators, and ASCII.
+  - Values: every float as `{"float": float.hex()}`, whole numbers as integers, lists and tuples
+    both as arrays, and strings, booleans, and None as themselves. Anything else is rejected.
+  - `provenance.inputs_digest_definition` states this.
+- **What the digest covers (repository mapping).** `simulate_named_replication` takes the horizon,
+  demand periods, employees, rules (with `register_count`, the shift rules, and the break rules),
+  roster, and required staffing, which are the six digested blocks, plus `closing_policy` and
+  `employee_policy`, which are also digested.
+  - `seed_sequence` is recorded separately as `root_entropy` and each row's `spawn_key`.
+  - `max_trace_events` does not change a row.
+  - The code versions (method, named engine, state machine, arrival engine, seed scheme) are
+    recorded as separate provenance fields. The playback compares them exactly with the running
+    code.
+  - `test_the_digest_covers_every_simulation_input_of_a_replication` pins this mapping against the
+    function's signature.
+- **Limits.** Equal digests mean equal recorded values. An int and a float of equal value give
+  different digests, as does a change to pay fields that the engine does not read. The digest is no
+  claim of semantic equivalence. It detects a later change to the recorded inputs or to the digest
+  within a result; it is not a tamper-proof signature.
+- The version-string assertion in `test_provenance_records_seed_runtime_and_limits` changed from
+  `novaq-shared-named-des-v2` to `v3`, because the engine version was bumped deliberately (see the
+  5B-4.3 spec, "Phase 5B-4.5 amendments").
+
 ## Out of scope and next steps
 
-Named playback (5B-4.5), attribution reporting (5B-4.6), workforce cost (5B-5), an acceptance rule,
-and API or UI exposure are not started. None may begin without explicit approval.
+Named playback (5B-4.5) is specified in `2026-09-28-shared-queue-named-playback.md`. Attribution
+reporting (5B-4.6), workforce cost (5B-5), an acceptance rule, and API or UI exposure are not
+started. None may begin without explicit approval.

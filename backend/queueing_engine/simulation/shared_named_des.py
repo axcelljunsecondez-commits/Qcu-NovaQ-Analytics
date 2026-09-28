@@ -12,7 +12,11 @@ docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md (the
 Prescribed arrivals only: this engine draws no random numbers and computes no monetary cost. Seeded
 replications (``shared_named_replications.py``, Phase 5B-4.4) draw the arrivals first and pass them
 here. Phase 5B-4.4 also applied the approved closing and staffing-gap rules (spec
-docs/superpowers/specs/2026-09-28-shared-queue-named-replications.md). Nothing legacy imports this
+docs/superpowers/specs/2026-09-28-shared-queue-named-replications.md). Phase 5B-4.5 (spec
+docs/superpowers/specs/2026-09-28-shared-queue-named-playback.md) added two trace-only changes that
+no customer result depends on: each customer trace event records how many employee transitions
+precede it, so the two engine records interleave exactly, and crew members released at one DRAIN
+instant are released in employee_id order. Nothing legacy imports this
 module, and it uses none of the separate-queue break code (``PRE_BREAK_CUTOFF_MINUTES``,
 ``queue_lifecycle``, or the ``separate_optimization`` break controller). Only the anonymous engine's
 (``shared_continuous_des``) closing policy names are imported.
@@ -60,7 +64,7 @@ from backend.queueing_engine.simulation.shared_employee_states import (
     Release,
 )
 
-NAMED_ENGINE_VERSION = "novaq-shared-named-des-v2"
+NAMED_ENGINE_VERSION = "novaq-shared-named-des-v3"
 
 DEPARTED, UNSERVED_AT_CLOSE = "departed", "unserved_at_close"
 HARD_CUTOFF_REASON, NO_ELIGIBLE_EMPLOYEE = "hard_cutoff", "no_eligible_employee"  # X6 names the second
@@ -127,7 +131,9 @@ POLICY_MEANINGS = {
 SAME_TIME_ORDER = (
     "X2: at one instant, service completions, then the closing boundary (closing inputs and unserved "
     "customers), shift ends, break ends, breaks becoming due, shift starts, register handovers, arrivals, "
-    "and one first-come, first-served assignment pass."
+    "and one first-come, first-served assignment pass. DRAIN crew members released at one instant are "
+    "released at the same time; their releases are recorded in employee_id order, which is a trace order "
+    "only and changes no customer result (approved Phase 5B-4.5 rule)."
 )
 DEFINITIONS = {
     "time_unit": (
@@ -183,10 +189,17 @@ DEFINITIONS = {
         "The integral of the number of customers waiting (not in service). It equals the served customers' "
         "waits plus the unserved customers' elapsed waits at closing."
     ),
+    "trace": (
+        "Customer events in the order the engine records them: t, type, customer_id, employee_id, register_id, "
+        "queue_len_after, and employee_transitions_before, the number of employee_timeline transitions recorded "
+        "before the event (Phase 5B-4.5). The event comes after transitions[:k] and before transitions[k:], so "
+        "the two records interleave exactly as the engine recorded them."
+    ),
 }
 UNDETERMINED = [
     "DRAIN release order: when fewer customers wait than crew members are idle, the crew members X1 ranks "
-    "first serve and the rest are released (INFERRED from X1 and P5).",
+    "first serve and the rest are released (INFERRED from X1 and P5). The released members' trace order is "
+    "employee_id (approved Phase 5B-4.5 rule).",
     "Staffing windows beyond the approved Phase 5B-4.4 rule: the before_opening window (series only, when a "
     "shift starts before opening) and the timeline's extension to the last scheduled shift end are INFERRED "
     "choices of shape.",
@@ -334,6 +347,7 @@ def simulate_named_prescribed(
             "t": at, "type": kind, "customer_id": None if customer is None else customer.customer_id,
             "employee_id": None if customer is None else customer.employee_id,
             "register_id": None if customer is None else customer.register_id, "queue_len_after": len(queue),
+            "employee_transitions_before": len(machine.transitions),
         })
 
     def advance(now: float) -> None:
@@ -406,7 +420,9 @@ def simulate_named_prescribed(
             # released now. Only crew members accept after closing, and nobody arrives.
             idle = [employee_id for employee_id in x1_order(view) if employee_id in crew] + sorted(
                 employee_id for employee_id in finishing if employee_id in crew and view[employee_id]["state"] == SERVING)
-            released = idle[len(queue):]
+            # X1 decides who stays; those released are released at the same time, recorded in employee_id
+            # order (approved Phase 5B-4.5 trace order; no customer result depends on it).
+            released = sorted(idle[len(queue):])
             closing_inputs += [Release(t, employee_id) for employee_id in released]
             if at_closing:
                 at_close["closing_inputs"] += [{"type": "Release", "employee_id": employee_id} for employee_id in released]

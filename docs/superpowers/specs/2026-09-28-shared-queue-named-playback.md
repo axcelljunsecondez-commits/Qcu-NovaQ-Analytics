@@ -1,0 +1,375 @@
+# Shared Queue Enhancement: Phase 5B-4.5, Named-Employee DES Playback
+
+Date: 2026-09-28 (finished 2026-09-29). Status: implemented as
+`backend/queueing_engine/simulation/shared_named_playback.py`, with tests in
+`tests/test_shared_named_playback.py`. Committed locally only; not pushed, merged, or deployed.
+
+Plan: `docs/superpowers/plans/2026-09-28-shared-queue-named-playback-plan.md`.
+Related specs: `2026-09-28-shared-queue-named-des.md` (engine, amended to v3 here),
+`2026-09-28-shared-queue-named-replications.md` (run provenance, amended here),
+`2026-09-28-shared-queue-named-employee-des-policy.md` (policy contract), and
+`2026-09-25-shared-queue-des-replications-playback.md` (the Phase 4 anonymous playback, whose
+conventions are reused and which is unchanged).
+
+## Scope
+
+- **In scope:** an isolated replay and validation layer for one regenerated named-employee DES
+  replication. The replay consumes the named engine's own records and is not a second simulation.
+- **Not in scope:** workforce cost, paired roster comparison, API, database, frontend, Decision,
+  Reports, and any acceptance or PASS/FAIL rule.
+- **Files.**
+  - New: `simulation/shared_named_playback.py`, `tests/test_shared_named_playback.py`, this spec,
+    and the plan.
+  - Changed (production):
+    - `simulation/shared_named_des.py`: engine v3, two trace-only changes (below).
+    - `simulation/shared_named_replications.py`: method v2, `inputs_sha256` (below).
+  - Changed (tests):
+    - `tests/test_shared_named_des.py`: three new tests.
+    - `tests/test_shared_named_replications.py`: one version-string assertion, v2 to v3.
+    - `tests/test_shared_segments.py`: the module joins the isolation list.
+  - Changed (docs): the three related specs, `memory.md`, and `handoff.md`.
+  - Not changed (verified by `git diff fd67bbf2`):
+    - the anonymous engine, the state machine, and the Phase 4 replications and playback;
+    - `services/`, which includes 5B-1 to 5B-3 and Separate Queue;
+    - `backend/api/` and `frontend/`;
+    - the 5B-4.0 fixture.
+
+## Engine changes (named DES v3)
+
+The engine's customer trace and its employee transitions were two separate lists, with no recorded
+interleaving. So "playback event order must preserve the engine's exact ordering" could not be met
+without inferring the order. Two trace-only changes were made (details and evidence in the 5B-4.3
+spec, "Phase 5B-4.5 amendments"):
+
+1. Every customer trace event records `employee_transitions_before`: the number of transitions
+   recorded before it. This is the only new trace key, and the transition record is unchanged.
+2. Simultaneous DRAIN releases are recorded in employee_id order. This is the approved rule; the
+   engine had recorded them in X1 order, a DISCREPANCY. X1 still decides who stays.
+
+**Evidence that no customer result changed.** A scratch comparison with the `fd67bbf2` engine, re-run
+on the final tree, covered 500 seeded runs and the hand case. Customers, counts, the queue, staffing,
+and the employee intervals, shifts, breaks, and totals were identical. One run's releases were
+permuted within one instant, and the hand case went from B, C, A to A, B, C.
+
+## Event vocabulary (derived from the engine code; everything else is rejected)
+
+**Customer trace** (`CUSTOMER_EVENT_TYPES`): `arrival`, `service_start`, `service_end`, `closing`,
+`unserved_at_close`.
+
+**Employee transitions** (`EMPLOYEE_TRANSITIONS`, 22 tuples `(stage, event, from, to)`): the
+tuples the 5B-4.2 state machine emits under the named engine's inputs.
+
+| Stage | Event | From -> To |
+|---|---|---|
+| completion | employee_service_completion | SERVING -> AVAILABLE; SERVING_BREAK_DUE -> AVAILABLE (at closing only, rule 1); SERVING_SHIFT_ENDED -> OFF |
+| completion | employee_break_start | SERVING_BREAK_DUE -> ON_BREAK |
+| closing_input | employee_release_input | AVAILABLE, WAITING_FOR_REGISTER -> OFF; SERVING, SERVING_BREAK_DUE -> SERVING_SHIFT_ENDED |
+| closing_input | employee_break_truncated_at_closing | ON_BREAK -> OFF |
+| shift_end | employee_shift_end | AVAILABLE, WAITING_FOR_REGISTER -> OFF; SERVING, SERVING_BREAK_DUE -> SERVING_SHIFT_ENDED |
+| break_end | employee_break_end | ON_BREAK -> WAITING_FOR_REGISTER; ON_BREAK -> OFF |
+| break_due | employee_break_start | AVAILABLE, WAITING_FOR_REGISTER -> ON_BREAK |
+| break_due | employee_break_due_while_serving | SERVING -> SERVING_BREAK_DUE |
+| shift_start | employee_shift_start | OFF -> WAITING_FOR_REGISTER |
+| shift_start | employee_break_start_at_shift_start | OFF -> ON_BREAK |
+| register_handover | employee_register_assigned | WAITING_FOR_REGISTER -> AVAILABLE |
+| service_start | employee_service_start | AVAILABLE -> SERVING |
+
+- **Every entry is produced.** `test_every_vocabulary_entry_is_produced_by_the_engine_and_accepted`
+  reaches all 22 tuples and all 5 customer types on prescribed days only; no seeded coverage is
+  relied on.
+  - 14 tuples also appeared in a 400-run seeded probe.
+  - Eight need prescribed days (`COVERAGE`, one test each), plus one more day for a tuple that is
+    rare under seeds.
+- **Rejected state-machine tuples** (`NOT_PRODUCED_BY_THE_NAMED_ENGINE`): the state machine can emit
+  these two, but the named engine's closing inputs never produce them (INFERRED from
+  `_closing_inputs`).
+  - `closing_input/employee_breaks_cancelled_at_closing` SERVING_BREAK_DUE -> SERVING
+  - `closing_input/employee_break_truncated_at_closing` ON_BREAK -> WAITING_FOR_REGISTER
+- **Unsupported concepts** (`UNSUPPORTED`): no event exists for these, so none is invented.
+  - abandonment;
+  - a queue entry separate from the arrival;
+  - a break becoming unfulfilled, and a shift never activated (both reported from the engine's
+    record under `not_represented_by_events`);
+  - closing inputs that change no state;
+  - scheduled and required staffing;
+  - cost.
+
+## Trace merge (recording order)
+
+`_merge` places customer event k after `transitions[:employee_transitions_before]`. It keeps
+customer events that share a count in trace order, and appends the remaining transitions at the
+end. Nothing else is used to order events.
+
+- **Rejected:** a missing count or a missing field (`trace_structure`), a count that decreases or
+  lies outside `[0, len(transitions)]` (`trace_structure`), and a truncated trace (`trace_complete`).
+- **Order within one instant.** Derived from the engine loop and checked, not assumed:
+  1. `service_end` events, in customer_id order (the completion heap);
+  2. the `closing` event;
+  3. `unserved_at_close` events, in line order;
+  4. the state machine's transitions, in stage order: completion, closing_input, shift_end,
+     break_end, break_due, shift_start, register_handover;
+  5. arrivals;
+  6. each `employee_service_start` transition followed at once by its customer's `service_start`.
+- **Within a stage.**
+  - completion, shift_end, break_end, break_due, and shift_start come in employee_id order, once
+    each.
+  - At closing, non-crew closing inputs come before DRAIN releases, each group in employee_id
+    order.
+- A consequence of recording order: at a customer's `service_end` its employee is still SERVING,
+  until the completion transition later in that instant. Per-event counts show this. `instants`
+  gives the state at the end of each instant, which the engine's P8 steps describe.
+
+## Replay and validation
+
+`replay_named_trace(result, horizon, demand_periods)` rebuilds the line, customers, employees, and
+registers from the two records alone.
+
+- It returns `{"valid": True, ...}` with the events, instants, and rebuilt tables. On the first
+  failed check it returns `{"valid": False, "failure": {check, message, seq, source, source_index,
+  t, event, evidence}}`.
+- Nothing is repaired. `build_named_playback` and the regeneration functions raise
+  `NamedPlaybackError` carrying the same failure.
+- The horizon and demand periods are used only for the service-duration check.
+
+| # | Required invariant | Check code(s) |
+|---|---|---|
+| 1 | timestamps never move backward | `time_order` |
+| 2 | same-time order follows the verified named-DES order | `same_time_order` |
+| 3 | customer identity preserved | `customer_identity` |
+| 4 | at most one active service per customer | `customer_single_service` |
+| 5 | an employee serves at most one customer | `employee_transition_legal` (a service starts only from AVAILABLE; a serving employee leaves the serving states only through a completion paired with its customer's service_end) |
+| 6 | a register has at most one employee | `register_single_holder` |
+| 7 | occupancy <= K_phys | `register_capacity` (registers 1..K, one holder each) |
+| 8 | legal employee transitions | `event_vocabulary`, `employee_transition_legal` |
+| 9 | OFF, ON_BREAK, WAITING_FOR_REGISTER hold no register | `no_register_off_break_waiting` |
+| 10 | FCFS | `fcfs` |
+| 11 | X1 | `x1_employee_choice` (the AVAILABLE employee available longest, then the lowest id; `available_since` from the transitions) |
+| 12 | no HARD_CUTOFF start at or after closing | `hard_cutoff_no_start_after_closing` |
+| 13 | DRAIN uses only the frozen crew | `drain_frozen_crew` (crew = AVAILABLE or SERVING at the closing event, before any transition at closing; only crew members start after closing; the idle crew members X1 ranks after the waiting customers are released, in employee_id order) |
+| 14 | approved unserved reasons | `unserved_reason` |
+| 15 | queue changes reconcile | `queue_reconciliation` (`queue_len_after` at every customer event) |
+| 16 | final customer counts reconcile | `customer_reconciliation` |
+| 17 | final employee quantities reconcile | `employee_reconciliation` |
+
+**Also checked:**
+
+- P4 handover order (`register_handover_order`);
+- work conservation (`work_conservation`);
+- service length `unit_work / mu(start)` exactly (`service_duration`);
+- the closing rules (`closing_rules`):
+  - exactly one closing event, at the horizon end;
+  - no arrival, shift end, break end, break due, shift start, or handover at or after closing;
+  - closing inputs only at or after closing;
+  - P7 truncation of every break in progress at closing;
+  - after the closing instant, only OFF, SERVING_SHIFT_ENDED, or a serving crew member;
+- the end state (`end_state`).
+
+**Removed as unreachable, proved and not counted as coverage:**
+
+- a separate "employee already serving" check and two service-end variants (the transition check
+  covers them);
+- a register-occupancy count;
+- a non-crew release after closing;
+- an employee-on-duty end check;
+- a customer-count check (the per-customer engine-row check and the full comparison cover it);
+- the row-level customer, closing, and waiting comparisons (see "Reconciliation").
+
+## Reconciliation (which quantities are exact)
+
+**With the regenerated result:**
+
+- **Exact:**
+  - the customer rows (every field but `unit_work` and `arrival_segment_id`);
+  - `counts`, `mean_wait_hours`, and `queue.max_length_in_horizon`;
+  - `at_close`: waiting and in-service customers, and the drain crew;
+  - `finish` and `begin`;
+  - the per-employee (state, register) intervals, after merging splits that only change
+    attributes;
+  - the activated shifts (actual start, release);
+  - the started breaks (actual start, actual end, outcome);
+  - the P8 timeline's four employee-state series at every step.
+- **Within the Phase 4 playback tolerance** (`TOLERANCE`: rel 1e-9, abs 1e-12; float sums only,
+  times always exact):
+  - the queue integrals;
+  - `state_totals`;
+  - the staffing windows' four employee-state series.
+- **Not applicable:**
+  - scheduled_active, required staffing, and both gaps (roster and requirement inputs);
+  - `unit_work` and `arrival_segment_id` (inputs; `unit_work` feeds only the duration check);
+  - `at_close.closing_inputs` (inputs without a transition);
+  - unfulfilled breaks and shifts never activated (no event).
+
+**With the replication row:**
+
+- The regenerated row is `named_replication_row(result)`, a function of the result. Its fields
+  follow from the reconciled result.
+- The one row input not otherwise compared is each interval's `after_closing` flag. The row's
+  after-closing employee-hours are therefore recomputed from the rebuilt intervals (tolerance).
+- `playback_from_named_replications` then requires the regenerated row to equal the stored row
+  exactly, and names the differing fields otherwise (`stored_row`).
+
+## Run-input provenance and regeneration
+
+- **Digest.** `inputs_sha256` (method v2; see the replications spec, "Phase 5B-4.5 amendments") is
+  the SHA-256 of canonical JSON: sorted keys, compact separators, ASCII, floats as
+  `{"float": float.hex()}`, whole numbers as integers, and lists and tuples as arrays. It covers
+  the six input blocks (with `register_count` inside `rules`), the closing policy, and the employee
+  policy.
+- **Separately recorded and checked exactly:** the seed (`root_entropy` and the row's spawn key)
+  and the code versions (method, named engine, state machine, arrival engine, seed scheme).
+- **Limits.** Equal digests mean equal recorded values only. The digest is neither tamper-proof nor
+  proof of semantic equivalence.
+- **`playback_from_named_replications(run, i)` refuses** (`regeneration_identity`, with evidence)
+  when:
+  - a version or the seed scheme differs from the running code;
+  - the index is out of range (`SharedSegmentError`);
+  - the stored row's index or spawn key is wrong;
+  - the recorded inputs cannot be digested or do not match their digest;
+  - the inputs cannot be rebuilt into the dataclasses. This was a crash before a fix made in this
+    phase.
+  - the rebuilt inputs do not reproduce the digest.
+- **Regeneration.** When those checks pass, it regenerates replication i with
+  `simulate_named_replication(..., seed_sequence=replication_seed_sequence(root_entropy, i),
+  max_trace_events=None)`. This is the unchanged 5B-4.4 seed path, and no second stochastic draw
+  sequence exists. It then replays and reconciles, and compares the regenerated row with the stored
+  one.
+- **Randomness.**
+  - The replay draws nothing: the module imports neither numpy nor `random`, and a test runs it
+    with every random source disabled.
+  - The regeneration draws exactly what a 5B-4.4 replication draws: two streams keyed (i, 0) and
+    (i, 1), n + 1 gap draws, and one work draw of size n (counted in a test).
+  - The playback has no setting that reaches the simulation. The run's rows are built with no
+    trace and the playback with a full trace, and the customer digests agree.
+- **Reproducibility.** Unchanged from 5B-4.4: VERIFIED only under the recorded runtime (numpy
+  2.4.6, Python 3.13.13, PCG64 here). Cross-version stream equality is UNKNOWN.
+  `runtime_matches_recorded` is reported. When it is False, equality with the stored row is
+  established by comparison for that replication only.
+
+## Pre-opening and post-closing activity
+
+`outside_horizon` reports employee-hours by base state before opening and from closing on, rebuilt
+from the events. No requirement or gap is calculated outside the operating horizon. Every event
+carries `period`:
+
+- `before_opening`: t < 0;
+- `operating_horizon`: 0 <= t < closing;
+- `closing`: t = closing;
+- `after_closing`: t > closing.
+
+## Verification
+
+### Tests (`tests/test_shared_named_playback.py` unless named)
+
+- **Hand-derived event sequences:** the ordinary day (all 19 events, per-event counts, and instants);
+  several events at one timestamp (FCFS day at 0.0, 1.0, and 1.5); the register handover; X1 and
+  FCFS; a break delayed by service; the split shift; DRAIN; idle surplus DRAIN releases in
+  employee_id order; HARD_CUTOFF and unserved customers; no eligible employee; the exact closing
+  boundaries, including rule 1.
+- **Engine v3** (`tests/test_shared_named_des.py`):
+  - `test_drain_releases_idle_crew_in_employee_id_order`;
+  - `test_trace_records_employee_transitions_before` (hand values);
+  - `test_trace_schema_v3_adds_only_employee_transitions_before`.
+- **Interleaving field:**
+  - monotone, bounded, and time-consistent on every prescribed day and 60 seeded runs;
+  - four corrupted counts rejected (`trace_structure` or `same_time_order`);
+  - a displaced customer event rejected at the first offending transition.
+- **Digest:**
+  - an independent recomputation on a hand-written document;
+  - key order ignored;
+  - 13 simulation-defining changes each change the digest;
+  - an int versus a float of equal value differ, and a list versus a tuple do not;
+  - unsupported types rejected;
+  - the mapping to `simulate_named_replication`'s signature;
+  - refusals: a changed input, a changed or missing digest, a version, a stored row, a spawn key, a
+    root entropy, an unrepresentable value, an extra field without a matching digest, an extra field
+    the rebuild drops, and an extra field the rebuild cannot accept.
+- **Randomness:** the replay runs with every random source disabled; the regeneration's draws are
+  counted and equal a 5B-4.4 replication's.
+- **Corrupted traces rejected**, each with its check code and, where it matters, the offending event:
+  - unknown event types (customer, employee, and a state-machine-only tuple);
+  - timestamp reversal;
+  - five same-time order violations (stage order, closing groups, completion heap order, pairing, a
+    service_end without its completion);
+  - customer duplication and a second service for a departed customer;
+  - one employee serving two customers;
+  - double register occupancy, a register beyond K, and a register held while OFF;
+  - illegal transitions: a wrong tuple, a legal tuple with the wrong history, rule 1 before closing,
+    a closing input before closing, a shift end at closing, a break at closing, and a register
+    change while serving;
+  - an unpaired service start, an arrival after closing, a start on another register, a service end
+    with another employee, and a start while nobody waits;
+  - unserved before the closing event, unserved out of line order, a customer left waiting after a
+    hard cutoff, a second closing event, and no closing event;
+  - a break not truncated at closing (P7), and an idle employee not released under HARD_CUTOFF;
+  - an incorrect frozen DRAIN crew (engine claim), a dropped surplus release, and a non-crew
+    employee serving after closing;
+  - a HARD_CUTOFF start at closing;
+  - invalid unserved reasons (policy relabel, wrong reason code);
+  - an impossible queue length, a wrong service length, and a waiting employee with a free register;
+  - work conservation and a trace ending with a customer in service;
+  - a truncated trace, a missing field, and an unknown employee;
+  - engine claims that differ from the events: customers, counts, `at_close`, mean wait, maximum
+    queue, queue integral, finish, intervals, shifts, breaks, state totals, staffing steps and
+    windows, and after-closing hours.
+- **Corruptions that keep every final count plausible:** an X1 relabel, an FCFS swap, a dropped
+  DRAIN release, and a dropped service start. All four are rejected.
+
+### Fault injection
+
+A scratch script, not committed, mutated a copy of `backend/` and `tests/`, so the working tree was
+never touched. For each mutant it ran the playback, 5B-4.4, 5B-4.3, 5B-4.2, pin, and isolation
+tests. The 88 source-level mutants covered:
+
+- the merge and vocabulary;
+- every ordering, customer, employee, closing, and DRAIN check;
+- the reconciliation;
+- the regeneration identity;
+- the two engine changes;
+- the digest construction.
+
+- **First run: 48 of 88 killed.** The 40 survivors were:
+  - real gaps: reachable checks that no test corrupted;
+  - checks whose failure a later check also caught, where the tests did not pin the first offending
+    event;
+  - provably unreachable checks.
+
+  Tests were added for every reachable check, asserting the check code, the message, and, where
+  relevant, the event or time. Unreachable checks were removed:
+  - a non-crew release after closing;
+  - the customer-count check;
+  - the row-level customer, closing, and waiting comparisons.
+
+  Analysis also found a real defect: recorded inputs with an extra field and a matching digest made
+  the rebuild raise `TypeError`. It now refuses with `regeneration_identity`.
+- **Final run, on the final text: 88 of 88 killed.**
+- No production behavior was changed to kill a mutant.
+
+### Gates (executed on the final tree)
+
+- Focused, all passed:
+  - `tests/test_shared_named_playback.py`: 75 (51 test functions);
+  - `tests/test_shared_named_replications.py`: 73;
+  - `tests/test_shared_named_des.py`: 65;
+  - `tests/test_shared_employee_states.py`: 39;
+  - `tests/test_shared_continuous_des_pin.py`: 9, fixture not regenerated.
+- All `tests/test_shared_*.py`: 769 passed.
+- Separate Queue: all 20 files with `separate`, `queue_lifecycle`, or `routing` in the name, 182
+  passed.
+- Full backend suite, `python -m pytest tests/ -x --tb=short`: 1802 passed, 3 skipped, 1 xfailed, in
+  718 s (the 5B-4.4 baseline of 1724, plus 75 playback and 3 named-DES tests).
+- `ruff check .`: clean.
+- `mypy . --exclude '^outputs/'`: clean on 176 files. Plain `mypy .`: the 5 known errors in the
+  gitignored `outputs/technical-paper/build_chapters_4_5.py` only.
+- Frontend: not run; nothing under `frontend/` changed.
+
+## Undetermined (UNKNOWN or INFERRED)
+
+1. Cross-version numpy stream equality: UNKNOWN (unchanged from 5B-4.4).
+2. That the two rejected state-machine tuples never occur under the named engine: INFERRED from
+   `_closing_inputs`. None appeared in the 400-run probe or in any test.
+3. Which idle DRAIN crew members stay (X1 and P5): INFERRED, carried over. Only their trace order is
+   approved.
+4. The before-opening window shape: INFERRED, carried over.
+5. The Phase 4 tolerance is the repository's playback convention for float sums. No separate
+   analysis established it for named sums, and it is never applied to times.
+6. The acceptance rule: UNKNOWN; none exists, and none is invented.

@@ -775,7 +775,50 @@ Current verified state:
   - rule 1 is exercised by prescribed tests only, since the event has probability 0 with continuous draws;
   - the acceptance rule: UNKNOWN;
   - DRAIN release order and before-opening window shape: INFERRED, carried over.
-- Next (needs explicit approval): 5B-4.5 named playback, 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
+- Next (needs explicit approval): 5B-4.5 named playback, 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure. Superseded: 5B-4.5 is done (next section).
+
+## Shared Queue Enhancement: Phase 5B-4.5 Named-Employee DES Playback (2026-09-29)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-28-shared-queue-named-playback.md`
+- `docs/superpowers/plans/2026-09-28-shared-queue-named-playback-plan.md`
+
+Current verified state:
+
+- New `simulation/shared_named_playback.py`:
+  - `replay_named_trace` rebuilds the line, customers, employees, and registers from the named engine's two records and validates the 17 required invariants plus P4, work conservation, service length, the closing rules, and the end state. A failure returns the check, the event, and the evidence; nothing is repaired.
+  - `build_named_playback`, `prepare_named_playback`, and `playback_from_named_replications` produce a checked playback of one regenerated replication.
+- Named DES engine v3 (`shared_named_des.py`), trace-only:
+  - `employee_transitions_before` on every customer trace event;
+  - simultaneous DRAIN releases recorded in employee_id order (approved rule). DISCREPANCY: `fd67bbf2` recorded X1 order (B, C, A in the hand case).
+  - A scratch comparison with `fd67bbf2` on 500 seeded runs showed identical customers, counts, queue, staffing, and employee intervals, shifts, and breaks.
+- Named replications method v2: `provenance.inputs_sha256`, a canonical-JSON SHA-256 of the recorded inputs and both policies. It is not tamper-proof and not semantic equivalence.
+- Regeneration refuses (`regeneration_identity`, `stored_row`) on:
+  - a version, seed-scheme, row-identity, digest, or rebuild mismatch. A rebuild error was a `TypeError` crash before a fix in this phase.
+  - a regenerated row that differs from the stored row.
+- Vocabulary: 5 customer types and 22 transition tuples, all reached on prescribed days. Two state-machine tuples are rejected (INFERRED unreachable).
+- Tests:
+  - `tests/test_shared_named_playback.py`: new, 51 functions, 75 tests. It covers hand-derived event sequences, corrupted traces (including ones with plausible final counts), the digest, the interleaving field, regeneration and refusal, and zero random numbers.
+  - `tests/test_shared_named_des.py`: 3 new tests (42 functions, 65 tests).
+  - The version assertion in `tests/test_shared_named_replications.py` changed from v2 to v3.
+- Fault injection (scratch copy; working tree untouched):
+  - First run: 48 of 88 killed. Survivors were real gaps, or checks whose failure point tests did not pin. Tests were added for every reachable one, and provably unreachable checks were removed rather than counted. Analysis also found the rebuild crash above, which was fixed.
+  - Final run: 88 of 88 killed.
+- Gates on the final tree:
+  - focused: playback 75, named replications 73, named DES 65, state machine 39, and pin 9, all passed;
+  - all `tests/test_shared_*.py`: 769 passed;
+  - Separate Queue (20 files): 182 passed;
+  - ruff: clean;
+  - `mypy . --exclude '^outputs/'`: clean on 176 files; plain `mypy .` shows only the 5 known errors in the gitignored `outputs/` script;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 1802 passed, 3 skipped, 1 xfailed (baseline 1724 + 75 + 3).
+- Undetermined:
+  - cross-version numpy stream equality: UNKNOWN;
+  - the rejected tuples' unreachability: INFERRED;
+  - which idle DRAIN crew members stay: INFERRED;
+  - the before-opening window shape: INFERRED;
+  - the acceptance rule: UNKNOWN.
+- Next (needs explicit approval): 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 

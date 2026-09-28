@@ -783,7 +783,9 @@ def test_provenance_records_seed_runtime_and_limits():
     assert (provenance["seed"], provenance["root_entropy"]) == (41, 41)
     assert "spawn_key=(i,)" in provenance["seed_scheme"]
     assert "UNKNOWN" in provenance["reproducibility"] and "2.2.6" in provenance["reproducibility"]
-    assert provenance["named_engine_version"] == "novaq-shared-named-des-v2"
+    # v3 since Phase 5B-4.5: the trace records employee_transitions_before and DRAIN releases are recorded in
+    # employee_id order (trace-only changes; no customer result changed).
+    assert provenance["named_engine_version"] == "novaq-shared-named-des-v3"
     assert provenance["state_machine_version"] == "novaq-shared-employee-states-v3"
     assert provenance["arrival_engine_version"] == shared_continuous_des.ENGINE_VERSION
     assert provenance["employee_policy"] == dataclasses.asdict(APPROVED_EMPLOYEE_POLICY)
