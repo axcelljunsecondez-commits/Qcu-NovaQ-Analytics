@@ -448,11 +448,12 @@ def test_13_metric_values_neither_change_status_nor_become_zero():
 
 
 def test_13_records_cannot_carry_metrics():
-    # SYNTHETIC-free: the record type has identity fields only.
+    # SYNTHETIC-free: the record type has identity fields only. ``generations`` holds recorded
+    # generation tokens (spec 2026-09-26 §9): record identity, not a metric.
     names = {field.name for field in fields(es.EvidenceRecord)}
     assert names == {"ref", "owner_id", "analysis_id", "created_at", "dataset_id", "setup", "versions",
                      "required_refs", "unrecorded_refs", "dependencies", "result_complete",
-                     "calculation_unsupported", "superseded_by"}
+                     "calculation_unsupported", "superseded_by", "generations"}
 
 
 # ── 14. Simulation basis ────────────────────────────────────────────────────

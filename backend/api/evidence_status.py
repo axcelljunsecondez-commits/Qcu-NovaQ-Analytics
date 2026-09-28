@@ -56,6 +56,7 @@ class ReasonCode(str, Enum):
     DEPENDENCY_MISSING = "DEPENDENCY_MISSING"
     DEPENDENCY_OUT_OF_SCOPE = "DEPENDENCY_OUT_OF_SCOPE"
     DEPENDENCY_CREATED_AFTER = "DEPENDENCY_CREATED_AFTER"
+    GENERATION_MISMATCH = "GENERATION_MISMATCH"
     # MISSING_PROVENANCE: an identity needed to decide currentness is not recorded or not established.
     ANALYSIS_UNRECORDED = "ANALYSIS_UNRECORDED"
     OWNER_UNRECORDED = "OWNER_UNRECORDED"
@@ -65,6 +66,7 @@ class ReasonCode(str, Enum):
     REFERENCE_UNRECORDED = "REFERENCE_UNRECORDED"
     CREATION_TIME_UNRECORDED = "CREATION_TIME_UNRECORDED"
     DEPENDENCY_UNASSESSED = "DEPENDENCY_UNASSESSED"
+    GENERATION_UNRECORDED = "GENERATION_UNRECORDED"
     RESULT_INCOMPLETE = "RESULT_INCOMPLETE"
     # UNSUPPORTED: a recorded version is not interpretable, or the result records the
     # calculation itself as unsupported.
@@ -99,6 +101,7 @@ REASON_STATUS: Mapping[ReasonCode, EvidenceStatus] = {
     _R.DEPENDENCY_MISSING: _S.MISSING_DEPENDENCY,
     _R.DEPENDENCY_OUT_OF_SCOPE: _S.MISSING_DEPENDENCY,
     _R.DEPENDENCY_CREATED_AFTER: _S.MISSING_DEPENDENCY,
+    _R.GENERATION_MISMATCH: _S.MISSING_DEPENDENCY,
     _R.ANALYSIS_UNRECORDED: _S.MISSING_PROVENANCE,
     _R.OWNER_UNRECORDED: _S.MISSING_PROVENANCE,
     _R.DATASET_UNRECORDED: _S.MISSING_PROVENANCE,
@@ -107,6 +110,7 @@ REASON_STATUS: Mapping[ReasonCode, EvidenceStatus] = {
     _R.REFERENCE_UNRECORDED: _S.MISSING_PROVENANCE,
     _R.CREATION_TIME_UNRECORDED: _S.MISSING_PROVENANCE,
     _R.DEPENDENCY_UNASSESSED: _S.MISSING_PROVENANCE,
+    _R.GENERATION_UNRECORDED: _S.MISSING_PROVENANCE,
     _R.RESULT_INCOMPLETE: _S.MISSING_PROVENANCE,
     _R.VERSION_UNSUPPORTED: _S.UNSUPPORTED,
     _R.VERSION_UNRECOGNIZED: _S.UNSUPPORTED,
@@ -222,6 +226,18 @@ class VersionRequirement:
 
 
 @dataclass(frozen=True)
+class GenerationRequirement:
+    """The generation token the artifact recorded for one referenced record (None: not recorded).
+
+    It must equal the live token the caller supplies on the matching ``Dependency``
+    (spec 2026-09-26 §9). Only the kinds a policy enables in ``generation_kinds`` get one.
+    """
+
+    ref: ArtifactRef
+    recorded: str | None
+
+
+@dataclass(frozen=True)
 class SetupBinding:
     """How the artifact records the Setup it describes.
 
@@ -250,6 +266,8 @@ class Dependency:
 
     ``exists`` False means the referenced id resolves to nothing. For evidence kinds
     (anything not in PLAIN_KINDS) ``record`` must be supplied so the chain rule can apply.
+    ``generation`` is the referenced row's live generation token as the caller read it; None means
+    it was not supplied.
     """
 
     ref: ArtifactRef
@@ -258,6 +276,7 @@ class Dependency:
     analysis_id: int | None = None
     created_at: datetime | None = None
     record: EvidenceRecord | None = None
+    generation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -277,6 +296,7 @@ class EvidenceRecord:
     result_complete: bool = True
     calculation_unsupported: bool = False
     superseded_by: ArtifactRef | None = None
+    generations: tuple[GenerationRequirement, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -334,9 +354,14 @@ def _classify(record: EvidenceRecord, context: CurrentContext,
     by_ref = {dependency.ref: dependency for dependency in record.dependencies}
     if len(by_ref) != len(record.dependencies):
         raise ValueError(f"{this} lists a dependency twice.")
+    # Generation identity (spec 2026-09-26 §9). A record carries requirements only for the kinds its
+    # policy enables, so with none enabled nothing below changes.
+    generation_of = {requirement.ref: requirement.recorded for requirement in record.generations}
+    if len(generation_of) != len(record.generations):
+        raise ValueError(f"{this} records a generation twice.")
     for name in sorted(set(record.unrecorded_refs)):
         add(_R.REFERENCE_UNRECORDED, this, f"The required {name} reference is not recorded.")
-    required = set(record.required_refs)
+    required = set(record.required_refs) | set(generation_of)
     if record.dataset_id is not None:
         # A recorded dataset id counts only once its existence and scope are established.
         required.add(ArtifactRef("dataset", record.dataset_id))
@@ -358,6 +383,16 @@ def _classify(record: EvidenceRecord, context: CurrentContext,
         elif dependency.created_at > record.created_at:
             add(_R.DEPENDENCY_CREATED_AFTER, subject,
                 f"The referenced record was created after {this}; the reference cannot be its own.")
+        if dependency.ref in generation_of:
+            recorded = _recorded_token(generation_of[dependency.ref])
+            live = _recorded_token(dependency.generation)
+            if recorded is None:
+                add(_R.GENERATION_UNRECORDED, subject, "No generation token is recorded for the referenced record.")
+            if live is None:
+                add(_R.DEPENDENCY_UNASSESSED, subject, "The referenced record's generation token was not supplied.")
+            elif recorded is not None and recorded != live:
+                add(_R.GENERATION_MISMATCH, subject,
+                    "The recorded generation token is not the referenced record's; the reference cannot be its own.")
         if dependency.ref.kind in PLAIN_KINDS:
             continue
         if dependency.record is None:
@@ -433,9 +468,19 @@ class AccountingRequirement:
     job_kinds: frozenset[str]
 
 
+#: Record kinds that carry a generation token (datasets and scenarios; spec 2026-09-26 §3). Jobs
+#: never carry one, so they are not listed.
+GENERATION_KINDS = frozenset({"dataset", "scenario"})
+
+
 @dataclass(frozen=True)
 class EvidencePolicy:
-    """Version knowledge supplied by the caller; nothing here is read from the application."""
+    """Version knowledge supplied by the caller; nothing here is read from the application.
+
+    ``generation_kinds`` names the referenced kinds whose recorded generation token must match
+    the live one. Empty (the default) turns generation enforcement off: records then carry no
+    generation requirement and every result is what it was without them.
+    """
 
     scenario_schema: VersionFamily
     separate_plan_engine: VersionFamily
@@ -445,6 +490,12 @@ class EvidencePolicy:
     selected_des_basis: VersionFamily
     workflow_engine: VersionFamily | None = None
     current_des_accounting: AccountingRequirement | None = None
+    generation_kinds: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        unknown = set(self.generation_kinds) - GENERATION_KINDS
+        if unknown:
+            raise ValueError(f"No generation token is recorded for {sorted(unknown)}.")
 
 
 SELECTED_DES_ENGINE = "selected-plan-routing-des"
@@ -470,15 +521,35 @@ def _recorded_int(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _recorded_token(value: Any) -> str | None:
+    """A generation token as text. None or blank text: not recorded. Unlike ``recorded_text``, a
+    value that is not text is never turned into plain digits: it stays tagged with its type, so it
+    can never equal a live token (``123`` does not match ``"123"``)."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    return f"<{type(value).__name__}:{value!r}>"
+
+
+def _generation_requirements(policy: EvidencePolicy,
+                             recorded: Iterable[tuple[ArtifactRef, Any]]) -> tuple[GenerationRequirement, ...]:
+    """One requirement per referenced record of an enabled kind, with the token recorded for it."""
+    return tuple(GenerationRequirement(ref, _recorded_token(token))
+                 for ref, token in recorded if ref.kind in policy.generation_kinds)
+
+
 def scenario_record(*, scenario_id: int, owner_id: int | None, analysis_id: int | None,
                     dataset_id: int | None, created_at: datetime | None, settings: Mapping[str, Any] | None,
                     policy: EvidencePolicy, snapshot_queue_type: str | None,
-                    dependencies: Sequence[Dependency] = ()) -> EvidenceRecord:
+                    dependencies: Sequence[Dependency] = (), dataset_generation: Any = None) -> EvidenceRecord:
     """Recorded identity of a saved scenario.
 
     Reads ``settings["calculation"]`` keys ``schema_version``, ``engine_version`` and
     ``setup_hash`` only. ``snapshot_queue_type`` is the schema-1 snapshot's queue type as the
     existing ``_legacy_snapshot_queue_type`` computes it; it is ignored for schema 2.
+    ``dataset_generation`` is the scenario's recorded dataset binding; it is read only when the
+    policy enables dataset generations.
     """
     calculation = (settings or {}).get("calculation")
     snapshot: Mapping[str, Any] = calculation if isinstance(calculation, Mapping) else {}
@@ -493,10 +564,11 @@ def scenario_record(*, scenario_id: int, owner_id: int | None, analysis_id: int 
     elif schema == "1":
         versions.append(VersionRequirement(policy.schema1_engine, engine))
         setup = SetupBinding("queue_type", snapshot_queue_type)
+    bindings = [(ArtifactRef("dataset", dataset_id), dataset_generation)] if dataset_id is not None else []
     return EvidenceRecord(
         ref=ArtifactRef("scenario", scenario_id), owner_id=owner_id, analysis_id=analysis_id,
         created_at=created_at, dataset_id=dataset_id, setup=setup, versions=tuple(versions),
-        dependencies=tuple(dependencies),
+        dependencies=tuple(dependencies), generations=_generation_requirements(policy, bindings),
     )
 
 
@@ -583,6 +655,11 @@ def job_record(*, job_id: int, kind: str, status: str, owner_id: int | None, cre
     ``evidence_ids``, and per result row ``queue_structure`` and ``simulation_supported``. The
     simulation basis is never inferred from costs or waits: a selected-plan DES without a
     recorded ``execution`` has missing provenance.
+
+    For the kinds the policy enables, params ``dataset_generation`` and ``scenario_generation``
+    become generation requirements on the recorded dataset and on the scenario the job references.
+    A job that references no scenario (every Current kind) gets no scenario requirement, whatever
+    its ``scenario_generation`` says.
     """
     params = params or {}
     result = result or {}
@@ -599,6 +676,9 @@ def job_record(*, job_id: int, kind: str, status: str, owner_id: int | None, cre
         versions.append(VersionRequirement(accounting.family, recorded_text(params.get(accounting.params_key))))
     references = job_references(kind, params, result)
     dataset_id = _recorded_int(params.get("dataset_id"))
+    bindings = [(ref, params.get("scenario_generation")) for ref in references.refs if ref.kind == "scenario"]
+    if dataset_id is not None:
+        bindings.append((ArtifactRef("dataset", dataset_id), params.get("dataset_generation")))
     return EvidenceRecord(
         ref=ArtifactRef(f"job:{kind}", job_id), owner_id=owner_id,
         analysis_id=_recorded_int(params.get("analysis_id")), created_at=created_at,
@@ -606,4 +686,5 @@ def job_record(*, job_id: int, kind: str, status: str, owner_id: int | None, cre
         versions=tuple(versions), required_refs=references.refs, unrecorded_refs=references.unrecorded,
         dependencies=tuple(dependencies), result_complete=status == "completed",
         calculation_unsupported=_all_rows_unsupported(result), superseded_by=superseded_by,
+        generations=_generation_requirements(policy, bindings),
     )
