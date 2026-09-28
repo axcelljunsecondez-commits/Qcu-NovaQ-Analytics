@@ -6,7 +6,11 @@ Date: 2026-09-28. Status: Phase 5B-4.0 is implemented (one test module and one f
 Updated 2026-09-28 for Phase 5B-4.2 with the product owner's explicit decisions (see "Explicit
 decisions of 2026-09-28 (Phase 5B-4.2)"). The employee state machine is implemented in Phase
 5B-4.2 as `simulation/shared_employee_states.py`, described in
-`2026-09-28-shared-queue-employee-state-machine.md`. No named-employee DES exists.
+`2026-09-28-shared-queue-employee-state-machine.md`.
+
+Updated 2026-09-28 for Phase 5B-4.3 with the product owner's decisions (see "Explicit decisions of
+2026-09-28 (Phase 5B-4.3)"). The named-employee DES on prescribed arrivals is implemented as
+`simulation/shared_named_des.py`, described in `2026-09-28-shared-queue-named-des.md`.
 
 ## Approval and how to read it
 
@@ -24,9 +28,11 @@ decisions of 2026-09-28 (Phase 5B-4.2)"). The employee state machine is implemen
 
   The table in "Open selections" lists each one.
 - **Design, not existing behavior, except where marked.**
-  - No named-employee DES exists. `simulation/shared_named_des.py` does not exist.
-  - The employee state machine exists from Phase 5B-4.2 (`simulation/shared_employee_states.py`).
-    It has no customers; its own spec records what it implements.
+  - The named-employee DES on prescribed arrivals exists from Phase 5B-4.3
+    (`simulation/shared_named_des.py`); its spec records what it implements. Seeded replications,
+    playback, and cost do not exist.
+  - The employee state machine exists from Phase 5B-4.2 (`simulation/shared_employee_states.py`),
+    amended in 5B-4.3. It has no customers; its own spec records what it implements.
   - Statements labeled VERIFIED describe the code at `d5723aba`. Every other statement is design.
 
 ### Explicit decisions of 2026-09-28 (Phase 5B-4.2)
@@ -59,6 +65,48 @@ Its required invariants add three more decisions:
 The table in "Policies P1-P9 and X1-X7" records these decisions. The request selects no
 alternative for P5, P6, or P7. It does not address X1, X5, X6, P8, or the P2 reporting threshold.
 Those selections stay UNKNOWN; "Do not infer additional policy" rules out assuming one.
+
+### Explicit decisions of 2026-09-28 (Phase 5B-4.3)
+
+The Phase 5B-4.3 request lists "APPROVED OPERATIONAL POLICIES" and says "Use these rules exactly."
+They settle every selection this document left open for 5B-4.3:
+
+- **P1:** full configured duration from the actual start; later breaks pushed by the minimum
+  actual gap; a break that cannot occur before final release is unfulfilled.
+- **P2:** "Record actual break delay only. No hard delay threshold. No pre-break cutoff."
+- **P3:** no pre-shift-end cutoff; the serving employee finishes the customer, accepts no ordinary
+  new customer, then releases; the overrun is recorded. A later split shift waits for the actual
+  release plus the required rest; its scheduled end stays fixed; activation at or after that end
+  records the shift as missed or unfulfilled. New: "For a break belonging to a delayed split
+  shift: actual_due = actual_shift_start + (planned_break_start - planned_shift_start). Then apply
+  ordinary break-delay semantics. If it cannot occur before the fixed shift end, record
+  UNFULFILLED."
+- **P4:** as decided for 5B-4.2.
+- **P5 (DRAIN):** option (a). "Freeze the drain crew from employees accepting immediately before
+  closing", including an employee whose shift ends exactly at closing; exclude those on a break,
+  pending a break or shift release, starting later, or returning after closing; the frozen crew
+  serves "until the admitted queue is empty regardless of scheduled shift end".
+- **P6 (HARD_CUTOFF):** waiting customers unserved; services under way finish; "Idle employees
+  release at closing. Busy employees release after their service completes."; no service starts
+  at or after closing.
+- **P7:** a break in progress at closing is truncated at closing; a pending break that cannot occur
+  is unfulfilled, `cancelled_at_closing`; nobody returns from a break after closing to add DRAIN
+  capacity.
+- **P8:** report scheduled_active, required_staffing, accepting_capacity, busy_employees,
+  register_occupancy, and waiting_for_register separately, and
+  `schedule_realization_gap = accepting_capacity - scheduled_active` and
+  `requirement_gap = accepting_capacity - required_staffing` separately; "Do not collapse these
+  into one staffing KPI."
+- **P9:** mutually exclusive base states; annotations never double-count time; no monetary
+  interpretation.
+- **X1:** "choose the employee who has been available/idle longest. Tie-break by employee_id."
+- **X2:** completions, closing boundary, shift ends, break ends, breaks due, shift starts, register
+  handovers, arrivals, one FCFS assignment pass. This places closing.
+- **X3, X4, X7:** as before; X7's segments are "the reference timeline for P8 comparisons".
+- **X5:** "Use the minimal public wrapper/alias around the existing verified arrival-generation
+  logic." Not exercised in 5B-4.3, which uses prescribed arrivals only.
+- **X6:** "Under DRAIN, if admitted customers remain and the frozen drain crew is empty, explicitly
+  mark them unserved with reason `no_eligible_employee`."
 
 ## Starting point (verified at `d5723aba`)
 
@@ -302,23 +350,26 @@ Rules that depend on an open selection name it. Rules decided on 2026-09-28 name
 | Item | Approved content (APPROVED SPECIFICATION) | Open selection (UNKNOWN until supplied) | Earliest sub-phase blocked |
 |---|---|---|---|
 | **P1** Length of a break delayed by service | Decided 2026-09-28: option (a). A delayed break keeps its full configured duration from its actual start. A delay pushes later breaks: a later break falls due no earlier than the previous break's actual end plus `min_gap_minutes`, so actual breaks never overlap and keep the minimum gap. The delay is recorded (P9). The break is never dropped silently (invariant 8). | The pay consequence of an unfulfilled or truncated unpaid break. | 5B-5 |
-| **P2** Maximum break delay | Decided 2026-09-28: no pre-break cutoff, so option (3) is rejected. No hard cap is possible (INFERRED). Service is non-preemptive and work is Exp(1), so the delay is the remaining service time, which is unbounded; given the employee is busy, it is Exp with mean 1/μ. The delay is recorded. The separate queue's 3 minutes is not transferable. | Option (1), no threshold, or option (2), a caller-supplied threshold L that is reported only. A supplied L has no default: `None` means not supplied, and an explicit 0 means none. | 5B-4.6 |
-| **P3** Shift end during service | Decided 2026-09-28. The employee finishes the customer, with no pre-shift-end cutoff; handing over mid-service would be preemption. A later split shift activates at the later of its scheduled start and the actual release plus `min_minutes_between_shifts`, so the employee never holds two shifts at once and the overrun is recorded. A break still pending at release is not taken afterwards; its outcome is unfulfilled. | None. | None |
+| **P2** Maximum break delay | Decided 2026-09-28: no pre-break cutoff, so option (3) is rejected. No hard cap is possible (INFERRED). Service is non-preemptive and work is Exp(1), so the delay is the remaining service time, which is unbounded; given the employee is busy, it is Exp with mean 1/μ. The delay is recorded. The separate queue's 3 minutes is not transferable. | Decided 2026-09-28 (5B-4.3): record the actual delay only; no threshold. | None |
+| **P3** Shift end during service | Decided 2026-09-28. The employee finishes the customer, with no pre-shift-end cutoff; handing over mid-service would be preemption. A later split shift activates at the later of its scheduled start and the actual release plus `min_minutes_between_shifts`, so the employee never holds two shifts at once and the overrun is recorded. A break still pending at release is not taken afterwards; its outcome is unfulfilled. Decided 2026-09-28 (5B-4.3): the delayed shift's scheduled end stays fixed, and activation at or after it records the shift as missed; a break of a delayed split shift falls due at `actual_shift_start + (planned_break_start - planned_shift_start)` and is unfulfilled if it cannot occur before the fixed end. | None. | None |
 | **P4** Register handover and physical capacity | Decided 2026-09-28. An incoming employee who finds all K registers occupied waits (WAITING_FOR_REGISTER). Registers are identified 1..K, and occupancy never exceeds K. Waiting employees take registers in order of earliest wait start, then employee_id, and the lowest-numbered free register is assigned first. No service is interrupted. With 5B-1's register check satisfied, contention arises only from overruns and delays (INFERRED). | None. | None |
-| **P5** Eligibility after closing, DRAIN | Phase 3A DRAIN semantics for customers are unchanged: arrivals stop, completions at closing come first, and waiting customers are served FCFS. Decided 2026-09-28: the state machine must be able to represent every alternative; 5B-4.2 does so with policy-free closing inputs. | (a) employees accepting just before closing, including those whose shift ends exactly at closing (the anonymous engine's rule); (b) only employees whose shift runs past closing; (c) (a) plus employees returning from a break or starting after closing. Also: do eligible employees serve until the line is empty regardless of shift end (no cap, as in the anonymous engine), or leave at their shift end? | 5B-4.3 |
-| **P6** After closing, HARD_CUTOFF | Phase 3A HARD_CUTOFF semantics are unchanged: waiting customers become unserved, and services under way finish. Decided 2026-09-28: every alternative must be representable, as for P5. | Is an employee released at their last service completion or at their scheduled shift end? Does a break pending at closing still happen? | 5B-4.3 |
-| **P7** Breaks interrupted by closing | A break in progress at closing, or scheduled after it, needs an explicit rule. Decided 2026-09-28: every alternative must be representable, as for P5. A break ended at closing has the outcome truncated_by_closing. | Finish the break, then rejoin the drain; or end the break at closing; or make the employee ineligible after closing. | 5B-4.3 |
-| **P8** Actual versus scheduled coverage | Actual (simulated) staffing is reported against scheduled staffing. The X7 correction names the staffing segments as a reference. | Which count is "actual staffing": accepting, occupancy, or busy? Does time waiting for a register count? How are shortfall and excess minutes reported (per demand period, per staffing segment), and against which reference (the 5B-1 schedule, the segments' required counts, or both)? | 5B-4.3 (output shape) |
+| **P5** Eligibility after closing, DRAIN | Phase 3A DRAIN semantics for customers are unchanged: arrivals stop, completions at closing come first, and waiting customers are served FCFS. Decided 2026-09-28: the state machine must be able to represent every alternative; 5B-4.2 does so with policy-free closing inputs. | Decided 2026-09-28 (5B-4.3): (a), and the frozen crew serves until the admitted line is empty regardless of shift end. | None |
+| **P6** After closing, HARD_CUTOFF | Phase 3A HARD_CUTOFF semantics are unchanged: waiting customers become unserved, and services under way finish. Decided 2026-09-28: every alternative must be representable, as for P5. | Decided 2026-09-28 (5B-4.3): idle employees are released at closing and busy ones at their completion; no service starts at or after closing; a pending break does not happen (P7). | None |
+| **P7** Breaks interrupted by closing | A break in progress at closing, or scheduled after it, needs an explicit rule. Decided 2026-09-28: every alternative must be representable, as for P5. A break ended at closing has the outcome truncated_by_closing. | Decided 2026-09-28 (5B-4.3): end the break at closing (truncated_by_closing); a pending break is unfulfilled, `cancelled_at_closing`; nobody returns from a break after closing. | None |
+| **P8** Actual versus scheduled coverage | Actual (simulated) staffing is reported against scheduled staffing. The X7 correction names the staffing segments as a reference. | Decided 2026-09-28 (5B-4.3): all six series and both gaps are reported separately, against both references. The per-window shape (per staffing segment, whole horizon, before opening, after closing) is INFERRED in the 5B-4.3 spec. | 5B-4.6 (attribution reporting) |
 | **P9** Attribution | Per employee and shift, record quantities only: break delay, break shortening or loss, shift overrun, time after closing, and time waiting for a register. No cost is attached. Which quantity counts as paid overtime belongs to 5B-5, not here. Decided 2026-09-28: the base elapsed-time states are mutually exclusive, and descriptive attributes such as after-closing and after-shift-end never create duplicate elapsed time. A minute that is both past the shift end and after closing is one minute of its base state carrying both attributes. | How 5B-4.6 reports a minute that carries both attributes, for example as a separate "overrun after closing" quantity. | 5B-4.6 |
-| **X1** Choice among available employees | Deterministic, with no random numbers. | Lowest id, longest idle, or avoid an employee whose break is imminent. | 5B-4.3 |
-| **X2** Same-time event order | Completions, then shift ends, then break ends, then breaks due, then shift starts, then register handovers, then arrivals, then one FCFS assignment pass. This differs from the anonymous engine, which assigns after every single event; the two coincide on inputs with no ties (INFERRED). 5B-4.2 applies it to employee-only events. X2 does not place closing; see "Cases the 2026-09-28 decisions do not determine". | None. | None |
+| **X1** Choice among available employees | Deterministic, with no random numbers. | Decided 2026-09-28 (5B-4.3): longest available, ties by employee_id. | None |
+| **X2** Same-time event order | Completions, then shift ends, then break ends, then breaks due, then shift starts, then register handovers, then arrivals, then one FCFS assignment pass. This differs from the anonymous engine, which assigns after every single event; the two coincide on inputs with no ties (INFERRED). 5B-4.2 applies it to employee-only events. The 5B-4.3 decisions place the closing boundary second, after completions. | None. | None |
 | **X3** Time before opening | The state at opening follows directly from the schedule, because no customers exist before opening. Time after a shift's scheduled end falls under P3, P5, and P6. | None beyond P3, P5, and P6. | None |
 | **X4** Roster precondition | Reject an INVALID roster. Accept an INCOMPLETE roster only when every missing entry is a pay field (`regular_rate_per_hour`, `overtime_rate_per_hour`, `daily_regular_paid_minutes`). A `break_rules` gap is not a pay field, so such a roster is rejected. | None. | None |
-| **X5** Random-number interface | The anonymous stream is reused unchanged (see "Random numbers"). | Import the private `_draw_arrivals` unchanged, or add a one-line public alias in `shared_continuous_des.py`. The alias must leave the 5B-4.0 pin passing. | 5B-4.4 |
-| **X6** When customers can go unserved under named DRAIN | Phase 3A's configuration-level `_unserved_possible` does not carry over: under named DRAIN it can depend on the simulated run, for example when the only closer is on a delayed break. It must be redefined before 5B-5 uses it. | The redefinition. | 5B-4.3 (output field); 5B-5 |
+| **X5** Random-number interface | The anonymous stream is reused unchanged (see "Random numbers"). | Decided 2026-09-28 (5B-4.3): a minimal public wrapper or alias, with no duplicated stochastic logic. Not needed on prescribed arrivals, so not yet added. | 5B-4.4 |
+| **X6** When customers can go unserved under named DRAIN | Phase 3A's configuration-level `_unserved_possible` does not carry over: under named DRAIN it can depend on the simulated run, for example when the only closer is on a delayed break. It must be redefined before 5B-5 uses it. | Output field decided 2026-09-28 (5B-4.3): under DRAIN with an empty frozen crew, waiting customers are unserved, reason `no_eligible_employee`. The redefinition of `_unserved_possible` for 5B-5 remains open. | 5B-5 |
 | **X7** Staffing segments | Required, with no default; validated by `validate_timeline`; never empty; never optional (see above). | None. | None |
 
-## Invariants (approved; to be asserted in 5B-4.3)
+## Invariants (approved; asserted in 5B-4.3)
+
+Phase 5B-4.3 asserts the request's customer and queue invariants 1-19, which cover the list below;
+the 5B-4.3 spec maps each to its check.
 
 1. **Customer conservation.** Arrivals equal served plus unserved, with one outcome per customer.
 2. **One shared FCFS line.** Services start in arrival order.
@@ -331,7 +382,7 @@ Rules that depend on an open selection name it. Rules decided on 2026-09-28 name
    AVAILABLE employee.
 7. **Schedule consistency.**
    - Employees take customers only on shift and not break-due, except under the approved DRAIN
-     rule (P5, open).
+     rule (P5, decided in 5B-4.3).
    - ~~Before closing, accepting servers ≤ the 5B-1 scheduled active count.~~ Withdrawn: the
      2026-09-28 gap rule falsifies it (see "Employee state machine").
 8. **Breaks.**
@@ -351,15 +402,16 @@ Rules that depend on an open selection name it. Rules decided on 2026-09-28 name
 12. **Common random numbers.** Customers come only from the anonymous stream (X5), and the named
     engine draws no random numbers.
 13. **Reduction.** A fixed crew with no breaks, or a crew that only grows, reproduces the anonymous
-    engine's customer results exactly. This is INFERRED and must be tested. Because of X2, the test
-    inputs must avoid ties or account for the order difference (also INFERRED).
+    engine's customer results exactly. Phase 5B-4.3 tested it for one roster of each kind, both
+    closing policies, and generated arrivals with and without frequent ties; every comparison was
+    identical.
 14. **Units.** Times are hours from the horizon start, using the anonymous engine's `_hours`
     conversion. Integer-minute roster inputs are never rounded.
 
 The employee-only invariants required by Phase 5B-4.2 (sixteen of them) are listed with their
 verification in `2026-09-28-shared-queue-employee-state-machine.md`.
 
-## Proposed interface (approved design, not implemented)
+## Proposed interface (approved design; `simulate_named_prescribed` implemented in 5B-4.3)
 
 - **Module.** `simulation/shared_named_des.py`.
 - **`EmployeeDesPolicy`** holds the approved P and X selections. Every field is required, with no
@@ -389,13 +441,18 @@ This dependency mapping is INFERRED from the transition rules above. It reflects
 | Sub-phase | Needs |
 |---|---|
 | 5B-4.2 employee timeline state machine | Nothing further: P1-P4 are decided, and P5-P7 are represented without a selection |
-| 5B-4.3 named engine on prescribed arrivals | P5, P6, and P7 selections, X1, P8 output shape, the X6 output field, and the undetermined cases below |
-| 5B-4.4 seeded replications | X5 |
+| 5B-4.3 named engine on prescribed arrivals | Supplied 2026-09-28; implemented |
+| 5B-4.4 seeded replications | X5 (decided; to be implemented) and an event-time tolerance decision (see the 5B-4.3 spec) |
 | 5B-4.5 named playback replay | Nothing further for register identity (P4 decided) |
 | 5B-4.6 attribution quantities | P2 threshold (if chosen), P8 reporting, P9 reporting of a minute with both attributes |
 | 5B-5 workforce cost | X6 redefinition, overtime classification, the pay consequence of unfulfilled or truncated breaks (P1), D15 acceptance rule |
 
 ## Cases the 2026-09-28 decisions do not determine
+
+The Phase 5B-4.3 decisions settle all three cases below: the P3 rule gives a delayed shift's
+breaks their planned offset from the actual start, X2 places closing second, and P3 keeps the
+delayed shift's end fixed. The cases 5B-4.3 itself leaves open are listed in the 5B-4.3 spec
+("Undetermined").
 
 - **A break that falls due before a delayed split-shift activation.** This happens when the
   previous shift's actual release plus the required rest passes a break's scheduled start. P1 (a)

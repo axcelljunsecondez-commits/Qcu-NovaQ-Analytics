@@ -684,7 +684,32 @@ Current verified state:
   - A delayed split shift keeps its scheduled end, and is not activated when the delayed activation reaches it: INFERRED.
   - The P5, P6, and P7 selections: UNKNOWN.
 - NOT TESTED: tolerances for non-dyadic times. A scratch probe on a 5-minute grid showed a break's end minus start differing from 10/60 at the last binary digit.
-- Next (needs explicit approval): 5B-4.3, customer and queue integration. It needs the P5, P6, and P7 selections, X1, the P8 output shape, the X6 output field, and decisions on the undetermined cases.
+- Next (needs explicit approval): 5B-4.3, customer and queue integration. It needs the P5, P6, and P7 selections, X1, the P8 output shape, the X6 output field, and decisions on the undetermined cases. Superseded: 5B-4.3 is done (next section).
+
+## Shared Queue Enhancement: Phase 5B-4.3 Named-Employee Continuous Shared-Queue DES (2026-09-28)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-28-shared-queue-named-des.md`
+- `docs/superpowers/plans/2026-09-28-shared-queue-named-des-plan.md`
+
+The Phase 5B-4.3 request supplied P1-P9 and X1-X7 as rules to use exactly (recorded in the policy spec, "Explicit decisions of 2026-09-28 (Phase 5B-4.3)"): DRAIN crew frozen from employees accepting immediately before closing and serving until the line is empty; HARD_CUTOFF releases idle employees at closing and busy ones at completion; breaks in progress at closing truncated, pending ones cancelled_at_closing; X1 longest available, ties by employee_id; X2 places the closing boundary second; X6 `no_eligible_employee`; P8 six series and two separate gaps; and a new P3 rule for breaks of a delayed split shift.
+
+Current verified state:
+
+- `backend/queueing_engine/simulation/shared_named_des.py` (new): `simulate_named_prescribed` on prescribed (hour, work) arrivals.
+  - One FCFS line; named employees driven through the 5B-4.2 state machine; the X2 instant loop; closing inputs chosen by the state immediately before closing; X1 by earliest time of becoming AVAILABLE.
+  - Required inputs, no defaults: `closing_policy`, `employee_policy` (`EmployeeDesPolicy`, each field accepts only its approved value, `APPROVED_EMPLOYEE_POLICY`), and `required_staffing` (X7, validated by `validate_timeline`).
+  - Output: customer rows (`employee_id`, `register_id` replace `server_id`), counts, the queue integral, `at_close` (frozen crew, closing inputs), P8 staffing timeline and windows, the employee timeline, and a customer trace. No random numbers and no cost.
+- `shared_employee_states.py` amended (version v2): the P3 split-shift break rule replaces the 5B-4.2 `UndeterminedPolicyError`; roster-derived instants are computed in whole minutes (float safeguard); read-only `snapshot()`.
+  - The whole-minute change fixes a VERIFIED hazard: adding minutes in hours missed the exact conversion for 2,487 of 11,520 (start, duration) pairs; two new tests fail against dfa8fe75 and pass now. Binary-exact results are unchanged.
+  - One 5B-4.2 expectation changed because the approved P3 rule changed it (`test_split_shift_overrun_delays_the_next_shift`: the delayed shift's break moves from 2.5 to 3.125 h).
+- The anonymous engine `shared_continuous_des.py` is not changed; the 5B-4.0 pin passes. X5 is not exercised (prescribed arrivals only), so no public alias was added.
+- Tests: `tests/test_shared_named_des.py` (new; 37 test functions, 59 tests) with `check_named`, an independent checker of invariants 1-19 that also runs the 5B-4.2 checker; every required hand-computed case; the reduction test (fixed crew and growing crew, both policies, 96 generated arrival sets, all identical to the anonymous engine; employee and server identity not compared). `tests/test_shared_employee_states.py`: 38 test functions.
+- Fault injection: 28 source-level mutants of both modules (scratch script, not committed); first run killed 26 of 28; two tests added for the survivors (break-due service across closing, DRAIN release order); after that 28 of 28 killed on the final module text.
+- Gates: named, state-machine, and pin tests 106 passed; shared suites plus Separate Queue regressions 654 passed (Separate Queue alone 42 passed); ruff clean; mypy clean on 172 files; full backend suite 1647 passed, 3 skipped, 1 xfailed (baseline 1583; +59 named DES, +5 net state machine).
+- Undetermined (5B-4.3 spec): a break-due service completing exactly at closing raises `UndeterminedPolicyError` (zero-length truncated break vs cancelled_at_closing); a break ending exactly at closing is recorded completed (INFERRED); "accepting" = AVAILABLE or SERVING (INFERRED); no verified event-time tolerance exists, so instants are compared exactly as in the anonymous engine (UNKNOWN for seeded runs); the P8 window shape is INFERRED.
+- Next (needs explicit approval): 5B-4.4 seeded named replications (X5 wrapper and an event-time tolerance decision), 5B-4.5 named playback, 5B-5 workforce cost.
 
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 

@@ -250,7 +250,7 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 ## Shared-Queue Named-Employee DES Policy (2026-09-28)
 
 - The anonymous engine's complete `simulate_prescribed` output is pinned by `tests/test_shared_continuous_des_pin.py` against `tests/fixtures/shared_continuous_des_output_pin.json`. It uses fixed, binary-exact arrivals, with no seed. Regenerate the fixture only for an authorized, documented engine change (`python -m tests.test_shared_continuous_des_pin --write`).
-- The named-employee DES contract is recorded in `docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md` (product-owner approval of P1-P9 and X1-X7, 2026-09-28). It is design, not implemented.
+- The named-employee DES contract is recorded in `docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md` (product-owner approval of P1-P9 and X1-X7, 2026-09-28). Its prescribed-arrival engine is implemented (Phase 5B-4.3); the rest is design.
 - The approval did not choose among the alternatives the design offered. The Phase 5B-4.2 request (2026-09-28) then decided:
   - P1 (a): a delayed break keeps its full duration from its actual start, and a delay pushes later breaks by the minimum gap;
   - no pre-break cutoff and no pre-shift-end cutoff (P2, P3);
@@ -258,7 +258,7 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - P4: registers identified 1..K, waiting in order of earliest wait start then employee_id, lowest-numbered free register first;
   - P5-P7 must be representable without a selection.
 
-  Still UNKNOWN with no default: the P5, P6, and P7 selections, X1, X5, X6, P8, the P2 threshold, and P9 reporting. Each blocks the sub-phase listed in the spec.
+  Still UNKNOWN with no default at 5B-4.2: the P5, P6, and P7 selections, X1, X5, X6, P8, the P2 threshold, and P9 reporting. Phase 5B-4.3 supplied all of them except P9 reporting (below).
 - X7: the named DES requires staffing segments (`required_staffing`, no default), validated by `validate_timeline`. They are never empty and never optional.
 - Separate Queue break behavior (`PRE_BREAK_CUTOFF_MINUTES`, `queue_lifecycle`, the separate break controller, `break_optimization.py`) is protected and not reused. Named events use an `employee_` prefix.
 - The numpy pins conflict across environments (`requirements.txt` <2.3, `requirements-lock.txt` 2.4.6, `requirements-production.lock` 2.2.6). Cross-version RNG equality is UNKNOWN.
@@ -270,3 +270,7 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - No customers and no random numbers; service starts and completions are caller inputs.
   - Undetermined cases raise `UndeterminedPolicyError` or are recorded as INFERRED in its `UNDETERMINED` list.
 - The 5B-4.1 INFERRED bound "before closing, accepting servers ≤ the 5B-1 scheduled active count" is withdrawn: the gap push can put an employee on duty during scheduled break time.
+- Phase 5B-4.3 (2026-09-28) supplied the selections: DRAIN crew = employees AVAILABLE or SERVING immediately before closing, serving until the line is empty; HARD_CUTOFF releases idle employees at closing and busy ones at completion; P7 truncates breaks in progress and cancels pending ones; X1 longest available then employee_id; X2 places closing second; X6 `no_eligible_employee`; P8 reports six series and two separate gaps; a delayed split shift's breaks keep their planned offset from its actual start.
+- `simulation/shared_named_des.py` (`simulate_named_prescribed`) is the named-employee DES on prescribed arrivals, specified in `docs/superpowers/specs/2026-09-28-shared-queue-named-des.md`. `employee_policy` accepts only the approved selections. It draws no random numbers; seeded replications, playback, and cost do not exist.
+- The state machine computes roster-derived instants in whole minutes: adding minutes in hours can miss a roster boundary by one unit in the last place. Instants are otherwise compared exactly, as in the anonymous engine; no verified event-time tolerance exists.
+- Open (5B-4.3 spec): a break-due service completing exactly at closing raises `UndeterminedPolicyError`; a break ending exactly at closing is recorded completed (INFERRED).

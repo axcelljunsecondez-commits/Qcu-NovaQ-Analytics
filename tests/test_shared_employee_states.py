@@ -11,7 +11,14 @@ only from the result, the rules, and the roster.
 
 The horizon is 08:00-12:00 (minutes 480-720), so hours run 0-4 and closing is at 4.0. Every roster
 minute is a multiple of 15 and every input time a multiple of 1/8 hour, so all times are
-binary-exact and the partition sums are compared exactly.
+binary-exact and the partition sums are compared exactly. The exception is the section "Whole-minute
+arithmetic" (Phase 5B-4.3), whose 5-minute rosters are deliberately not binary-exact; those runs
+are checked by their own exact assertions, because ``check_invariants`` compares float sums
+exactly and so applies to binary-exact inputs only.
+
+Phase 5B-4.3 replaced the 5B-4.2 test that expected ``UndeterminedPolicyError`` for a break of a
+delayed split shift: the approved P3 rule now determines that case (the break keeps its planned
+offset from the actual shift start).
 """
 
 from __future__ import annotations
@@ -59,7 +66,6 @@ from backend.queueing_engine.simulation.shared_employee_states import (
     Release,
     ServiceCompletion,
     ServiceStart,
-    UndeterminedPolicyError,
     run_timeline,
 )
 
@@ -415,13 +421,17 @@ def test_split_shift_overrun_delays_the_next_shift():
     # A: shift 0 is 08:00-09:00 (0-1 h), shift 1 is 09:30-11:30 (1.5-3.5 h) with a 15-minute break at
     # 10:30 (2.5 h); required rest 30 minutes. A serves 0.5-1.625, so shift 0 is released at 1.625,
     # and shift 1 activates at max(1.5, 1.625 + 0.5) = 2.125, not at 1.5 (scheduled end + rest).
+    # P3 (approved for 5B-4.3): the break keeps its planned 60-minute offset from the shift start, so it
+    # falls due at 2.125 + 1.0 = 3.125, not at its scheduled 2.5 (the 5B-4.2 expectation), and runs to 3.375.
     workforce = rules(BreakRule(15, 60, 0, ()), break_rule(61, 480, rest=15), registers=1, max_shifts=2, rest=30)
     roster = [shift("A", 480, 540), shift("A", 570, 690, rest=630)]
     result = run(roster, workforce, [ServiceStart(0.5, "A"), ServiceCompletion(1.625, "A")])
     assert timeline(result, "A") == [
         (0.0, 0.5, AVAILABLE, 1), (0.5, 1.0, SERVING, 1), (1.0, 1.625, SERVING_SHIFT_ENDED, 1),
-        (1.625, 2.125, OFF, None), (2.125, 2.5, AVAILABLE, 1), (2.5, 2.75, ON_BREAK, None),
-        (2.75, 3.5, AVAILABLE, 1), (3.5, 4.5, OFF, None)]
+        (1.625, 2.125, OFF, None), (2.125, 3.125, AVAILABLE, 1), (3.125, 3.375, ON_BREAK, None),
+        (3.375, 3.5, AVAILABLE, 1), (3.5, 4.5, OFF, None)]
+    (item,) = break_rows(result, "A")
+    assert (item["scheduled_start"], item["due"], item["actual_start"], item["delay"]) == (2.5, 3.125, 3.125, 0.625)
     first, second = shift_row(result, "A", 0), shift_row(result, "A", 1)
     assert (first["release"], first["overrun"]) == (1.625, 0.625)
     assert (second["actual_start"], second["activation_delay"], second["release"]) == (2.125, 0.625, 3.5)
@@ -430,12 +440,52 @@ def test_split_shift_overrun_delays_the_next_shift():
             if row["start"] < 1.625 <= row["end"]] == [(1.0, 1.625, 0)]
 
 
-def test_split_shift_break_before_delayed_activation_is_undetermined():
-    # As above, but the break is at 10:00 (2.0 h), before the delayed activation at 2.125 h.
+def test_delayed_split_shift_break_keeps_its_planned_offset():
+    # P3 (approved for 5B-4.3), the case 5B-4.2 left undetermined: as above, but the break is planned at
+    # 10:00 (2.0 h), 30 minutes after the planned shift start 09:30, and before the delayed activation at
+    # 2.125. actual_due = 2.125 + (2.0 - 1.5) = 2.625; A is AVAILABLE, so the full 15 minutes run 2.625-2.875.
     workforce = rules(BreakRule(15, 60, 0, ()), break_rule(61, 480, rest=15), registers=1, max_shifts=2, rest=30)
     roster = [shift("A", 480, 540), shift("A", 570, 690, rest=600)]
-    with pytest.raises(UndeterminedPolicyError, match="UNKNOWN"):
-        run(roster, workforce, [ServiceStart(0.5, "A"), ServiceCompletion(1.625, "A")])
+    result = run(roster, workforce, [ServiceStart(0.5, "A"), ServiceCompletion(1.625, "A")])
+    assert timeline(result, "A")[3:] == [
+        (1.625, 2.125, OFF, None), (2.125, 2.625, AVAILABLE, 1), (2.625, 2.875, ON_BREAK, None),
+        (2.875, 3.5, AVAILABLE, 1), (3.5, 4.5, OFF, None)]
+    (item,) = break_rows(result, "A")
+    assert (item["scheduled_start"], item["due"], item["actual_start"], item["actual_end"], item["delay"],
+            item["outcome"]) == (2.0, 2.625, 2.625, 2.875, 0.625, COMPLETED)
+    assert shift_row(result, "A", 1)["scheduled_end"] == 3.5  # the scheduled end stays fixed
+
+
+def test_delayed_split_shift_breaks_follow_ordinary_delay_and_gap_rules():
+    # P3 then P1: shift 1 (09:30-11:30) has "first" at 09:45 and "second" at 10:15, 15 minutes each, with a
+    # 15-minute minimum gap. Activation 2.125 moves the planned due times to 2.125 + 0.25 = 2.375 and
+    # 2.125 + 0.75 = 2.875. A serves 2.25-2.5, so "first" falls due while serving and starts at the completion,
+    # 2.5-2.75 (full length). "second" is pushed by the gap to max(2.875, 2.75 + 0.25) = 3.0 and runs 3.0-3.25.
+    workforce = rules(BreakRule(15, 60, 0, ()), break_rule(61, 480, gap=15, first=15, second=15),
+                      registers=1, max_shifts=2, rest=30)
+    roster = [shift("A", 480, 540), shift("A", 570, 690, first=585, second=615)]
+    inputs = [ServiceStart(0.5, "A"), ServiceCompletion(1.625, "A"), ServiceStart(2.25, "A"),
+              ServiceCompletion(2.5, "A")]
+    result = run(roster, workforce, inputs)
+    assert timeline(result, "A")[4:] == [
+        (2.125, 2.25, AVAILABLE, 1), (2.25, 2.375, SERVING, 1), (2.375, 2.5, SERVING_BREAK_DUE, 1),
+        (2.5, 2.75, ON_BREAK, None), (2.75, 3.0, AVAILABLE, 1), (3.0, 3.25, ON_BREAK, None),
+        (3.25, 3.5, AVAILABLE, 1), (3.5, 4.5, OFF, None)]
+    assert [(item["name"], item["due"], item["actual_start"], item["actual_end"], item["delay"])
+            for item in break_rows(result, "A")] == [
+        ("first", 2.375, 2.5, 2.75, 0.75), ("second", 3.0, 3.0, 3.25, 0.75)]
+
+
+def test_delayed_split_shift_break_due_at_its_fixed_end_is_unfulfilled():
+    # P3: the break is planned at 11:00 (3.0 h), 90 minutes into shift 1. Activation 2.125 moves it to
+    # 2.125 + 1.5 = 3.625, after the fixed shift end 3.5, so it cannot occur: A is released at 3.5 and the
+    # break is unfulfilled (pending at release).
+    workforce = rules(BreakRule(15, 60, 0, ()), break_rule(61, 480, rest=15), registers=1, max_shifts=2, rest=30)
+    roster = [shift("A", 480, 540), shift("A", 570, 690, rest=660)]
+    result = run(roster, workforce, [ServiceStart(0.5, "A"), ServiceCompletion(1.625, "A")])
+    assert timeline(result, "A")[-2:] == [(2.125, 3.5, AVAILABLE, 1), (3.5, 4.5, OFF, None)]
+    (item,) = break_rows(result, "A")
+    assert (item["due"], item["outcome"], item["unfulfilled_cause"]) == (None, UNFULFILLED, "released")
 
 
 def test_split_shift_that_cannot_start_before_its_end_is_not_activated():
@@ -746,6 +796,64 @@ def test_drain_crew_c_includes_returning_and_late_starters():
     assert timeline(result, "D") == [
         (0.0, 4.25, OFF, None), (4.25, 4.5, WAITING_FOR_REGISTER, None), (4.5, 4.75, AVAILABLE, 1), (4.75, 5.0, OFF, None)]
     assert timeline(result, "C")[-2:] == [(4.25, 4.75, AVAILABLE, 2), (4.75, 5.0, OFF, None)]
+
+
+# ── Whole-minute arithmetic (Phase 5B-4.3) ──────────────────────────────────
+# A 5-minute grid: (m - 480) / 60 is not binary-exact, and adding minutes in hours can miss the
+# exact conversion of the summed minute by one unit in the last place. The guards below show that
+# each case is one of those.
+
+
+def _five_minute_rules(max_shifts: int = 1, between: int | None = None, **durations: int) -> WorkforceRules:
+    rule = BreakRule(5, 480, 0, tuple(BreakRequirement(name, minutes, True, 0, 480)
+                                      for name, minutes in durations.items()))
+    return WorkforceRules(ShiftRules(0, 1440, 5, 480, 5, max_shifts, between), (rule,), 2)
+
+
+def _hours(minute: int) -> float:
+    return (minute - HORIZON.start_minute) / 60.0
+
+
+def test_break_ending_at_the_shift_end_in_minutes_ends_there_exactly():
+    # A 08:00-08:50 with a 10-minute break at 08:40; B 08:00-09:20 with a 10-minute break at 09:10. Each
+    # break ends at its shift end in minutes. In hours, the naive sums fall one unit below (A) and above (B)
+    # the shift end; the machine now adds the minutes first, so each break ends at the shift end, completes,
+    # and releases with no overrun and no sliver of AVAILABLE time.
+    assert _hours(520) + 10 / 60 < _hours(530) and _hours(550) + 10 / 60 > _hours(560)
+    workforce = _five_minute_rules(rest=10)
+    roster = [shift("A", 480, 530, rest=520), shift("B", 480, 560, rest=550)]
+    result = run_timeline(HORIZON, staff(roster), workforce, roster, [], hold_past_shift_end=False, finish=4.5)
+    for employee_id, start, end in (("A", 520, 530), ("B", 550, 560)):
+        assert timeline(result, employee_id) == [
+            (0.0, _hours(start), AVAILABLE, 1 if employee_id == "A" else 2),
+            (_hours(start), _hours(end), ON_BREAK, None), (_hours(end), 4.5, OFF, None)]
+        row = shift_row(result, employee_id)
+        assert (row["release"], row["overrun"]) == (_hours(end), 0.0)
+        (item,) = break_rows(result, employee_id)
+        assert (item["actual_end"], item["outcome"]) == (_hours(end), COMPLETED)
+
+
+def test_split_shift_rest_ending_at_the_next_start_in_minutes_is_on_time():
+    # A works 08:00-08:35 and 08:55-10:00 with a required rest of 20 minutes. Released at 08:35, A may
+    # start again at 08:55 exactly; the naive hour sum is one unit later, which would record a delay.
+    assert _hours(515) + 20 / 60 > _hours(535)
+    workforce = _five_minute_rules(max_shifts=2, between=20)
+    roster = [shift("A", 480, 515), shift("A", 535, 600)]
+    result = run_timeline(HORIZON, staff(roster), workforce, roster, [], hold_past_shift_end=False, finish=4.5)
+    second = shift_row(result, "A", 1)
+    assert (second["actual_start"], second["activation_delay"]) == (_hours(535), 0.0)
+
+
+def test_snapshot_reports_state_register_and_break_end():
+    # A 08:00-12:00 with a 30-minute break at 09:00 (1.0 h); one register.
+    machine = EmployeeTimeline(HORIZON, staff([shift("A", 480, 720, rest=540)]),
+                               rules(break_rule(15, 480, rest=30), registers=1),
+                               [shift("A", 480, 720, rest=540)], hold_past_shift_end=False)
+    assert machine.snapshot() == {"A": {"state": OFF, "register_id": None, "current_break_end": None}}
+    machine.process(0.0)
+    assert machine.snapshot() == {"A": {"state": AVAILABLE, "register_id": 1, "current_break_end": None}}
+    machine.process(1.0)
+    assert machine.snapshot() == {"A": {"state": ON_BREAK, "register_id": None, "current_break_end": 1.5}}
 
 
 # ── Same-time order ─────────────────────────────────────────────────────────

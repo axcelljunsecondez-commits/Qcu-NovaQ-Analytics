@@ -4,6 +4,10 @@ Date: 2026-09-28. Status: implemented as `backend/queueing_engine/simulation/sha
 with tests in `tests/test_shared_employee_states.py`. Committed locally only; not pushed, merged,
 or deployed.
 
+Amended in Phase 5B-4.3 (2026-09-28): the approved P3 rule for breaks of a delayed split shift,
+whole-minute arithmetic for roster-derived instants, and a `snapshot()` accessor. See "Phase 5B-4.3
+amendments"; statements below that the amendments changed are marked.
+
 Plan: `docs/superpowers/plans/2026-09-28-shared-queue-employee-state-machine-plan.md`.
 Policy contract: `2026-09-28-shared-queue-named-employee-des-policy.md` (P1-P9 and X1-X7, approved
 2026-09-28, with the explicit decisions of the Phase 5B-4.2 request).
@@ -15,7 +19,7 @@ Policy contract: `2026-09-28-shared-queue-named-employee-des-policy.md` (P1-P9 a
 - **Not in scope:**
   - customers, a queue, arrivals, or service-time generation;
   - random numbers or Monte Carlo;
-  - the named-employee DES (`shared_named_des.py` does not exist);
+  - the named-employee DES (added in Phase 5B-4.3 as `shared_named_des.py`, with its own spec);
   - workforce cost, playback, API, database, frontend, Decision, and Reports.
 - **Service starts and completions are caller inputs.** `ServiceStart` and `ServiceCompletion`
   say that a service starts or completes at a given instant. The module never invents a service
@@ -98,6 +102,10 @@ Policy contract: `2026-09-28-shared-queue-named-employee-des-policy.md` (P1-P9 a
     - This is floating-point rounding, not a semantic difference (INFERRED).
     - Tolerances for non-dyadic inputs are NOT TESTED. The anonymous engine uses the same float
       hours.
+  - **Amended in 5B-4.3.** Adding minutes in hours could also miss a roster boundary by one unit
+    in the last place, which is a semantic difference (a sliver of AVAILABLE time, or a tiny
+    overrun or activation delay). Roster-derived instants are now computed in whole minutes; see
+    "Phase 5B-4.3 amendments".
 
 ## State representation
 
@@ -154,7 +162,9 @@ At one instant the stages run in this order:
   - The caller's service starts are X2's single assignment pass.
   - X2 does not place closing. Closing right after completions follows the Phase 3A order
     ("completions at closing first, then the recorded state at close"). It is the only placement
-    that keeps P5 (a) representable. This is INFERRED and listed as undetermined.
+    that keeps P5 (a) representable. This is INFERRED and listed as undetermined. (Amended in
+    5B-4.3: the approved X2 order places the closing boundary second, after completions, which is
+    this placement.)
   - Closing inputs follow closing, in their given order.
 - **Within a stage.**
   - Completions, shift ends, break ends, breaks due, and shift starts are taken in employee_id
@@ -208,7 +218,9 @@ At one instant the stages run in this order:
 
 - **When a break falls due.** A shift's first break falls due at its scheduled start. Break k
   falls due at `max(scheduled start of k, actual end of k-1 + min_gap_minutes / 60)`. A break
-  cannot fall due before the previous one has ended.
+  cannot fall due before the previous one has ended. (Amended in 5B-4.3: "scheduled start" is
+  now the planned due time, `actual shift start + (planned break start - planned shift start)`,
+  which equals the scheduled start for a shift that starts on time.)
 - **Starting.** A due break starts at once unless the employee is serving. A serving employee
   becomes SERVING_BREAK_DUE and starts the break at the completion. There is no pre-break cutoff.
 - **Duration.** The break lasts its full configured duration from its actual start
@@ -227,10 +239,11 @@ At one instant the stages run in this order:
   activated.
   - Its reason is `rest_after_actual_release_reaches_scheduled_end`.
   - Its breaks are unfulfilled (`shift_not_activated`).
-  - This reading is INFERRED.
+  - This reading is INFERRED. (Amended in 5B-4.3: approved by the P3 decision.)
 - **Undetermined split-shift break.** If a delayed activation passes a break's scheduled start,
   the outcome is UNKNOWN, and the module raises `UndeterminedPolicyError` instead of choosing
-  (`test_split_shift_break_before_delayed_activation_is_undetermined`).
+  (`test_split_shift_break_before_delayed_activation_is_undetermined`). (Amended in 5B-4.3: the
+  approved P3 rule decides this case; the branch and the test are replaced.)
 
 ### Registers (P4)
 
@@ -278,7 +291,7 @@ count is reported.
   actual_start, actual_end, delay, outcome, unfulfilled_cause}`.
 - **`state_totals`:** hours per base state per employee.
 - **`definitions`, `undetermined`, and `provenance`:** `state_machine_version`
-  `novaq-shared-employee-states-v1`, and the scope statement.
+  `novaq-shared-employee-states-v1` (`-v2` from 5B-4.3), and the scope statement.
 
 No cost, wage, or coverage quantity is computed.
 
@@ -387,9 +400,41 @@ The test module has 33 test functions.
   regardless of shift end" alternative that P5 leaves open. Without hold, the rule holds as
   written.
 
+## Phase 5B-4.3 amendments
+
+1. **P3 split-shift break rule (approved 2026-09-28).** `_due_time` uses the planned due time
+   `actual shift start + planned offset` for every break of the current shift; the gap push and
+   the delay rules are unchanged. The `UndeterminedPolicyError` branch in `_after_release` is
+   removed. A break whose planned due time is at or after the fixed shift end is unfulfilled
+   (`released`), as for any break pending at release.
+   - `test_split_shift_overrun_delays_the_next_shift`: the delayed shift's break moves from its
+     scheduled 2.5 h to 2.125 + 1.0 = 3.125 h. This expectation changed because the approved rule
+     changed.
+   - `test_split_shift_break_before_delayed_activation_is_undetermined` is replaced by three
+     hand-computed tests: `test_delayed_split_shift_break_keeps_its_planned_offset`,
+     `test_delayed_split_shift_breaks_follow_ordinary_delay_and_gap_rules`, and
+     `test_delayed_split_shift_break_due_at_its_fixed_end_is_unfulfilled`.
+2. **Whole-minute arithmetic.** `_plus(t, minutes)` adds whole minutes in integers when `t` is the
+   exact conversion of a roster minute, else in hours. It is used for break ends, gap pushes, rest
+   after release, and the P3 offset.
+   - Evidence and tests: `test_break_ending_at_the_shift_end_in_minutes_ends_there_exactly` and
+     `test_split_shift_rest_ending_at_the_next_start_in_minutes_is_on_time`. Both fail against the
+     dfa8fe75 module (run in scratch). They use 5-minute rosters and their own exact assertions,
+     because `check_invariants` compares float sums exactly and so applies to binary-exact inputs
+     only.
+   - On binary-exact inputs, which every earlier test uses, the results are unchanged.
+3. **`snapshot()`** returns each employee's state, register, and `current_break_end`
+   (`test_snapshot_reports_state_register_and_break_end`).
+4. **`UNDETERMINED`** keeps one entry: the machine selects no closing policy; the named DES applies
+   the approved ones.
+
+The test module has 38 test functions after these changes.
+
 ## Undetermined (UNKNOWN or INFERRED)
 
-The module's `UNDETERMINED` list records:
+Items 1-3 below are settled by the Phase 5B-4.3 decisions (see "Phase 5B-4.3 amendments"), and
+item 4 by the named DES, which applies the approved P5-P7 selections. The module's `UNDETERMINED`
+list at 5B-4.2 recorded:
 
 1. **A break due before a delayed split-shift activation.** Taking it at activation or leaving
    it unfulfilled is UNKNOWN; the module raises `UndeterminedPolicyError`.
@@ -408,5 +453,5 @@ Also open:
 ## Out of scope
 
 - Customer and queue integration (Phase 5B-4.3). It needs explicit approval and the open
-  selections.
+  selections. (Done in 5B-4.3: `2026-09-28-shared-queue-named-des.md`.)
 - Seeded replications, playback, attribution reporting, and workforce cost.

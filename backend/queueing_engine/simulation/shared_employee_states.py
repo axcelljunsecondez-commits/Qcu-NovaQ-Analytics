@@ -10,6 +10,11 @@ without selecting one.
 Specs: docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md (the approved
 policy contract) and docs/superpowers/specs/2026-09-28-shared-queue-employee-state-machine.md.
 
+Phase 5B-4.3 (docs/superpowers/specs/2026-09-28-shared-queue-named-des.md) added the approved
+split-shift break rule (P3: a delayed shift's breaks keep their planned offset from the shift
+start), whole-minute arithmetic for roster-derived instants, and the read-only ``snapshot``
+accessor used by the named-employee DES (``shared_named_des.py``).
+
 Nothing legacy imports this module. It uses none of the separate-queue break code
 (``PRE_BREAK_CUTOFF_MINUTES``, ``queue_lifecycle``, or the ``separate_optimization`` break
 controller), and its event names carry an ``employee_`` prefix.
@@ -32,7 +37,7 @@ from backend.queueing_engine.services.shared_workforce import (
     evaluate_roster,
 )
 
-STATE_MACHINE_VERSION = "novaq-shared-employee-states-v1"
+STATE_MACHINE_VERSION = "novaq-shared-employee-states-v2"
 
 # Base states. Exactly one holds for each employee at every instant.
 OFF = "OFF"
@@ -46,9 +51,9 @@ BASE_STATES = (OFF, WAITING_FOR_REGISTER, AVAILABLE, SERVING, SERVING_BREAK_DUE,
 REGISTER_STATES = frozenset({AVAILABLE, SERVING, SERVING_BREAK_DUE, SERVING_SHIFT_ENDED})
 SERVING_STATES = frozenset({SERVING, SERVING_BREAK_DUE, SERVING_SHIFT_ENDED})
 
-# Same-time stages, in processing order. X2 orders the employee-only events (completions, shift
-# ends, break ends, breaks due, shift starts, register handovers, then the assignment pass). X2
-# does not place closing; closing and the closing inputs come right after completions.
+# Same-time stages, in processing order: X2 as approved for Phase 5B-4.3 (completions, the closing
+# boundary, shift ends, break ends, breaks due, shift starts, register handovers, then the assignment
+# pass). The closing inputs are applied at the closing boundary, before shift ends.
 COMPLETION = "completion"
 CLOSING = "closing"
 CLOSING_INPUT = "closing_input"
@@ -72,7 +77,10 @@ DEFINITIONS = {
     "time_unit": (
         "Hours from the horizon start: roster minute m becomes (m - horizon start minute) / 60, the "
         "anonymous engine's conversion. The timeline begins at the earlier of the horizon start and the "
-        "earliest scheduled shift start; closing is the horizon end."
+        "earliest scheduled shift start; closing is the horizon end. Whole minutes added to an instant that "
+        "is itself a whole roster minute (a break length, a break gap, the rest between shifts, or a break's "
+        "planned offset) are added in integer minutes and converted once, so roster-derived instants that "
+        "coincide in minutes coincide exactly in hours; minutes added to any other instant are added in hours."
     ),
     "states": {
         OFF: "Not on duty: before a shift, between split shifts, or after release. No register.",
@@ -88,7 +96,7 @@ DEFINITIONS = {
         ON_BREAK: "On a break. No register.",
     },
     "same_time_order": (
-        "At one instant: service completions, then closing, then closing inputs (in their given order), "
+        "At one instant (X2): service completions, then closing, then closing inputs (in their given order), "
         "then shift ends, break ends, breaks due, shift starts, register handovers, and service starts. "
         "Within a stage, employees are taken in employee_id order."
     ),
@@ -98,17 +106,19 @@ DEFINITIONS = {
         "exceeds K."
     ),
     "breaks": (
-        "A shift's first break falls due at its scheduled start; a later break at the later of its "
-        "scheduled start and the previous break's actual end plus the rule's min_gap_minutes. A due break "
-        "starts at once unless the employee is serving, in which case it starts at the completion (no "
-        "pre-break cutoff). It lasts its full configured duration from the actual start. A break not "
-        "started by release is unfulfilled."
+        "A break's planned due time is the shift's actual start plus the break's planned offset from the "
+        "planned shift start (P3); for a shift that starts on time this is the break's scheduled start. A "
+        "shift's first break falls due at its planned due time; a later break at the later of its planned "
+        "due time and the previous break's actual end plus the rule's min_gap_minutes. A due break starts "
+        "at once unless the employee is serving, in which case it starts at the completion (no pre-break "
+        "cutoff). It lasts its full configured duration from the actual start. A break not started by "
+        "release is unfulfilled, including one whose due time is at or after the fixed shift end."
     ),
     "shifts": (
         "No pre-shift-end cutoff: a service under way at the shift end finishes first. A later split shift "
         "activates at the later of its scheduled start and the actual release plus min_minutes_between_shifts. "
         "Its scheduled end does not move; if the delayed activation is at or after it, the shift is not "
-        "activated."
+        "activated (missed)."
     ),
     "attributes": (
         "after_closing (from closing on) and past_scheduled_end (on duty at or after the current shift's "
@@ -125,15 +135,8 @@ DEFINITIONS = {
     ),
 }
 UNDETERMINED = [
-    "A break that falls due before a delayed split-shift activation (the previous shift's actual release plus "
-    "the required rest passes the break's scheduled start): taken at activation or unfulfilled is UNKNOWN, so "
-    "the state machine raises UndeterminedPolicyError.",
-    "Closing's place among same-time events is not set by X2. Closing is processed right after completions "
-    "(Phase 3A order) so that P5 (a) stays representable; this is INFERRED.",
-    "A delayed split shift keeps its scheduled end (no approved rule moves it); if the delayed activation is at or "
-    "after that end, the shift is not activated and its breaks are unfulfilled. This reading is INFERRED.",
-    "The P5, P6, and P7 selections are UNKNOWN; the closing inputs represent each alternative without "
-    "choosing one.",
+    "The state machine selects no closing policy: its closing inputs represent P5, P6, and P7, and the "
+    "named-employee DES (shared_named_des.py) applies the approved selections.",
 ]
 
 
@@ -202,7 +205,7 @@ class _Break:
     paid: bool
     duration_minutes: int
     scheduled_start: float
-    duration: float
+    offset_minutes: int  # planned start minus the planned shift start (P3)
     due: float | None = None
     actual_start: float | None = None
     actual_end: float | None = None
@@ -215,7 +218,7 @@ class _Shift:
     index: int  # position in the roster
     scheduled_start: float
     scheduled_end: float
-    gap: float  # min_gap_minutes of the shift's break rule, in hours
+    gap_minutes: int  # min_gap_minutes of the shift's break rule
     breaks: list[_Break]
     actual_start: float | None = None
     release: float | None = None
@@ -302,7 +305,7 @@ class EmployeeTimeline:
         self.register_count = rules.register_count
         self.closing_time = _hours(horizon.end_minute, horizon)
         rest = rules.shift_rules.min_minutes_between_shifts
-        self.rest: float | None = None if rest is None else rest / 60.0
+        self.rest_minutes: int | None = None if rest is None else int(rest)
         self.employees: dict[str, _Employee] = {}
         for row in report["employees"]:
             shifts = []
@@ -312,11 +315,11 @@ class EmployeeTimeline:
                             if rule.min_shift_minutes <= length <= rule.max_shift_minutes)
                 breaks = [_Break(name=placed["name"], paid=placed["paid"], duration_minutes=placed["duration_minutes"],
                                  scheduled_start=_hours(placed["start_minute"], horizon),
-                                 duration=placed["duration_minutes"] / 60.0)
+                                 offset_minutes=placed["start_minute"] - item["start_minute"])
                           for placed in sorted(item["breaks"], key=lambda placed: placed["start_minute"])]
                 shifts.append(_Shift(index=item["shift_index"], scheduled_start=_hours(item["start_minute"], horizon),
                                      scheduled_end=_hours(item["end_minute"], horizon),
-                                     gap=rule.min_gap_minutes / 60.0, breaks=breaks))
+                                     gap_minutes=rule.min_gap_minutes, breaks=breaks))
             self.employees[row["employee_id"]] = _Employee(row["employee_id"], shifts)
         self.order = sorted(self.employees)
         starts = [shift.scheduled_start for employee in self.employees.values() for shift in employee.shifts]
@@ -329,6 +332,13 @@ class EmployeeTimeline:
         self.transitions: list[dict[str, Any]] = []
 
     # ── Scheduled times ────────────────────────────────────────────────────
+
+    def _plus(self, t: float, minutes: int) -> float:
+        """``t`` plus whole minutes: in integer minutes when ``t`` is a whole roster minute, else in hours."""
+        minute = self.horizon.start_minute + round(t * 60)
+        if _hours(minute, self.horizon) == t:
+            return _hours(minute + minutes, self.horizon)
+        return t + minutes / 60.0
 
     def _pending_break(self, shift: _Shift) -> _Break | None:
         return next((item for item in shift.breaks if item.actual_start is None and item.outcome is None), None)
@@ -345,11 +355,13 @@ class EmployeeTimeline:
         item = self._pending_break(shift)
         if item is None or item.due is not None:
             return None
+        assert shift.actual_start is not None
+        planned = self._plus(shift.actual_start, item.offset_minutes)  # P3: actual shift start + planned offset
         position = shift.breaks.index(item)
         if position == 0:
-            return item.scheduled_start
+            return planned
         previous_end = shift.breaks[position - 1].actual_end
-        return None if previous_end is None else max(item.scheduled_start, previous_end + shift.gap)
+        return None if previous_end is None else max(planned, self._plus(previous_end, shift.gap_minutes))
 
     def _activation_time(self, employee: _Employee) -> float | None:
         if employee.current is not None or employee.released_for_run or employee.next_index >= len(employee.shifts):
@@ -357,7 +369,7 @@ class EmployeeTimeline:
         shift = employee.shifts[employee.next_index]
         if employee.last_release is None:
             return shift.scheduled_start
-        return max(shift.scheduled_start, employee.last_release + self._rest())
+        return max(shift.scheduled_start, self._plus(employee.last_release, self._rest_minutes()))
 
     def _employee_times(self, employee: _Employee) -> list[float]:
         times = [self._activation_time(employee), self._due_time(employee)]
@@ -376,15 +388,14 @@ class EmployeeTimeline:
             times.append(self.closing_time)
         return min(times, default=None)
 
-    @staticmethod
-    def _break_end(item: _Break) -> float:
+    def _break_end(self, item: _Break) -> float:
         assert item.actual_start is not None
-        return item.actual_start + item.duration
+        return self._plus(item.actual_start, item.duration_minutes)
 
-    def _rest(self) -> float:
-        if self.rest is None:  # validation allows a second shift only when the rest is supplied
+    def _rest_minutes(self) -> int:
+        if self.rest_minutes is None:  # validation allows a second shift only when the rest is supplied
             raise EmployeeTimelineError("min_minutes_between_shifts is required for a later split shift.")
-        return self.rest
+        return self.rest_minutes
 
     # ── Recording ──────────────────────────────────────────────────────────
 
@@ -465,21 +476,20 @@ class EmployeeTimeline:
         employee.next_index += 1
 
     def _after_release(self, employee: _Employee, t: float) -> None:
-        """Settle the later shifts: none after a Release input; otherwise wait for rest from release."""
+        """Settle the later shifts: none after a Release input; otherwise wait for rest from release.
+
+        A delayed shift keeps its scheduled end, and its breaks keep their planned offsets from its
+        actual start (P3; see ``_due_time``).
+        """
         while employee.next_index < len(employee.shifts):
             if employee.released_for_run:
                 self._not_activated(employee, "released_after_closing")
                 continue
             shift = employee.shifts[employee.next_index]
-            activation = max(shift.scheduled_start, t + self._rest())
+            activation = max(shift.scheduled_start, self._plus(t, self._rest_minutes()))
             if activation >= shift.scheduled_end:
                 self._not_activated(employee, "rest_after_actual_release_reaches_scheduled_end")
                 continue
-            if activation > shift.scheduled_start and any(item.scheduled_start < activation for item in shift.breaks):
-                raise UndeterminedPolicyError(
-                    f"{employee.employee_id}'s shift {shift.index} activates at {activation} h, after its scheduled "
-                    f"start {shift.scheduled_start} h, and a break falls due before then. Whether that break is "
-                    "taken at activation or is unfulfilled is UNKNOWN in the approved policy.")
             break
 
     def _complete(self, employee: _Employee, t: float) -> None:
@@ -649,6 +659,18 @@ class EmployeeTimeline:
             if self._activation_time(employee) == t:
                 self._activate(employee, t)
         self._handover(t)
+
+    def snapshot(self) -> dict[str, dict[str, Any]]:
+        """Read-only view of each employee now: base state, register, and current break end (None unless ON_BREAK)."""
+        view = {}
+        for employee_id in self.order:
+            employee = self.employees[employee_id]
+            view[employee_id] = {
+                "state": employee.state,
+                "register_id": employee.register,
+                "current_break_end": self._break_end(self._current_break(employee)) if employee.state == ON_BREAK else None,
+            }
+        return view
 
     def start_service(self, t: float, employee_id: str) -> None:
         """The assignment pass at the instant last processed: an AVAILABLE employee starts a service."""
