@@ -1,4 +1,4 @@
-# Generation Identity — Implementation Contract (ACCEPTED; not implemented)
+# Generation Identity — Implementation Contract (ACCEPTED; G1 provisionally committed)
 
 - **Status:** APPROVED SPECIFICATION. The design direction was accepted on 2026-09-26, and this
   contract on 2026-09-28, with OD-G2 approved (§8) and the legacy policy (§6) confirmed.
@@ -6,20 +6,25 @@
     application integration or a production deployment is ready.
   - This document is a specification only. It authorizes no migration, model, endpoint,
     configuration, engine-version or production change, and no stage in §14.
-  - Nothing here is implemented. The migration and model changes exist only as a scratchpad
-    prototype (§5), and application behaviour with enforcement on is NOT TESTED.
-- **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. The repository has
-  no migration 0005 and no generation code (VERIFIED by grep and file listing).
+  - Only stage G1 exists in the repository: migration 0005 and the model fields, committed
+    provisionally as `1f5c3ab3` (local, unpushed). Its status is **PROVISIONALLY COMMITTED —
+    SQLITE VERIFIED; POSTGRESQL VERIFICATION PENDING** (§5.5).
+  - Nothing after G1 is implemented. Application behaviour with enforcement on is NOT TESTED, and
+    the exact-generation defect is not resolved (§6.2).
+- **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
+  base the repository had no migration 0005 and no generation code (VERIFIED then by grep and file
+  listing). Since `1f5c3ab3` it has both.
 - **Related:** spec `2026-09-25-analytical-versioning-historical-evidence.md` §5.4 (the release
   blocker) and §3.1 (corrected identity table); plan Steps 5 and 9; `docs/operations.md` (release
   and rollback runbook).
-- **Prototype:** everything in §5 and §15 was run only in scratchpad copies of `4db54722`
-  (`gen_base` = committed code, `gen_proto` = prototype), against disposable SQLite files and
-  disposable PostgreSQL 16.15 containers.
+- **Prototype (historical):** everything marked "in the prototype", including §5.3 and all of
+  §15, was run only in scratchpad copies of `4db54722` (`gen_base` = committed code, `gen_proto` =
+  prototype), against disposable SQLite files and disposable PostgreSQL 16.15 containers. It is
+  not evidence for the committed 0005, whose own status is in §5.5.
 - **Evidence labels:** VERIFIED, APPROVED SPECIFICATION, REPORTED, PROPOSED, INFERRED, NOT TESTED,
-  UNKNOWN, CONFLICTING. A VERIFIED result in §4–§6, §11 and §15 applies to the level that was
-  actually run: the prototype migration, the ORM models, or a throwaway app. It does not apply to
-  the full NovaQ backend.
+  UNKNOWN, CONFLICTING. A VERIFIED result in §3–§6, §11 and §15 applies to the level that was
+  actually run: the prototype migration, the committed 0005 on SQLite, the ORM models, or a
+  throwaway app. It does not apply to the full NovaQ backend.
 
 ## 1. Governing rules
 
@@ -39,6 +44,10 @@
    A token proves which record was used, not that its mathematics or accounting is current.
 6. Service availability: an older backend must keep working on the migrated schema, and a newer
    backend must refuse to serve on an unmigrated one.
+   - At 0005 the first half holds only at the ORM layer. A pre-G release does **not** start
+     through the production Compose migration chain on 0005, because its own Alembic and
+     `migration_status` reject the revision (§6.2, §11.1). ORM compatibility is not deployment
+     startability.
 
 ## 2. Verified baseline (at `4db54722` unless stated)
 
@@ -67,12 +76,30 @@
 
 ## 3. The token
 
-- 128 random bits written as 32 lowercase hex characters, generated independently of id, time and
-  content.
+- Written as 32 lowercase hex characters (`^[0-9a-f]{32}$`), generated independently of id, time
+  and content. The random-bit count depends on the generator:
+
+  | Generator | Random bits | Evidence |
+  |---|---|---|
+  | Application default `uuid.uuid4().hex` | 122: a version-4 UUID, so the 13th hex character is always `4` and the 17th is one of `8`–`b` | VERIFIED: 50,000 samples, all distinct, only those two positions restricted |
+  | PostgreSQL default `replace(gen_random_uuid()::text,'-','')` | 122: a version-4 UUID | INFERRED from the PostgreSQL documentation; not measured |
+  | SQLite default `lower(hex(randomblob(16)))` | 128 | VERIFIED: 50,000 samples on SQLite 3.50.4, all distinct, no restricted position |
+
+- Consumers accept any value in the specified 32-hex format. They compare tokens as opaque
+  strings and never require or assume UUID version or variant bits.
 - One per row in `datasets.generation` and `scenarios.generation`: NOT NULL, unique
   (`uq_<table>_generation`).
-- Immutable after insert. No code path writes it, `PATCH` cannot reach it, and the unique
-  constraint refuses a copy.
+- Intended to be immutable after insert (APPROVED SPECIFICATION). **At G1, immutability is
+  UNENFORCED.** Against the committed 0005 on SQLite (VERIFIED, scratchpad probe):
+  - NOT NULL refuses an update to NULL, and UNIQUE refuses a copy of another live row's token;
+  - but neither refuses an `UPDATE` to a fresh token (raw SQL and ORM reassignment both committed);
+  - and neither refuses an insert that reuses the token of a deleted row.
+- No application code path writes the token after insert. At `1f5c3ab3` only the model default
+  sets it, and `PATCH` cannot reach it (`ScenarioPatch` has only `name`, `settings`, `results`)
+  (VERIFIED by grep). That does not stop direct database writes. Until the persistence layer
+  rejects them, a matching token alone does not prove the same record generation.
+- Persistence-layer enforcement is being assessed before G2: design only, not approved, not
+  implemented.
 - `scenarios.dataset_generation` records the dataset token that the save verified. It is nullable,
   has no default of any kind, and only the scenario save path writes it.
 
@@ -83,18 +110,25 @@
 | Application: model `default=new_generation` (`uuid.uuid4().hex`) | set by every ORM insert, before flush | authoritative; known inside the same transaction |
 | Database: default installed by 0005 | PostgreSQL `replace(gen_random_uuid()::text,'-','')`; SQLite `lower(hex(randomblob(16)))` | safety net for inserts that omit the column (an older backend on 0005, raw SQL) |
 
-- Both layers give the same 32-hex format (VERIFIED on both engines). An ORM insert always
-  supplies the application value.
+- Both layers give the same 32-hex format; the random-bit count differs by generator (§3). The
+  format was VERIFIED on both engines in the prototype. For the committed 0005 it is VERIFIED on
+  SQLite and NOT TESTED on PostgreSQL. An ORM insert always supplies the application value.
 - `create_all` builds (tests; `seed.py` on an empty database) get NOT NULL, unique and the
   application default, but no database default. This is documented and deliberate; M2 covers the
   database default.
 - `gen_random_uuid()` is built into PostgreSQL 13 and later. The production version is UNKNOWN,
   which is a stop condition.
 
-## 5. Migration 0005 (verified prototype)
+## 5. Migration 0005
 
-This section describes a scratchpad prototype, not repository code. The repository has no
-migration 0005, and stage G1 (§14) would add it under separate authorization.
+Migration 0005 is in the repository as `migrations/versions/0005_generation_identity.py`,
+committed provisionally in `1f5c3ab3` (local, unpushed). It follows the prototype design;
+§5.2 marks where it differs.
+
+- Historical: before `1f5c3ab3`, this section described only a scratchpad prototype, and the
+  repository had no 0005.
+- §5.3 is prototype evidence. The committed migration's own verification status is §5.5, and
+  its supported SQLite environment is §5.4.
 
 ### 5.1 What it writes
 
@@ -102,10 +136,12 @@ migration 0005, and stage G1 (§14) would add it under separate authorization.
   new `generation` column. On SQLite the constraint step rebuilds both tables (Alembic batch mode
   copies every row into a new table).
 - All pre-existing column values of those rows are unchanged. VERIFIED by a digest of every
-  original column, before and after, on both engines.
+  original column, before and after: in the prototype on both engines, and for the committed
+  0005 on SQLite only (§5.5).
 - `scenarios.dataset_generation` is added and left NULL for every existing row: the relationship
   cannot be established.
-- The `jobs` table is not written. VERIFIED by a digest of every stored job row, on both engines.
+- The `jobs` table is not written. VERIFIED by a digest of every stored job row, with the same
+  engine coverage.
 - No job's params or results are touched, and no analytical claim is rewritten.
 
 ### 5.2 Structure
@@ -113,25 +149,33 @@ migration 0005, and stage G1 (§14) would add it under separate authorization.
 Helpers are shared by `upgrade()` and the recovery tests:
 
 - `upgrade_table(table)`:
-  1. On SQLite, drop any leftover `_alembic_tmp_<table>`.
+  1. On SQLite, drop a leftover `_alembic_tmp_<table>` only if `<table>` itself still exists.
+     Otherwise refuse, because the leftover may hold the only copy of the rows. (Committed 0005;
+     the prototype dropped any leftover.)
   2. Add a nullable `generation` if it is absent.
   3. `UPDATE … SET generation = <token> WHERE generation IS NULL`. An existing token is never
      replaced.
   4. **Refuse duplicated tokens** with an explicit error. They are never regenerated.
-  5. If the column is nullable or `uq_<table>_generation` is absent, set NOT NULL plus the
-     database default and add the constraint.
+  5. If the column is nullable, has no database default, or `uq_<table>_generation` is absent,
+     set NOT NULL plus the database default and add any missing constraint. (Committed 0005; the
+     prototype did not check the default.)
 - `add_dataset_generation()`: add the column if it is absent.
 - `assert_postconditions()`: raise unless both `generation` columns exist, are NOT NULL, have a
   database default and their unique constraint, no row lacks a token, and
-  `scenarios.dataset_generation` exists.
+  `scenarios.dataset_generation` exists. The committed 0005 also requires
+  `scenarios.dataset_generation` to be nullable with no default.
 - `upgrade()` = `upgrade_table("datasets")`, `upgrade_table("scenarios")`,
   `add_dataset_generation()`, `assert_postconditions()`. Alembic records `0005` only after
   `upgrade()` returns, so it never records 0005 over a partial schema.
-- An unsupported dialect raises.
+- An unsupported dialect raises. The committed 0005 also refuses PostgreSQL below 13, which lacks
+  a built-in `gen_random_uuid()` (`_token_sql`).
 - `downgrade()`: guarded drops, for **rehearsal only**. Production rollback is backup-first
   (`operations.md:216-220`).
 
-### 5.3 Recovery behaviour (VERIFIED, §15.2)
+### 5.3 Recovery behaviour (VERIFIED in the prototype, §15.2)
+
+For the committed 0005, the recovery cases have passed on SQLite (§5.5). The PostgreSQL row
+below is prototype evidence only: for the committed migration it is NOT TESTED.
 
 | Engine | What a failed run leaves behind | Why |
 |---|---|---|
@@ -141,6 +185,43 @@ Helpers are shared by `upgrade()` and the recovery tests:
 - A plain retry completes from every state, on both engines.
 - The first, unguarded prototype got stuck on SQLite (`duplicate column name`), which is why every
   step is guarded.
+
+### 5.4 Supported SQLite migration environment
+
+The committed 0005 is verified on SQLite only with foreign-key enforcement **off**. That is
+SQLite's default, and neither `migrations/env.py` nor `backend/` issues `PRAGMA foreign_keys`
+(VERIFIED by grep). With enforcement on, the migration is not safe in general. Scratchpad probe
+on the committed 0005 (VERIFIED):
+
+| Probe | Result |
+|---|---|
+| `PRAGMA foreign_keys=ON` on the migration connection, one scenario referencing a dataset | fails in the `datasets` batch rebuild at `DROP TABLE datasets` with `FOREIGN KEY constraint failed`. The database stays at 0004 with only `datasets.generation` added (nullable), and no leftover table |
+| Retry with enforcement still on | fails the same way; state unchanged |
+| Retry with enforcement off | completes; 0005 |
+| Enforcement on, no scenarios | completes |
+| `PRAGMA foreign_keys=OFF` issued inside an open transaction | no effect; enforcement stays on |
+
+- Supported: SQLite connections without foreign-key enforcement during the migration. A
+  deployment that turns it on, for example through a connect listener, must run 0005 on a
+  connection where it is off from the start. It cannot be switched off once a transaction is open.
+- PostgreSQL alters the tables in place rather than rebuilding them, so this failure is specific
+  to the SQLite batch rebuild (INFERRED; the PostgreSQL cases have not run on the committed 0005).
+- Whether any deployment uses SQLite is UNKNOWN (§16).
+
+### 5.5 Verification status of the committed 0005
+
+| Evidence | SQLite | PostgreSQL |
+|---|---|---|
+| `tests/test_generation_identity_migration.py` (62 items: M and R cases per engine, plus SQLite-only and model tests) | 34 passed | 28 cases NOT TESTED: skipped, "`NOVAQ_TEST_DATABASE_URL` is required for the PostgreSQL variant" |
+| `tests/test_postgres_migration_chain.py` (expects head 0005) | — | 3 cases NOT TESTED: skipped |
+| Full backend suite on the G1 tree | 1275 passed, 31 skipped, 1 xfailed (the strict MC xfail) | — |
+| Scratchpad probes: old code on 0005 (§11.1), foreign keys (§5.4), token reassignment (§3) | VERIFIED | NOT TESTED |
+
+- A skipped PostgreSQL case is not a pass. No PostgreSQL case has run against the committed 0005.
+- G1 remains **PROVISIONALLY COMMITTED — SQLITE VERIFIED; POSTGRESQL VERIFICATION PENDING** until
+  all 31 PostgreSQL cases pass on a disposable database. Any later change to the migration, the
+  models or these tests repeats every G1 gate on both engines.
+- The §15 PostgreSQL results come from the prototype and do not substitute for this gate.
 
 ## 6. Legacy and compatibility-interval eligibility, stage by stage
 
@@ -188,8 +269,19 @@ dataset and setup (Steps 1–5 and Option A).
 - **Rollback G-B → G-A:** enforcement off, Step 5 rules only, and the defect returns. Tokens stay,
   and stamped evidence becomes eligible again when enforcement returns.
 - **Rollback G-A → pre-G on 0005:**
-  - Schema-compatible at the ORM layer: the pre-G models read and insert on 0005 (VERIFIED in the
-    prototype). A full pre-G application on 0005 is NOT TESTED.
+  - ORM compatibility: the pre-G models read and insert on 0005 (VERIFIED in the prototype, and on
+    SQLite against the committed 0005).
+  - Startability is a separate question, and the answer through the production Compose chain is
+    no:
+    - Pre-G `alembic upgrade head` fails on 0005 ("Can't locate revision identified by '0005'").
+    - Pre-G `migration_status` exits 1 ("expected ['0004'], got ['0005']").
+    - Both are VERIFIED on SQLite against the committed 0005.
+    - The Compose `api` service starts only after `migrate` completes successfully (§2), so a pre-G
+      release does not start there (INFERRED; not run).
+    - Started directly through `entrypoint.sh`, which checks settings only, it would start
+      (INFERRED). On Render it is UNKNOWN.
+  - Through Compose, rolling back to pre-G therefore means the backup-first path below.
+  - A full pre-G application on 0005 is NOT TESTED.
   - Rows written in that window get database-default tokens, their jobs are unstamped, and their
     scenarios have NULL `dataset_generation`. After rolling forward, all of them fail closed.
 - **Schema rollback (runbook: restore the pre-migration backup):** everything written after the
@@ -313,12 +405,19 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
 - **Limit of the guard:** it cannot help if Render serves a different application object (UNKNOWN,
   and a stop condition).
 - **How each backend behaves on each schema:**
-  - Older backend on 0005: the pre-G ORM models read and insert (VERIFIED in the prototype). So
-    migrating first is expected to keep the service available (INFERRED). A full pre-G
-    application on 0005 is NOT TESTED.
+  - Older backend on 0005, ORM layer: the pre-G models read and insert (VERIFIED in the prototype,
+    and on SQLite against the committed 0005). A pre-G process that is already serving when 0005
+    is applied is therefore expected to keep serving (INFERRED).
+  - Older backend on 0005, startup: a pre-G release does not start through the production Compose
+    migration chain on 0005 (§6.2). Its Alembic cannot locate revision 0005, and its
+    `migration_status` exits 1 (VERIFIED on SQLite). A migration-first release keeps service
+    available only while no pre-G instance restarts, redeploys or rolls back through a
+    migration-checking start path. Whether the production platform has such a path is UNKNOWN.
+  - A full pre-G application on 0005 is NOT TESTED.
   - Newer backend on 0004: it would refuse to start through the guard (PROPOSED). Without the
-    guard, the new ORM models fail on their first query: `no such column` on SQLite,
-    `UndefinedColumn` on PostgreSQL (VERIFIED in the prototype).
+    guard, the new ORM models fail on their first query: `no such column` on SQLite (VERIFIED in
+    the prototype and with the committed models), `UndefinedColumn` on PostgreSQL (VERIFIED in the
+    prototype only).
 - **Deploy overlap:** whether Render keeps the previous instance serving when a deploy fails, and
   whether old and new instances overlap during a deploy, is **UNKNOWN**. Until it is known, assume
   both.
@@ -328,6 +427,8 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
 **Pre-release facts (stop until each is established):**
 
 - Render runtime and start command, pre-deploy command, instance count and deploy overlap.
+- Whether any start, restart, redeploy or rollback path runs a migration or `migration_status`
+  step. On 0005, a pre-G release that starts through such a step refuses to start (§11.1).
 - Production PostgreSQL version (≥ 13) and current Alembic revision, read-only.
 - Backup and restore evidence per `operations.md`.
 
@@ -336,7 +437,8 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
 1. Take the backup required by the runbook.
 2. Apply 0005 explicitly, with the mechanism named in the pre-release facts. Never assume Render
    applies it.
-3. `migration_status` must exit 0. From here, pre-G code is serving on 0005 (S1).
+3. `migration_status` must exit 0. From here, pre-G code is serving on 0005 (S1). A pre-G
+   instance that restarts through a migration-checking path will not come back (§11.1).
 4. Deploy the G-A backend. If the guard refuses it, the old backend keeps serving (if Render
    behaves that way; UNKNOWN).
 5. Verify `/ready`, and check read-only that new jobs carry tokens.
@@ -351,13 +453,16 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
 
 | Backend \ schema | 0004 | 0005 |
 |---|---|---|
-| pre-G (`4db54722`) | S0: normal | S1: ORM read and insert VERIFIED in the prototype; full application NOT TESTED; writes unstamped evidence (fails closed later) |
+| pre-G (`4db54722`) | S0: normal | S1: ORM read and insert VERIFIED (prototype; committed 0005 on SQLite); **does not start through the Compose migrate chain** (its Alembic and `migration_status` reject 0005; VERIFIED on SQLite); full application NOT TESTED; writes unstamped evidence (fails closed later) |
 | G-A (stamping, enforcement off) | refuses to start: PROPOSED guard; only the mechanism is VERIFIED, on a throwaway app | S2: stamps tokens and applies the OD-G2 gate; **the identity defect remains** |
 | G-B (enforcement, v3) | refuses to start (PROPOSED guard) | S3/S4: unstamped evidence is never current (specified; NOT TESTED) |
 
 - Rollback is backup-first.
-- Code-only rollback G-B → G-A and G-A → pre-G is expected to be schema-compatible: the ORM layer
-  is VERIFIED in the prototype, the full application is NOT TESTED.
+- Code-only rollback G-A → pre-G is schema-compatible at the ORM layer only (VERIFIED: prototype,
+  and the committed 0005 on SQLite). It is not a restartable release through the production
+  Compose chain, where the pre-G `migrate` step rejects 0005 (§6.2). The full application is NOT
+  TESTED.
+- Code-only rollback G-B → G-A: both are specified on head 0005; NOT TESTED.
 - Schema rollback means restoring the backup (§6.2 R).
 
 ## 12. Protected behaviour
@@ -457,7 +562,10 @@ Every R test asserts:
 | G8 release G-A | operations only | 0005 applied explicitly | §11.2 | any §11.2 fact is UNKNOWN |
 | G9 release G-B, with v3 | flag constant | legacy evidence non-current | G-T14, G-T17 | a pre-G writer may exist; v3 prerequisites missing |
 
-## 15. Verification evidence (disposable databases only)
+## 15. Prototype verification evidence (disposable databases only)
+
+Historical: this section records the prototype, run on scratchpad copies of `4db54722`. It is not
+evidence for the committed 0005; see §5.5.
 
 ### 15.1 Baseline, with the final prototype
 
@@ -513,6 +621,12 @@ production pins.
 - Startup-guard behaviour on uvicorn 0.52.4 and FastAPI 0.141.1.
 - Full application behaviour with enforcement on (NOT TESTED: only the migration and ORM layer were
   prototyped). Likewise a full pre-G application on 0005, and the full G-A application.
+- Whether the production platform runs a migration or status step on start, restart, redeploy or
+  rollback, and so whether a pre-G rollback on 0005 can start at all (§11.1).
+- PostgreSQL behaviour of the committed 0005: 0 of 31 PostgreSQL cases have run (§5.5).
+- Whether any SQLite deployment enables foreign-key enforcement (§5.4).
+- Persistence-layer enforcement of token immutability and non-reuse (§3): design not approved,
+  not implemented.
 - Which existing tests or stored workflows reach selected MC or validation with an input that
   fails Step 5 rules, and so would meet the new OD-G2 refusal (NOT TESTED).
 - OD-G2 itself is resolved: approved 2026-09-28 (§8.1).
