@@ -1,4 +1,4 @@
-# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2 and G3 committed locally)
+# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2, G3 and G4 committed locally)
 
 - **Status:** APPROVED SPECIFICATION. The design direction was accepted on 2026-09-26, and this
   contract on 2026-09-28, with OD-G2 approved (§8) and the legacy policy (§6) confirmed.
@@ -18,7 +18,11 @@
     - G3: job and selection stamping and the OD-G2 write gates, with enforcement off, committed as
       `cb7f78be`. Its status is **COMMITTED — TARGETED SQLITE AND LOCAL POSTGRESQL 18.6
       VERIFICATION; FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§7.2).
-  - Nothing after G3 is implemented: G4–G9 are not started and not authorized. Application
+    - G4: generation identity in the evidence classifier, committed as `446a1e18`. The generation
+      check is **off by default**, and no application code turns it on. Its status is **COMMITTED
+      — CLASSIFIER TESTS, FULL SQLITE SUITE AND A TARGETED LOCAL POSTGRESQL 18.6 RUN VERIFIED;
+      FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§9.1).
+  - Nothing after G4 is implemented: G5–G9 are not started and not authorized. Application
     behaviour with enforcement on is NOT TESTED, and the exact-generation defect is not resolved
     (§6.2).
 - **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
@@ -430,8 +434,9 @@ dataset and setup (Steps 1–5 and Option A).
   - every `_save_job` call site records `params.scenario_generation` and
     `params.dataset_generation` (§7);
   - the selected-plan MC and validation endpoints apply the OD-G2 gate (§8.1).
-- Not implemented (later stages): token checks, the enforcement-on 409 in `_save_job`, and the
-  classifier changes (G4–G9).
+- Not implemented in G3 (later stages): token checks, the enforcement-on 409 in `_save_job`, and the
+  classifier changes. The classifier changes have since been committed as G4 (`446a1e18`, §9.1),
+  with the check off; the rest belongs to G5–G9.
 - Decisions approved 2026-09-28:
   - D1: the only existing test the OD-G2 gate reached,
     `test_selected_plan_validation.py::test_null_failure_rate_stays_null_and_inadequate`, used a
@@ -482,7 +487,7 @@ their token part (OD-G2, below).
 | Selection-binding helper (used by `_selected_scenario` and `_require_selected_separate_plan`) | `selection.params.scenario_generation == scenario.generation`, otherwise no eligible selection. Selected-plan endpoints: 409 "The selected plan was replaced; select it again in Compare." |
 | Classifier (§9) via `_current_evidence`, `require_dependencies_current`, `current_decision_for_report` | every recorded token must equal the live row's |
 | Write-time gates (OD-G2): selected MC (`des_job`), selected validation (`des_job`, `mc_job`) | from G-A: `require_dependencies_current` on every input before computing, whether enforcement is on or off. Under enforcement: matching recorded tokens as well |
-| `run_validation_current` `:1100` | classifier on the MC job, plus `mc.params.dataset_generation == dataset.generation` |
+| `run_validation_current`, where it compares `dataset_id` inline (`workflow.py:1130` at `446a1e18`; `:1100` at `4db54722`) | classifier on the MC job, plus `mc.params.dataset_generation == dataset.generation` |
 | Existing integer `result.scenario_id` checks | kept as consistency checks |
 
 - `_latest_job` keeps selecting by id, with no fallback (D7 rule).
@@ -529,6 +534,77 @@ their token part (OD-G2, below).
 | Unsupported engine | `VERSION_UNSUPPORTED` / `VERSION_UNRECOGNIZED` | unchanged; never merged with identity |
 
 All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREATED_AFTER` stays.
+
+### 9.1 G4 status (committed `446a1e18`, local, unpushed)
+
+- Implemented in `backend/api/evidence_status.py`, the only production file G4 changed (+85/−4).
+  VERIFIED from source at `446a1e18`:
+  - Reason codes `GENERATION_MISMATCH` → `MISSING_DEPENDENCY` and `GENERATION_UNRECORDED` →
+    `MISSING_PROVENANCE` (`:59`, `:69`, `:104`, `:113`).
+  - `GenerationRequirement` (`:228-237`), `Dependency.generation` (`:279`),
+    `EvidenceRecord.generations` (`:299`) and `EvidencePolicy.generation_kinds` (`:493`). A policy
+    may name only `dataset` and `scenario` (`GENERATION_KINDS`, `:473`); any other kind raises
+    (`:495-498`).
+  - `scenario_record` takes the scenario's `dataset_generation` for its dataset reference
+    (`:545`, `:567`, `:571`). `job_record` reads `params.scenario_generation` for each scenario
+    reference and `params.dataset_generation` for the recorded dataset (`:679-681`, `:689`).
+    Requirements are built only for the kinds the policy enables (`_generation_requirements`,
+    `:535-539`).
+  - A job with no scenario reference, which is every Current kind (`job_references`, `:604-606`),
+    gets no scenario requirement, whatever its `scenario_generation` says.
+  - In `_classify` (`:357-364`, `:386-395`), a generation requirement makes its reference
+    required. The token check runs only after existence and scope are established, and
+    `DEPENDENCY_CREATED_AFTER` is still reported next to it.
+  - A recorded token that is not text is kept tagged with its type, so it never equals a live
+    token (`_recorded_token`, `:524-532`).
+- Decisions of 2026-09-29, recorded in `tests/test_evidence_status_generation.py:4-6`:
+  - D1: `generation_kinds` decides whether `job_record` and `scenario_record` build requirements;
+    `classify` is unchanged.
+  - D2: a live token that the caller did not supply gives `DEPENDENCY_UNASSESSED`
+    (`MISSING_PROVENANCE`). The §9 table above does not list this case.
+- The only existing test changed is `test_13_records_cannot_carry_metrics` in
+  `tests/test_evidence_status.py`: `generations` was added to its expected field set, as record
+  identity rather than a metric.
+- **Off by default** (VERIFIED from source):
+  - `generation_kinds` defaults to empty (`:493`). With it empty, no record carries a generation
+    requirement and classification is unchanged. `test_flag_off_results_are_identical_with_or_without_token_data`
+    covers this (G-T13; `tests/test_evidence_status_generation.py:347-358`).
+  - The only `EvidencePolicy` the application builds is `workflow._current_evidence_policy`
+    (`workflow.py:591-625` at `446a1e18`), and it enables no generation kind.
+    `test_the_application_policy_enables_no_generation_kind` pins this (`:361-365`).
+  - `workflow.py` is unchanged since `cb7f78be`, and no caller supplies `Dependency.generation`.
+    Wiring is G5, which is not started.
+- Evidence (VERIFIED). The PostgreSQL run (194), the full SQLite suite (1417) and the fault run
+  (15 of 15) were not re-run on 2026-09-29. They are VERIFIED from the actual tool outputs
+  recorded in the G4 session. The committed blobs of the three G4 files match, by sha256, the
+  gated hashes those runs were checked against: before and after the SQLite and PostgreSQL runs,
+  and in the fault run's scratch copy (its `evidence_status.py` was restored after the run). The
+  107 classifier tests, ruff and mypy were re-run on 2026-09-29 against an export of `446a1e18`,
+  with the same results.
+
+  | Evidence | Result |
+  |---|---|
+  | `tests/test_evidence_status_generation.py` (56) and `tests/test_evidence_status.py` (51) | 107 passed. These tests use no database |
+  | Local PostgreSQL 18.6 run (non-superuser test role): the two files above, plus `test_step5_missing_dependency.py`, `test_d7_current_evidence_dataset.py`, `test_step4_schema1_dataset_currentness.py` and `test_generation_job_stamping.py` | 194 passed, 0 failed, 0 skipped. 87 ran on `postgresql`; the 107 classifier tests used no database |
+  | Full SQLite backend suite | 1417 passed; 94 skipped, all needing `NOVAQ_TEST_DATABASE_URL`; 1 xfailed (the strict MC xfail); exit 0 |
+  | Fifteen deliberate faults in a scratch copy of `evidence_status.py`, run against the 107 classifier tests | 15 of 15 caught; the copy was restored to the gated hash |
+  | `ruff check .`, `mypy .` | clean; mypy: no issues in 166 source files |
+
+- **The PostgreSQL run does not verify dialect-specific classifier behaviour.** The classifier
+  and the G4 tests use no database, so nothing in them depends on the engine. The 87 PostgreSQL
+  cases are the Step 3–5, D7 and G3 integration suites. They show only that those suites still
+  pass on PostgreSQL 18.6 with G4 present and the check off. None of them names a generation
+  kind.
+- NOT TESTED or UNKNOWN:
+  - the full backend suite on PostgreSQL (NOT RUN);
+  - the CI `postgres-integration` job (NOT RUN) and PostgreSQL 16 (NOT TESTED);
+  - production PostgreSQL version, Alembic revision and role privileges, and the Render facts in
+    §2 and §11 (UNKNOWN);
+  - which stored workflows would meet the OD-G2 refusal (UNKNOWN; §16);
+  - application behaviour with a generation kind enabled (NOT TESTED; nothing enables one).
+- No frontend file changed.
+- G4 does not repair the exact-generation defect. The check stays off until it is wired (G5) and
+  enforced (S3).
 
 ## 10. Reports
 
@@ -641,7 +717,7 @@ Replacement construction: delete through the API, then insert directly with the 
 | G-T1 Scenario and dataset creation | every creation path sets a unique 32-hex token; the scenario save sets `dataset_generation` to the verified row's token |
 | G-T2 Selection binding | a stamped selection binds only to the same generation; unstamped or mismatched → no eligible selection; Option A preserved |
 | G-T3 Job stamping | all 12 `_save_job` call sites record the tokens of the rows actually read |
-| G-T4 Current DES (and Current MC/validation, `:1100`) | a replaced dataset (same id, same time, byte-identical) is rejected |
+| G-T4 Current DES (and Current MC/validation: `run_validation_current`, `workflow.py:1130` at `446a1e18`) | a replaced dataset (same id, same time, byte-identical) is rejected |
 | G-T5 Selected-plan DES | rejected on a replaced scenario |
 | G-T6 MC and validation write-time gates (OD-G2) | Flag off: a DES/MC input that fails Step 5 rules is refused with 409 before computing, and no job is stored; an unstamped but otherwise eligible input is accepted. Enforcement on: a wrong-generation or unrecorded input is also refused |
 | G-T7 Decision evidence | never served or produced from a mismatched or unrecorded chain |
@@ -717,10 +793,11 @@ Every R test asserts:
 | G8 release G-A | operations only | 0005 applied explicitly | §11.2 | any §11.2 fact is UNKNOWN |
 | G9 release G-B, with v3 | flag constant | legacy evidence non-current | G-T14, G-T17 | a pre-G writer may exist; v3 prerequisites missing |
 
-Status at `cb7f78be`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`) and G3
-(`cb7f78be`) are committed locally and unpushed. G2 changed `scenarios.py` and the dataset
-serializer in `datasets.py`. G3 changed only `workflow.py` in production code. G4–G9 are not
-started and not authorized.
+Status at `446a1e18`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`), G3
+(`cb7f78be`) and G4 (`446a1e18`) are committed locally and unpushed. G2 changed `scenarios.py` and
+the dataset serializer in `datasets.py`. G3 changed only `workflow.py` in production code. G4
+changed only `evidence_status.py` in production code, with the generation check off by default
+(§9.1). G5–G9 are not started and not authorized.
 
 ## 15. Prototype verification evidence (disposable databases only)
 
@@ -793,6 +870,9 @@ production pins.
   PostgreSQL 16, production and the frontend gates (§7.1).
 - G3: the full backend suite on PostgreSQL (NOT RUN), the CI job, PostgreSQL 16 and production
   (§7.2).
+- G4: the full backend suite on PostgreSQL (NOT RUN), the CI job, PostgreSQL 16 and production
+  (§9.1). The local PostgreSQL 18.6 run does not verify the classifier on any database, because
+  the classifier tests use none.
 - Which stored workflows reach selected MC or validation with an input that fails Step 5 rules,
   and so would meet the OD-G2 refusal (UNKNOWN). For the existing tests this is answered: exactly
   one, whose fixture was corrected (§7.2, D1).
