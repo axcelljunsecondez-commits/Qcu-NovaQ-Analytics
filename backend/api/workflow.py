@@ -294,6 +294,17 @@ def _scenario_setup_problem(scenario: Scenario, analysis: AnalysisProject) -> st
 def _own_verified_scenario(
     db: Session, user: User, analysis: AnalysisProject, scenario_id: int
 ) -> Scenario:
+    return _own_verified_scenario_and_dataset(db, user, analysis, scenario_id)[0]
+
+
+def _own_verified_scenario_and_dataset(
+    db: Session, user: User, analysis: AnalysisProject, scenario_id: int
+) -> tuple[Scenario, Dataset]:
+    """The verified scenario and the dataset row it was verified against.
+
+    Evidence built on the scenario records that row's generation (G3), so it is returned rather
+    than read again.
+    """
     scenario = db.get(Scenario, scenario_id)
     if (
         scenario is None
@@ -332,7 +343,7 @@ def _own_verified_scenario(
                 status_code=422,
                 detail="Separate plan is stale for the current Setup.",
             )
-        return scenario
+        return scenario, dataset
     if _scenario_setup_problem(scenario, analysis) is not None:
         raise HTTPException(
             status_code=422,
@@ -350,7 +361,7 @@ def _own_verified_scenario(
             status_code=422,
             detail="Scenario is stale for the current dataset.",
         )
-    return scenario
+    return scenario, dataset
 
 
 def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[dict[str, Any]]:
@@ -498,10 +509,17 @@ def _save_job(
     params: dict[str, Any],
     result: dict[str, Any],
     settings: Settings,
-    dataset_id: int | None = None,
+    dataset: Dataset,
 ) -> Job:
+    """Persist workflow evidence with the identity of every row it was computed from.
+
+    ``dataset`` is the dataset row the computation read: the Current dataset for a Current kind,
+    and for a scenario-bound kind the row the scenario was verified against.
+    """
     if kind not in WORKFLOW_KINDS:
         raise ValueError("Unknown workflow evidence kind.")
+    if scenario is not None and scenario.dataset_id != dataset.id:
+        raise ValueError("Workflow evidence must record the dataset its scenario was verified against.")
     encoded = json.dumps(result, allow_nan=False, ensure_ascii=False).encode("utf-8")
     if len(encoded) > settings.result_jsonb_max_bytes:
         raise HTTPException(
@@ -511,7 +529,7 @@ def _save_job(
     now = datetime.now(timezone.utc)
     if scenario is None:
         scenario_id: int | None = None
-        resolved_dataset_id: int | None = dataset_id
+        resolved_dataset_id: int | None = dataset.id
     else:
         scenario_id = scenario.id
         resolved_dataset_id = scenario.dataset_id
@@ -526,6 +544,10 @@ def _save_job(
             "engine_version": ENGINE_VERSION,
             **params,
             "setup_hash": _setup_fingerprint(analysis.queue_setup_json),
+            # G3: the generation of each row read, written after the caller's params so no caller
+            # value can replace it. A Current kind reads no scenario and records null.
+            "scenario_generation": scenario.generation if scenario is not None else None,
+            "dataset_generation": dataset.generation,
         },
         result_json=result,
         tenant_id=user.tenant_id,
@@ -540,16 +562,25 @@ def _save_job(
 def _selected_scenario(
     db: Session, user: User, analysis: AnalysisProject
 ) -> tuple[Scenario | None, Job | None]:
+    scenario, _, selection = _selected_scenario_and_dataset(db, user, analysis)
+    return scenario, selection
+
+
+def _selected_scenario_and_dataset(
+    db: Session, user: User, analysis: AnalysisProject
+) -> tuple[Scenario | None, Dataset | None, Job | None]:
+    """The selected verified scenario with the dataset row it was verified against, if any."""
     selection = _latest_job(db, user, "workflow_selection", analysis.id)
     if selection is None:
-        return None, None
+        return None, None, None
     scenario_id = (selection.params_json or {}).get("scenario_id")
     if not isinstance(scenario_id, int):
-        return None, selection
+        return None, None, selection
     try:
-        return _own_verified_scenario(db, user, analysis, scenario_id), selection
+        scenario, dataset = _own_verified_scenario_and_dataset(db, user, analysis, scenario_id)
     except HTTPException:
-        return None, selection
+        return None, None, selection
+    return scenario, dataset, selection
 
 
 # ── D7 + Step 5: persisted evidence must resolve to live, in-scope dependencies ──
@@ -898,21 +929,21 @@ def select_scenario(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
-    scenario = _own_verified_scenario(db, user, analysis, payload.scenario_id)
+    scenario, dataset = _own_verified_scenario_and_dataset(db, user, analysis, payload.scenario_id)
     job = _save_job(
         db, user, "workflow_selection", analysis, scenario, {},
-        {"scenario_id": scenario.id, "scenario_name": scenario.name}, settings,
+        {"scenario_id": scenario.id, "scenario_name": scenario.name}, settings, dataset,
     )
     return {"selection": _job_out(job)}
 
 
 def _require_selection(
     db: Session, user: User, analysis: AnalysisProject
-) -> Scenario:
-    scenario, _ = _selected_scenario(db, user, analysis)
-    if scenario is None:
+) -> tuple[Scenario, Dataset]:
+    scenario, dataset, _ = _selected_scenario_and_dataset(db, user, analysis)
+    if scenario is None or dataset is None:
         raise HTTPException(status_code=409, detail="Select a Scenario in Compare first.")
-    return scenario
+    return scenario, dataset
 
 
 @router.post(
@@ -927,8 +958,7 @@ def run_des(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
-    scenario = _require_selection(db, user, analysis)
-    dataset = db.get(Dataset, scenario.dataset_id) if scenario.dataset_id is not None else None
+    scenario, dataset = _require_selection(db, user, analysis)
     result = simulate_segments_with_trace(
         _segments_for(scenario, dataset),
         sim_hours=payload.sim_hours,
@@ -940,7 +970,7 @@ def run_des(
     )
     job = _save_job(
         db, user, "workflow_des", analysis, scenario,
-        payload.model_dump(), result, settings,
+        payload.model_dump(), result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
 
@@ -971,7 +1001,7 @@ def run_des_current(
     result["provenance"] = "CURRENT"
     job = _save_job(
         db, user, "workflow_des_current", analysis, None,
-        payload.model_dump(), result, settings, dataset_id=dataset.id,
+        payload.model_dump(), result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
 
@@ -988,7 +1018,7 @@ def run_mc(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
-    scenario = _require_selection(db, user, analysis)
+    scenario, dataset = _require_selection(db, user, analysis)
     result = {
         "results": mc_simulate_segments(
             _segments_for(scenario),
@@ -1000,7 +1030,7 @@ def run_mc(
     }
     job = _save_job(
         db, user, "workflow_mc", analysis, scenario,
-        payload.model_dump(), result, settings,
+        payload.model_dump(), result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
 
@@ -1031,7 +1061,7 @@ def run_mc_current(
     result["provenance"] = "CURRENT"
     job = _save_job(
         db, user, "workflow_mc_current", analysis, None,
-        payload.model_dump(), result, settings, dataset_id=dataset.id,
+        payload.model_dump(), result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
 
@@ -1048,7 +1078,7 @@ def run_validation(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
-    scenario = _require_selection(db, user, analysis)
+    scenario, dataset = _require_selection(db, user, analysis)
     frame = validate_with_simulation(
         pd.DataFrame(_scenario_rows(scenario)),
         des_sim_hours=payload.des_sim_hours,
@@ -1061,7 +1091,7 @@ def run_validation(
     result = {"results": rows}
     job = _save_job(
         db, user, "workflow_validation", analysis, scenario,
-        payload.model_dump(), result, settings,
+        payload.model_dump(), result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
 
@@ -1138,7 +1168,7 @@ def run_validation_current(
     }
     job = _save_job(
         db, user, "workflow_validation_current", analysis, None,
-        {"mc_job_id": mc_job.id}, result, settings, dataset_id=dataset.id,
+        {"mc_job_id": mc_job.id}, result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
 
@@ -1802,7 +1832,7 @@ def _require_selected_separate_plan(
             detail="Select a saved optimal plan in Comparison before running optimized simulation.",
         )
     try:
-        scenario = _own_verified_scenario(db, user, analysis, scenario_id)
+        scenario, dataset = _own_verified_scenario_and_dataset(db, user, analysis, scenario_id)
     except HTTPException as exc:
         raise HTTPException(
             status_code=exc.status_code,
@@ -1826,7 +1856,6 @@ def _require_selected_separate_plan(
             raise SelectedPlanError(
                 f"Period {period.get('time', '?')} references lanes missing from the current "
                 f"setup: {', '.join(str(q) for q in unknown)}. The setup changed since saving.")
-    dataset = db.get(Dataset, scenario.dataset_id)
     options = _selected_schedule_options(scenario)
     try:
         multiplier = float(options.get("lambda_multiplier", 1.0))
@@ -2047,7 +2076,7 @@ def run_selected_des(
         {"seed": payload.seed, "engine": "selected-plan-routing-des",
          "periods": len(result["periods"]),
          "load_replications": payload.load_replications},
-        result, settings,
+        result, settings, plan["dataset"],
     )
     return {"evidence": _job_out(job)}
 
@@ -2288,6 +2317,10 @@ def run_selected_mc(
         failure_threshold, threshold_source = target, "plan_target"
     else:
         failure_threshold, threshold_source = MC_DEFAULT_FAILURE_THRESHOLD, "default"
+    # OD-G2 (spec 2026-09-26 §8.1): the DES evidence this run consumes must meet the Step 5
+    # dependency rules before anything is computed or stored. Checked last, so every earlier
+    # refusal keeps its own status and message.
+    require_dependencies_current(db, user, analysis, des_job)
     try:
         segments = _selected_mc_segments(plan, des_job.result_json or {})
         rows = mc_simulate_segments(
@@ -2318,7 +2351,7 @@ def run_selected_mc(
          "load_replications": load["count"],
          "load_seeds": load.get("seeds"),
          "lambda_basis": load.get("basis")},
-        result, settings,
+        result, settings, plan["dataset"],
     )
     return {"evidence": _job_out(job)}
 
@@ -2446,6 +2479,10 @@ def run_selected_validation(
             status_code=422,
             detail="Selected Monte Carlo evidence has no usable failure cap.",
         )
+    # OD-G2 (spec 2026-09-26 §8.1): the DES and MC evidence this run consumes must meet the Step 5
+    # dependency rules before anything is computed or stored. Checked last, so every earlier
+    # refusal keeps its own status and message.
+    require_dependencies_current(db, user, analysis, des_job, mc_job)
     des_result = des_job.result_json or {}
     mc_rows = ((mc_job.result_json or {}).get("results") or [])
     outcome = validate_selected_plan(
@@ -2468,7 +2505,7 @@ def run_selected_validation(
         db, user, "workflow_validation", analysis, scenario,
         {"des_job_id": des_job.id, "mc_job_id": mc_job.id,
          "failure_rate_cap": float(failure_cap)},
-        result, settings,
+        result, settings, plan["dataset"],
     )
     return {"evidence": _job_out(job)}
 
@@ -2701,7 +2738,7 @@ def create_selected_decision(
         db, user, "workflow_decision", analysis, scenario,
         {"validation_job_id": validation_job.id, "des_job_id": des_job.id,
          "mc_job_id": mc_job.id},
-        decision, settings,
+        decision, settings, plan["dataset"],
     )
     return {"decision": decision, "persisted": True, "evidence": _job_out(job)}
 
@@ -2715,7 +2752,7 @@ def create_decision(
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
     evidence = _current_evidence(db, user, analysis)
-    scenario, _ = _selected_scenario(db, user, analysis)
+    scenario, dataset, _ = _selected_scenario_and_dataset(db, user, analysis)
     if (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues":
         # Separate plans are decided only from the selected-plan evidence chain;
         # the shared rules here must never produce or persist a verdict for them.
@@ -2725,10 +2762,10 @@ def create_decision(
         result["rationale"] = [f"Missing: {missing}."]
         return {"decision": result, "persisted": False}
     result = _derive_decision(analysis, scenario, evidence)
-    if scenario is None:
+    if scenario is None or dataset is None:
         return {"decision": result, "persisted": False}
     job = _save_job(
         db, user, "workflow_decision", analysis, scenario,
-        {"evidence_ids": result["evidence_ids"]}, result, settings,
+        {"evidence_ids": result["evidence_ids"]}, result, settings, dataset,
     )
     return {"decision": result, "persisted": True, "evidence": _job_out(job)}
