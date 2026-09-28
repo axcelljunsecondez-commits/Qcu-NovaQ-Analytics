@@ -1,0 +1,4315 @@
+{
+ "cases": {
+  "no_arrivals_drain": {
+   "capacity_transitions": [
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 0.5
+    }
+   ],
+   "closing": {
+    "after_close_busy_server_hours": 0.0,
+    "after_close_server_hours": 0.0,
+    "after_close_waiting_customer_hours": 0.0,
+    "at_close": {
+     "accepting_server_ids": [],
+     "draining_server_ids": [],
+     "in_service_customer_ids": [],
+     "waiting_customer_ids": []
+    },
+    "closing_hours": 1.0,
+    "completions_after_close": 0,
+    "last_server_release_hours": 1.0,
+    "overrun_hours": 0.0,
+    "policy": "DRAIN",
+    "rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "service_starts_after_close": 0,
+    "unserved_customer_ids": [],
+    "unserved_possible": true,
+    "unserved_possible_reason": "DRAIN with 0 servers scheduled in the final staffing segment (closed): nobody is on duty at closing to serve customers still waiting."
+   },
+   "cost_quantities": {
+    "closing_policy": "DRAIN",
+    "definitions": {
+     "overtime_server_hours": "Present server-hours after closing.",
+     "regular_server_hours": "Present server-hours inside the horizon: scheduled hours plus above-schedule drain time during the day.",
+     "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+     "unserved_customer_count": "Customers recorded as unserved_at_close."
+    },
+    "overtime_server_hours": 0.0,
+    "regular_server_hours": 0.5,
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "total_waiting_customer_hours": 0.0,
+    "unserved_customer_count": 0,
+    "unserved_possible": true
+   },
+   "customers": [],
+   "drains": [],
+   "provenance": {
+    "assumptions": [
+     "Arrivals form a Poisson process with the demand period's rate: exponential gaps restarted at each period start (exact by memorylessness). A period with arrival rate 0 has no arrivals.",
+     "Each customer carries a unit work amount drawn once from Exp(1); service lasts work / mu, with mu the service rate of the demand period in which service starts. A started service is never redrawn, rescaled, or interrupted.",
+     "The system is empty at the horizon start (initial condition).",
+     "The horizon end is the closing time. Services that start after closing (DRAIN only) use the final demand period's service rate, because no demand data exists after closing.",
+     "Waiting-time means are over customers who started service, including starts after closing under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are censored, not completed waits.",
+     "Simulated values are one stochastic realization of the configured model, not observations and not steady-state expectations."
+    ],
+    "closing_policy": "DRAIN",
+    "closing_rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "engine_version": "novaq-shared-continuous-des-v2",
+    "event_order": "At equal times: service completions, then capacity changes, then arrivals (by customer id). After each event, free accepting servers take waiting customers first come, first served; the lowest free server number serves first.",
+    "inputs": {
+     "arrival_count": 0,
+     "demand_periods": [
+      {
+       "arrival_rate_per_hour": 1.0,
+       "end_minute": 60,
+       "period_id": "d",
+       "service_rate_per_hour": 1.0,
+       "start_minute": 0
+      }
+     ],
+     "horizon": {
+      "end_minute": 60,
+      "start_minute": 0
+     },
+     "staffing_segments": [
+      {
+       "end_minute": 30,
+       "segment_id": "open",
+       "servers": 1,
+       "start_minute": 0
+      },
+      {
+       "end_minute": 60,
+       "segment_id": "closed",
+       "servers": 0,
+       "start_minute": 30
+      }
+     ]
+    },
+    "max_trace_events": null,
+    "metric_provenance": "des_continuous_horizon",
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "time_unit": "hours from the horizon start",
+    "trace_fields": "queue_len_after is the number of waiting customers right after the event; an arriving customer counts as waiting until its service_start event, which may share the arrival time. Events and capacity transitions at or after closing carry segment_id None.",
+    "transition_policy": "Non-preemptive. A capacity decrease closes idle servers first (highest number first), then designates busy servers to drain (highest number first): a draining server takes no new customer, finishes its current service, and closes at that completion. A capacity increase reactivates draining servers first (lowest number first), then reopens closed servers (lowest number first), creating new server numbers only when needed. Accepting servers always equal the schedule; draining servers are recorded as time above schedule."
+   },
+   "segments": [
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.0,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 0.5,
+     "scheduled_server_hours": 0.5,
+     "scheduled_servers": 1,
+     "segment_id": "open",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.0,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.0,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 0.0,
+     "scheduled_server_hours": 0.0,
+     "scheduled_servers": 0,
+     "segment_id": "closed",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": null,
+     "waited_count": 0
+    }
+   ],
+   "totals": {
+    "arrivals": 0,
+    "busy_server_hours": 0.0,
+    "customer_conservation": true,
+    "departed": 0,
+    "max_queue": 0,
+    "mean_wait_hours": null,
+    "present_server_hours": 0.5,
+    "queue_customer_hours": 0.0,
+    "scheduled_server_hours": 0.5,
+    "scope": "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; after-closing values are under closing. Customer counts and waits cover the whole run.",
+    "server_hours_above_schedule": 0.0,
+    "servers_used": 1,
+    "service_starts": 0,
+    "time_average_queue": 0.0,
+    "unserved_at_close": 0,
+    "waited_count": 0
+   },
+   "trace": [
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 0.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 0.5,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": null,
+     "t": 1.0,
+     "type": "closing"
+    }
+   ],
+   "trace_truncated": false
+  },
+  "no_arrivals_hard_cutoff": {
+   "capacity_transitions": [
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 0.5
+    }
+   ],
+   "closing": {
+    "after_close_busy_server_hours": 0.0,
+    "after_close_server_hours": 0.0,
+    "after_close_waiting_customer_hours": 0.0,
+    "at_close": {
+     "accepting_server_ids": [],
+     "draining_server_ids": [],
+     "in_service_customer_ids": [],
+     "waiting_customer_ids": []
+    },
+    "closing_hours": 1.0,
+    "completions_after_close": 0,
+    "last_server_release_hours": 1.0,
+    "overrun_hours": 0.0,
+    "policy": "HARD_CUTOFF",
+    "rule": "HARD_CUTOFF: arrivals stop at closing, and completions at the closing time are processed first. Customers still waiting are recorded as unserved_at_close (reason hard_cutoff). Services already under way finish; no service starts at or after closing. Each server closes when it is idle.",
+    "service_starts_after_close": 0,
+    "unserved_customer_ids": [],
+    "unserved_possible": true,
+    "unserved_possible_reason": "HARD_CUTOFF records every customer still waiting at closing as unserved."
+   },
+   "cost_quantities": {
+    "closing_policy": "HARD_CUTOFF",
+    "definitions": {
+     "overtime_server_hours": "Present server-hours after closing.",
+     "regular_server_hours": "Present server-hours inside the horizon: scheduled hours plus above-schedule drain time during the day.",
+     "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+     "unserved_customer_count": "Customers recorded as unserved_at_close."
+    },
+    "overtime_server_hours": 0.0,
+    "regular_server_hours": 0.5,
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "total_waiting_customer_hours": 0.0,
+    "unserved_customer_count": 0,
+    "unserved_possible": true
+   },
+   "customers": [],
+   "drains": [],
+   "provenance": {
+    "assumptions": [
+     "Arrivals form a Poisson process with the demand period's rate: exponential gaps restarted at each period start (exact by memorylessness). A period with arrival rate 0 has no arrivals.",
+     "Each customer carries a unit work amount drawn once from Exp(1); service lasts work / mu, with mu the service rate of the demand period in which service starts. A started service is never redrawn, rescaled, or interrupted.",
+     "The system is empty at the horizon start (initial condition).",
+     "The horizon end is the closing time. Services that start after closing (DRAIN only) use the final demand period's service rate, because no demand data exists after closing.",
+     "Waiting-time means are over customers who started service, including starts after closing under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are censored, not completed waits.",
+     "Simulated values are one stochastic realization of the configured model, not observations and not steady-state expectations."
+    ],
+    "closing_policy": "HARD_CUTOFF",
+    "closing_rule": "HARD_CUTOFF: arrivals stop at closing, and completions at the closing time are processed first. Customers still waiting are recorded as unserved_at_close (reason hard_cutoff). Services already under way finish; no service starts at or after closing. Each server closes when it is idle.",
+    "engine_version": "novaq-shared-continuous-des-v2",
+    "event_order": "At equal times: service completions, then capacity changes, then arrivals (by customer id). After each event, free accepting servers take waiting customers first come, first served; the lowest free server number serves first.",
+    "inputs": {
+     "arrival_count": 0,
+     "demand_periods": [
+      {
+       "arrival_rate_per_hour": 1.0,
+       "end_minute": 60,
+       "period_id": "d",
+       "service_rate_per_hour": 1.0,
+       "start_minute": 0
+      }
+     ],
+     "horizon": {
+      "end_minute": 60,
+      "start_minute": 0
+     },
+     "staffing_segments": [
+      {
+       "end_minute": 30,
+       "segment_id": "open",
+       "servers": 1,
+       "start_minute": 0
+      },
+      {
+       "end_minute": 60,
+       "segment_id": "closed",
+       "servers": 0,
+       "start_minute": 30
+      }
+     ]
+    },
+    "max_trace_events": null,
+    "metric_provenance": "des_continuous_horizon",
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "time_unit": "hours from the horizon start",
+    "trace_fields": "queue_len_after is the number of waiting customers right after the event; an arriving customer counts as waiting until its service_start event, which may share the arrival time. Events and capacity transitions at or after closing carry segment_id None.",
+    "transition_policy": "Non-preemptive. A capacity decrease closes idle servers first (highest number first), then designates busy servers to drain (highest number first): a draining server takes no new customer, finishes its current service, and closes at that completion. A capacity increase reactivates draining servers first (lowest number first), then reopens closed servers (lowest number first), creating new server numbers only when needed. Accepting servers always equal the schedule; draining servers are recorded as time above schedule."
+   },
+   "segments": [
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.0,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 0.5,
+     "scheduled_server_hours": 0.5,
+     "scheduled_servers": 1,
+     "segment_id": "open",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.0,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.0,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 0.0,
+     "scheduled_server_hours": 0.0,
+     "scheduled_servers": 0,
+     "segment_id": "closed",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": null,
+     "waited_count": 0
+    }
+   ],
+   "totals": {
+    "arrivals": 0,
+    "busy_server_hours": 0.0,
+    "customer_conservation": true,
+    "departed": 0,
+    "max_queue": 0,
+    "mean_wait_hours": null,
+    "present_server_hours": 0.5,
+    "queue_customer_hours": 0.0,
+    "scheduled_server_hours": 0.5,
+    "scope": "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; after-closing values are under closing. Customer counts and waits cover the whole run.",
+    "server_hours_above_schedule": 0.0,
+    "servers_used": 1,
+    "service_starts": 0,
+    "time_average_queue": 0.0,
+    "unserved_at_close": 0,
+    "waited_count": 0
+   },
+   "trace": [
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 0.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 0.5,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": null,
+     "t": 1.0,
+     "type": "closing"
+    }
+   ],
+   "trace_truncated": false
+  },
+  "no_one_on_duty_drain": {
+   "capacity_transitions": [
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "closed",
+     "server_id": 2,
+     "t": 1.0
+    },
+    {
+     "customer_id": 1,
+     "kind": "drain_start",
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 1.0
+    },
+    {
+     "customer_id": 1,
+     "kind": "drain_complete",
+     "segment_id": null,
+     "server_id": 1,
+     "t": 2.25
+    }
+   ],
+   "closing": {
+    "after_close_busy_server_hours": 0.25,
+    "after_close_server_hours": 0.25,
+    "after_close_waiting_customer_hours": 0.0,
+    "at_close": {
+     "accepting_server_ids": [],
+     "draining_server_ids": [
+      1
+     ],
+     "in_service_customer_ids": [
+      1
+     ],
+     "waiting_customer_ids": [
+      3,
+      4
+     ]
+    },
+    "closing_hours": 2.0,
+    "completions_after_close": 1,
+    "last_server_release_hours": 2.25,
+    "overrun_hours": 0.25,
+    "policy": "DRAIN",
+    "rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "service_starts_after_close": 0,
+    "unserved_customer_ids": [
+     3,
+     4
+    ],
+    "unserved_possible": true,
+    "unserved_possible_reason": "DRAIN with 0 servers scheduled in the final staffing segment (closed): nobody is on duty at closing to serve customers still waiting."
+   },
+   "cost_quantities": {
+    "closing_policy": "DRAIN",
+    "definitions": {
+     "overtime_server_hours": "Present server-hours after closing.",
+     "regular_server_hours": "Present server-hours inside the horizon: scheduled hours plus above-schedule drain time during the day.",
+     "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+     "unserved_customer_count": "Customers recorded as unserved_at_close."
+    },
+    "overtime_server_hours": 0.25,
+    "regular_server_hours": 3.0,
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "total_waiting_customer_hours": 1.75,
+    "unserved_customer_count": 2,
+    "unserved_possible": true
+   },
+   "customers": [
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "open",
+     "customer_id": 1,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 2.25,
+     "service_start_hours": 0.25,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.5,
+     "arrival_segment_id": "open",
+     "customer_id": 2,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 0.75,
+     "service_start_hours": 0.5,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.0,
+     "arrival_segment_id": "closed",
+     "customer_id": 3,
+     "elapsed_wait_at_close_hours": 1.0,
+     "server_id": null,
+     "service_end_hours": null,
+     "service_start_hours": null,
+     "status": "unserved_at_close",
+     "unit_work": 0.5,
+     "unserved_reason": "no_eligible_server",
+     "wait_hours": null
+    },
+    {
+     "arrival_hours": 1.25,
+     "arrival_segment_id": "closed",
+     "customer_id": 4,
+     "elapsed_wait_at_close_hours": 0.75,
+     "server_id": null,
+     "service_end_hours": null,
+     "service_start_hours": null,
+     "status": "unserved_at_close",
+     "unit_work": 0.5,
+     "unserved_reason": "no_eligible_server",
+     "wait_hours": null
+    }
+   ],
+   "drains": [
+    {
+     "customer_id": 1,
+     "designated_at": 1.0,
+     "released_at": 2.25,
+     "segment_id": "closed",
+     "server_id": 1
+    }
+   ],
+   "provenance": {
+    "assumptions": [
+     "Arrivals form a Poisson process with the demand period's rate: exponential gaps restarted at each period start (exact by memorylessness). A period with arrival rate 0 has no arrivals.",
+     "Each customer carries a unit work amount drawn once from Exp(1); service lasts work / mu, with mu the service rate of the demand period in which service starts. A started service is never redrawn, rescaled, or interrupted.",
+     "The system is empty at the horizon start (initial condition).",
+     "The horizon end is the closing time. Services that start after closing (DRAIN only) use the final demand period's service rate, because no demand data exists after closing.",
+     "Waiting-time means are over customers who started service, including starts after closing under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are censored, not completed waits.",
+     "Simulated values are one stochastic realization of the configured model, not observations and not steady-state expectations."
+    ],
+    "closing_policy": "DRAIN",
+    "closing_rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "engine_version": "novaq-shared-continuous-des-v2",
+    "event_order": "At equal times: service completions, then capacity changes, then arrivals (by customer id). After each event, free accepting servers take waiting customers first come, first served; the lowest free server number serves first.",
+    "inputs": {
+     "arrival_count": 4,
+     "demand_periods": [
+      {
+       "arrival_rate_per_hour": 1.0,
+       "end_minute": 120,
+       "period_id": "d",
+       "service_rate_per_hour": 1.0,
+       "start_minute": 0
+      }
+     ],
+     "horizon": {
+      "end_minute": 120,
+      "start_minute": 0
+     },
+     "staffing_segments": [
+      {
+       "end_minute": 60,
+       "segment_id": "open",
+       "servers": 2,
+       "start_minute": 0
+      },
+      {
+       "end_minute": 120,
+       "segment_id": "closed",
+       "servers": 0,
+       "start_minute": 60
+      }
+     ]
+    },
+    "max_trace_events": null,
+    "metric_provenance": "des_continuous_horizon",
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "time_unit": "hours from the horizon start",
+    "trace_fields": "queue_len_after is the number of waiting customers right after the event; an arriving customer counts as waiting until its service_start event, which may share the arrival time. Events and capacity transitions at or after closing carry segment_id None.",
+    "transition_policy": "Non-preemptive. A capacity decrease closes idle servers first (highest number first), then designates busy servers to drain (highest number first): a draining server takes no new customer, finishes its current service, and closes at that completion. A capacity increase reactivates draining servers first (lowest number first), then reopens closed servers (lowest number first), creating new server numbers only when needed. Accepting servers always equal the schedule; draining servers are recorded as time above schedule."
+   },
+   "segments": [
+    {
+     "arrivals": 2,
+     "busy_server_hours": 1.0,
+     "duration_hours": 1.0,
+     "max_queue": 0,
+     "mean_wait_hours": 0.0,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "open",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 2,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.5,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 2,
+     "busy_server_hours": 1.0,
+     "duration_hours": 1.0,
+     "max_queue": 2,
+     "mean_wait_hours": null,
+     "present_server_hours": 1.0,
+     "scheduled_server_hours": 0.0,
+     "scheduled_servers": 0,
+     "segment_id": "closed",
+     "server_hours_above_schedule": 1.0,
+     "service_starts": 0,
+     "time_average_queue": 1.75,
+     "unserved_at_close": 2,
+     "utilization_of_present": 1.0,
+     "waited_count": 0
+    }
+   ],
+   "totals": {
+    "arrivals": 4,
+    "busy_server_hours": 2.0,
+    "customer_conservation": true,
+    "departed": 2,
+    "max_queue": 2,
+    "mean_wait_hours": 0.0,
+    "present_server_hours": 3.0,
+    "queue_customer_hours": 1.75,
+    "scheduled_server_hours": 2.0,
+    "scope": "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; after-closing values are under closing. Customer counts and waits cover the whole run.",
+    "server_hours_above_schedule": 1.0,
+    "servers_used": 2,
+    "service_starts": 2,
+    "time_average_queue": 0.875,
+    "unserved_at_close": 2,
+    "waited_count": 0
+   },
+   "trace": [
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 1,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.25,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 1,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.75,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": 2,
+     "t": 1.0,
+     "type": "server_close"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 1.0,
+     "type": "server_drain_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 1.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 1,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 1.0,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 2,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 1.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 2,
+     "segment_id": null,
+     "server_id": null,
+     "t": 2.0,
+     "type": "closing"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 1,
+     "segment_id": null,
+     "server_id": null,
+     "t": 2.0,
+     "type": "unserved_at_close"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": null,
+     "t": 2.0,
+     "type": "unserved_at_close"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 2.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 2.25,
+     "type": "server_drain_complete"
+    }
+   ],
+   "trace_truncated": false
+  },
+  "no_one_on_duty_hard_cutoff": {
+   "capacity_transitions": [
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "closed",
+     "server_id": 2,
+     "t": 1.0
+    },
+    {
+     "customer_id": 1,
+     "kind": "drain_start",
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 1.0
+    },
+    {
+     "customer_id": 1,
+     "kind": "drain_complete",
+     "segment_id": null,
+     "server_id": 1,
+     "t": 2.25
+    }
+   ],
+   "closing": {
+    "after_close_busy_server_hours": 0.25,
+    "after_close_server_hours": 0.25,
+    "after_close_waiting_customer_hours": 0.0,
+    "at_close": {
+     "accepting_server_ids": [],
+     "draining_server_ids": [
+      1
+     ],
+     "in_service_customer_ids": [
+      1
+     ],
+     "waiting_customer_ids": [
+      3,
+      4
+     ]
+    },
+    "closing_hours": 2.0,
+    "completions_after_close": 1,
+    "last_server_release_hours": 2.25,
+    "overrun_hours": 0.25,
+    "policy": "HARD_CUTOFF",
+    "rule": "HARD_CUTOFF: arrivals stop at closing, and completions at the closing time are processed first. Customers still waiting are recorded as unserved_at_close (reason hard_cutoff). Services already under way finish; no service starts at or after closing. Each server closes when it is idle.",
+    "service_starts_after_close": 0,
+    "unserved_customer_ids": [
+     3,
+     4
+    ],
+    "unserved_possible": true,
+    "unserved_possible_reason": "HARD_CUTOFF records every customer still waiting at closing as unserved."
+   },
+   "cost_quantities": {
+    "closing_policy": "HARD_CUTOFF",
+    "definitions": {
+     "overtime_server_hours": "Present server-hours after closing.",
+     "regular_server_hours": "Present server-hours inside the horizon: scheduled hours plus above-schedule drain time during the day.",
+     "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+     "unserved_customer_count": "Customers recorded as unserved_at_close."
+    },
+    "overtime_server_hours": 0.25,
+    "regular_server_hours": 3.0,
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "total_waiting_customer_hours": 1.75,
+    "unserved_customer_count": 2,
+    "unserved_possible": true
+   },
+   "customers": [
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "open",
+     "customer_id": 1,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 2.25,
+     "service_start_hours": 0.25,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.5,
+     "arrival_segment_id": "open",
+     "customer_id": 2,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 0.75,
+     "service_start_hours": 0.5,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.0,
+     "arrival_segment_id": "closed",
+     "customer_id": 3,
+     "elapsed_wait_at_close_hours": 1.0,
+     "server_id": null,
+     "service_end_hours": null,
+     "service_start_hours": null,
+     "status": "unserved_at_close",
+     "unit_work": 0.5,
+     "unserved_reason": "hard_cutoff",
+     "wait_hours": null
+    },
+    {
+     "arrival_hours": 1.25,
+     "arrival_segment_id": "closed",
+     "customer_id": 4,
+     "elapsed_wait_at_close_hours": 0.75,
+     "server_id": null,
+     "service_end_hours": null,
+     "service_start_hours": null,
+     "status": "unserved_at_close",
+     "unit_work": 0.5,
+     "unserved_reason": "hard_cutoff",
+     "wait_hours": null
+    }
+   ],
+   "drains": [
+    {
+     "customer_id": 1,
+     "designated_at": 1.0,
+     "released_at": 2.25,
+     "segment_id": "closed",
+     "server_id": 1
+    }
+   ],
+   "provenance": {
+    "assumptions": [
+     "Arrivals form a Poisson process with the demand period's rate: exponential gaps restarted at each period start (exact by memorylessness). A period with arrival rate 0 has no arrivals.",
+     "Each customer carries a unit work amount drawn once from Exp(1); service lasts work / mu, with mu the service rate of the demand period in which service starts. A started service is never redrawn, rescaled, or interrupted.",
+     "The system is empty at the horizon start (initial condition).",
+     "The horizon end is the closing time. Services that start after closing (DRAIN only) use the final demand period's service rate, because no demand data exists after closing.",
+     "Waiting-time means are over customers who started service, including starts after closing under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are censored, not completed waits.",
+     "Simulated values are one stochastic realization of the configured model, not observations and not steady-state expectations."
+    ],
+    "closing_policy": "HARD_CUTOFF",
+    "closing_rule": "HARD_CUTOFF: arrivals stop at closing, and completions at the closing time are processed first. Customers still waiting are recorded as unserved_at_close (reason hard_cutoff). Services already under way finish; no service starts at or after closing. Each server closes when it is idle.",
+    "engine_version": "novaq-shared-continuous-des-v2",
+    "event_order": "At equal times: service completions, then capacity changes, then arrivals (by customer id). After each event, free accepting servers take waiting customers first come, first served; the lowest free server number serves first.",
+    "inputs": {
+     "arrival_count": 4,
+     "demand_periods": [
+      {
+       "arrival_rate_per_hour": 1.0,
+       "end_minute": 120,
+       "period_id": "d",
+       "service_rate_per_hour": 1.0,
+       "start_minute": 0
+      }
+     ],
+     "horizon": {
+      "end_minute": 120,
+      "start_minute": 0
+     },
+     "staffing_segments": [
+      {
+       "end_minute": 60,
+       "segment_id": "open",
+       "servers": 2,
+       "start_minute": 0
+      },
+      {
+       "end_minute": 120,
+       "segment_id": "closed",
+       "servers": 0,
+       "start_minute": 60
+      }
+     ]
+    },
+    "max_trace_events": null,
+    "metric_provenance": "des_continuous_horizon",
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "time_unit": "hours from the horizon start",
+    "trace_fields": "queue_len_after is the number of waiting customers right after the event; an arriving customer counts as waiting until its service_start event, which may share the arrival time. Events and capacity transitions at or after closing carry segment_id None.",
+    "transition_policy": "Non-preemptive. A capacity decrease closes idle servers first (highest number first), then designates busy servers to drain (highest number first): a draining server takes no new customer, finishes its current service, and closes at that completion. A capacity increase reactivates draining servers first (lowest number first), then reopens closed servers (lowest number first), creating new server numbers only when needed. Accepting servers always equal the schedule; draining servers are recorded as time above schedule."
+   },
+   "segments": [
+    {
+     "arrivals": 2,
+     "busy_server_hours": 1.0,
+     "duration_hours": 1.0,
+     "max_queue": 0,
+     "mean_wait_hours": 0.0,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "open",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 2,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.5,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 2,
+     "busy_server_hours": 1.0,
+     "duration_hours": 1.0,
+     "max_queue": 2,
+     "mean_wait_hours": null,
+     "present_server_hours": 1.0,
+     "scheduled_server_hours": 0.0,
+     "scheduled_servers": 0,
+     "segment_id": "closed",
+     "server_hours_above_schedule": 1.0,
+     "service_starts": 0,
+     "time_average_queue": 1.75,
+     "unserved_at_close": 2,
+     "utilization_of_present": 1.0,
+     "waited_count": 0
+    }
+   ],
+   "totals": {
+    "arrivals": 4,
+    "busy_server_hours": 2.0,
+    "customer_conservation": true,
+    "departed": 2,
+    "max_queue": 2,
+    "mean_wait_hours": 0.0,
+    "present_server_hours": 3.0,
+    "queue_customer_hours": 1.75,
+    "scheduled_server_hours": 2.0,
+    "scope": "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; after-closing values are under closing. Customer counts and waits cover the whole run.",
+    "server_hours_above_schedule": 1.0,
+    "servers_used": 2,
+    "service_starts": 2,
+    "time_average_queue": 0.875,
+    "unserved_at_close": 2,
+    "waited_count": 0
+   },
+   "trace": [
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 1,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 1,
+     "t": 0.25,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 1,
+     "segment_id": "open",
+     "server_id": null,
+     "t": 0.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "open",
+     "server_id": 2,
+     "t": 0.75,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": 2,
+     "t": 1.0,
+     "type": "server_close"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": 1,
+     "t": 1.0,
+     "type": "server_drain_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 1.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 1,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 1.0,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 2,
+     "segment_id": "closed",
+     "server_id": null,
+     "t": 1.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 2,
+     "segment_id": null,
+     "server_id": null,
+     "t": 2.0,
+     "type": "closing"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 1,
+     "segment_id": null,
+     "server_id": null,
+     "t": 2.0,
+     "type": "unserved_at_close"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": null,
+     "t": 2.0,
+     "type": "unserved_at_close"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 2.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 2.25,
+     "type": "server_drain_complete"
+    }
+   ],
+   "trace_truncated": false
+  },
+  "transitions_drain": {
+   "capacity_transitions": [
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s3",
+     "server_id": 3,
+     "t": 1.5
+    },
+    {
+     "customer_id": 8,
+     "kind": "drain_start",
+     "segment_id": "s3",
+     "server_id": 2,
+     "t": 1.5
+    },
+    {
+     "customer_id": 8,
+     "kind": "reactivate",
+     "segment_id": "s4",
+     "server_id": 2,
+     "t": 2.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s4",
+     "server_id": 3,
+     "t": 2.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s5",
+     "server_id": 2,
+     "t": 2.5
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s5",
+     "server_id": 1,
+     "t": 2.5
+    },
+    {
+     "customer_id": 11,
+     "kind": "drain_start",
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.5
+    },
+    {
+     "customer_id": 11,
+     "kind": "drain_complete",
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.625
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s6",
+     "server_id": 2,
+     "t": 3.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.25
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.25
+    }
+   ],
+   "closing": {
+    "after_close_busy_server_hours": 0.5,
+    "after_close_server_hours": 0.5,
+    "after_close_waiting_customer_hours": 0.125,
+    "at_close": {
+     "accepting_server_ids": [
+      1,
+      2
+     ],
+     "draining_server_ids": [],
+     "in_service_customer_ids": [],
+     "waiting_customer_ids": [
+      16,
+      17,
+      18
+     ]
+    },
+    "closing_hours": 4.0,
+    "completions_after_close": 3,
+    "last_server_release_hours": 4.25,
+    "overrun_hours": 0.25,
+    "policy": "DRAIN",
+    "rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "service_starts_after_close": 3,
+    "unserved_customer_ids": [],
+    "unserved_possible": false,
+    "unserved_possible_reason": "DRAIN with 2 accepting server(s) on duty at closing serves every admitted customer, so no customer can be left unserved."
+   },
+   "cost_quantities": {
+    "closing_policy": "DRAIN",
+    "definitions": {
+     "overtime_server_hours": "Present server-hours after closing.",
+     "regular_server_hours": "Present server-hours inside the horizon: scheduled hours plus above-schedule drain time during the day.",
+     "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+     "unserved_customer_count": "Customers recorded as unserved_at_close."
+    },
+    "overtime_server_hours": 0.5,
+    "regular_server_hours": 8.125,
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "total_waiting_customer_hours": 1.5625,
+    "unserved_customer_count": 0,
+    "unserved_possible": false
+   },
+   "customers": [
+    {
+     "arrival_hours": 0.125,
+     "arrival_segment_id": "s1",
+     "customer_id": 1,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.375,
+     "service_start_hours": 0.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "s1",
+     "customer_id": 2,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 1.0,
+     "service_start_hours": 0.25,
+     "status": "departed",
+     "unit_work": 1.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "s1",
+     "customer_id": 3,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.5,
+     "service_start_hours": 0.375,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 0.5,
+     "arrival_segment_id": "s1",
+     "customer_id": 4,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.875,
+     "service_start_hours": 0.5,
+     "status": "departed",
+     "unit_work": 0.75,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.75,
+     "arrival_segment_id": "s1",
+     "customer_id": 5,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 1.375,
+     "service_start_hours": 0.875,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 1.0,
+     "arrival_segment_id": "s2",
+     "customer_id": 6,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 1.25,
+     "service_start_hours": 1.0,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.125,
+     "arrival_segment_id": "s2",
+     "customer_id": 7,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 3,
+     "service_end_hours": 1.375,
+     "service_start_hours": 1.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.25,
+     "arrival_segment_id": "s2",
+     "customer_id": 8,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 2.25,
+     "service_start_hours": 1.25,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.4375,
+     "arrival_segment_id": "s2",
+     "customer_id": 9,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 1.9375,
+     "service_start_hours": 1.4375,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.5,
+     "arrival_segment_id": "s3",
+     "customer_id": 10,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 2.0625,
+     "service_start_hours": 1.9375,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.4375
+    },
+    {
+     "arrival_hours": 1.75,
+     "arrival_segment_id": "s3",
+     "customer_id": 11,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 3,
+     "service_end_hours": 2.625,
+     "service_start_hours": 2.0,
+     "status": "departed",
+     "unit_work": 2.5,
+     "unserved_reason": null,
+     "wait_hours": 0.25
+    },
+    {
+     "arrival_hours": 3.0,
+     "arrival_segment_id": "s6",
+     "customer_id": 12,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 3.25,
+     "service_start_hours": 3.0,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.5,
+     "arrival_segment_id": "s6",
+     "customer_id": 13,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 3.75,
+     "service_start_hours": 3.5,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.5,
+     "arrival_segment_id": "s6",
+     "customer_id": 14,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 4.0,
+     "service_start_hours": 3.5,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.625,
+     "arrival_segment_id": "s6",
+     "customer_id": 15,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 4.0,
+     "service_start_hours": 3.75,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 3.8125,
+     "arrival_segment_id": "s6",
+     "customer_id": 16,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 4.25,
+     "service_start_hours": 4.0,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.1875
+    },
+    {
+     "arrival_hours": 3.875,
+     "arrival_segment_id": "s6",
+     "customer_id": 17,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 4.125,
+     "service_start_hours": 4.0,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 3.9375,
+     "arrival_segment_id": "s6",
+     "customer_id": 18,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 4.25,
+     "service_start_hours": 4.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.1875
+    }
+   ],
+   "drains": [
+    {
+     "customer_id": 8,
+     "designated_at": 1.5,
+     "reactivated_at": 2.0,
+     "released_at": null,
+     "segment_id": "s3",
+     "server_id": 2
+    },
+    {
+     "customer_id": 11,
+     "designated_at": 2.5,
+     "released_at": 2.625,
+     "segment_id": "s5",
+     "server_id": 3
+    }
+   ],
+   "provenance": {
+    "assumptions": [
+     "Arrivals form a Poisson process with the demand period's rate: exponential gaps restarted at each period start (exact by memorylessness). A period with arrival rate 0 has no arrivals.",
+     "Each customer carries a unit work amount drawn once from Exp(1); service lasts work / mu, with mu the service rate of the demand period in which service starts. A started service is never redrawn, rescaled, or interrupted.",
+     "The system is empty at the horizon start (initial condition).",
+     "The horizon end is the closing time. Services that start after closing (DRAIN only) use the final demand period's service rate, because no demand data exists after closing.",
+     "Waiting-time means are over customers who started service, including starts after closing under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are censored, not completed waits.",
+     "Simulated values are one stochastic realization of the configured model, not observations and not steady-state expectations."
+    ],
+    "closing_policy": "DRAIN",
+    "closing_rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "engine_version": "novaq-shared-continuous-des-v2",
+    "event_order": "At equal times: service completions, then capacity changes, then arrivals (by customer id). After each event, free accepting servers take waiting customers first come, first served; the lowest free server number serves first.",
+    "inputs": {
+     "arrival_count": 18,
+     "demand_periods": [
+      {
+       "arrival_rate_per_hour": 2.0,
+       "end_minute": 120,
+       "period_id": "p1",
+       "service_rate_per_hour": 2.0,
+       "start_minute": 0
+      },
+      {
+       "arrival_rate_per_hour": 0.0,
+       "end_minute": 180,
+       "period_id": "p2",
+       "service_rate_per_hour": 4.0,
+       "start_minute": 120
+      },
+      {
+       "arrival_rate_per_hour": 2.0,
+       "end_minute": 240,
+       "period_id": "p3",
+       "service_rate_per_hour": 4.0,
+       "start_minute": 180
+      }
+     ],
+     "horizon": {
+      "end_minute": 240,
+      "start_minute": 0
+     },
+     "staffing_segments": [
+      {
+       "end_minute": 60,
+       "segment_id": "s1",
+       "servers": 2,
+       "start_minute": 0
+      },
+      {
+       "end_minute": 90,
+       "segment_id": "s2",
+       "servers": 3,
+       "start_minute": 60
+      },
+      {
+       "end_minute": 120,
+       "segment_id": "s3",
+       "servers": 1,
+       "start_minute": 90
+      },
+      {
+       "end_minute": 150,
+       "segment_id": "s4",
+       "servers": 3,
+       "start_minute": 120
+      },
+      {
+       "end_minute": 180,
+       "segment_id": "s5",
+       "servers": 0,
+       "start_minute": 150
+      },
+      {
+       "end_minute": 240,
+       "segment_id": "s6",
+       "servers": 2,
+       "start_minute": 180
+      }
+     ]
+    },
+    "max_trace_events": null,
+    "metric_provenance": "des_continuous_horizon",
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "time_unit": "hours from the horizon start",
+    "trace_fields": "queue_len_after is the number of waiting customers right after the event; an arriving customer counts as waiting until its service_start event, which may share the arrival time. Events and capacity transitions at or after closing carry segment_id None.",
+    "transition_policy": "Non-preemptive. A capacity decrease closes idle servers first (highest number first), then designates busy servers to drain (highest number first): a draining server takes no new customer, finishes its current service, and closes at that completion. A capacity increase reactivates draining servers first (lowest number first), then reopens closed servers (lowest number first), creating new server numbers only when needed. Accepting servers always equal the schedule; draining servers are recorded as time above schedule."
+   },
+   "segments": [
+    {
+     "arrivals": 5,
+     "busy_server_hours": 1.625,
+     "duration_hours": 1.0,
+     "max_queue": 1,
+     "mean_wait_hours": 0.05,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "s1",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 5,
+     "time_average_queue": 0.25,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.8125,
+     "waited_count": 2
+    },
+    {
+     "arrivals": 4,
+     "busy_server_hours": 1.1875,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": 0.0,
+     "present_server_hours": 1.5,
+     "scheduled_server_hours": 1.5,
+     "scheduled_servers": 3,
+     "segment_id": "s2",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 4,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.7916666666666666,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 2,
+     "busy_server_hours": 1.0,
+     "duration_hours": 0.5,
+     "max_queue": 2,
+     "mean_wait_hours": 0.34375,
+     "present_server_hours": 1.0,
+     "scheduled_server_hours": 0.5,
+     "scheduled_servers": 1,
+     "segment_id": "s3",
+     "server_hours_above_schedule": 0.5,
+     "service_starts": 2,
+     "time_average_queue": 1.375,
+     "unserved_at_close": 0,
+     "utilization_of_present": 1.0,
+     "waited_count": 2
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.8125,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 1.5,
+     "scheduled_server_hours": 1.5,
+     "scheduled_servers": 3,
+     "segment_id": "s4",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.5416666666666666,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.125,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 0.125,
+     "scheduled_server_hours": 0.0,
+     "scheduled_servers": 0,
+     "segment_id": "s5",
+     "server_hours_above_schedule": 0.125,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 1.0,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 7,
+     "busy_server_hours": 1.25,
+     "duration_hours": 1.0,
+     "max_queue": 3,
+     "mean_wait_hours": 0.08928571428571429,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "s6",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 7,
+     "time_average_queue": 0.5,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.625,
+     "waited_count": 4
+    }
+   ],
+   "totals": {
+    "arrivals": 18,
+    "busy_server_hours": 6.0,
+    "customer_conservation": true,
+    "departed": 18,
+    "max_queue": 3,
+    "mean_wait_hours": 0.08680555555555555,
+    "present_server_hours": 8.125,
+    "queue_customer_hours": 1.4375,
+    "scheduled_server_hours": 7.5,
+    "scope": "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; after-closing values are under closing. Customer counts and waits cover the whole run.",
+    "server_hours_above_schedule": 0.625,
+    "servers_used": 3,
+    "service_starts": 18,
+    "time_average_queue": 0.359375,
+    "unserved_at_close": 0,
+    "waited_count": 8
+   },
+   "trace": [
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.125,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.125,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.25,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.375,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.5,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 5,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.75,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.875,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 5,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.875,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 1.0,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 6,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.0,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 6,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 2,
+     "t": 1.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 7,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.125,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 7,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.125,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 6,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 2,
+     "t": 1.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 2,
+     "t": 1.25,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 5,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 1,
+     "t": 1.375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 7,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 9,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.4375,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 9,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 1,
+     "t": 1.4375,
+     "type": "service_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s3",
+     "server_id": 3,
+     "t": 1.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 0,
+     "segment_id": "s3",
+     "server_id": 2,
+     "t": 1.5,
+     "type": "server_drain_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s3",
+     "server_id": null,
+     "t": 1.5,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 10,
+     "queue_len_after": 1,
+     "segment_id": "s3",
+     "server_id": null,
+     "t": 1.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 2,
+     "segment_id": "s3",
+     "server_id": null,
+     "t": 1.75,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 9,
+     "queue_len_after": 2,
+     "segment_id": "s3",
+     "server_id": 1,
+     "t": 1.9375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 10,
+     "queue_len_after": 1,
+     "segment_id": "s3",
+     "server_id": 1,
+     "t": 1.9375,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 1,
+     "segment_id": "s4",
+     "server_id": 2,
+     "t": 2.0,
+     "type": "server_reactivate"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 1,
+     "segment_id": "s4",
+     "server_id": 3,
+     "t": 2.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 1,
+     "segment_id": "s4",
+     "server_id": null,
+     "t": 2.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s4",
+     "server_id": 3,
+     "t": 2.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 10,
+     "queue_len_after": 0,
+     "segment_id": "s4",
+     "server_id": 1,
+     "t": 2.0625,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 0,
+     "segment_id": "s4",
+     "server_id": 2,
+     "t": 2.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 2,
+     "t": 2.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 1,
+     "t": 2.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.5,
+     "type": "server_drain_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": null,
+     "t": 2.5,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.625,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.625,
+     "type": "server_drain_complete"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 2,
+     "t": 3.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 12,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.0,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 12,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 12,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 13,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 13,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 14,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 14,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 2,
+     "t": 3.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 15,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.625,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 13,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.75,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 15,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.75,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 16,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.8125,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 17,
+     "queue_len_after": 2,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.875,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 18,
+     "queue_len_after": 3,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.9375,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 14,
+     "queue_len_after": 3,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.0,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 15,
+     "queue_len_after": 3,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.0,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 3,
+     "segment_id": null,
+     "server_id": null,
+     "t": 4.0,
+     "type": "closing"
+    },
+    {
+     "customer_id": 16,
+     "queue_len_after": 2,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 17,
+     "queue_len_after": 1,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 17,
+     "queue_len_after": 1,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.125,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 18,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.125,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 16,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.25,
+     "type": "server_close"
+    },
+    {
+     "customer_id": 18,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.25,
+     "type": "server_close"
+    }
+   ],
+   "trace_truncated": false
+  },
+  "transitions_drain_trace_cap_7": {
+   "capacity_transitions": [
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s3",
+     "server_id": 3,
+     "t": 1.5
+    },
+    {
+     "customer_id": 8,
+     "kind": "drain_start",
+     "segment_id": "s3",
+     "server_id": 2,
+     "t": 1.5
+    },
+    {
+     "customer_id": 8,
+     "kind": "reactivate",
+     "segment_id": "s4",
+     "server_id": 2,
+     "t": 2.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s4",
+     "server_id": 3,
+     "t": 2.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s5",
+     "server_id": 2,
+     "t": 2.5
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s5",
+     "server_id": 1,
+     "t": 2.5
+    },
+    {
+     "customer_id": 11,
+     "kind": "drain_start",
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.5
+    },
+    {
+     "customer_id": 11,
+     "kind": "drain_complete",
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.625
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s6",
+     "server_id": 2,
+     "t": 3.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.25
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.25
+    }
+   ],
+   "closing": {
+    "after_close_busy_server_hours": 0.5,
+    "after_close_server_hours": 0.5,
+    "after_close_waiting_customer_hours": 0.125,
+    "at_close": {
+     "accepting_server_ids": [
+      1,
+      2
+     ],
+     "draining_server_ids": [],
+     "in_service_customer_ids": [],
+     "waiting_customer_ids": [
+      16,
+      17,
+      18
+     ]
+    },
+    "closing_hours": 4.0,
+    "completions_after_close": 3,
+    "last_server_release_hours": 4.25,
+    "overrun_hours": 0.25,
+    "policy": "DRAIN",
+    "rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "service_starts_after_close": 3,
+    "unserved_customer_ids": [],
+    "unserved_possible": false,
+    "unserved_possible_reason": "DRAIN with 2 accepting server(s) on duty at closing serves every admitted customer, so no customer can be left unserved."
+   },
+   "cost_quantities": {
+    "closing_policy": "DRAIN",
+    "definitions": {
+     "overtime_server_hours": "Present server-hours after closing.",
+     "regular_server_hours": "Present server-hours inside the horizon: scheduled hours plus above-schedule drain time during the day.",
+     "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+     "unserved_customer_count": "Customers recorded as unserved_at_close."
+    },
+    "overtime_server_hours": 0.5,
+    "regular_server_hours": 8.125,
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "total_waiting_customer_hours": 1.5625,
+    "unserved_customer_count": 0,
+    "unserved_possible": false
+   },
+   "customers": [
+    {
+     "arrival_hours": 0.125,
+     "arrival_segment_id": "s1",
+     "customer_id": 1,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.375,
+     "service_start_hours": 0.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "s1",
+     "customer_id": 2,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 1.0,
+     "service_start_hours": 0.25,
+     "status": "departed",
+     "unit_work": 1.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "s1",
+     "customer_id": 3,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.5,
+     "service_start_hours": 0.375,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 0.5,
+     "arrival_segment_id": "s1",
+     "customer_id": 4,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.875,
+     "service_start_hours": 0.5,
+     "status": "departed",
+     "unit_work": 0.75,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.75,
+     "arrival_segment_id": "s1",
+     "customer_id": 5,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 1.375,
+     "service_start_hours": 0.875,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 1.0,
+     "arrival_segment_id": "s2",
+     "customer_id": 6,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 1.25,
+     "service_start_hours": 1.0,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.125,
+     "arrival_segment_id": "s2",
+     "customer_id": 7,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 3,
+     "service_end_hours": 1.375,
+     "service_start_hours": 1.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.25,
+     "arrival_segment_id": "s2",
+     "customer_id": 8,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 2.25,
+     "service_start_hours": 1.25,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.4375,
+     "arrival_segment_id": "s2",
+     "customer_id": 9,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 1.9375,
+     "service_start_hours": 1.4375,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.5,
+     "arrival_segment_id": "s3",
+     "customer_id": 10,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 2.0625,
+     "service_start_hours": 1.9375,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.4375
+    },
+    {
+     "arrival_hours": 1.75,
+     "arrival_segment_id": "s3",
+     "customer_id": 11,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 3,
+     "service_end_hours": 2.625,
+     "service_start_hours": 2.0,
+     "status": "departed",
+     "unit_work": 2.5,
+     "unserved_reason": null,
+     "wait_hours": 0.25
+    },
+    {
+     "arrival_hours": 3.0,
+     "arrival_segment_id": "s6",
+     "customer_id": 12,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 3.25,
+     "service_start_hours": 3.0,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.5,
+     "arrival_segment_id": "s6",
+     "customer_id": 13,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 3.75,
+     "service_start_hours": 3.5,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.5,
+     "arrival_segment_id": "s6",
+     "customer_id": 14,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 4.0,
+     "service_start_hours": 3.5,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.625,
+     "arrival_segment_id": "s6",
+     "customer_id": 15,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 4.0,
+     "service_start_hours": 3.75,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 3.8125,
+     "arrival_segment_id": "s6",
+     "customer_id": 16,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 4.25,
+     "service_start_hours": 4.0,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.1875
+    },
+    {
+     "arrival_hours": 3.875,
+     "arrival_segment_id": "s6",
+     "customer_id": 17,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 4.125,
+     "service_start_hours": 4.0,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 3.9375,
+     "arrival_segment_id": "s6",
+     "customer_id": 18,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 4.25,
+     "service_start_hours": 4.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.1875
+    }
+   ],
+   "drains": [
+    {
+     "customer_id": 8,
+     "designated_at": 1.5,
+     "reactivated_at": 2.0,
+     "released_at": null,
+     "segment_id": "s3",
+     "server_id": 2
+    },
+    {
+     "customer_id": 11,
+     "designated_at": 2.5,
+     "released_at": 2.625,
+     "segment_id": "s5",
+     "server_id": 3
+    }
+   ],
+   "provenance": {
+    "assumptions": [
+     "Arrivals form a Poisson process with the demand period's rate: exponential gaps restarted at each period start (exact by memorylessness). A period with arrival rate 0 has no arrivals.",
+     "Each customer carries a unit work amount drawn once from Exp(1); service lasts work / mu, with mu the service rate of the demand period in which service starts. A started service is never redrawn, rescaled, or interrupted.",
+     "The system is empty at the horizon start (initial condition).",
+     "The horizon end is the closing time. Services that start after closing (DRAIN only) use the final demand period's service rate, because no demand data exists after closing.",
+     "Waiting-time means are over customers who started service, including starts after closing under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are censored, not completed waits.",
+     "Simulated values are one stochastic realization of the configured model, not observations and not steady-state expectations."
+    ],
+    "closing_policy": "DRAIN",
+    "closing_rule": "DRAIN: arrivals stop at closing, and completions at the closing time are processed first. The accepting servers on duty at closing keep serving the line first come, first served, with no overrun cap; a server draining at closing only finishes its own customer. Each server closes once it is idle and nobody is waiting. Services that start after closing use the final demand period's service rate. If no accepting server is on duty at closing, customers still waiting are recorded as unserved_at_close (reason no_eligible_server).",
+    "engine_version": "novaq-shared-continuous-des-v2",
+    "event_order": "At equal times: service completions, then capacity changes, then arrivals (by customer id). After each event, free accepting servers take waiting customers first come, first served; the lowest free server number serves first.",
+    "inputs": {
+     "arrival_count": 18,
+     "demand_periods": [
+      {
+       "arrival_rate_per_hour": 2.0,
+       "end_minute": 120,
+       "period_id": "p1",
+       "service_rate_per_hour": 2.0,
+       "start_minute": 0
+      },
+      {
+       "arrival_rate_per_hour": 0.0,
+       "end_minute": 180,
+       "period_id": "p2",
+       "service_rate_per_hour": 4.0,
+       "start_minute": 120
+      },
+      {
+       "arrival_rate_per_hour": 2.0,
+       "end_minute": 240,
+       "period_id": "p3",
+       "service_rate_per_hour": 4.0,
+       "start_minute": 180
+      }
+     ],
+     "horizon": {
+      "end_minute": 240,
+      "start_minute": 0
+     },
+     "staffing_segments": [
+      {
+       "end_minute": 60,
+       "segment_id": "s1",
+       "servers": 2,
+       "start_minute": 0
+      },
+      {
+       "end_minute": 90,
+       "segment_id": "s2",
+       "servers": 3,
+       "start_minute": 60
+      },
+      {
+       "end_minute": 120,
+       "segment_id": "s3",
+       "servers": 1,
+       "start_minute": 90
+      },
+      {
+       "end_minute": 150,
+       "segment_id": "s4",
+       "servers": 3,
+       "start_minute": 120
+      },
+      {
+       "end_minute": 180,
+       "segment_id": "s5",
+       "servers": 0,
+       "start_minute": 150
+      },
+      {
+       "end_minute": 240,
+       "segment_id": "s6",
+       "servers": 2,
+       "start_minute": 180
+      }
+     ]
+    },
+    "max_trace_events": 7,
+    "metric_provenance": "des_continuous_horizon",
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "time_unit": "hours from the horizon start",
+    "trace_fields": "queue_len_after is the number of waiting customers right after the event; an arriving customer counts as waiting until its service_start event, which may share the arrival time. Events and capacity transitions at or after closing carry segment_id None.",
+    "transition_policy": "Non-preemptive. A capacity decrease closes idle servers first (highest number first), then designates busy servers to drain (highest number first): a draining server takes no new customer, finishes its current service, and closes at that completion. A capacity increase reactivates draining servers first (lowest number first), then reopens closed servers (lowest number first), creating new server numbers only when needed. Accepting servers always equal the schedule; draining servers are recorded as time above schedule."
+   },
+   "segments": [
+    {
+     "arrivals": 5,
+     "busy_server_hours": 1.625,
+     "duration_hours": 1.0,
+     "max_queue": 1,
+     "mean_wait_hours": 0.05,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "s1",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 5,
+     "time_average_queue": 0.25,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.8125,
+     "waited_count": 2
+    },
+    {
+     "arrivals": 4,
+     "busy_server_hours": 1.1875,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": 0.0,
+     "present_server_hours": 1.5,
+     "scheduled_server_hours": 1.5,
+     "scheduled_servers": 3,
+     "segment_id": "s2",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 4,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.7916666666666666,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 2,
+     "busy_server_hours": 1.0,
+     "duration_hours": 0.5,
+     "max_queue": 2,
+     "mean_wait_hours": 0.34375,
+     "present_server_hours": 1.0,
+     "scheduled_server_hours": 0.5,
+     "scheduled_servers": 1,
+     "segment_id": "s3",
+     "server_hours_above_schedule": 0.5,
+     "service_starts": 2,
+     "time_average_queue": 1.375,
+     "unserved_at_close": 0,
+     "utilization_of_present": 1.0,
+     "waited_count": 2
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.8125,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 1.5,
+     "scheduled_server_hours": 1.5,
+     "scheduled_servers": 3,
+     "segment_id": "s4",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.5416666666666666,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.125,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 0.125,
+     "scheduled_server_hours": 0.0,
+     "scheduled_servers": 0,
+     "segment_id": "s5",
+     "server_hours_above_schedule": 0.125,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 1.0,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 7,
+     "busy_server_hours": 1.25,
+     "duration_hours": 1.0,
+     "max_queue": 3,
+     "mean_wait_hours": 0.08928571428571429,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "s6",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 7,
+     "time_average_queue": 0.5,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.625,
+     "waited_count": 4
+    }
+   ],
+   "totals": {
+    "arrivals": 18,
+    "busy_server_hours": 6.0,
+    "customer_conservation": true,
+    "departed": 18,
+    "max_queue": 3,
+    "mean_wait_hours": 0.08680555555555555,
+    "present_server_hours": 8.125,
+    "queue_customer_hours": 1.4375,
+    "scheduled_server_hours": 7.5,
+    "scope": "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; after-closing values are under closing. Customer counts and waits cover the whole run.",
+    "server_hours_above_schedule": 0.625,
+    "servers_used": 3,
+    "service_starts": 18,
+    "time_average_queue": 0.359375,
+    "unserved_at_close": 0,
+    "waited_count": 8
+   },
+   "trace": [
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.125,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.125,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.25,
+     "type": "service_start"
+    }
+   ],
+   "trace_truncated": true
+  },
+  "transitions_hard_cutoff": {
+   "capacity_transitions": [
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s3",
+     "server_id": 3,
+     "t": 1.5
+    },
+    {
+     "customer_id": 8,
+     "kind": "drain_start",
+     "segment_id": "s3",
+     "server_id": 2,
+     "t": 1.5
+    },
+    {
+     "customer_id": 8,
+     "kind": "reactivate",
+     "segment_id": "s4",
+     "server_id": 2,
+     "t": 2.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s4",
+     "server_id": 3,
+     "t": 2.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s5",
+     "server_id": 2,
+     "t": 2.5
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": "s5",
+     "server_id": 1,
+     "t": 2.5
+    },
+    {
+     "customer_id": 11,
+     "kind": "drain_start",
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.5
+    },
+    {
+     "customer_id": 11,
+     "kind": "drain_complete",
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.625
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.0
+    },
+    {
+     "customer_id": null,
+     "kind": "open",
+     "segment_id": "s6",
+     "server_id": 2,
+     "t": 3.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.0
+    },
+    {
+     "customer_id": null,
+     "kind": "close",
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.0
+    }
+   ],
+   "closing": {
+    "after_close_busy_server_hours": 0.0,
+    "after_close_server_hours": 0.0,
+    "after_close_waiting_customer_hours": 0.0,
+    "at_close": {
+     "accepting_server_ids": [
+      1,
+      2
+     ],
+     "draining_server_ids": [],
+     "in_service_customer_ids": [],
+     "waiting_customer_ids": [
+      16,
+      17,
+      18
+     ]
+    },
+    "closing_hours": 4.0,
+    "completions_after_close": 0,
+    "last_server_release_hours": 4.0,
+    "overrun_hours": 0.0,
+    "policy": "HARD_CUTOFF",
+    "rule": "HARD_CUTOFF: arrivals stop at closing, and completions at the closing time are processed first. Customers still waiting are recorded as unserved_at_close (reason hard_cutoff). Services already under way finish; no service starts at or after closing. Each server closes when it is idle.",
+    "service_starts_after_close": 0,
+    "unserved_customer_ids": [
+     16,
+     17,
+     18
+    ],
+    "unserved_possible": true,
+    "unserved_possible_reason": "HARD_CUTOFF records every customer still waiting at closing as unserved."
+   },
+   "cost_quantities": {
+    "closing_policy": "HARD_CUTOFF",
+    "definitions": {
+     "overtime_server_hours": "Present server-hours after closing.",
+     "regular_server_hours": "Present server-hours inside the horizon: scheduled hours plus above-schedule drain time during the day.",
+     "total_waiting_customer_hours": "Customer-hours spent waiting, before and after closing.",
+     "unserved_customer_count": "Customers recorded as unserved_at_close."
+    },
+    "overtime_server_hours": 0.0,
+    "regular_server_hours": 8.125,
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "total_waiting_customer_hours": 1.4375,
+    "unserved_customer_count": 3,
+    "unserved_possible": true
+   },
+   "customers": [
+    {
+     "arrival_hours": 0.125,
+     "arrival_segment_id": "s1",
+     "customer_id": 1,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.375,
+     "service_start_hours": 0.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "s1",
+     "customer_id": 2,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 1.0,
+     "service_start_hours": 0.25,
+     "status": "departed",
+     "unit_work": 1.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.25,
+     "arrival_segment_id": "s1",
+     "customer_id": 3,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.5,
+     "service_start_hours": 0.375,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 0.5,
+     "arrival_segment_id": "s1",
+     "customer_id": 4,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 0.875,
+     "service_start_hours": 0.5,
+     "status": "departed",
+     "unit_work": 0.75,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 0.75,
+     "arrival_segment_id": "s1",
+     "customer_id": 5,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 1.375,
+     "service_start_hours": 0.875,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 1.0,
+     "arrival_segment_id": "s2",
+     "customer_id": 6,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 1.25,
+     "service_start_hours": 1.0,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.125,
+     "arrival_segment_id": "s2",
+     "customer_id": 7,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 3,
+     "service_end_hours": 1.375,
+     "service_start_hours": 1.125,
+     "status": "departed",
+     "unit_work": 0.5,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.25,
+     "arrival_segment_id": "s2",
+     "customer_id": 8,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 2.25,
+     "service_start_hours": 1.25,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.4375,
+     "arrival_segment_id": "s2",
+     "customer_id": 9,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 1.9375,
+     "service_start_hours": 1.4375,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 1.5,
+     "arrival_segment_id": "s3",
+     "customer_id": 10,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 2.0625,
+     "service_start_hours": 1.9375,
+     "status": "departed",
+     "unit_work": 0.25,
+     "unserved_reason": null,
+     "wait_hours": 0.4375
+    },
+    {
+     "arrival_hours": 1.75,
+     "arrival_segment_id": "s3",
+     "customer_id": 11,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 3,
+     "service_end_hours": 2.625,
+     "service_start_hours": 2.0,
+     "status": "departed",
+     "unit_work": 2.5,
+     "unserved_reason": null,
+     "wait_hours": 0.25
+    },
+    {
+     "arrival_hours": 3.0,
+     "arrival_segment_id": "s6",
+     "customer_id": 12,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 3.25,
+     "service_start_hours": 3.0,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.5,
+     "arrival_segment_id": "s6",
+     "customer_id": 13,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 3.75,
+     "service_start_hours": 3.5,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.5,
+     "arrival_segment_id": "s6",
+     "customer_id": 14,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 2,
+     "service_end_hours": 4.0,
+     "service_start_hours": 3.5,
+     "status": "departed",
+     "unit_work": 2.0,
+     "unserved_reason": null,
+     "wait_hours": 0.0
+    },
+    {
+     "arrival_hours": 3.625,
+     "arrival_segment_id": "s6",
+     "customer_id": 15,
+     "elapsed_wait_at_close_hours": null,
+     "server_id": 1,
+     "service_end_hours": 4.0,
+     "service_start_hours": 3.75,
+     "status": "departed",
+     "unit_work": 1.0,
+     "unserved_reason": null,
+     "wait_hours": 0.125
+    },
+    {
+     "arrival_hours": 3.8125,
+     "arrival_segment_id": "s6",
+     "customer_id": 16,
+     "elapsed_wait_at_close_hours": 0.1875,
+     "server_id": null,
+     "service_end_hours": null,
+     "service_start_hours": null,
+     "status": "unserved_at_close",
+     "unit_work": 1.0,
+     "unserved_reason": "hard_cutoff",
+     "wait_hours": null
+    },
+    {
+     "arrival_hours": 3.875,
+     "arrival_segment_id": "s6",
+     "customer_id": 17,
+     "elapsed_wait_at_close_hours": 0.125,
+     "server_id": null,
+     "service_end_hours": null,
+     "service_start_hours": null,
+     "status": "unserved_at_close",
+     "unit_work": 0.5,
+     "unserved_reason": "hard_cutoff",
+     "wait_hours": null
+    },
+    {
+     "arrival_hours": 3.9375,
+     "arrival_segment_id": "s6",
+     "customer_id": 18,
+     "elapsed_wait_at_close_hours": 0.0625,
+     "server_id": null,
+     "service_end_hours": null,
+     "service_start_hours": null,
+     "status": "unserved_at_close",
+     "unit_work": 0.5,
+     "unserved_reason": "hard_cutoff",
+     "wait_hours": null
+    }
+   ],
+   "drains": [
+    {
+     "customer_id": 8,
+     "designated_at": 1.5,
+     "reactivated_at": 2.0,
+     "released_at": null,
+     "segment_id": "s3",
+     "server_id": 2
+    },
+    {
+     "customer_id": 11,
+     "designated_at": 2.5,
+     "released_at": 2.625,
+     "segment_id": "s5",
+     "server_id": 3
+    }
+   ],
+   "provenance": {
+    "assumptions": [
+     "Arrivals form a Poisson process with the demand period's rate: exponential gaps restarted at each period start (exact by memorylessness). A period with arrival rate 0 has no arrivals.",
+     "Each customer carries a unit work amount drawn once from Exp(1); service lasts work / mu, with mu the service rate of the demand period in which service starts. A started service is never redrawn, rescaled, or interrupted.",
+     "The system is empty at the horizon start (initial condition).",
+     "The horizon end is the closing time. Services that start after closing (DRAIN only) use the final demand period's service rate, because no demand data exists after closing.",
+     "Waiting-time means are over customers who started service, including starts after closing under DRAIN. Unserved customers are counted separately; their elapsed waits at closing are censored, not completed waits.",
+     "Simulated values are one stochastic realization of the configured model, not observations and not steady-state expectations."
+    ],
+    "closing_policy": "HARD_CUTOFF",
+    "closing_rule": "HARD_CUTOFF: arrivals stop at closing, and completions at the closing time are processed first. Customers still waiting are recorded as unserved_at_close (reason hard_cutoff). Services already under way finish; no service starts at or after closing. Each server closes when it is idle.",
+    "engine_version": "novaq-shared-continuous-des-v2",
+    "event_order": "At equal times: service completions, then capacity changes, then arrivals (by customer id). After each event, free accepting servers take waiting customers first come, first served; the lowest free server number serves first.",
+    "inputs": {
+     "arrival_count": 18,
+     "demand_periods": [
+      {
+       "arrival_rate_per_hour": 2.0,
+       "end_minute": 120,
+       "period_id": "p1",
+       "service_rate_per_hour": 2.0,
+       "start_minute": 0
+      },
+      {
+       "arrival_rate_per_hour": 0.0,
+       "end_minute": 180,
+       "period_id": "p2",
+       "service_rate_per_hour": 4.0,
+       "start_minute": 120
+      },
+      {
+       "arrival_rate_per_hour": 2.0,
+       "end_minute": 240,
+       "period_id": "p3",
+       "service_rate_per_hour": 4.0,
+       "start_minute": 180
+      }
+     ],
+     "horizon": {
+      "end_minute": 240,
+      "start_minute": 0
+     },
+     "staffing_segments": [
+      {
+       "end_minute": 60,
+       "segment_id": "s1",
+       "servers": 2,
+       "start_minute": 0
+      },
+      {
+       "end_minute": 90,
+       "segment_id": "s2",
+       "servers": 3,
+       "start_minute": 60
+      },
+      {
+       "end_minute": 120,
+       "segment_id": "s3",
+       "servers": 1,
+       "start_minute": 90
+      },
+      {
+       "end_minute": 150,
+       "segment_id": "s4",
+       "servers": 3,
+       "start_minute": 120
+      },
+      {
+       "end_minute": 180,
+       "segment_id": "s5",
+       "servers": 0,
+       "start_minute": 150
+      },
+      {
+       "end_minute": 240,
+       "segment_id": "s6",
+       "servers": 2,
+       "start_minute": 180
+      }
+     ]
+    },
+    "max_trace_events": null,
+    "metric_provenance": "des_continuous_horizon",
+    "server_hours_meaning": "Server-hours are modeled service-capacity hours: the time a modeled server position is open. They are not necessarily paid employee-hours; shift minimums, breaks, handovers, and paid time outside open positions are not modeled.",
+    "time_unit": "hours from the horizon start",
+    "trace_fields": "queue_len_after is the number of waiting customers right after the event; an arriving customer counts as waiting until its service_start event, which may share the arrival time. Events and capacity transitions at or after closing carry segment_id None.",
+    "transition_policy": "Non-preemptive. A capacity decrease closes idle servers first (highest number first), then designates busy servers to drain (highest number first): a draining server takes no new customer, finishes its current service, and closes at that completion. A capacity increase reactivates draining servers first (lowest number first), then reopens closed servers (lowest number first), creating new server numbers only when needed. Accepting servers always equal the schedule; draining servers are recorded as time above schedule."
+   },
+   "segments": [
+    {
+     "arrivals": 5,
+     "busy_server_hours": 1.625,
+     "duration_hours": 1.0,
+     "max_queue": 1,
+     "mean_wait_hours": 0.05,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "s1",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 5,
+     "time_average_queue": 0.25,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.8125,
+     "waited_count": 2
+    },
+    {
+     "arrivals": 4,
+     "busy_server_hours": 1.1875,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": 0.0,
+     "present_server_hours": 1.5,
+     "scheduled_server_hours": 1.5,
+     "scheduled_servers": 3,
+     "segment_id": "s2",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 4,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.7916666666666666,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 2,
+     "busy_server_hours": 1.0,
+     "duration_hours": 0.5,
+     "max_queue": 2,
+     "mean_wait_hours": 0.34375,
+     "present_server_hours": 1.0,
+     "scheduled_server_hours": 0.5,
+     "scheduled_servers": 1,
+     "segment_id": "s3",
+     "server_hours_above_schedule": 0.5,
+     "service_starts": 2,
+     "time_average_queue": 1.375,
+     "unserved_at_close": 0,
+     "utilization_of_present": 1.0,
+     "waited_count": 2
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.8125,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 1.5,
+     "scheduled_server_hours": 1.5,
+     "scheduled_servers": 3,
+     "segment_id": "s4",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 0.5416666666666666,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 0,
+     "busy_server_hours": 0.125,
+     "duration_hours": 0.5,
+     "max_queue": 0,
+     "mean_wait_hours": null,
+     "present_server_hours": 0.125,
+     "scheduled_server_hours": 0.0,
+     "scheduled_servers": 0,
+     "segment_id": "s5",
+     "server_hours_above_schedule": 0.125,
+     "service_starts": 0,
+     "time_average_queue": 0.0,
+     "unserved_at_close": 0,
+     "utilization_of_present": 1.0,
+     "waited_count": 0
+    },
+    {
+     "arrivals": 7,
+     "busy_server_hours": 1.25,
+     "duration_hours": 1.0,
+     "max_queue": 3,
+     "mean_wait_hours": 0.03125,
+     "present_server_hours": 2.0,
+     "scheduled_server_hours": 2.0,
+     "scheduled_servers": 2,
+     "segment_id": "s6",
+     "server_hours_above_schedule": 0.0,
+     "service_starts": 4,
+     "time_average_queue": 0.5,
+     "unserved_at_close": 3,
+     "utilization_of_present": 0.625,
+     "waited_count": 1
+    }
+   ],
+   "totals": {
+    "arrivals": 18,
+    "busy_server_hours": 6.0,
+    "customer_conservation": true,
+    "departed": 15,
+    "max_queue": 3,
+    "mean_wait_hours": 0.07083333333333333,
+    "present_server_hours": 8.125,
+    "queue_customer_hours": 1.4375,
+    "scheduled_server_hours": 7.5,
+    "scope": "Queue, server-hour, and max-queue values cover the horizon [start, closing) only; after-closing values are under closing. Customer counts and waits cover the whole run.",
+    "server_hours_above_schedule": 0.625,
+    "servers_used": 3,
+    "service_starts": 15,
+    "time_average_queue": 0.359375,
+    "unserved_at_close": 3,
+    "waited_count": 5
+   },
+   "trace": [
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.125,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.125,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 0.25,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 1,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.375,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 3,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.5,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 5,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": null,
+     "t": 0.75,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 4,
+     "queue_len_after": 1,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.875,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 5,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 1,
+     "t": 0.875,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 2,
+     "queue_len_after": 0,
+     "segment_id": "s1",
+     "server_id": 2,
+     "t": 1.0,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 6,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.0,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 6,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 2,
+     "t": 1.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 7,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.125,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 7,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.125,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 6,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 2,
+     "t": 1.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.25,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 2,
+     "t": 1.25,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 5,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 1,
+     "t": 1.375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 7,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 3,
+     "t": 1.375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 9,
+     "queue_len_after": 1,
+     "segment_id": "s2",
+     "server_id": null,
+     "t": 1.4375,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 9,
+     "queue_len_after": 0,
+     "segment_id": "s2",
+     "server_id": 1,
+     "t": 1.4375,
+     "type": "service_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s3",
+     "server_id": 3,
+     "t": 1.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 0,
+     "segment_id": "s3",
+     "server_id": 2,
+     "t": 1.5,
+     "type": "server_drain_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s3",
+     "server_id": null,
+     "t": 1.5,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 10,
+     "queue_len_after": 1,
+     "segment_id": "s3",
+     "server_id": null,
+     "t": 1.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 2,
+     "segment_id": "s3",
+     "server_id": null,
+     "t": 1.75,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 9,
+     "queue_len_after": 2,
+     "segment_id": "s3",
+     "server_id": 1,
+     "t": 1.9375,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 10,
+     "queue_len_after": 1,
+     "segment_id": "s3",
+     "server_id": 1,
+     "t": 1.9375,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 1,
+     "segment_id": "s4",
+     "server_id": 2,
+     "t": 2.0,
+     "type": "server_reactivate"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 1,
+     "segment_id": "s4",
+     "server_id": 3,
+     "t": 2.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 1,
+     "segment_id": "s4",
+     "server_id": null,
+     "t": 2.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s4",
+     "server_id": 3,
+     "t": 2.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 10,
+     "queue_len_after": 0,
+     "segment_id": "s4",
+     "server_id": 1,
+     "t": 2.0625,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 8,
+     "queue_len_after": 0,
+     "segment_id": "s4",
+     "server_id": 2,
+     "t": 2.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 2,
+     "t": 2.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 1,
+     "t": 2.5,
+     "type": "server_close"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.5,
+     "type": "server_drain_start"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": null,
+     "t": 2.5,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.625,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 11,
+     "queue_len_after": 0,
+     "segment_id": "s5",
+     "server_id": 3,
+     "t": 2.625,
+     "type": "server_drain_complete"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 2,
+     "t": 3.0,
+     "type": "server_open"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.0,
+     "type": "capacity_change"
+    },
+    {
+     "customer_id": 12,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.0,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 12,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.0,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 12,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.25,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 13,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 13,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 14,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.5,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 14,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 2,
+     "t": 3.5,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 15,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.625,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 13,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.75,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 15,
+     "queue_len_after": 0,
+     "segment_id": "s6",
+     "server_id": 1,
+     "t": 3.75,
+     "type": "service_start"
+    },
+    {
+     "customer_id": 16,
+     "queue_len_after": 1,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.8125,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 17,
+     "queue_len_after": 2,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.875,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 18,
+     "queue_len_after": 3,
+     "segment_id": "s6",
+     "server_id": null,
+     "t": 3.9375,
+     "type": "arrival"
+    },
+    {
+     "customer_id": 14,
+     "queue_len_after": 3,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.0,
+     "type": "service_end"
+    },
+    {
+     "customer_id": 15,
+     "queue_len_after": 3,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.0,
+     "type": "service_end"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 3,
+     "segment_id": null,
+     "server_id": null,
+     "t": 4.0,
+     "type": "closing"
+    },
+    {
+     "customer_id": 16,
+     "queue_len_after": 2,
+     "segment_id": null,
+     "server_id": null,
+     "t": 4.0,
+     "type": "unserved_at_close"
+    },
+    {
+     "customer_id": 17,
+     "queue_len_after": 1,
+     "segment_id": null,
+     "server_id": null,
+     "t": 4.0,
+     "type": "unserved_at_close"
+    },
+    {
+     "customer_id": 18,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": null,
+     "t": 4.0,
+     "type": "unserved_at_close"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 1,
+     "t": 4.0,
+     "type": "server_close"
+    },
+    {
+     "customer_id": null,
+     "queue_len_after": 0,
+     "segment_id": null,
+     "server_id": 2,
+     "t": 4.0,
+     "type": "server_close"
+    }
+   ],
+   "trace_truncated": false
+  }
+ },
+ "engine_version": "novaq-shared-continuous-des-v2"
+}

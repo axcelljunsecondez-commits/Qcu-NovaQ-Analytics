@@ -246,3 +246,18 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - The planning settings (`PlanningConfig`) have no defaults. A missing waiting rate gives INCOMPLETE whenever customers arrive in the horizon, never 0.
 - The objective is analytical planning cost, not the continuous-DES operating cost. OPTIMAL holds for this model, the break grid, and the reported solver tolerances. Rosters are not yet simulated.
 - "Integrated no worse than sequential" is claimed only when the sequential roster is in the integrated feasible set and the same exact evaluator prices both rosters.
+
+## Shared-Queue Named-Employee DES Policy (2026-09-28)
+
+- The anonymous engine's complete `simulate_prescribed` output is pinned by `tests/test_shared_continuous_des_pin.py` against `tests/fixtures/shared_continuous_des_output_pin.json`. It uses fixed, binary-exact arrivals, with no seed. Regenerate the fixture only for an authorized, documented engine change (`python -m tests.test_shared_continuous_des_pin --write`).
+- The named-employee DES contract is recorded in `docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md` (product-owner approval of P1-P9 and X1-X7, 2026-09-28). It is design, not implemented.
+- The approval did not choose among the alternatives the design offered, so those selections are UNKNOWN with no default:
+  - P1, P2, P5, P7, X1, and X5 have unselected alternatives;
+  - P3, P4, P6, P8, P9, and X6 have open sub-questions.
+
+  Each blocks the named sub-phase listed in the spec.
+- X7: the named DES requires staffing segments (`required_staffing`, no default), validated by `validate_timeline`. They are never empty and never optional.
+- Separate Queue break behavior (`PRE_BREAK_CUTOFF_MINUTES`, `queue_lifecycle`, the separate break controller, `break_optimization.py`) is protected and not reused. Named events use an `employee_` prefix.
+- The numpy pins conflict across environments (`requirements.txt` <2.3, `requirements-lock.txt` 2.4.6, `requirements-production.lock` 2.2.6). Cross-version RNG equality is UNKNOWN.
+  - The named engine adds no random process.
+  - Test reference values come from prescribed arrivals, never from seeded golden values.

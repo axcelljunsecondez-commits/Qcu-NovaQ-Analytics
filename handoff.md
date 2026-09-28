@@ -596,6 +596,49 @@ Current verified state (one pure module; no DES, API, schema, scenario, frontend
   - a formulation that scales to fine break grids;
   - API and UI exposure.
 
+## Shared Queue Enhancement: Phase 5B-4.0 Anonymous-Engine Pin and 5B-4.1 Named-Employee DES Policy Contract (2026-09-28)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md`
+- `docs/superpowers/plans/2026-09-28-shared-queue-named-employee-des-policy-plan.md`
+
+Product-owner approval (2026-09-28): "The Phase 5B-4A design is approved using P1–P9 and X1–X7 exactly as supplied by the user." The 5B-4A design was a chat report, and this spec is its first repository record.
+
+- Single rules in the design are APPROVED SPECIFICATION.
+- Where the design offered alternatives or open questions, the approval did not choose, so the selection is UNKNOWN with no default:
+  - P1, P2, P5, P7, X1, and X5 have unselected alternatives;
+  - P3, P4, P6, P8, P9, and X6 have open sub-questions.
+
+  The spec's "Open selections" table maps each to the sub-phase it blocks.
+- X7 is mandatory: the named DES takes `required_staffing` as a required input with no default, validated by `validate_timeline`, never empty and never optional.
+
+Current verified state (tests and docs only; no production code change):
+
+- 5B-4.0 (implemented):
+  - `tests/test_shared_continuous_des_pin.py` and `tests/fixtures/shared_continuous_des_output_pin.json` pin the complete result dictionary of the anonymous engine's `simulate_prescribed`, key by key with exact equality, on 7 fixed-arrival cases:
+    - the main transitions case under DRAIN, under HARD_CUTOFF, and under DRAIN with a trace cap of 7;
+    - "no one on duty at closing" under both policies;
+    - "no arrivals" under both policies.
+  - No seed and no random number are used, and every input is binary-exact.
+  - The expected values are the engine's output at `d5723aba` (a characterization). The main case's schedule, transitions, at-close state, and overrun were also derived by hand, and one test asserts that derivation without the fixture.
+  - The existing 34 hand-computed test functions (111 collected) in `tests/test_shared_continuous_des.py` are unchanged; the pin adds whole-output coverage.
+  - `shared_continuous_des.py` is unchanged.
+- 5B-4.1 (documented, not implemented):
+  - the employee state machine, capacity definitions, transition rules, invariants 1-14, and the proposed interface;
+  - Separate Queue break code is protected and is not reused;
+  - the numpy pins CONFLICT (`requirements.txt` <2.3, lock 2.4.6, production lock 2.2.6, local 2.4.6), and cross-version RNG equality is UNKNOWN;
+  - the named engine adds no random process, and test reference values come from prescribed arrivals.
+- No named-employee DES exists, and `shared_named_des.py` was not created.
+- Verification:
+  - The new pin file has 9 tests, all passing.
+  - Fault injection (15 source-level mutants of an in-memory engine copy; scratch script, not committed): 15 of 15 caught, and the unmutated copy matched.
+  - The focused shared anonymous-engine suites gave 254 passed.
+  - Ruff is clean. `mypy . --exclude '^outputs/'` is clean on 168 files.
+  - The full backend suite, `python -m pytest tests/ -x`, gave 1550 passed, 3 skipped, and 1 xfailed (the 1541 baseline plus 9 new tests). That run includes every Separate Queue test file.
+  - `git status` shows no change to any existing backend source file or existing test.
+- Next (needs approval): the open selections in the spec, then 5B-4.2 (employee timeline state machine).
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:
