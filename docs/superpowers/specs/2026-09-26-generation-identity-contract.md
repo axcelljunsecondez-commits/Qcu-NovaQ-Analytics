@@ -1,4 +1,4 @@
-# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H and G2 committed locally)
+# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2 and G3 committed locally)
 
 - **Status:** APPROVED SPECIFICATION. The design direction was accepted on 2026-09-26, and this
   contract on 2026-09-28, with OD-G2 approved (§8) and the legacy policy (§6) confirmed.
@@ -15,7 +15,10 @@
     - G2: creation stamping, committed as `f495f0bd`. Its status is **COMMITTED — G-T1 VERIFIED
       ON SQLITE AND LOCAL POSTGRESQL 18.6, EXCEPT ONE POSTGRESQL VARIANT NOT RUN; CI AND
       PRODUCTION GATES PENDING** (§7.1).
-  - Nothing after G2 is implemented: G3–G9 are not started and not authorized. Application
+    - G3: job and selection stamping and the OD-G2 write gates, with enforcement off, committed as
+      `cb7f78be`. Its status is **COMMITTED — TARGETED SQLITE AND LOCAL POSTGRESQL 18.6
+      VERIFICATION; FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§7.2).
+  - Nothing after G3 is implemented: G4–G9 are not started and not authorized. Application
     behaviour with enforcement on is NOT TESTED, and the exact-generation defect is not resolved
     (§6.2).
 - **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
@@ -64,7 +67,7 @@
 | Dataset rows are created only in `analyses.py:218`, `analyses.py:271`, `datasets.py:112` | grep of `Dataset(` | VERIFIED |
 | Scenario rows are created only in `scenarios.py:321` (`POST /scenarios`), which verifies against the `dataset` row loaded at `:274` | schema 1 `scenarios.py:232-238`; schema 2 `scenarios.py:159-180` | VERIFIED |
 | Saved settings and results are immutable | `PATCH` returns 409 (`scenarios.py:381-386`); `ScenarioPatch` has only `name`, `settings`, `results` | VERIFIED |
-| Every Job is built in `_save_job` (`workflow.py:518`), with 13 callers | grep of `Job(` in `backend/` | VERIFIED |
+| Every Job is built in `_save_job` (`workflow.py:518`), from 12 call sites. Corrected 2026-09-29: this row said "13 callers"; the count at `4db54722` and at `cb7f78be` is 12 calls plus the definition | grep of `Job(` in `backend/`; `_save_job(` call sites counted, definition excluded | VERIFIED |
 | Evidence and selections are resolved by integer | `_job_matches` (`workflow.py:453`); `_selected_scenario` (`:540`); `_require_selected_separate_plan` (`:1792-1810`) | VERIFIED |
 | Selected MC and validation have no dependency gate at write time; `run_validation_current` compares `dataset_id` inline (`:1100`) | source | VERIFIED |
 | The dataset report reads no jobs (`reports.py:529-575`) | source | VERIFIED |
@@ -363,7 +366,7 @@ dataset and setup (Steps 1–5 and Option A).
 | Dataset upload (three constructors) | `datasets.generation` | application default; no call-site change |
 | `POST /scenarios` (`scenarios.py:323` at `f495f0bd`) | `generation`; `dataset_generation = dataset.generation` | the row loaded at `:276` and verified by `_verify_calculation` (`:315`). NULL when the scenario has no dataset (never selectable, `workflow.py:302`). Also NULL when the save carries no calculation snapshot, because `_verify_calculation` then verifies nothing (`:205`); such legacy_unverified scenarios are never selectable either (`workflow.py:298-308`). Approved 2026-09-28, narrowing the earlier "NULL only without a dataset" wording |
 | Legacy dataset re-parent (`scenarios.py:312`) | nothing | identity unchanged; a save that verified a snapshot against the re-parented row records that row's token |
-| `_save_job` (all 13 callers) | `params.scenario_generation`, `params.dataset_generation` | the ORM rows the computation read |
+| `_save_job` (all 12 call sites) | `params.scenario_generation`, `params.dataset_generation` | the ORM rows the computation read |
 
 - `_save_job` receives the dataset row. For Current kinds that is the `_current_dataset` row; for
   scenario-bound kinds it is the scenario's dataset row.
@@ -373,19 +376,23 @@ dataset and setup (Steps 1–5 and Option A).
 - Stamping itself is behaviour-neutral in S2. The one intended S2 behaviour change is the OD-G2
   write-time gate (§8).
 
-| Caller (`workflow.py`) | Scenario read | Dataset read |
+| Caller (`workflow.py` at `cb7f78be`) | Scenario read | Dataset row stamped |
 |---|---|---|
-| selection `:902` | `_own_verified_scenario` | `:309` |
-| DES `:941` | `_require_selection` | `:931` |
-| DES/MC/validation current `:972`, `:1032`, `:1139` | — | `_current_dataset` |
-| MC `:1001`, validation `:1062` | `_require_selection` | the scenario's dataset row |
-| selected DES/MC/validation `:2045`, `:2312`, `:2467` | `_require_selected_separate_plan` | `:1829` |
-| Decision `:2700`, `:2730` | as above | as above |
+| selection `:933` | `_own_verified_scenario_and_dataset` (`:932`) | the row that call verified (`:320`) |
+| DES `:971`, MC `:1031`, validation `:1092` | `_require_selection` (`:961`, `:1021`, `:1081`) | the row verified at `:320`, returned through `_selected_scenario_and_dataset` |
+| DES/MC/validation current `:1002`, `:1062`, `:1169` | — | `_current_dataset` (`:990`, `:1050`, `:1122`) |
+| selected DES/MC/validation `:2074`, `:2345`, `:2504` | `_require_selected_separate_plan` | `plan["dataset"]`: the row verified at `:320` (`:1835`) |
+| selected Decision `:2737` | as above | as above |
+| shared Decision `:2767` | `_selected_scenario_and_dataset` (`:2755`) | the row verified at `:320` |
+
+- Historical: at `4db54722` the call sites were `:902`, `:941`, `:972`, `:1001`, `:1032`, `:1062`,
+  `:1139`, `:2045`, `:2312`, `:2467`, `:2700` and `:2730`. `run_des` (`:931`) and
+  `_require_selected_separate_plan` (`:1829`) read the dataset a second time. G3 removed both
+  reads, so the stamped row is always the row the eligibility check verified.
 
 ### 7.1 G2 status (committed `f495f0bd`, local, unpushed)
 
-- Implemented: the dataset and scenario creation rows above. `_save_job` stamping (G3) is not
-  implemented.
+- Implemented: the dataset and scenario creation rows above. `_save_job` stamping is G3 (§7.2).
 - Outputs (additive): `ScenarioOut` and `DatasetOut` report `generation` (`scenarios.py:59`,
   `:91`; `datasets.py:33`, `:49`). So do the `analyses.py` endpoints that reuse those serializers
   (`:175`, `:232`, `:287`, `:361`, `:387`).
@@ -417,6 +424,53 @@ dataset and setup (Steps 1–5 and Option A).
 - G2 does not repair the exact-generation defect. It only records the binding that enforcement
   (S3) will check.
 
+### 7.2 G3 status (committed `cb7f78be`, local, unpushed)
+
+- Implemented, with enforcement off:
+  - every `_save_job` call site records `params.scenario_generation` and
+    `params.dataset_generation` (§7);
+  - the selected-plan MC and validation endpoints apply the OD-G2 gate (§8.1).
+- Not implemented (later stages): token checks, the enforcement-on 409 in `_save_job`, and the
+  classifier changes (G4–G9).
+- Decisions approved 2026-09-28:
+  - D1: the only existing test the OD-G2 gate reached,
+    `test_selected_plan_validation.py::test_null_failure_rate_stays_null_and_inadequate`, used a
+    hand-built MC job without `params.dataset_id`. Its fixture `_craft_mc_job` now records the
+    scenario's dataset id. Its assertions are unchanged.
+  - D2: each gate runs last, immediately before the computation, so every earlier refusal keeps
+    its status and message.
+  - D3: a Current-mode job records `scenario_generation` as `null`; the key is present.
+- Implementation (VERIFIED from source at `cb7f78be`):
+  - `_save_job` (`workflow.py:503-559`) takes the dataset row as a required argument and writes
+    both tokens after the caller's params (`:549-550`). It raises `ValueError` if a scenario-bound
+    job is given a dataset other than the scenario's (`:522`).
+  - `_own_verified_scenario_and_dataset` returns the dataset row it verified, and that row is
+    passed through (table above).
+  - Gates: `run_selected_mc` on the DES job (`:2323`); `run_selected_validation` on the DES and
+    MC jobs (`:2485`).
+- Evidence (VERIFIED). The runs used a working tree whose three changed files matched the committed
+  content, compared with line endings normalized.
+
+  | Evidence | SQLite | Local PostgreSQL 18.6 |
+  |---|---|---|
+  | `tests/test_generation_job_stamping.py` (13) and `tests/test_selected_plan_validation.py` (12) | 25 passed | 25 passed, 0 skipped; 19 confirmed on `postgresql`, 6 use no database |
+  | The 13 new tests against the pre-G3 source (`b6399ada`) | 10 fail; the 3 that pass pin behaviour that holds before and after | not run |
+  | Eleven deliberate faults: each stamp, stamp order, wrong row, D3, the guard, each gate, gate position | 11 of 11 caught | 11 of 11 caught |
+  | Workflow and evidence regression suites (17 files) | in the full suite | 284 passed, 1 xfailed, 0 skipped |
+  | Full backend suite | 1361 passed; 94 skipped, all needing `NOVAQ_TEST_DATABASE_URL`; 1 xfailed (the strict MC xfail) | not run |
+  | ruff, mypy | clean | — |
+  | Frontend `npm test`, `npm run typecheck` | 52 files / 379 tests passed; exit 0 | — |
+
+- NOT TESTED or UNKNOWN:
+  - the full backend suite on PostgreSQL. The migration module's PostgreSQL cases create their
+    databases through the cluster's `postgres` maintenance database, which the G3 session was not
+    authorized to use;
+  - whether jobs already stored in any database would meet the OD-G2 refusal (UNKNOWN);
+  - the CI job, PostgreSQL 16 and production;
+  - frontend lint and build (no frontend file changed).
+- G3 does not repair the exact-generation defect. It only records the tokens that enforcement (S3)
+  will check.
+
 ## 8. Where the token is checked
 
 Every row applies under enforcement (S3 and later). The write-time gates also apply in S2, without
@@ -433,11 +487,11 @@ their token part (OD-G2, below).
 
 - `_latest_job` keeps selecting by id, with no fallback (D7 rule).
 
-### 8.1 OD-G2 — write-time dependency integrity (APPROVED 2026-09-28; not implemented)
+### 8.1 OD-G2 — write-time dependency integrity (APPROVED 2026-09-28; items 1–3 implemented in `cb7f78be`)
 
 1. Before creating a new analytical job, the selected-plan Monte Carlo and validation endpoints
    check that their input evidence satisfies the existing Step 5 dependency-integrity rules
-   (`require_dependencies_current`, `workflow.py:710`). If it does not, they refuse with 409
+   (`require_dependencies_current`, `workflow.py:741` at `cb7f78be`; `:710` at `4db54722`). If it does not, they refuse with 409
    before computing, so no evidence is stored on a broken input.
 2. This check applies even when generation enforcement is off, from release G-A onward.
 3. During the stamping-only stage (S2), evidence that is otherwise eligible is not rejected solely
@@ -451,6 +505,9 @@ their token part (OD-G2, below).
    - Selected validation checks the same, plus the MC job's engine and the MC → DES link
      (`:2417-2438`).
    - So OD-G2 adds new 409 responses in G-A, and G-T6 and G-T13 cover them.
+6. At `cb7f78be` both endpoints call it last, immediately before computing (decision D2, §7.2):
+   selected MC on the DES job (`workflow.py:2323`), selected validation on the DES and MC jobs
+   (`:2485`). Item 4, the token match under enforcement, is not implemented.
 
 ## 9. Classifier changes (`evidence_status.py`)
 
@@ -583,7 +640,7 @@ Replacement construction: delete through the API, then insert directly with the 
 |---|---|
 | G-T1 Scenario and dataset creation | every creation path sets a unique 32-hex token; the scenario save sets `dataset_generation` to the verified row's token |
 | G-T2 Selection binding | a stamped selection binds only to the same generation; unstamped or mismatched → no eligible selection; Option A preserved |
-| G-T3 Job stamping | all 13 `_save_job` callers record the tokens of the rows actually read |
+| G-T3 Job stamping | all 12 `_save_job` call sites record the tokens of the rows actually read |
 | G-T4 Current DES (and Current MC/validation, `:1100`) | a replaced dataset (same id, same time, byte-identical) is rejected |
 | G-T5 Selected-plan DES | rejected on a replaced scenario |
 | G-T6 MC and validation write-time gates (OD-G2) | Flag off: a DES/MC input that fails Step 5 rules is refused with 409 before computing, and no job is stored; an unstamped but otherwise eligible input is accepted. Enforcement on: a wrong-generation or unrecorded input is also refused |
@@ -660,9 +717,10 @@ Every R test asserts:
 | G8 release G-A | operations only | 0005 applied explicitly | §11.2 | any §11.2 fact is UNKNOWN |
 | G9 release G-B, with v3 | flag constant | legacy evidence non-current | G-T14, G-T17 | a pre-G writer may exist; v3 prerequisites missing |
 
-Status at `f495f0bd`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`) and G2 (`f495f0bd`) are
-committed locally and unpushed. G2 changed `scenarios.py` and the dataset serializer in
-`datasets.py`. G3–G9 are not started and not authorized.
+Status at `cb7f78be`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`) and G3
+(`cb7f78be`) are committed locally and unpushed. G2 changed `scenarios.py` and the dataset
+serializer in `datasets.py`. G3 changed only `workflow.py` in production code. G4–G9 are not
+started and not authorized.
 
 ## 15. Prototype verification evidence (disposable databases only)
 
@@ -733,6 +791,9 @@ production pins.
   and production are NOT TESTED. Privileged roles can still disable the guards (§3).
 - G2: the PostgreSQL variant of `..._assigns_and_reports_tokens` (NOT RUN), the CI job,
   PostgreSQL 16, production and the frontend gates (§7.1).
-- Which existing tests or stored workflows reach selected MC or validation with an input that
-  fails Step 5 rules, and so would meet the new OD-G2 refusal (NOT TESTED).
+- G3: the full backend suite on PostgreSQL (NOT RUN), the CI job, PostgreSQL 16 and production
+  (§7.2).
+- Which stored workflows reach selected MC or validation with an input that fails Step 5 rules,
+  and so would meet the OD-G2 refusal (UNKNOWN). For the existing tests this is answered: exactly
+  one, whose fixture was corrected (§7.2, D1).
 - OD-G2 itself is resolved: approved 2026-09-28 (§8.1).
