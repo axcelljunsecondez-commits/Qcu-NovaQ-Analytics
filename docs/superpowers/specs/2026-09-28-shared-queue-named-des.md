@@ -4,6 +4,11 @@ Date: 2026-09-28. Status: implemented as `backend/queueing_engine/simulation/sha
 with tests in `tests/test_shared_named_des.py`. Committed locally only; not pushed, merged, or
 deployed.
 
+Amended in Phase 5B-4.4 (2026-09-28): the approved closing, capacity, event-time, and staffing-gap
+rules replace items 1-4 of "Undetermined" and change the P8 windows (engine version
+`novaq-shared-named-des-v2`). See "Phase 5B-4.4 amendments"; statements below that the amendments
+changed are marked.
+
 Plan: `docs/superpowers/plans/2026-09-28-shared-queue-named-des-plan.md`.
 Policy contract: `2026-09-28-shared-queue-named-employee-des-policy.md`, updated with the decisions
 below. Employee state machine: `2026-09-28-shared-queue-employee-state-machine.md`, amended in this
@@ -121,7 +126,8 @@ simulate_named_prescribed(
   closing`, non-decreasing, work finite and above 0, and no arrival in a period whose arrival rate
   is 0.
 - **Not implemented:** `simulate_named_replication` (5B-4.4). X5 is therefore not exercised, and no
-  public alias was added to the anonymous module.
+  public alias was added to the anonymous module. (Amended in 5B-4.4: implemented in
+  `shared_named_replications.py`, with the X5 wrapper `shared_continuous_des.draw_arrivals`.)
 
 ## Time
 
@@ -139,7 +145,9 @@ simulate_named_prescribed(
   coincide exactly because the state machine computes them in whole minutes, and each instant it
   processes is the value it computed. Two independently computed floats that differ only by
   rounding, such as a service end one unit away from a roster boundary, are ordered by their float
-  values. An event-time tolerance for stochastic times is UNKNOWN (see "Undetermined").
+  values. An event-time tolerance for stochastic times is UNKNOWN (see "Undetermined"). (Amended in
+  5B-4.4: approved rule 4 settles it: no generic event-time epsilon, roster-derived boundaries in
+  exact integer minutes, and stochastic service times never rounded or snapped.)
 - A service shorter than the time scale resolves (`t + duration == t`) raises
   `EmployeeTimelineError` rather than being simulated.
 
@@ -159,9 +167,9 @@ completion, the engine does the following (X2):
      |---|---|---|
      | Crew (DRAIN: AVAILABLE, SERVING) | CancelPendingBreaks | keeps serving; pending breaks cancelled |
      | SERVING_BREAK_DUE, not completing at closing | Release, CancelPendingBreaks | finishes the customer as SERVING_SHIFT_ENDED, released at completion; break cancelled |
-     | SERVING_BREAK_DUE completing at closing | none | `UndeterminedPolicyError` (see "Undetermined") |
+     | SERVING_BREAK_DUE completing at closing | CancelPendingBreaks, Release (5B-4.4; 5B-4.3 raised `UndeterminedPolicyError`) | the service completes first, no break starts, the break is cancelled_at_closing, released at closing |
      | ON_BREAK, break ending after closing | CancelPendingBreaks, Release, EndBreakAtClosing | break truncated at closing; released at closing |
-     | ON_BREAK, break ending at closing | CancelPendingBreaks, Release | break completes at closing; released |
+     | ON_BREAK, break ending at closing | CancelPendingBreaks, Release, EndBreakAtClosing (5B-4.4; 5B-4.3 issued no EndBreakAtClosing) | break truncated_by_closing at closing; released |
      | Any other (OFF, WAITING_FOR_REGISTER, AVAILABLE or SERVING under HARD_CUTOFF, SERVING_SHIFT_ENDED) | CancelPendingBreaks, Release | idle or waiting: OFF at closing; serving: released at completion; not yet started: never activated (`released_after_closing`) |
 
    - Waiting customers become unserved: `hard_cutoff` under HARD_CUTOFF, and
@@ -208,7 +216,12 @@ is resolved and every employee is released.
     each gap separately, `shortfall_hours` (integral of `max(0, -gap)`) and `excess_hours`.
   - `scheduled_active` is the roster report's `active_server_steps`: planned shifts minus planned
     breaks. `accepting_capacity` counts AVAILABLE and SERVING employees (INFERRED reading of
-    "accepting"; see "Undetermined").
+    "accepting"; see "Undetermined"). (Amended in 5B-4.4: approved rule 3.)
+  - (Amended in 5B-4.4, approved rule 5.) `schedule_realization_gap` is `None` on timeline steps
+    before opening and after closing, like `requirement_gap`. The `before_opening` and
+    `after_closing` windows report the series only: their gaps and `required_staffing_hours` are
+    `None`. The `after_closing` window is always present, with zero duration when the timeline ends
+    at closing.
 - **`employee_timeline`:** the state machine's record (intervals, transitions, shifts, breaks,
   state totals). Break delays, shift overruns, and after-closing and past-shift-end annotations
   come from it (P9).
@@ -327,6 +340,9 @@ with `random.Random(seed)`; they are prescribed inputs to both engines, not gold
 
 ## Undetermined (UNKNOWN or INFERRED)
 
+Items 1-4 are settled by the approved Phase 5B-4.4 rules 1-4, and item 5 in part by rule 5 (see
+"Phase 5B-4.4 amendments"). Items 6 and 7, and the before-opening part of item 5, remain.
+
 1. **A break-due service completing exactly at closing.** X2 starts the break at the completion,
    before the closing boundary, and P7 would truncate it with zero length. Whether that
    zero-length `truncated_by_closing` break or an unfulfilled `cancelled_at_closing` break is the
@@ -350,8 +366,54 @@ with `random.Random(seed)`; they are prescribed inputs to both engines, not gold
 7. **DRAIN release order.** When fewer customers wait than crew members are idle, the ones X1
    ranks first serve and the rest are released. INFERRED from X1 and P5.
 
+## Phase 5B-4.4 amendments
+
+The Phase 5B-4.4 request (2026-09-28) lists "APPROVED REMAINING SEMANTICS" and says to freeze them
+before implementing replications. They are quoted in
+`2026-09-28-shared-queue-named-replications.md`. In this engine:
+
+1. **Completion at closing with a break due** (rule 1; "Undetermined" item 1). `_closing_inputs`
+   issues CancelPendingBreaks, then Release, for such an employee, as for any non-crew employee. The
+   state machine then completes the service without starting the break (see its spec, "Phase
+   5B-4.4 amendments"). The break is `unfulfilled`, `cancelled_at_closing`, and the employee is
+   released at closing. `UndeterminedPolicyError` is no longer raised or imported here.
+   - Test: `test_break_due_service_completing_exactly_at_closing_cancels_the_break` (both policies).
+     It replaces `test_break_due_service_completing_exactly_at_closing_is_undetermined`.
+2. **Break ending exactly at closing** (rule 2; item 2). EndBreakAtClosing is issued to every
+   employee on a break immediately before closing, so such a break is `truncated_by_closing`.
+   - `test_empty_frozen_crew_marks_the_line_no_eligible_employee` expected `completed`. It now
+     expects `truncated_by_closing`. The expectation changed because the approved rule changed it,
+     not to make a test pass.
+   - New test: `test_break_ending_exactly_at_closing_is_truncated_by_closing` (both policies).
+3. **Accepting capacity** (rule 3; item 3). AVAILABLE plus SERVING, as implemented; now approved.
+4. **Event time** (rule 4; item 4). No generic event-time epsilon, whole-minute roster
+   arithmetic, and no rounding or snapping of stochastic service times. This is what the engine
+   already does; now approved.
+5. **Staffing gaps** (rule 5; part of item 5). "Report gaps per staffing segment and over the
+   configured operating horizon; do not calculate schedule/requirement gaps before opening or after
+   closing; report post-close capacity/time separately."
+   - Timeline steps outside [0, closing) carry `schedule_realization_gap: None`.
+   - The `before_opening` and `after_closing` windows carry no gap and no required hours.
+   - `after_closing` is always reported, with zero duration when the timeline ends at closing.
+   - `test_drain_freezes_the_crew_and_serves_the_admitted_line` expected an after-closing schedule
+     shortfall of 0.125. It now asserts the after-closing series instead: 1.0 h scheduled, 0.875 h
+     accepting and busy, and no gap. This is the approved rule's change.
+   - New test: `test_staffing_gaps_are_calculated_only_inside_the_operating_horizon`.
+6. **`check_named`** (test checker).
+   - It now asserts rule 5 on every step and window, and it counts window kinds.
+   - It checks the approved break rules on every run: no break starts at or after closing, a
+     completed break ends before closing, and a truncated break ends at closing.
+   - Inside the horizon it checks the requirement gap's excess as well as its shortfall. It had
+     checked only the requirement gap's shortfall; the schedule gap's shortfall and excess were
+     already checked.
+   - It runs the 5B-4.2 employee checker in float-tolerant mode on inexact runs, where it had
+     skipped that checker. The 5B-4.3 reduction runs pass it.
+7. `NAMED_ENGINE_VERSION` is `novaq-shared-named-des-v2`. `UNDETERMINED` now lists only the DRAIN
+   release order and the before-opening window shape (INFERRED).
+
 ## Out of scope and next steps
 
-- Seeded named replications (5B-4.4) need X5 and a decision on item 4 above.
+- Seeded named replications (5B-4.4) need X5 and a decision on item 4 above. (Done in 5B-4.4:
+  `2026-09-28-shared-queue-named-replications.md`.)
 - Named playback (5B-4.5), attribution reporting (5B-4.6), and workforce cost (5B-5) are not
   started. None may begin without explicit approval.

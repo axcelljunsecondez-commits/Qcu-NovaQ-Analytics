@@ -148,7 +148,14 @@ def _merge(spans: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return merged
 
 
-def check_invariants(result: dict, workforce: WorkforceRules, roster: list[ScheduledShift]) -> None:
+def _near(a: float, b: float, exact: bool) -> bool:
+    """Exact equality, or within float rounding for seeded runs (``exact=False``), whose instants are not
+    binary-exact, so a duration recomputed as a difference can differ in the last place."""
+    return a == b if exact else abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+
+
+def check_invariants(result: dict, workforce: WorkforceRules, roster: list[ScheduledShift], *,
+                     exact: bool = True) -> None:
     begin, finish, close, registers = result["begin"], result["finish"], result["closing_time"], result["register_count"]
     assert registers == workforce.register_count
     ids = sorted({item.employee_id for item in roster})
@@ -179,7 +186,7 @@ def check_invariants(result: dict, workforce: WorkforceRules, roster: list[Sched
         for row in own:
             expected[row["state"]] += row["end"] - row["start"]
         assert result["state_totals"][employee_id] == expected
-        assert sum(expected.values()) == finish - begin
+        assert _near(sum(expected.values()), finish - begin, exact)
 
     # 3 and 4: at every instant, a register has at most one holder and occupancy is at most K.
     points = sorted({row[key] for own in rows.values() for row in own for key in ("start", "end")})
@@ -201,9 +208,11 @@ def check_invariants(result: dict, workforce: WorkforceRules, roster: list[Sched
         assert row["scheduled_start"] <= row["due"] <= row["actual_start"]  # 7
         assert row["delay"] == row["actual_start"] - row["scheduled_start"]
         if row["outcome"] == COMPLETED:
-            assert row["actual_end"] - row["actual_start"] == duration  # 8
+            assert _near(row["actual_end"] - row["actual_start"], duration, exact)  # 8
         else:
-            assert row["actual_end"] == close and row["actual_start"] < close < row["actual_start"] + duration
+            # Truncated at closing. A break reaching exactly closing may be truncated too (Phase 5B-4.4 rule 2).
+            assert row["actual_end"] == close and row["actual_start"] < close
+            assert close <= row["actual_start"] + duration or _near(close, row["actual_start"] + duration, exact)
         by_shift.setdefault((row["employee_id"], row["shift_index"]), []).append(row)
     for employee_id in ids:
         taken = sorted((row["actual_start"], row["actual_end"]) for row in result["breaks"]
@@ -219,7 +228,8 @@ def check_invariants(result: dict, workforce: WorkforceRules, roster: list[Sched
                    if rule.min_shift_minutes <= length <= rule.max_shift_minutes) / 60.0
         taken_rows.sort(key=lambda row: row["actual_start"])
         for earlier, later in zip(taken_rows, taken_rows[1:]):
-            assert later["actual_start"] >= earlier["actual_end"] + gap  # 10
+            minimum = earlier["actual_end"] + gap
+            assert later["actual_start"] >= minimum or _near(later["actual_start"], minimum, exact)  # 10
 
     # 11 and 12: shifts.
     rest = workforce.shift_rules.min_minutes_between_shifts
@@ -236,7 +246,7 @@ def check_invariants(result: dict, workforce: WorkforceRules, roster: list[Sched
             else:
                 assert rest is not None  # 5B-1 requires the rest whenever split shifts are allowed
                 expected_start = max(row["scheduled_start"], previous_release + rest / 60.0)
-            assert row["actual_start"] == expected_start  # 12: rest from the actual release
+            assert _near(row["actual_start"], expected_start, exact)  # 12: rest from the actual release
             assert row["activation_delay"] == row["actual_start"] - row["scheduled_start"]
             on_shift = [(item["start"], item["end"]) for item in rows[employee_id]
                         if item["shift_index"] == row["shift_index"]]
@@ -744,6 +754,28 @@ def test_hard_cutoff_break_taken_then_released():
     assert at(result, 4.5) == [("completion", "C", SERVING_BREAK_DUE, ON_BREAK)]
     row = shift_row(result, "C")
     assert (row["release"], row["release_trigger"], row["release_basis"]) == (5.0, "employee_break_end", "release_input")
+
+
+def test_break_due_completion_at_closing_with_cancel_starts_no_break():
+    # Phase 5B-4.4 rule 1. C serves 3.5-4.0 with its break due at 3.75, so the completion falls exactly at
+    # closing. With C's CancelPendingBreaks at closing, the completion comes first and leaves C AVAILABLE (no
+    # break starts), the cancel makes the break unfulfilled (cancelled_at_closing), and the Release sends C OFF
+    # at 4.0: no zero-length break exists.
+    service = [ServiceStart(3.5, "C"), ServiceCompletion(4.0, "C")]
+    result = run(HARD_ROSTER, HARD_RULES, service + [CancelPendingBreaks(4.0, "C"), Release(4.0, "C")], finish=5.0)
+    assert at(result, 4.0) == [("completion", "C", SERVING_BREAK_DUE, AVAILABLE), ("closing_input", "C", AVAILABLE, OFF)]
+    (row,) = break_rows(result, "C")
+    assert (row["due"], row["actual_start"], row["actual_end"], row["outcome"], row["unfulfilled_cause"]) == (
+        3.75, None, None, UNFULFILLED, "cancelled_at_closing")
+    shift_c = shift_row(result, "C")
+    assert (shift_c["release"], shift_c["release_basis"], shift_c["release_trigger"]) == (
+        4.0, "release_input", "employee_release_input")
+    assert not [item for item in result["intervals"] if item["employee_id"] == "C" and item["state"] == ON_BREAK]
+    # Without a cancel at closing the machine keeps its policy-free behavior: the break starts at the
+    # completion and, with a Release, C goes OFF at the break end.
+    result = run(HARD_ROSTER, HARD_RULES, service + [Release(4.0, "C")], finish=5.0)
+    assert at(result, 4.0) == [("completion", "C", SERVING_BREAK_DUE, ON_BREAK)]
+    assert break_rows(result, "C")[0]["actual_start"] == 4.0 and shift_row(result, "C")["release"] == 4.5
 
 
 # DRAIN crew: A 11:30-13:00 (3.5-5.0 h); B 10:00-12:00 (2.0-4.0 h) serving 3.75-4.125; C 10:00-13:00 with a

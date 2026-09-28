@@ -50,7 +50,6 @@ from backend.queueing_engine.simulation.shared_employee_states import (
     TRUNCATED_BY_CLOSING,
     UNFULFILLED,
     WAITING_FOR_REGISTER,
-    UndeterminedPolicyError,
 )
 from backend.queueing_engine.simulation.shared_named_des import (
     APPROVED_EMPLOYEE_POLICY,
@@ -213,8 +212,15 @@ def check_named(result: dict, arrivals: list[tuple[float, float]], workforce: Wo
         assert _close(busy, sum(end - start for start, end in own), exact)  # busy time is service time
 
     # 8 and 9: the Phase 5B-4.2 employee invariants (including register occupancy <= K).
-    if exact:
-        check_invariants(employees, workforce, roster)
+    check_invariants(employees, workforce, roster, exact=exact)
+
+    # Approved Phase 5B-4.4 closing rules for breaks: no break starts at or after closing (so none has zero
+    # length), a completed break ends before closing, and a break reaching closing is truncated there.
+    for item in employees["breaks"]:
+        if item["actual_start"] is not None:
+            assert item["actual_start"] < close and item["actual_end"] > item["actual_start"]
+            assert (item["outcome"] == TRUNCATED_BY_CLOSING) == (item["actual_end"] == close)
+            assert item["outcome"] != COMPLETED or item["actual_end"] < close
 
     # 10: after the assignment pass, a non-empty line means nobody is AVAILABLE.
     def waiting_at(t: float) -> int:
@@ -264,8 +270,15 @@ def check_named(result: dict, arrivals: list[tuple[float, float]], workforce: Wo
         assert row["register_occupancy"] <= workforce.register_count
         assert row["waiting_for_register"] == states.count(WAITING_FOR_REGISTER)
         assert (row["scheduled_active"], row["required_staffing"]) == (scheduled, need)
-        assert row["schedule_realization_gap"] == accepting - scheduled
-        assert row["requirement_gap"] == (None if need is None else accepting - need)
+        # Phase 5B-4.4 rule 5: both gaps exist only inside the operating horizon [0, closing).
+        inside = 0.0 <= t < close
+        assert (need is not None) == inside
+        assert row["schedule_realization_gap"] == (accepting - scheduled if inside else None)
+        assert row["requirement_gap"] == (accepting - need if need is not None else None)
+    kinds = [item["kind"] for item in result["staffing"]["windows"]]
+    assert kinds.count("horizon") == kinds.count("after_closing") == 1
+    assert kinds.count("staffing_segment") == len(required)
+    assert kinds.count("before_opening") == (1 if employees["begin"] < 0.0 else 0)
     for item in result["staffing"]["windows"]:
         low, high = item["start"], item["end"]
         overlap = [(min(high, row["end"]) - max(low, row["start"]), row) for row in steps
@@ -275,15 +288,18 @@ def check_named(result: dict, arrivals: list[tuple[float, float]], workforce: Wo
         scheduled_hours = sum(min(high, end) - max(low, start) for start, end in schedule if start < high and end > low)
         assert _close(item["accepting_capacity_hours"], accepting_hours, exact)
         assert _close(item["scheduled_active_hours"], scheduled_hours, exact)
-        assert _close(item["schedule_realization_gap"]["shortfall_hours"],
-                      sum(length * max(0, -row["schedule_realization_gap"]) for length, row in overlap), exact)
-        assert _close(item["schedule_realization_gap"]["excess_hours"],
-                      sum(length * max(0, row["schedule_realization_gap"]) for length, row in overlap), exact)
         if item["kind"] in ("staffing_segment", "horizon"):
-            assert _close(item["requirement_gap"]["shortfall_hours"],
-                          sum(length * max(0, -row["requirement_gap"]) for length, row in overlap), exact)
+            assert 0.0 <= low < high <= close
+            for key in ("schedule_realization_gap", "requirement_gap"):
+                assert _close(item[key]["shortfall_hours"],
+                              sum(length * max(0, -row[key]) for length, row in overlap), exact)
+                assert _close(item[key]["excess_hours"], sum(length * max(0, row[key]) for length, row in overlap),
+                              exact)
         else:
-            assert item["requirement_gap"] is None and item["required_staffing_hours"] is None
+            # Before opening and after closing: the series are reported, and no gap or requirement is calculated.
+            assert high <= 0.0 if item["kind"] == "before_opening" else low == close
+            assert item["schedule_realization_gap"] is None and item["requirement_gap"] is None
+            assert item["required_staffing_hours"] is None
 
     # 18: the queue-length integral equals the waits, served and censored at closing.
     total = sum(row["wait_hours"] for row in done) + sum(row["elapsed_wait_at_close_hours"] for row in missed)
@@ -457,9 +473,13 @@ def test_drain_freezes_the_crew_and_serves_the_admitted_line():
     # 3.625-4.0 (0.875); after: 2 on 4.0-4.375 and 1 on 4.375-4.625 (1.0).
     assert result["queue"] == {"customer_hours_in_horizon": 0.875, "customer_hours_after_closing": 1.0,
                                "customer_hours_total": 1.875, "max_length_in_horizon": 2}
-    # After closing, C is scheduled 4.0-5.0 but released: the schedule gap is 0 while A serves (1 - 1) and
-    # -1 on 4.875-5.0.
-    assert window(result, "after_closing")["schedule_realization_gap"] == {"shortfall_hours": 0.125, "excess_hours": 0.0}
+    # After closing, C is scheduled 4.0-5.0 but released, and A serves 4.0-4.875. Phase 5B-4.4 rule 5: the
+    # after-closing window reports the scheduled 1.0 employee-hour and A's 0.875 accepting (and busy) hours
+    # separately, with no gap.
+    after = window(result, "after_closing")
+    assert (after["duration_hours"], after["scheduled_active_hours"], after["accepting_capacity_hours"],
+            after["busy_employee_hours"]) == (1.0, 1.0, 0.875, 0.875)
+    assert after["schedule_realization_gap"] is None and after["requirement_gap"] is None
 
 
 def test_hard_cutoff():
@@ -484,14 +504,15 @@ def test_hard_cutoff_releases_an_idle_employee_at_closing():
 
 
 def test_empty_frozen_crew_marks_the_line_no_eligible_employee():
-    # A 08:00-12:00 takes its 30-minute break at 11:30 (3.5-4.0) while idle. The break ends exactly at closing:
-    # it completes (not truncated) and A, on a break immediately before closing, is not in the crew. #1 arrives
-    # 3.75 and waits. The crew is empty, so #1 is unserved: no_eligible_employee, elapsed wait 0.25 (X6).
+    # A 08:00-12:00 takes its 30-minute break at 11:30 (3.5-4.0) while idle, so A, on a break immediately before
+    # closing, is not in the crew. #1 arrives 3.75 and waits. The crew is empty, so #1 is unserved:
+    # no_eligible_employee, elapsed wait 0.25 (X6). The break ends exactly at closing; Phase 5B-4.4 rule 2
+    # records it truncated_by_closing (this expectation was COMPLETED in 5B-4.3, where the case was INFERRED).
     result = simulate([shift("A", 480, 720, rest=690)], rules(*LONG_SHIFT_BREAK, registers=1), [(3.75, 1.0)])
     assert result["at_close"]["drain_crew"] == []
     assert unserved(result) == [(1, NO_ELIGIBLE_EMPLOYEE, 0.25)]
     (item,) = break_rows(result["employee_timeline"], "A")
-    assert (item["actual_start"], item["actual_end"], item["outcome"]) == (3.5, 4.0, COMPLETED)
+    assert (item["actual_start"], item["actual_end"], item["outcome"]) == (3.5, 4.0, TRUNCATED_BY_CLOSING)
     assert result["counts"]["unserved_by_reason"] == {HARD_CUTOFF_REASON: 0, NO_ELIGIBLE_EMPLOYEE: 1}
 
 
@@ -572,13 +593,77 @@ def test_break_due_at_closing_is_cancelled_for_a_crew_member():
 
 
 @pytest.mark.parametrize("policy", [DRAIN, HARD_CUTOFF])
-def test_break_due_service_completing_exactly_at_closing_is_undetermined(policy):
-    # A 08:00-12:00, break at 11:30 (3.5). #1 (3.25, work 3) is served 3.25-4.0, so the break is due and the
-    # completion falls exactly at closing. X2 would start the break before the closing boundary and P7 truncate
-    # it with zero length; the approved policy does not say whether that or cancelled_at_closing applies.
-    with pytest.raises(UndeterminedPolicyError, match="UNKNOWN"):
-        simulate([shift("A", 480, 720, rest=690)], rules(*LONG_SHIFT_BREAK, registers=1), [(3.25, 3.0)],
-                 policy=policy)
+def test_break_due_service_completing_exactly_at_closing_cancels_the_break(policy):
+    # Phase 5B-4.4 rule 1 (5B-4.3 raised UndeterminedPolicyError here). A 08:00-12:00, break at 11:30 (3.5).
+    # #1 (3.25, work 3) is served 3.25-4.0, so the break is due from 3.5 and the completion falls exactly at
+    # closing. The service completes first: #1 departs at 4.0 and is not in service at closing. A was pending a
+    # break immediately before closing, so it is not in the DRAIN crew. The break never starts (no zero-length
+    # break): it is unfulfilled, cancelled_at_closing, and A is released at 4.0. #2 (3.75) is unserved:
+    # no_eligible_employee under DRAIN (empty crew), hard_cutoff under HARD_CUTOFF.
+    result = simulate([shift("A", 480, 720, rest=690)], rules(*LONG_SHIFT_BREAK, registers=1),
+                      [(3.25, 3.0), (3.75, 1.0)], policy=policy)
+    assert served(result) == [(1, 3.25, 4.0, "A", 1, 0.0)]
+    assert unserved(result) == [(2, NO_ELIGIBLE_EMPLOYEE if policy == DRAIN else HARD_CUTOFF_REASON, 0.25)]
+    assert result["at_close"]["drain_crew"] == [] and result["at_close"]["in_service_customer_ids"] == []
+    assert result["at_close"]["closing_inputs"] == [{"type": "CancelPendingBreaks", "employee_id": "A"},
+                                                    {"type": "Release", "employee_id": "A"}]
+    employees = result["employee_timeline"]
+    (item,) = break_rows(employees, "A")
+    assert (item["due"], item["actual_start"], item["actual_end"], item["outcome"], item["unfulfilled_cause"]) == (
+        3.5, None, None, UNFULFILLED, "cancelled_at_closing")
+    assert [(row["stage"], row["from_state"], row["to_state"]) for row in employees["transitions"]
+            if row["t"] == 4.0] == [("completion", SERVING_BREAK_DUE, AVAILABLE), ("closing_input", AVAILABLE, OFF)]
+    assert ON_BREAK not in [state for _, _, state, _ in timeline(employees, "A")]
+    assert (shift_row(employees, "A")["release"], shift_row(employees, "A")["overrun"]) == (4.0, 0.0)
+    # The run ends at closing, and the after-closing window is still reported, with zero duration.
+    assert result["finish"] == 4.0 and window(result, "after_closing")["duration_hours"] == 0.0
+
+
+@pytest.mark.parametrize("policy", [DRAIN, HARD_CUTOFF])
+def test_break_ending_exactly_at_closing_is_truncated_by_closing(policy):
+    # Phase 5B-4.4 rule 2. A and B 08:00-12:00, two registers, no customers. A's 30-minute break at 11:30 runs
+    # 3.5-4.0, ending exactly at closing; B's runs 1.0-1.5. Closing is processed before break ends (X2), so A's
+    # break is truncated at closing (after its full 30 minutes) and A is released there; A never returns to add
+    # DRAIN capacity. B, idle immediately before closing, is the DRAIN crew (nobody under HARD_CUTOFF) and, with
+    # nobody waiting, is released at closing too.
+    roster = [shift("A", 480, 720, rest=690), shift("B", 480, 720, rest=540)]
+    result = simulate(roster, rules(*LONG_SHIFT_BREAK, registers=2), [], policy=policy)
+    employees = result["employee_timeline"]
+    (item,) = break_rows(employees, "A")
+    assert (item["actual_start"], item["actual_end"], item["delay"], item["outcome"]) == (
+        3.5, 4.0, 0.0, TRUNCATED_BY_CLOSING)
+    assert [(row["stage"], row["from_state"], row["to_state"], row["event"]) for row in employees["transitions"]
+            if row["t"] == 4.0 and row["employee_id"] == "A"] == [
+        ("closing_input", ON_BREAK, OFF, "employee_break_truncated_at_closing")]
+    assert shift_row(employees, "A")["release"] == 4.0 and break_rows(employees, "B")[0]["outcome"] == COMPLETED
+    assert result["at_close"]["drain_crew"] == (["B"] if policy == DRAIN else [])
+
+
+def test_staffing_gaps_are_calculated_only_inside_the_operating_horizon():
+    # Phase 5B-4.4 rule 5. A 07:30-11:30 starts 0.5 h before opening; B 10:00-13:00 runs 1 h past closing; two
+    # registers, one server required, no customers. Under DRAIN, B (idle) is the crew and is released at closing.
+    # Before opening (-0.5-0): A accepts 0.5 employee-hours, scheduled 0.5. Horizon (0-4): accepting and scheduled
+    # are both A 0-3.5 plus B 2-4 = 5.5, so the schedule gap is 0; against one required server the excess is 1.5
+    # (2.0-3.5). After closing (4-5): B is scheduled 1.0 employee-hour but released, so accepting is 0. Gaps are
+    # reported only for the segment and the horizon; outside it the series stand alone.
+    roster = [shift("A", 450, 690), shift("B", 600, 780)]
+    result = simulate(roster, rules(registers=2), [])
+    before, horizon, after = (window(result, name) for name in ("before_opening", "horizon", "after_closing"))
+    assert (before["start"], before["end"], before["accepting_capacity_hours"], before["scheduled_active_hours"]) == (
+        -0.5, 0.0, 0.5, 0.5)
+    assert (horizon["accepting_capacity_hours"], horizon["scheduled_active_hours"], horizon["required_staffing_hours"]) == (
+        5.5, 5.5, 4.0)
+    assert horizon["schedule_realization_gap"] == {"shortfall_hours": 0.0, "excess_hours": 0.0}
+    assert horizon["requirement_gap"] == {"shortfall_hours": 0.0, "excess_hours": 1.5}
+    assert window(result, "S")["requirement_gap"] == horizon["requirement_gap"]
+    assert (after["start"], after["end"], after["scheduled_active_hours"], after["accepting_capacity_hours"]) == (
+        4.0, 5.0, 1.0, 0.0)
+    for outside in (before, after):
+        assert outside["schedule_realization_gap"] is None and outside["requirement_gap"] is None
+        assert outside["required_staffing_hours"] is None
+    for t, gaps in ((-0.25, (None, None)), (3.0, (0, 1)), (4.5, (None, None))):
+        row = staffing_at(result, t)
+        assert (row["schedule_realization_gap"], row["requirement_gap"]) == gaps, t
 
 
 # ── First come, first served, and X1 ────────────────────────────────────────

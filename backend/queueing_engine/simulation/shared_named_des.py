@@ -9,11 +9,13 @@ selections. Capacity comes from employee states; no staffing schedule is forced 
 Specs: docs/superpowers/specs/2026-09-28-shared-queue-named-des.md (this engine) and
 docs/superpowers/specs/2026-09-28-shared-queue-named-employee-des-policy.md (the approved policy).
 
-Prescribed arrivals only. There are no random numbers, no seeded replications, no Monte Carlo, and
-no monetary cost. Nothing legacy imports this module, and it uses none of the separate-queue break
-code (``PRE_BREAK_CUTOFF_MINUTES``, ``queue_lifecycle``, or the ``separate_optimization`` break
-controller). The anonymous engine (``shared_continuous_des``) is not changed; only its closing
-policy names are imported.
+Prescribed arrivals only: this engine draws no random numbers and computes no monetary cost. Seeded
+replications (``shared_named_replications.py``, Phase 5B-4.4) draw the arrivals first and pass them
+here. Phase 5B-4.4 also applied the approved closing and staffing-gap rules (spec
+docs/superpowers/specs/2026-09-28-shared-queue-named-replications.md). Nothing legacy imports this
+module, and it uses none of the separate-queue break code (``PRE_BREAK_CUTOFF_MINUTES``,
+``queue_lifecycle``, or the ``separate_optimization`` break controller). Only the anonymous engine's
+(``shared_continuous_des``) closing policy names are imported.
 """
 
 from __future__ import annotations
@@ -56,10 +58,9 @@ from backend.queueing_engine.simulation.shared_employee_states import (
     EmployeeTimelineError,
     EndBreakAtClosing,
     Release,
-    UndeterminedPolicyError,
 )
 
-NAMED_ENGINE_VERSION = "novaq-shared-named-des-v1"
+NAMED_ENGINE_VERSION = "novaq-shared-named-des-v2"
 
 DEPARTED, UNSERVED_AT_CLOSE = "departed", "unserved_at_close"
 HARD_CUTOFF_REASON, NO_ELIGIBLE_EMPLOYEE = "hard_cutoff", "no_eligible_employee"  # X6 names the second
@@ -111,7 +112,10 @@ POLICY_MEANINGS = {
     ),
     "breaks_at_closing": (
         "P7: a break in progress at closing ends at closing (truncated_by_closing); a break not yet started "
-        "is unfulfilled with cause cancelled_at_closing; nobody returns from a break after closing."
+        "is unfulfilled with cause cancelled_at_closing; nobody returns from a break after closing. Approved "
+        "Phase 5B-4.4 rules: a break ending exactly at closing is truncated_by_closing, because closing is "
+        "processed before break ends; a service with a break due that completes exactly at closing completes "
+        "first, and its break is cancelled_at_closing (no zero-length break is created)."
     ),
     "break_delay": "P2: the actual break delay is recorded; there is no delay threshold and no pre-break cutoff.",
     "employee_choice": (
@@ -129,7 +133,9 @@ DEFINITIONS = {
     "time_unit": (
         "Hours from the horizon start, as in the anonymous engine: roster minute m is (m - horizon start "
         "minute) / 60. Arrivals lie in [0, closing). Instants are compared exactly, as in the anonymous "
-        "engine; roster-derived instants are computed in whole minutes by the state machine."
+        "engine, with no event-time tolerance; roster-derived instants are computed in whole minutes by the "
+        "state machine, and service times are never rounded or snapped to roster boundaries (approved "
+        "Phase 5B-4.4 rule)."
     ),
     "same_time_order": SAME_TIME_ORDER,
     "service": (
@@ -153,16 +159,25 @@ DEFINITIONS = {
     "accepting_capacity": (
         "Employees AVAILABLE or SERVING in the simulation: at a register and able to take a customer now or "
         "at their completion. SERVING_BREAK_DUE and SERVING_SHIFT_ENDED are excluded (their next step is a "
-        "break or a release), as are WAITING_FOR_REGISTER, ON_BREAK, and OFF."
+        "break or a release), as are WAITING_FOR_REGISTER, ON_BREAK, and OFF (approved Phase 5B-4.4 rule)."
     ),
     "busy_employees": "Employees SERVING, SERVING_BREAK_DUE, or SERVING_SHIFT_ENDED.",
     "register_occupancy": "Employees holding a register (AVAILABLE or a serving state). Never above register_count.",
     "waiting_for_register": "Employees on duty, not on a break, and waiting for a free register.",
-    "schedule_realization_gap": "accepting_capacity - scheduled_active, at each instant.",
-    "requirement_gap": "accepting_capacity - required_staffing, where required_staffing is defined; otherwise None.",
+    "schedule_realization_gap": (
+        "accepting_capacity - scheduled_active, at each instant inside the operating horizon [opening, closing); "
+        "None before opening and after closing, where no gap is calculated."
+    ),
+    "requirement_gap": (
+        "accepting_capacity - required_staffing inside the operating horizon; None before opening and after "
+        "closing, where no requirement exists."
+    ),
     "gap_integrals": (
-        "For each window, shortfall_hours is the integral of max(0, -gap) and excess_hours the integral of "
-        "max(0, gap), in employee-hours. The two gaps are reported separately and never combined."
+        "Gaps are integrated only over the operating horizon: per staffing segment and over the whole horizon. "
+        "shortfall_hours is the integral of max(0, -gap) and excess_hours the integral of max(0, gap), in "
+        "employee-hours. The two gaps are reported separately and never combined. The before_opening and "
+        "after_closing windows report the series (capacity and time) without any gap (approved Phase 5B-4.4 "
+        "rule); after_closing is always reported, with zero duration when the timeline ends at closing."
     ),
     "queue_customer_hours": (
         "The integral of the number of customers waiting (not in service). It equals the served customers' "
@@ -170,17 +185,11 @@ DEFINITIONS = {
     ),
 }
 UNDETERMINED = [
-    "A break that ends exactly at closing is recorded completed, not truncated_by_closing: breaks occupy "
-    "[start, end), so it is not in progress at closing, and it received its full duration (INFERRED; X2 "
-    "processes the closing boundary before break ends, and the approved text does not address this case).",
-    "A service with a break due (SERVING_BREAK_DUE) that completes exactly at closing: X2 starts the break at "
-    "the completion, before the closing boundary, and P7 would then truncate it with zero length; whether the "
-    "outcome is that zero-length truncated break or an unfulfilled break cancelled_at_closing is UNKNOWN, so "
-    "the engine raises UndeterminedPolicyError.",
-    "No verified event-time tolerance exists in the repository (utilization.THRESHOLD_TOLERANCE is for "
-    "utilization thresholds, shared_playback._TOLERANCE for playback consistency). Instants are compared "
-    "exactly, as in the anonymous engine; near-coincidences within floating-point rounding are ordered by "
-    "their float values.",
+    "DRAIN release order: when fewer customers wait than crew members are idle, the crew members X1 ranks "
+    "first serve and the rest are released (INFERRED from X1 and P5).",
+    "Staffing windows beyond the approved Phase 5B-4.4 rule: the before_opening window (series only, when a "
+    "shift starts before opening) and the timeline's extension to the last scheduled shift end are INFERRED "
+    "choices of shape.",
 ]
 
 
@@ -473,21 +482,18 @@ def _closing_inputs(
         cancel, release = CancelPendingBreaks(t, employee_id), Release(t, employee_id)
         if employee_id in crew:
             inputs.append(cancel)
-        elif state == SERVING_BREAK_DUE:
-            if employee_id in finishing:
-                raise UndeterminedPolicyError(
-                    f"{employee_id}'s service completes exactly at closing ({t} h) with a break due. X2 starts the "
-                    "break at the completion, before the closing boundary, and P7 would truncate it at closing "
-                    "with zero length; whether that is the approved outcome or the break is unfulfilled "
-                    "(cancelled_at_closing) is UNKNOWN.")
+        elif state == SERVING_BREAK_DUE and employee_id not in finishing:
             # Release first, so the employee finishes this customer as SERVING_SHIFT_ENDED; the pending
             # break is then cancelled.
             inputs += [release, cancel]
         elif state == ON_BREAK:
-            inputs += [cancel, release]
-            if row["current_break_end"] > t:  # in progress at closing; a break ending at closing completes
-                inputs.append(EndBreakAtClosing(t, employee_id))
-        else:  # OFF, WAITING_FOR_REGISTER, AVAILABLE, SERVING, SERVING_SHIFT_ENDED
+            # Closing comes before break ends (X2), so a break ending exactly at closing is still in progress
+            # there and is truncated like a later one (approved Phase 5B-4.4 rule).
+            inputs += [cancel, release, EndBreakAtClosing(t, employee_id)]
+        else:
+            # OFF, WAITING_FOR_REGISTER, AVAILABLE, SERVING, SERVING_SHIFT_ENDED, and a SERVING_BREAK_DUE
+            # service completing exactly at closing: it completes first, and the cancel keeps its due break
+            # from starting, so the break is cancelled_at_closing, never a zero-length break (Phase 5B-4.4).
             inputs += [cancel, release]
     return crew, inputs
 
@@ -543,6 +549,7 @@ def _staffing(
         if here < begin or following > last:
             continue
         need = next((servers for start, end, servers in required if start <= here < end), None)
+        inside = 0.0 <= here < closing  # gaps exist only inside the operating horizon (Phase 5B-4.4 rule)
         row = {
             "start": here, "end": following,
             "scheduled_active": counts["scheduled_active"],
@@ -551,7 +558,7 @@ def _staffing(
             "busy_employees": counts["busy_employees"],
             "register_occupancy": counts["register_occupancy"],
             "waiting_for_register": counts["waiting_for_register"],
-            "schedule_realization_gap": counts["accepting_capacity"] - counts["scheduled_active"],
+            "schedule_realization_gap": counts["accepting_capacity"] - counts["scheduled_active"] if inside else None,
             "requirement_gap": None if need is None else counts["accepting_capacity"] - need,
         }
         values = {key: value for key, value in row.items() if key not in ("start", "end")}
@@ -571,18 +578,20 @@ def _staffing(
             return {"shortfall_hours": math.fsum(length * max(0, -row[key]) for length, row in pieces),
                     "excess_hours": math.fsum(length * max(0, row[key]) for length, row in pieces)}
 
-        defined = all(row["required_staffing"] is not None for _, row in pieces)
+        # Gaps and the requirement are integrated over the operating horizon only: per staffing segment and
+        # over the whole horizon. Before opening and after closing only the series are reported.
+        inside = kind in ("staffing_segment", "horizon")
         return {
             "window": name, "kind": kind, "start": start, "end": end, "duration_hours": end - start,
             "required_servers": need,
             "scheduled_active_hours": integral("scheduled_active"),
-            "required_staffing_hours": integral("required_staffing") if defined else None,
+            "required_staffing_hours": integral("required_staffing") if inside else None,
             "accepting_capacity_hours": integral("accepting_capacity"),
             "busy_employee_hours": integral("busy_employees"),
             "register_occupancy_hours": integral("register_occupancy"),
             "waiting_for_register_hours": integral("waiting_for_register"),
-            "schedule_realization_gap": split("schedule_realization_gap"),
-            "requirement_gap": split("requirement_gap") if defined else None,
+            "schedule_realization_gap": split("schedule_realization_gap") if inside else None,
+            "requirement_gap": split("requirement_gap") if inside else None,
         }
 
     windows = []
@@ -591,8 +600,9 @@ def _staffing(
     windows += [window(segment.segment_id, "staffing_segment", start, end, servers)
                 for segment, (start, end, servers) in zip(required_staffing, required)]
     windows.append(window("horizon", "horizon", 0.0, closing, None))
-    if last > closing:
-        windows.append(window("after_closing", "after_closing", closing, last, None))
+    # Post-close capacity and time are always reported separately; the window is empty when the timeline
+    # ends at closing.
+    windows.append(window("after_closing", "after_closing", closing, last, None))
     return {"timeline": steps, "windows": windows}
 
 
@@ -667,7 +677,7 @@ def _summarize(
             "state_machine_version": STATE_MACHINE_VERSION,
             "arrivals": "prescribed (arrival hour, unit work) pairs; no random numbers",
             "max_trace_events": max_trace_events,
-            "scope": ("Customers, the shared line, and named employees on prescribed arrivals. No seeded "
-                      "replications, Monte Carlo, playback, or monetary cost."),
+            "scope": ("Customers, the shared line, and named employees on prescribed arrivals; this engine "
+                      "draws no random numbers. No playback or monetary cost."),
         },
     }

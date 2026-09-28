@@ -709,7 +709,73 @@ Current verified state:
 - Fault injection: 28 source-level mutants of both modules (scratch script, not committed); first run killed 26 of 28; two tests added for the survivors (break-due service across closing, DRAIN release order); after that 28 of 28 killed on the final module text.
 - Gates: named, state-machine, and pin tests 106 passed; shared suites plus Separate Queue regressions 654 passed (Separate Queue alone 42 passed); ruff clean; mypy clean on 172 files; full backend suite 1647 passed, 3 skipped, 1 xfailed (baseline 1583; +59 named DES, +5 net state machine).
 - Undetermined (5B-4.3 spec): a break-due service completing exactly at closing raises `UndeterminedPolicyError` (zero-length truncated break vs cancelled_at_closing); a break ending exactly at closing is recorded completed (INFERRED); "accepting" = AVAILABLE or SERVING (INFERRED); no verified event-time tolerance exists, so instants are compared exactly as in the anonymous engine (UNKNOWN for seeded runs); the P8 window shape is INFERRED.
-- Next (needs explicit approval): 5B-4.4 seeded named replications (X5 wrapper and an event-time tolerance decision), 5B-4.5 named playback, 5B-5 workforce cost.
+- Next (needs explicit approval): 5B-4.4 seeded named replications (X5 wrapper and an event-time tolerance decision), 5B-4.5 named playback, 5B-5 workforce cost. Superseded: 5B-4.4 is done (next section).
+
+## Shared Queue Enhancement: Phase 5B-4.4 Seeded Named-Employee DES Replications (2026-09-28)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-28-shared-queue-named-replications.md`
+- `docs/superpowers/plans/2026-09-28-shared-queue-named-replications-plan.md`
+
+The Phase 5B-4.4 request approved five remaining rules and said to freeze them before replications. The spec quotes them, and the policy spec records them ("Explicit decisions of 2026-09-28 (Phase 5B-4.4)"):
+
+1. A break-due service completing exactly at closing completes first, and its break is `cancelled_at_closing`, with no zero-length break.
+2. A break ending exactly at closing is `truncated_by_closing`.
+3. Accepting capacity = AVAILABLE + SERVING.
+4. No event-time epsilon; whole-minute roster arithmetic; no rounding or snapping of stochastic times.
+5. Gaps are reported per segment and over the horizon only, none before opening or after closing, and post-close capacity and time are reported separately.
+
+Current verified state:
+
+- Rules 1, 2, and 5 changed behavior; rules 3 and 4 confirm what was implemented.
+  - `shared_employee_states.py` v3: a SERVING_BREAK_DUE completion at closing, with that employee's `CancelPendingBreaks` at that instant, goes to AVAILABLE and starts no break.
+  - `shared_named_des.py` v2:
+    - rule 1 inputs, where 5B-4.3 raised `UndeterminedPolicyError`;
+    - EndBreakAtClosing for every employee on a break before closing (rule 2);
+    - `schedule_realization_gap` None outside [0, closing), no gaps or required hours in the before-opening and after-closing windows, and `after_closing` always present (rule 5).
+  - Three 5B-4.3 test expectations changed because the approved rules changed them; each is documented in the 5B-4.3 spec, "Phase 5B-4.4 amendments":
+    - the undetermined test replaced by a rule 1 test;
+    - a break at 3.5-4.0 `completed` -> `truncated_by_closing`;
+    - an after-closing schedule shortfall of 0.125 replaced by the after-closing series.
+- X5: `shared_continuous_des.draw_arrivals` is a public wrapper: the same two checks as `simulate_shared_replication`, then `_draw_arrivals`. No existing function changed, and the 5B-4.0 pin passes without regenerating the fixture. A scratch SHA-256 digest of 100 `simulate_shared_day` runs, 40 `simulate_shared_replication` runs, and 4 `run_shared_replications` runs is identical before and after (`236d87ec...c610`, numpy 2.4.6).
+- New `simulation/shared_named_replications.py`:
+  - `replication_seed_sequence(root_entropy, i)` implements the Phase 4 scheme.
+  - `simulate_named_replication(seed_sequence=...)` returns the unchanged 5B-4.3 result plus a `replication` block: entropy, spawn key, pool size, customer count and SHA-256 digest, and runtime (numpy and Python versions, bit generator).
+  - `run_named_replications` keeps one scalar row per replication, regenerable from `(root_entropy, i)`.
+  - `aggregate_named_replications` is descriptive: `summarize_metric`, explicit denominators, `verdict: None`. There is no cost, criterion, or threshold.
+- Common random numbers: customers depend only on the horizon, the demand, the root entropy, and i. The named engine and the state machine draw nothing.
+- Reproducibility is VERIFIED in this runtime only (numpy 2.4.6, Python 3.13.13, PCG64). Cross-version stream equality (production lock 2.2.6, CI `requirements.txt` below 2.3) is UNKNOWN.
+- Module location differs from the 5B-4.1 proposed interface (`shared_named_des.py`). The replication entry points are in a new module, so the engine stays free of numpy, as its isolation test requires.
+- Tests: `tests/test_shared_named_replications.py` (new; 33 test functions, 73 tests; synthetic data; no seeded golden values). They cover:
+  - an independent recomputation of the draws with explicit PCG64 streams;
+  - `check_row`, which recomputes every row field from the raw result;
+  - `check_named` with `check_invariants(exact=False)` on every replication of 10 scenarios x 2 policies;
+  - every draw counted across rosters;
+  - the seeded reduction to the anonymous engine;
+  - regeneration and common random numbers.
+
+  The spec maps all 12 required points and 14 cases. `tests/test_shared_named_des.py`: 39 functions, 62 tests. `tests/test_shared_employee_states.py`: 39 tests.
+- Fault injection: 41 source-level mutants on a scratch copy of `backend/` and `tests/` (script not committed; working tree untouched).
+  - First run: 38 of 41 killed. Two survivors were test gaps: a replication with no activated shift, and the unknown-cause guard. Tests were added for both.
+  - Final text: 40 of 41 killed. The survivor ("rule 1 cancel at any instant") is equivalent: a probe showed that the original and the mutant raise the same error at 3.9 h and 4.5 h.
+- Gates (executed on the final text):
+  - named DES, state machine, and pin: 110 passed;
+  - 5B-4.4 tests: 73 passed;
+  - all `tests/test_shared_*.py`: 691 passed;
+  - Separate Queue, all 20 files: 182 passed;
+  - ruff: clean;
+  - `mypy . --exclude '^outputs/'`: clean on 174 files; plain `mypy .` shows only the 5 known errors in the gitignored `outputs/` script;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 1724 passed, 3 skipped, 1 xfailed (baseline 1647 + 77).
+  - Frontend not run: nothing under `frontend/` changed.
+- Undetermined:
+  - cross-version stream equality: UNKNOWN;
+  - "preserve the 5B-4.3 result" read as scalar rows plus regeneration: INFERRED;
+  - no paired roster-comparison output: PROPOSED only;
+  - rule 1 is exercised by prescribed tests only, since the event has probability 0 with continuous draws;
+  - the acceptance rule: UNKNOWN;
+  - DRAIN release order and before-opening window shape: INFERRED, carried over.
+- Next (needs explicit approval): 5B-4.5 named playback, 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 

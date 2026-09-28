@@ -8,6 +8,10 @@ Amended in Phase 5B-4.3 (2026-09-28): the approved P3 rule for breaks of a delay
 whole-minute arithmetic for roster-derived instants, and a `snapshot()` accessor. See "Phase 5B-4.3
 amendments"; statements below that the amendments changed are marked.
 
+Amended in Phase 5B-4.4 (2026-09-28): the approved rule for a service with a break due that
+completes exactly at closing (version `novaq-shared-employee-states-v3`). See "Phase 5B-4.4
+amendments".
+
 Plan: `docs/superpowers/plans/2026-09-28-shared-queue-employee-state-machine-plan.md`.
 Policy contract: `2026-09-28-shared-queue-named-employee-des-policy.md` (P1-P9 and X1-X7, approved
 2026-09-28, with the explicit decisions of the Phase 5B-4.2 request).
@@ -181,6 +185,7 @@ At one instant the stages run in this order:
 |---|---|---|---|---|
 | completion | SERVING | AVAILABLE | kept | `employee_service_completion` |
 | completion | SERVING_BREAK_DUE | ON_BREAK (the break starts now) | freed | `employee_break_start` |
+| completion at closing, with the employee's `CancelPendingBreaks` at that instant (5B-4.4) | SERVING_BREAK_DUE | AVAILABLE; no break starts, and the input then cancels it | kept | `employee_service_completion` |
 | completion | SERVING_SHIFT_ENDED | OFF (released) | freed | `employee_service_completion` |
 | closing | any | unchanged; the open interval is split and `after_closing` begins | unchanged | none |
 | closing input `Release` | AVAILABLE, WAITING_FOR_REGISTER | OFF | freed | `employee_release_input` |
@@ -430,6 +435,32 @@ The test module has 33 test functions.
 
 The test module has 38 test functions after these changes.
 
+## Phase 5B-4.4 amendments
+
+Spec: `2026-09-28-shared-queue-named-replications.md`, which quotes the approved rules.
+
+1. **A service with a break due that completes exactly at closing (approved rule 1).** "Complete
+   service first; at closing, that break becomes UNFULFILLED / cancelled_at_closing; do not
+   manufacture a zero-duration break."
+   - `process` passes `_complete` whether a `CancelPendingBreaks` input for the employee arrives at
+     this closing instant. If it does, a SERVING_BREAK_DUE completion goes to AVAILABLE instead of
+     starting the break. The input, applied at the closing-input stage, then makes the break
+     unfulfilled (`cancelled_at_closing`), and a `Release` sends the employee OFF. No break with
+     zero length is created.
+   - The machine still selects no policy. Without that input, the completion starts the break as
+     before (checked in the same test).
+   - Test: `test_break_due_completion_at_closing_with_cancel_starts_no_break`.
+2. **`check_invariants` (test helper).**
+   - A truncated break must satisfy `actual_start < close <= actual_start + duration`, where 5B-4.2
+     had `<`. Approved rule 2 records a break that ends exactly at closing as `truncated_by_closing`.
+   - A keyword `exact` (default `True`) compares four recomputed float quantities within a relative
+     1e-9 when `False`: the state-time sum, a completed break's duration, the minimum gap, and the
+     delayed shift start. The named DES uses it on seeded runs, whose instants are not binary-exact.
+     Every earlier call keeps exact comparison.
+3. `STATE_MACHINE_VERSION` is `novaq-shared-employee-states-v3`.
+
+The test module has 39 test functions after these changes.
+
 ## Undetermined (UNKNOWN or INFERRED)
 
 Items 1-3 below are settled by the Phase 5B-4.3 decisions (see "Phase 5B-4.3 amendments"), and
@@ -447,7 +478,8 @@ Also open:
 
 - whether within-stage employee_id order matters for any future customer-level quantity
   (INFERRED not to matter for the employee timeline);
-- tolerances for non-dyadic inputs (NOT TESTED);
+- tolerances for non-dyadic inputs (NOT TESTED at 5B-4.2; from 5B-4.4 the invariants are checked on
+  seeded, non-dyadic runs with `check_invariants(..., exact=False)`);
 - X1, X5, X6, P8, and the P2 threshold (UNKNOWN; outside 5B-4.2).
 
 ## Out of scope

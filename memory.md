@@ -271,6 +271,23 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - Undetermined cases raise `UndeterminedPolicyError` or are recorded as INFERRED in its `UNDETERMINED` list.
 - The 5B-4.1 INFERRED bound "before closing, accepting servers ≤ the 5B-1 scheduled active count" is withdrawn: the gap push can put an employee on duty during scheduled break time.
 - Phase 5B-4.3 (2026-09-28) supplied the selections: DRAIN crew = employees AVAILABLE or SERVING immediately before closing, serving until the line is empty; HARD_CUTOFF releases idle employees at closing and busy ones at completion; P7 truncates breaks in progress and cancels pending ones; X1 longest available then employee_id; X2 places closing second; X6 `no_eligible_employee`; P8 reports six series and two separate gaps; a delayed split shift's breaks keep their planned offset from its actual start.
-- `simulation/shared_named_des.py` (`simulate_named_prescribed`) is the named-employee DES on prescribed arrivals, specified in `docs/superpowers/specs/2026-09-28-shared-queue-named-des.md`. `employee_policy` accepts only the approved selections. It draws no random numbers; seeded replications, playback, and cost do not exist.
-- The state machine computes roster-derived instants in whole minutes: adding minutes in hours can miss a roster boundary by one unit in the last place. Instants are otherwise compared exactly, as in the anonymous engine; no verified event-time tolerance exists.
-- Open (5B-4.3 spec): a break-due service completing exactly at closing raises `UndeterminedPolicyError`; a break ending exactly at closing is recorded completed (INFERRED).
+- `simulation/shared_named_des.py` (`simulate_named_prescribed`) is the named-employee DES on prescribed arrivals, specified in `docs/superpowers/specs/2026-09-28-shared-queue-named-des.md`. `employee_policy` accepts only the approved selections. The engine itself draws no random numbers; seeded replications are in `shared_named_replications.py` (below); playback and cost do not exist.
+- The state machine computes roster-derived instants in whole minutes: adding minutes in hours can miss a roster boundary by one unit in the last place. Instants are otherwise compared exactly, as in the anonymous engine. Approved in Phase 5B-4.4: no generic event-time epsilon, and stochastic service times are never rounded or snapped to roster boundaries.
+- Superseded by the Phase 5B-4.4 rules below: at 5B-4.3, a break-due service completing exactly at closing raised `UndeterminedPolicyError`, and a break ending exactly at closing was recorded completed (INFERRED).
+
+## Shared-Queue Named Replications (2026-09-28)
+
+- The Phase 5B-4.4 request approved five rules, frozen before replications (quoted in `docs/superpowers/specs/2026-09-28-shared-queue-named-replications.md`):
+  1. A service with a break due that completes exactly at closing completes first; its break is unfulfilled, `cancelled_at_closing`. No zero-length break is created.
+  2. A break ending exactly at closing is `truncated_by_closing`, because closing is processed before break ends.
+  3. Accepting capacity = AVAILABLE + SERVING only.
+  4. No event-time epsilon; whole-minute roster arithmetic; no rounding or snapping of stochastic times.
+  5. Staffing gaps are reported per staffing segment and over the operating horizon only, never before opening or after closing. Post-close capacity and time are reported separately (the `after_closing` window is always present).
+- Rules 1, 2, and 5 changed the named engine (`novaq-shared-named-des-v2`) and the state machine (`novaq-shared-employee-states-v3`: a SERVING_BREAK_DUE completion at closing, with that employee's `CancelPendingBreaks` at that instant, starts no break).
+- X5: `shared_continuous_des.draw_arrivals` is the public wrapper around `_draw_arrivals`, with the same checks as `simulate_shared_replication`. No existing anonymous function changed; a seeded-output digest was identical before and after.
+- `simulation/shared_named_replications.py`: `simulate_named_replication(seed_sequence=...)` returns the 5B-4.3 result unchanged plus a `replication` block. `run_named_replications` keeps one scalar row per replication; `replication_seed_sequence(root_entropy, i)` regenerates any replication.
+  - Seeds follow the Phase 4 scheme: `SeedSequence(entropy=root_entropy, spawn_key=(i,))`.
+  - Common random numbers: the customers depend only on the horizon, the demand, the root entropy, and i. Each row records `customer_inputs_sha256`.
+  - Provenance records the numpy version, the Python version, and the bit generator (PCG64 locally).
+- Reproducibility is claimed only under the recorded numpy version. Stream equality across numpy 2.2.6, 2.4.6, and the CI range below 2.3 is UNKNOWN.
+- Aggregation is descriptive: `summarize_metric` (Student-t, `n_undefined`), explicit denominators, and `verdict: None`. There is no acceptance rule, no 0.75 rule, no employee-level threshold, and no cost.

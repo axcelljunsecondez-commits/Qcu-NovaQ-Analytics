@@ -609,6 +609,27 @@ def _draw_arrivals(
     return list(zip(times, works))
 
 
+def draw_arrivals(
+    horizon: OperatingHorizon,
+    demand_periods: Sequence[DemandPeriod],
+    staffing_segments: Sequence[StaffingSegment],
+    *,
+    seed_sequence: np.random.SeedSequence,
+) -> list[tuple[float, float]]:
+    """Public interface to this engine's arrival generation (X5, Phase 5B-4.4 named replications).
+
+    Returns the (arrival hour, unit work) pairs that ``simulate_shared_replication`` simulates for
+    the same inputs and ``seed_sequence``: the same checks, then the same ``_draw_arrivals``, with
+    no logic of its own. The pairs depend only on the horizon, the demand periods, and the
+    sequence; ``staffing_segments`` serve the timeline validation only. The sequence must be
+    unused, because the draw spawns its two streams from it.
+    """
+    validate_timeline(horizon, demand_periods, staffing_segments)
+    if not isinstance(seed_sequence, np.random.SeedSequence) or seed_sequence.n_children_spawned != 0:
+        raise SharedSegmentError(["seed_sequence must be an unused numpy SeedSequence."])
+    return _draw_arrivals(horizon, demand_periods, seed_sequence)
+
+
 def simulate_shared_replication(
     horizon: OperatingHorizon,
     demand_periods: Sequence[DemandPeriod],

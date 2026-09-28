@@ -108,6 +108,32 @@ They settle every selection this document left open for 5B-4.3:
 - **X6:** "Under DRAIN, if admitted customers remain and the frozen drain crew is empty, explicitly
   mark them unserved with reason `no_eligible_employee`."
 
+### Explicit decisions of 2026-09-28 (Phase 5B-4.4)
+
+The Phase 5B-4.4 request lists "APPROVED REMAINING SEMANTICS" and says: "Freeze these rules before
+implementing replications." They settle the cases the 5B-4.3 spec left undetermined (items 1-4 and
+part of item 5):
+
+1. **Service completion exactly at closing with a break due:** "complete service first; at closing,
+   that break becomes UNFULFILLED / cancelled_at_closing; do not manufacture a zero-duration break."
+2. **Break ending exactly at closing:** "classify as truncated_by_closing because closing is
+   processed before break-end at the same timestamp."
+3. **Accepting capacity:** "AVAILABLE plus ordinary SERVING employees only. SERVING_BREAK_DUE and
+   SERVING_SHIFT_ENDED do not accept another customer."
+4. **Event-time semantics:** "no generic event-time epsilon; roster-derived boundaries remain based
+   on exact integer-minute arithmetic; stochastic service times are not rounded or snapped to
+   schedule boundaries."
+5. **Staffing-gap reporting:** "report gaps per staffing segment and over the configured operating
+   horizon; do not calculate schedule/requirement gaps before opening or after closing; report
+   post-close capacity/time separately."
+
+The same request makes X5 concrete. The named engine must neither import the private arrival
+helper nor duplicate stochastic arrival logic. The minimum public interface is exposed around the
+existing implementation, with the anonymous engine's semantics, the 5B-4.0 pin, and the
+prescribed-arrival path unchanged. Seeds follow the Phase 4 convention. Rosters are compared under
+common random numbers. No PASS/FAIL rule and no employee-level threshold are invented. The
+implementation is specified in `2026-09-28-shared-queue-named-replications.md`.
+
 ## Starting point (verified at `d5723aba`)
 
 Paths are relative to `backend/queueing_engine/` unless they start with `backend/`, `tests/`,
@@ -247,7 +273,8 @@ This applies to separate queues only:
 
 - **Customers.** The named engine gets its customers only from the anonymous engine's existing
   stream (`_draw_arrivals`, reached as X5 decides). It draws no random numbers of its own and
-  introduces no new random process.
+  introduces no new random process. (Implemented in 5B-4.4: `shared_named_replications` reaches it
+  through the public wrapper `shared_continuous_des.draw_arrivals`.)
   - X1 is deterministic and uses no random numbers.
   - The same seed gives the same customers across rosters and across both engines.
 - **Test values.** The numpy pins conflict, and cross-version stream equality is UNKNOWN. So:
@@ -355,14 +382,14 @@ Rules that depend on an open selection name it. Rules decided on 2026-09-28 name
 | **P4** Register handover and physical capacity | Decided 2026-09-28. An incoming employee who finds all K registers occupied waits (WAITING_FOR_REGISTER). Registers are identified 1..K, and occupancy never exceeds K. Waiting employees take registers in order of earliest wait start, then employee_id, and the lowest-numbered free register is assigned first. No service is interrupted. With 5B-1's register check satisfied, contention arises only from overruns and delays (INFERRED). | None. | None |
 | **P5** Eligibility after closing, DRAIN | Phase 3A DRAIN semantics for customers are unchanged: arrivals stop, completions at closing come first, and waiting customers are served FCFS. Decided 2026-09-28: the state machine must be able to represent every alternative; 5B-4.2 does so with policy-free closing inputs. | Decided 2026-09-28 (5B-4.3): (a), and the frozen crew serves until the admitted line is empty regardless of shift end. | None |
 | **P6** After closing, HARD_CUTOFF | Phase 3A HARD_CUTOFF semantics are unchanged: waiting customers become unserved, and services under way finish. Decided 2026-09-28: every alternative must be representable, as for P5. | Decided 2026-09-28 (5B-4.3): idle employees are released at closing and busy ones at their completion; no service starts at or after closing; a pending break does not happen (P7). | None |
-| **P7** Breaks interrupted by closing | A break in progress at closing, or scheduled after it, needs an explicit rule. Decided 2026-09-28: every alternative must be representable, as for P5. A break ended at closing has the outcome truncated_by_closing. | Decided 2026-09-28 (5B-4.3): end the break at closing (truncated_by_closing); a pending break is unfulfilled, `cancelled_at_closing`; nobody returns from a break after closing. | None |
-| **P8** Actual versus scheduled coverage | Actual (simulated) staffing is reported against scheduled staffing. The X7 correction names the staffing segments as a reference. | Decided 2026-09-28 (5B-4.3): all six series and both gaps are reported separately, against both references. The per-window shape (per staffing segment, whole horizon, before opening, after closing) is INFERRED in the 5B-4.3 spec. | 5B-4.6 (attribution reporting) |
+| **P7** Breaks interrupted by closing | A break in progress at closing, or scheduled after it, needs an explicit rule. Decided 2026-09-28: every alternative must be representable, as for P5. A break ended at closing has the outcome truncated_by_closing. | Decided 2026-09-28 (5B-4.3): end the break at closing (truncated_by_closing); a pending break is unfulfilled, `cancelled_at_closing`; nobody returns from a break after closing. Decided 2026-09-28 (5B-4.4): a break ending exactly at closing is truncated_by_closing; a break due at a service completing exactly at closing is `cancelled_at_closing`, with no zero-length break. | None |
+| **P8** Actual versus scheduled coverage | Actual (simulated) staffing is reported against scheduled staffing. The X7 correction names the staffing segments as a reference. | Decided 2026-09-28 (5B-4.3): all six series and both gaps are reported separately, against both references. The per-window shape (per staffing segment, whole horizon, before opening, after closing) is INFERRED in the 5B-4.3 spec. Decided 2026-09-28 (5B-4.4): gaps per staffing segment and over the horizon only; none before opening or after closing; post-close capacity and time reported separately. The before-opening window remains INFERRED. | 5B-4.6 (attribution reporting) |
 | **P9** Attribution | Per employee and shift, record quantities only: break delay, break shortening or loss, shift overrun, time after closing, and time waiting for a register. No cost is attached. Which quantity counts as paid overtime belongs to 5B-5, not here. Decided 2026-09-28: the base elapsed-time states are mutually exclusive, and descriptive attributes such as after-closing and after-shift-end never create duplicate elapsed time. A minute that is both past the shift end and after closing is one minute of its base state carrying both attributes. | How 5B-4.6 reports a minute that carries both attributes, for example as a separate "overrun after closing" quantity. | 5B-4.6 |
 | **X1** Choice among available employees | Deterministic, with no random numbers. | Decided 2026-09-28 (5B-4.3): longest available, ties by employee_id. | None |
 | **X2** Same-time event order | Completions, then shift ends, then break ends, then breaks due, then shift starts, then register handovers, then arrivals, then one FCFS assignment pass. This differs from the anonymous engine, which assigns after every single event; the two coincide on inputs with no ties (INFERRED). 5B-4.2 applies it to employee-only events. The 5B-4.3 decisions place the closing boundary second, after completions. | None. | None |
 | **X3** Time before opening | The state at opening follows directly from the schedule, because no customers exist before opening. Time after a shift's scheduled end falls under P3, P5, and P6. | None beyond P3, P5, and P6. | None |
 | **X4** Roster precondition | Reject an INVALID roster. Accept an INCOMPLETE roster only when every missing entry is a pay field (`regular_rate_per_hour`, `overtime_rate_per_hour`, `daily_regular_paid_minutes`). A `break_rules` gap is not a pay field, so such a roster is rejected. | None. | None |
-| **X5** Random-number interface | The anonymous stream is reused unchanged (see "Random numbers"). | Decided 2026-09-28 (5B-4.3): a minimal public wrapper or alias, with no duplicated stochastic logic. Not needed on prescribed arrivals, so not yet added. | 5B-4.4 |
+| **X5** Random-number interface | The anonymous stream is reused unchanged (see "Random numbers"). | Decided 2026-09-28 (5B-4.3): a minimal public wrapper or alias, with no duplicated stochastic logic. Not needed on prescribed arrivals, so not yet added. Implemented 2026-09-28 (5B-4.4): `shared_continuous_des.draw_arrivals`. | None |
 | **X6** When customers can go unserved under named DRAIN | Phase 3A's configuration-level `_unserved_possible` does not carry over: under named DRAIN it can depend on the simulated run, for example when the only closer is on a delayed break. It must be redefined before 5B-5 uses it. | Output field decided 2026-09-28 (5B-4.3): under DRAIN with an empty frozen crew, waiting customers are unserved, reason `no_eligible_employee`. The redefinition of `_unserved_possible` for 5B-5 remains open. | 5B-5 |
 | **X7** Staffing segments | Required, with no default; validated by `validate_timeline`; never empty; never optional (see above). | None. | None |
 
@@ -400,7 +427,8 @@ the 5B-4.3 spec maps each to its check.
 11. **Closing.** No arrivals after closing, no service start after a HARD_CUTOFF, and the run
     terminates.
 12. **Common random numbers.** Customers come only from the anonymous stream (X5), and the named
-    engine draws no random numbers.
+    engine draws no random numbers. (Checked on seeded runs in 5B-4.4; see
+    `2026-09-28-shared-queue-named-replications.md`, "Verification".)
 13. **Reduction.** A fixed crew with no breaks, or a crew that only grows, reproduces the anonymous
     engine's customer results exactly. Phase 5B-4.3 tested it for one roster of each kind, both
     closing policies, and generated arrivals with and without frequent ties; every comparison was
@@ -430,6 +458,11 @@ verification in `2026-09-28-shared-queue-employee-state-machine.md`.
 - **`simulate_named_replication(..., seed_sequence, ...)`** takes a numpy `SeedSequence`.
 - **Later:** `run_named_replications` and `replay_named_events`. The named replay is separate
   from `shared_playback.replay_events`, which rejects unknown event types.
+- (Implemented in 5B-4.4.) `simulate_named_replication` and `run_named_replications` live in a new
+  module, `simulation/shared_named_replications.py`, not in `shared_named_des.py` as the module line
+  above suggests. The engine module then stays free of numpy and of random numbers, as
+  `test_no_random_numbers_and_no_separate_queue_code` requires. `replay_named_events` (5B-4.5) is
+  not started.
 - **Isolation.** The module joins `SHARED_QUEUE_ENHANCEMENT_MODULES` in
   `tests/test_shared_segments.py`, and it never imports separate-queue break code.
 
@@ -442,10 +475,11 @@ This dependency mapping is INFERRED from the transition rules above. It reflects
 |---|---|
 | 5B-4.2 employee timeline state machine | Nothing further: P1-P4 are decided, and P5-P7 are represented without a selection |
 | 5B-4.3 named engine on prescribed arrivals | Supplied 2026-09-28; implemented |
-| 5B-4.4 seeded replications | X5 (decided; to be implemented) and an event-time tolerance decision (see the 5B-4.3 spec) |
+| 5B-4.4 seeded replications | Supplied 2026-09-28 (X5 and approved rules 1-5); implemented |
 | 5B-4.5 named playback replay | Nothing further for register identity (P4 decided) |
 | 5B-4.6 attribution quantities | P2 threshold (if chosen), P8 reporting, P9 reporting of a minute with both attributes |
 | 5B-5 workforce cost | X6 redefinition, overtime classification, the pay consequence of unfulfilled or truncated breaks (P1), D15 acceptance rule |
+| Any acceptance (PASS/FAIL) use of named replications | An approved acceptance rule; none exists, and 5B-4.4 produces no verdict |
 
 ## Cases the 2026-09-28 decisions do not determine
 

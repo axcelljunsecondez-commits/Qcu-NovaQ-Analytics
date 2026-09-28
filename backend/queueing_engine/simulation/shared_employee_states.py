@@ -15,6 +15,11 @@ split-shift break rule (P3: a delayed shift's breaks keep their planned offset f
 start), whole-minute arithmetic for roster-derived instants, and the read-only ``snapshot``
 accessor used by the named-employee DES (``shared_named_des.py``).
 
+Phase 5B-4.4 (docs/superpowers/specs/2026-09-28-shared-queue-named-replications.md) added the
+approved rule for a service with a break due that completes exactly at closing: when the
+employee's ``CancelPendingBreaks`` input arrives at that closing instant, the completion starts no
+break, and the input cancels it, so no zero-length break is created.
+
 Nothing legacy imports this module. It uses none of the separate-queue break code
 (``PRE_BREAK_CUTOFF_MINUTES``, ``queue_lifecycle``, or the ``separate_optimization`` break
 controller), and its event names carry an ``employee_`` prefix.
@@ -37,7 +42,7 @@ from backend.queueing_engine.services.shared_workforce import (
     evaluate_roster,
 )
 
-STATE_MACHINE_VERSION = "novaq-shared-employee-states-v2"
+STATE_MACHINE_VERSION = "novaq-shared-employee-states-v3"
 
 # Base states. Exactly one holds for each employee at every instant.
 OFF = "OFF"
@@ -131,7 +136,9 @@ DEFINITIONS = {
         "ends for the rest of the run; an idle or waiting employee goes OFF at once, a serving employee at "
         "the completion, and one on a break at the break end; later shifts are not activated. "
         "EndBreakAtClosing (at closing): the break in progress ends now (truncated_by_closing). "
-        "CancelPendingBreaks (at closing): breaks not yet started are not taken (unfulfilled)."
+        "CancelPendingBreaks (at closing): breaks not yet started are not taken (unfulfilled). This includes a "
+        "break due at a service completing at the closing instant: that completion leaves the employee "
+        "AVAILABLE instead of starting the break, so no zero-length break is created."
     ),
 }
 UNDETERMINED = [
@@ -492,12 +499,15 @@ class EmployeeTimeline:
                 continue
             break
 
-    def _complete(self, employee: _Employee, t: float) -> None:
+    def _complete(self, employee: _Employee, t: float, break_cancelled_at_closing: bool = False) -> None:
         if employee.state not in SERVING_STATES:
             raise EmployeeTimelineError(
                 f"{employee.employee_id} has no service to complete at {t} h (state {employee.state}).")
         self._flush(employee, t)
-        if employee.state == SERVING:
+        if employee.state == SERVING or (employee.state == SERVING_BREAK_DUE and break_cancelled_at_closing):
+            # A due break whose CancelPendingBreaks input comes at this closing instant is not started at
+            # the completion: the service completes first and the input then cancels the break, so no
+            # zero-length break is created (approved Phase 5B-4.4 rule).
             self._set(employee, t, COMPLETION, AVAILABLE, "employee_service_completion")
         elif employee.state == SERVING_BREAK_DUE:
             item = self._pending_break(self._shift(employee))
@@ -636,9 +646,12 @@ class EmployeeTimeline:
         if closing_items and t < self.closing_time:
             raise EmployeeTimelineError(f"Closing inputs apply only at or after closing ({self.closing_time} h).")
         self.now = t
+        at_closing = not self.closed and t == self.closing_time
+        cancelling = {item.employee_id for item in closing_items
+                      if isinstance(item, CancelPendingBreaks)} if at_closing else set()
         for employee_id in sorted(completions):
-            self._complete(self._employee(employee_id), t)
-        if not self.closed and t == self.closing_time:
+            self._complete(self._employee(employee_id), t, employee_id in cancelling)
+        if at_closing:
             for employee in self.employees.values():
                 self._flush(employee, t)
             self.closed = True
