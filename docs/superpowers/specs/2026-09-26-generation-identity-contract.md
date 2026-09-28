@@ -1,4 +1,4 @@
-# Generation Identity — Implementation Contract (ACCEPTED; G1 provisionally committed)
+# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H and G2 committed locally)
 
 - **Status:** APPROVED SPECIFICATION. The design direction was accepted on 2026-09-26, and this
   contract on 2026-09-28, with OD-G2 approved (§8) and the legacy policy (§6) confirmed.
@@ -6,13 +6,18 @@
     application integration or a production deployment is ready.
   - This document is a specification only. It authorizes no migration, model, endpoint,
     configuration, engine-version or production change, and no stage in §14.
-  - Only stage G1 exists in the repository: migration 0005 and the model fields, committed
-    provisionally as `1f5c3ab3` (local, unpushed). Its status is **PROVISIONALLY COMMITTED —
-    SQLITE AND LOCAL POSTGRESQL 18.6 VERIFIED; CI AND PRODUCTION GATES PENDING** (§5.5).
-  - G1 immutability hardening (G1-H: persistence-layer immutability and non-reuse of the token in
-    the unreleased 0005, §3) was authorized on 2026-09-28 and is not yet complete.
-  - Nothing after G1 is implemented. Application behaviour with enforcement on is NOT TESTED, and
-    the exact-generation defect is not resolved (§6.2).
+  - Stages in the repository, all local and unpushed on `fix/d1-replication-costs`:
+    - G1: migration 0005 and the model fields, committed provisionally as `1f5c3ab3`. Its status
+      is **PROVISIONALLY COMMITTED — SQLITE AND LOCAL POSTGRESQL 18.6 VERIFIED; CI AND PRODUCTION
+      GATES PENDING** (§5.5).
+    - G1-H: persistence-layer immutability and non-reuse of the token, hardened into 0005 in
+      place, committed as `05d64083` (§3, §5.5).
+    - G2: creation stamping, committed as `f495f0bd`. Its status is **COMMITTED — G-T1 VERIFIED
+      ON SQLITE AND LOCAL POSTGRESQL 18.6, EXCEPT ONE POSTGRESQL VARIANT NOT RUN; CI AND
+      PRODUCTION GATES PENDING** (§7.1).
+  - Nothing after G2 is implemented: G3–G9 are not started and not authorized. Application
+    behaviour with enforcement on is NOT TESTED, and the exact-generation defect is not resolved
+    (§6.2).
 - **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
   base the repository had no migration 0005 and no generation code (VERIFIED then by grep and file
   listing). Since `1f5c3ab3` it has both.
@@ -92,20 +97,33 @@
   strings and never require or assume UUID version or variant bits.
 - One per row in `datasets.generation` and `scenarios.generation`: NOT NULL, unique
   (`uq_<table>_generation`).
-- Intended to be immutable after insert (APPROVED SPECIFICATION). **At G1, immutability is
-  UNENFORCED.** Against the committed 0005 on SQLite (VERIFIED, scratchpad probe):
-  - NOT NULL refuses an update to NULL, and UNIQUE refuses a copy of another live row's token;
-  - but neither refuses an `UPDATE` to a fresh token (raw SQL and ORM reassignment both committed);
-  - and neither refuses an insert that reuses the token of a deleted row.
-- No application code path writes the token after insert. At `1f5c3ab3` only the model default
-  sets it, and `PATCH` cannot reach it (`ScenarioPatch` has only `name`, `settings`, `results`)
-  (VERIFIED by grep). That does not stop direct database writes. Until the persistence layer
-  rejects them, a matching token alone does not prove the same record generation.
-- Persistence-layer enforcement (immutability and non-reuse, hardened into the unreleased 0005)
-  was authorized on 2026-09-28 as G1-H. It is not yet complete: the committed 0005 described here
-  does not enforce either property.
+- Immutable after insert and never reissued (APPROVED SPECIFICATION).
+  - Historical: at G1 (`1f5c3ab3`) neither property was enforced. On SQLite (VERIFIED then, by a
+    scratchpad probe), NOT NULL and UNIQUE refused neither an `UPDATE` to a fresh token nor an
+    insert that reused a deleted row's token.
+  - Since G1-H (`05d64083`) the database enforces both for `generation`. Sources:
+    `migrations/versions/0005_generation_identity.py` (docstring and DDL) and
+    `backend/db/generation_guards.py` (VERIFIED by inspection). The refusals are VERIFIED on SQLite
+    by the module's tests in the full suite on the `f495f0bd` tree; on PostgreSQL 18.6 they are
+    REPORTED (§5.5).
+    - `generation_registry` records every issued token per table (`table_name`, `token`,
+      `row_id`, `registered_at`). It has no foreign key, so a registration outlives its row.
+    - Triggers refuse any change to a set token and any reissue of a registered token. They also
+      refuse registry `UPDATE` and `DELETE`, and on PostgreSQL `TRUNCATE`. SQLite `OR IGNORE` /
+      `OR REPLACE` and PostgreSQL `ON CONFLICT` do not bypass them.
+    - Uniqueness is per table: a dataset and a scenario may hold the same token.
+  - Trust boundary (documented in the 0005 docstring): a PostgreSQL table owner or superuser can
+    disable or drop the triggers, and whoever owns a SQLite file can change anything in it. The
+    integer id is not made immutable.
+- `scenarios.dataset_generation` is **not** covered by these guards: they check only `generation`
+  (`generation_guards.py:64-69`, `:84-91`; VERIFIED by inspection).
+- Application writes (VERIFIED by grep at `f495f0bd`): the model default sets `generation` on
+  insert, and `create_scenario` sets `dataset_generation` on insert (§7). No application path
+  writes either column after insert. `PATCH` cannot reach them (`ScenarioPatch` has only `name`,
+  `settings`, `results`), and client-supplied values are ignored (§7.1).
 - `scenarios.dataset_generation` records the dataset token that the save verified. It is nullable,
-  has no default of any kind, and only the scenario save path writes it.
+  has no default of any kind, and only the scenario save path writes it, and only when the save
+  verified a calculation snapshot against that dataset (§7).
 
 ## 4. Application default vs database default
 
@@ -120,14 +138,18 @@
 - `create_all` builds (tests; `seed.py` on an empty database) get NOT NULL, unique and the
   application default, but no database default. This is documented and deliberate; M2 covers the
   database default.
+  - Since G1-H they also get the registry and the same guards, installed by
+    `generation_guards.register` (`generation_guards.py:156-164`). `create_all` refuses to add the
+    registry to existing `datasets` and `scenarios` tables and asks for migration 0005 instead
+    (`:142-148`), so seeding a 0004 database fails closed.
 - `gen_random_uuid()` is built into PostgreSQL 13 and later. The production version is UNKNOWN,
   which is a stop condition.
 
 ## 5. Migration 0005
 
 Migration 0005 is in the repository as `migrations/versions/0005_generation_identity.py`,
-committed provisionally in `1f5c3ab3` (local, unpushed). It follows the prototype design;
-§5.2 marks where it differs.
+committed provisionally in `1f5c3ab3` and hardened in place by G1-H in `05d64083` (both local,
+unpushed). It follows the prototype design; §5.2 marks where it differs.
 
 - Historical: before `1f5c3ab3`, this section described only a scratchpad prototype, and the
   repository had no 0005.
@@ -169,12 +191,22 @@ Helpers are shared by `upgrade()` and the recovery tests:
   `scenarios.dataset_generation` exists. The committed 0005 also requires
   `scenarios.dataset_generation` to be nullable with no default.
 - `upgrade()` = `upgrade_table("datasets")`, `upgrade_table("scenarios")`,
-  `add_dataset_generation()`, `assert_postconditions()`. Alembic records `0005` only after
-  `upgrade()` returns, so it never records 0005 over a partial schema.
+  `add_dataset_generation()`, then (since G1-H) `create_registry()`, `backfill_registry()` and
+  `install_guards()`, then `assert_postconditions()` (`0005_generation_identity.py:425-432`).
+  Alembic records `0005` only after `upgrade()` returns, so it never records 0005 over a partial
+  schema.
+  - The guards are installed after the last table rebuild, because a SQLite batch rebuild drops
+    the rebuilt table's triggers.
+  - Since G1-H the post-conditions also require every live token to be registered to its own row
+    and every guard to be present exactly as defined (`:384-422`). A registration that names a
+    different row, or a registry with an unexpected structure, stops the upgrade and is never
+    rewritten.
 - An unsupported dialect raises. The committed 0005 also refuses PostgreSQL below 13, which lacks
   a built-in `gen_random_uuid()` (`_token_sql`).
 - `downgrade()`: guarded drops, for **rehearsal only**. Production rollback is backup-first
-  (`operations.md:216-220`).
+  (`operations.md:216-220`). Since G1-H it removes the guards, the registry and the columns, then
+  asserts that nothing is left (`:435-497`). Dropping the registry destroys the record of issued
+  tokens, so a reissue is no longer refused after a downgrade.
 
 ### 5.3 Recovery behaviour (VERIFIED in the prototype, §15.2)
 
@@ -215,6 +247,9 @@ on the committed 0005 (VERIFIED):
 
 ### 5.5 Verification status of the committed 0005
 
+The table records the G1 migration (`1f5c3ab3`, gated at `11053465`). The G1-H migration is
+covered by the bullets after it.
+
 | Evidence | SQLite | PostgreSQL |
 |---|---|---|
 | `tests/test_generation_identity_migration.py` (62 items: M and R cases per engine, plus SQLite-only and model tests) | 34 passed | 28 passed, 0 skipped: local PostgreSQL 18.6, at `11053465` |
@@ -233,9 +268,21 @@ on the committed 0005 (VERIFIED):
   PostgreSQL 16 verification, and not production verification.
 - G1 is **PROVISIONALLY COMMITTED — SQLITE AND LOCAL POSTGRESQL 18.6 VERIFIED; CI AND PRODUCTION
   GATES PENDING**. Full application behaviour with enforcement on remains NOT TESTED (§6.2).
-- G1 immutability hardening (G1-H, §3) was authorized on 2026-09-28 and is not yet complete.
 - Any later change to the migration, the models or these tests repeats every G1 gate on both
   engines. The results above do not verify a modified 0005.
+- G1-H (`05d64083`) modified 0005, so the rule above applied to it:
+  - REPORTED in the `05d64083` commit message, not re-run in the G2 session: SQLite full suite
+    1340 passed, 94 PostgreSQL-only skips, 1 strict xfail; the generation and chain tests on WSL
+    PostgreSQL 18.6 with zero skips; ruff and mypy clean.
+  - VERIFIED in the G2 session on the `f495f0bd` tree: the SQLite full suite gave 1348 passed, 94
+    skipped and 1 xfailed. All 94 skips need `NOVAQ_TEST_DATABASE_URL`: 91 are in
+    `test_generation_identity_migration.py` (now 190 items) and 3 in
+    `test_postgres_migration_chain.py`. On local PostgreSQL 18.6 the four `db_engine` tests of
+    `test_generation_identity_migration.py` passed, including
+    `test_create_all_guards_work_in_the_suite_schema`.
+  - Not re-run in the G2 session: the hardened 0005's PostgreSQL migration and recovery cases.
+    They create their databases through the cluster's `postgres` maintenance database, which the
+    G2 session was not authorized to use.
 - The §15 PostgreSQL results come from the prototype and do not substitute for this gate.
 
 ## 6. Legacy and compatibility-interval eligibility, stage by stage
@@ -314,8 +361,8 @@ dataset and setup (Steps 1–5 and Option A).
 | Path | Records | Source |
 |---|---|---|
 | Dataset upload (three constructors) | `datasets.generation` | application default; no call-site change |
-| `POST /scenarios` (`scenarios.py:321`) | `generation`; `dataset_generation = dataset.generation` | the row loaded at `:274` and verified by `_verify_calculation`; NULL when the scenario has no dataset (never selectable, `workflow.py:302`) |
-| Legacy dataset re-parent (`scenarios.py:309`) | nothing | identity unchanged |
+| `POST /scenarios` (`scenarios.py:323` at `f495f0bd`) | `generation`; `dataset_generation = dataset.generation` | the row loaded at `:276` and verified by `_verify_calculation` (`:315`). NULL when the scenario has no dataset (never selectable, `workflow.py:302`). Also NULL when the save carries no calculation snapshot, because `_verify_calculation` then verifies nothing (`:205`); such legacy_unverified scenarios are never selectable either (`workflow.py:298-308`). Approved 2026-09-28, narrowing the earlier "NULL only without a dataset" wording |
+| Legacy dataset re-parent (`scenarios.py:312`) | nothing | identity unchanged; a save that verified a snapshot against the re-parented row records that row's token |
 | `_save_job` (all 13 callers) | `params.scenario_generation`, `params.dataset_generation` | the ORM rows the computation read |
 
 - `_save_job` receives the dataset row. For Current kinds that is the `_current_dataset` row; for
@@ -334,6 +381,41 @@ dataset and setup (Steps 1–5 and Option A).
 | MC `:1001`, validation `:1062` | `_require_selection` | the scenario's dataset row |
 | selected DES/MC/validation `:2045`, `:2312`, `:2467` | `_require_selected_separate_plan` | `:1829` |
 | Decision `:2700`, `:2730` | as above | as above |
+
+### 7.1 G2 status (committed `f495f0bd`, local, unpushed)
+
+- Implemented: the dataset and scenario creation rows above. `_save_job` stamping (G3) is not
+  implemented.
+- Outputs (additive): `ScenarioOut` and `DatasetOut` report `generation` (`scenarios.py:59`,
+  `:91`; `datasets.py:33`, `:49`). So do the `analyses.py` endpoints that reuse those serializers
+  (`:175`, `:232`, `:287`, `:361`, `:387`).
+  - `dataset_generation` is not exposed (decision 2026-09-28).
+  - The field is typed `str | None` so that serializing an unsaved row does not fail. A stored row
+    cannot hold NULL (NOT NULL column).
+  - The frontend types were not changed.
+- Client-supplied `generation` and `dataset_generation` in a body are ignored. For `POST` with a
+  dataset this is VERIFIED on SQLite and PostgreSQL 18.6. For `POST` without a dataset and for
+  `PATCH` it is VERIFIED on SQLite only, by the amended test below.
+- The G1-H test `test_application_on_the_migrated_schema_assigns_and_hides_tokens` pinned the
+  pre-G2 rule that outputs carry no token. With approval it was renamed
+  `..._assigns_and_reports_tokens` and amended in place; its other guarantees are unchanged.
+- Gate G-T1 evidence (VERIFIED on the committed tree):
+
+  | Evidence | SQLite | Local PostgreSQL 18.6 |
+  |---|---|---|
+  | `tests/test_generation_creation_stamping.py` (8 tests) | 8 passed | 8 passed, 0 skipped; `db_engine` dialect confirmed `postgresql` |
+  | The four `db_engine` tests of `test_generation_identity_migration.py` | passed (full suite) | 4 passed |
+  | Amended `..._assigns_and_reports_tokens` | passed | **NOT RUN**: its fixture uses the `postgres` maintenance database, which the G2 session was not authorized to use |
+  | The 9 G2 tests against the pre-G2 source (`2fd18f99`) | 8 fail; the rejected-save test already held | not run |
+  | Seven deliberate faults: no stamp, stamp without a snapshot, a token not read from the dataset, schema-2 only, scenario token missing, scenario token replaced by the binding, dataset token missing | 7 of 7 caught | 7 of 7 caught |
+  | Creation-path regression files plus the Step 5 suite (13 files) | in the full suite | 190 passed, 0 skipped |
+  | Full backend suite | 1348 passed, 94 skipped (all PostgreSQL-only), 1 xfailed | not run |
+  | ruff, mypy | clean | — |
+
+- NOT TESTED: the CI `postgres-integration` job, PostgreSQL 16, production, and the frontend
+  gates (no frontend file changed).
+- G2 does not repair the exact-generation defect. It only records the binding that enforcement
+  (S3) will check.
 
 ## 8. Where the token is checked
 
@@ -578,6 +660,10 @@ Every R test asserts:
 | G8 release G-A | operations only | 0005 applied explicitly | §11.2 | any §11.2 fact is UNKNOWN |
 | G9 release G-B, with v3 | flag constant | legacy evidence non-current | G-T14, G-T17 | a pre-G writer may exist; v3 prerequisites missing |
 
+Status at `f495f0bd`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`) and G2 (`f495f0bd`) are
+committed locally and unpushed. G2 changed `scenarios.py` and the dataset serializer in
+`datasets.py`. G3–G9 are not started and not authorized.
+
 ## 15. Prototype verification evidence (disposable databases only)
 
 Historical: this section records the prototype, run on scratchpad copies of `4db54722`. It is not
@@ -641,10 +727,12 @@ production pins.
   rollback, and so whether a pre-G rollback on 0005 can start at all (§11.1).
 - PostgreSQL behaviour of the committed 0005 beyond local PostgreSQL 18.6: the CI job (PostgreSQL
   16) has not run, PostgreSQL 16 has not been executed locally, and the production version is
-  UNKNOWN. Locally on 18.6, 31 of 31 required cases passed with 0 skipped (§5.5).
+  UNKNOWN. Locally on 18.6, 31 of 31 required cases passed with 0 skipped at `11053465` (§5.5).
 - Whether any SQLite deployment enables foreign-key enforcement (§5.4).
-- Persistence-layer enforcement of token immutability and non-reuse (§3): authorized on
-  2026-09-28 as G1-H; not yet complete.
+- G1-H on PostgreSQL: only the local 18.6 run REPORTED in `05d64083` exists. CI, PostgreSQL 16
+  and production are NOT TESTED. Privileged roles can still disable the guards (§3).
+- G2: the PostgreSQL variant of `..._assigns_and_reports_tokens` (NOT RUN), the CI job,
+  PostgreSQL 16, production and the frontend gates (§7.1).
 - Which existing tests or stored workflows reach selected MC or validation with an input that
   fails Step 5 rules, and so would meet the new OD-G2 refusal (NOT TESTED).
 - OD-G2 itself is resolved: approved 2026-09-28 (§8.1).
