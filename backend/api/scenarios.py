@@ -56,6 +56,7 @@ class ScenarioOut(BaseModel):
     settings: dict
     results: dict
     created_at: datetime
+    generation: str | None = None
     provenance: str = "legacy_unverified"
     roi_unavailable_reason: str | None = None
 
@@ -87,6 +88,7 @@ def _to_out(scenario: Scenario) -> dict:
         "settings": scenario.settings_json,
         "results": scenario.results_json,
         "created_at": scenario.created_at,
+        "generation": scenario.generation,
         "provenance": "verified_snapshot" if scenario.settings_json.get("calculation") else "legacy_unverified",
         "roi_unavailable_reason": _shared_roi_reason(scenario.results_json),
     }
@@ -325,6 +327,9 @@ def create_scenario(
         name=payload.name,
         settings_json=payload.settings,
         results_json=payload.results,
+        # The dataset generation this save verified: _verify_calculation checked the snapshot against
+        # this row. A save without a snapshot verified nothing, so its binding stays unrecorded.
+        dataset_generation=dataset.generation if dataset is not None and snapshot is not None else None,
     )
     db.add(scenario)
     db.commit()

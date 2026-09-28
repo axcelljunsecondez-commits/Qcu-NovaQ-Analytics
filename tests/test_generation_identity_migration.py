@@ -674,7 +674,7 @@ def test_current_models_fail_on_0004_and_status_check_reports_it(database, monke
     migration_status.main()
 
 
-def test_application_on_the_migrated_schema_assigns_and_hides_tokens(database, monkeypatch):
+def test_application_on_the_migrated_schema_assigns_and_reports_tokens(database, monkeypatch):
     database.upgrade("head")
     engine = create_engine_for(database.url)
     try:
@@ -686,14 +686,16 @@ def test_application_on_the_migrated_schema_assigns_and_hides_tokens(database, m
         created = client.post("/scenarios", headers=csrf_header(client), json={**body, **supplied})
         assert created.status_code == 201
         scenario = created.json()["scenario"]
-        assert not set(supplied) & set(scenario)
+        assert "dataset_generation" not in scenario
         stored = database.tokens("scenarios")[scenario["id"]]
         assert stored is not None and TOKEN.match(stored) and stored != supplied["generation"]
+        assert scenario["generation"] == stored
         assert database.dataset_generations() == [None]
         patched = client.patch(
             f"/scenarios/{scenario['id']}", headers=csrf_header(client), json={"name": "Renamed", **supplied}
         )
         assert patched.status_code == 200
+        assert patched.json()["scenario"]["generation"] == stored
         assert database.tokens("scenarios")[scenario["id"]] == stored
         assert database.dataset_generations() == [None]
         uploaded = client.post(
@@ -701,10 +703,10 @@ def test_application_on_the_migrated_schema_assigns_and_hides_tokens(database, m
         )
         assert uploaded.status_code == 201
         dataset = uploaded.json()["dataset"]
-        assert "generation" not in dataset
         dataset_token = database.tokens("datasets")[dataset["id"]] or ""
         assert TOKEN.match(dataset_token)
-        assert "generation" not in client.get(f"/datasets/{dataset['id']}").json()["dataset"]
+        assert dataset["generation"] == dataset_token
+        assert client.get(f"/datasets/{dataset['id']}").json()["dataset"]["generation"] == dataset_token
         assert client.delete(f"/scenarios/{scenario['id']}", headers=csrf_header(client)).status_code == 200
         assert client.delete(f"/datasets/{dataset['id']}", headers=csrf_header(client)).status_code == 200
         assert database.tokens("scenarios") == {}

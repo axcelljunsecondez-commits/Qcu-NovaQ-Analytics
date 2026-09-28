@@ -30,6 +30,7 @@ class DatasetOut(BaseModel):
     row_count: int
     validation: dict
     created_at: datetime
+    generation: str | None = None
     normalized: list | None = None
 
     model_config = {"from_attributes": True}
@@ -45,6 +46,7 @@ def _to_out(dataset: Dataset, include_normalized: bool = False) -> dict:
         "row_count": dataset.row_count,
         "validation": dataset.validation_report_json,
         "created_at": dataset.created_at,
+        "generation": dataset.generation,
         "normalized": dataset.normalized_json if include_normalized else None,
     }
     return DatasetOut.model_validate(payload).model_dump()
