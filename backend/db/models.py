@@ -9,6 +9,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.db import generation_guards
 from backend.db.base import Base
 
 
@@ -159,7 +160,8 @@ class Dataset(Base):
     )
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    # Set once at insert and never rewritten. Migration 0005 also installs a database default.
+    # Set once at insert. Migration 0005 also installs a database default, and the database refuses
+    # any change to the token and any reissue of it (generation_registry, below).
     generation: Mapped[str] = mapped_column(String(32), default=new_generation)
 
     user: Mapped[User] = relationship(back_populates="datasets")
@@ -186,7 +188,8 @@ class Scenario(Base):
     results_json: Mapped[dict] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    # Set once at insert and never rewritten. Migration 0005 also installs a database default.
+    # Set once at insert. Migration 0005 also installs a database default, and the database refuses
+    # any change to the token and any reissue of it (generation_registry, below).
     generation: Mapped[str] = mapped_column(String(32), default=new_generation)
     # The dataset generation a save verified. No default of any kind: NULL means not established,
     # which is every scenario saved before this is stamped.
@@ -216,3 +219,8 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="jobs")
+
+
+# Tokens issued by datasets and scenarios, and the guards that make them immutable and never reissued.
+# Migration 0005 installs them on migrated databases; this installs them when create_all builds a schema.
+generation_registry = generation_guards.register(Base.metadata)
