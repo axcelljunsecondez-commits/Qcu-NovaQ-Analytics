@@ -1,4 +1,4 @@
-# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2, G3, G4 and G5 committed locally)
+# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2, G3, G4, G5 and G6 committed locally)
 
 - **Status:** APPROVED SPECIFICATION. The design direction was accepted on 2026-09-26, and this
   contract on 2026-09-28, with OD-G2 approved (§8) and the legacy policy (§6) confirmed.
@@ -27,10 +27,16 @@
       application's default behaviour is **enforcement off**. Its status is **COMMITTED — WIRING
       VERIFIED ONLY BY TESTS THAT SWITCH THE FLAG ON, ON SQLITE AND A TARGETED LOCAL POSTGRESQL 18.6
       RUN; FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§8.2).
-  - Nothing after G5 is implemented: G6–G9 are not started and not authorized. Enforcement is not
-    active in the application. Behaviour with enforcement on is tested only for G5's own consumers,
-    with the flag switched on in tests; the Decision and report paths under enforcement (G6) are
-    NOT TESTED. The exact-generation defect is not resolved in the running application (§6.2).
+    - G6: Decisions and reports under enforcement, committed as `4e89b7a8`. It adds one
+      enforcement-only check on the selection's dataset generation at both Decision endpoints and
+      pins G-T7 and G-T8 with tests; `reports.py` needed no change. The flag is still off. Its status
+      is **COMMITTED — VERIFIED ONLY BY TESTS THAT SWITCH THE FLAG ON, ON SQLITE AND A TARGETED LOCAL
+      POSTGRESQL 18.6 RUN; FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§10.1).
+  - Nothing after G6 is implemented: G7–G9 are not started and not authorized. Enforcement is not
+    active in the application: `GENERATION_ENFORCEMENT_ENABLED = False`, so its default behaviour is
+    enforcement off. Behaviour with enforcement on is tested only with the flag switched on in
+    tests, for G5's consumers (§8.2) and for the Decision and report paths (G6, §10.1). The
+    exact-generation defect is not resolved in the running application (§6.2).
 - **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
   base the repository had no migration 0005 and no generation code (VERIFIED then by grep and file
   listing). Since `1f5c3ab3` it has both.
@@ -323,8 +329,8 @@ dataset and setup (Steps 1–5 and Option A).
   - S2 stamping and the OD-G2 write gates are implemented (G2, G3; §7.1, §7.2).
   - The S3 checks are wired but switched off (G5, §8.2), so the application is not in S3.
   - S4 is not implemented.
-- Application behaviour in S3 is tested only through G5's tests of its own consumers, with the
-  flag switched on (§8.2). S4 is NOT TESTED.
+- Application behaviour in S3 is tested only with the flag switched on in tests: G5's tests of its
+  own consumers (§8.2) and G6's tests of the Decision and report paths (§10.1). S4 is NOT TESTED.
 
 | Artifact | S0 | S1 | S2 | S3 | S4 (v3) |
 |---|---|---|---|---|---|
@@ -498,6 +504,7 @@ their token part (OD-G2, below).
 |---|---|
 | `_own_verified_scenario` | `dataset_generation` must be present and equal the live dataset token. Otherwise 422 "Scenario provenance is incomplete; recalculate and save a new plan." This check runs last, so existing reasons keep their messages. |
 | Selection-binding helper (used by `_selected_scenario` and `_require_selected_separate_plan`) | `selection.params.scenario_generation == scenario.generation`, otherwise no eligible selection. Selected-plan endpoints: 409 "The selected plan was replaced; select it again in Compare." G5 uses this text for an actual token mismatch only; a selection with no recorded token gets its own approved text (§8.2) |
+| Decision production (G6, decision D2): `create_decision`, `create_selected_decision` | the selection must also record the verified dataset row's generation: `selection.params.dataset_generation == dataset.generation`. Missing, blank or non-text: 409; different: 409; no Decision is stored. Checked last, immediately before persisting (§10.1) |
 | Classifier (§9) via `_current_evidence`, `require_dependencies_current`, `current_decision_for_report` | every recorded token must equal the live row's |
 | Write-time gates (OD-G2): selected MC (`des_job`), selected validation (`des_job`, `mc_job`) | from G-A: `require_dependencies_current` on every input before computing, whether enforcement is on or off. Under enforcement: matching recorded tokens as well |
 | `run_validation_current`, where it compares `dataset_id` inline (`workflow.py:1250` at `1b8a8bd2`; `:1130` at `446a1e18`; `:1100` at `4db54722`) | classifier on the MC job, plus `mc.params.dataset_generation == dataset.generation`. G5 implements the token comparison only; the classifier part is not wired (approved deviation, §8.2) |
@@ -600,7 +607,8 @@ their token part (OD-G2, below).
     classifier check of §8's `run_validation_current` row, which is not wired.
   - The Decision and report paths share the wired helpers, so their behaviour also changes when
     the flag is on. That behaviour is G6 (G-T7, G-T8): it is not tested and not claimed here. Their
-    flag-off regressions pass.
+    flag-off regressions pass. Since G6 (`4e89b7a8`) it is tested with the flag switched on
+    (§10.1).
   - Enforcement is not enabled by default, so the checks above do not run in the application.
   - A stored token that is not text is reported as unrecorded by the workflow-level refusals. The
     G4 classifier reports it as `GENERATION_MISMATCH`, so at the OD-G2 gate it would receive
@@ -715,12 +723,127 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
 
 ## 10. Reports
 
-- **Selected report:** 409 on any mismatch, through `require_dependencies_current`.
+- **Selected report:** 409 on any mismatch in the Decision or job-chain generation evidence, through
+  `require_dependencies_current`, and on a selection that does not bind (§8.2 texts).
+  - Decision D1 (2026-09-29): a scenario whose own dataset generation is missing or is not the
+    live dataset row's keeps the approved 422 of §8 row 1, which the selected-plan paths report as
+    "Selected plan is not runnable: Scenario provenance is incomplete; recalculate and save a new
+    plan." G-T8's "selected report 409" applies to broken Decision and job-chain generation
+    evidence, not to that existing scenario-provenance refusal.
+  - Amended 2026-09-29 (D1): this bullet said "409 on any mismatch".
 - **ID-scoped scenario PDF/Excel:** the Decision section comes only from
   `current_decision_for_report`. A mismatched or unrecorded token gives "Management recommendation
   unavailable", which closes the reproduced leak of a deleted scenario's Decision.
+  - A verified schema-2 plan stores only its schedule (`scenarios.py:191-194`), so its ID-scoped
+    export is refused with 422 "Scenario has no comparison results to report on."
+    (`reports.py:478-485`) whatever the flag, and never reaches a Decision section. The
+    "recommendation unavailable" behaviour therefore applies to schema-1 scenarios.
 - **Dataset report:** unchanged (reads no jobs).
 - Eligibility is decided before any historical labelling. OD-7 and Step 11 are out of scope.
+
+### 10.1 G6 status (committed `4e89b7a8`, local, unpushed)
+
+- **Enforcement stays off.** `GENERATION_ENFORCEMENT_ENABLED = False` (`workflow.py:102` at
+  `4e89b7a8`). The G6 check, like every G5 check, runs only while it is on, so the application's
+  default behaviour is unchanged. Turning it on is G9.
+- **Files** (VERIFIED from `git show --stat 4e89b7a8`): `backend/api/workflow.py` (+32/−1) and the
+  new `tests/test_generation_decision_report.py` (56 tests). `reports.py` is byte-identical at
+  `1b8a8bd2` and `4e89b7a8`; `evidence_status.py`, the models, the migrations and the frontend are
+  unchanged. No existing test changed.
+- **Decisions of 2026-09-29:** D1 (above); D2, the selection's dataset generation (below); D3, no
+  new response fields; D4, a targeted PostgreSQL run against the dedicated test database only.
+- **The new rule (D2).** VERIFIED from source at `4e89b7a8`:
+  - The G5 selection binding compares only `scenario_generation` (`_selection_binding_problem`,
+    `workflow.py:651`). A Decision records its selection, so before G6 a selection whose scenario
+    token matched but whose dataset token was unrecorded or different still produced a stored
+    Decision. Under enforcement that Decision was then never served, and producing it again stored
+    another one without clearing `decision_stale`.
+  - `_require_selection_dataset_generation` (`workflow.py:667-684`) closes that gap. With the flag
+    off it returns at once. With it on, it reads the selection's `params.dataset_generation` through
+    `_recorded_generation`, so only non-blank text is a token:
+    - missing, null, blank or not text: 409, and no Decision is stored;
+    - a token that is not the verified dataset row's `generation`: 409, and no Decision is stored.
+  - Under enforcement a selection is therefore valid for Decision production only when both its
+    `scenario_generation` matches the live scenario and its `dataset_generation` matches the
+    verified dataset row.
+  - Approved texts (`workflow.py:278-285`):
+    - unrecorded: "The selection has no recorded dataset generation identity and cannot be
+      verified; select the plan again in Compare."
+    - mismatch: "The selection's recorded dataset generation does not match the verified dataset;
+      select the plan again in Compare."
+  - Call sites, each last before persisting, so every existing refusal keeps its status and text:
+    - `create_selected_decision` (`:2817`) at `:2892`: after the plan and binding checks, the
+      job-chain gate (`:2875`) and the validation scenario check; before `_save_job` (`:2899`). The
+      dataset is `plan["dataset"]`, the row the scenario was verified against, and the selection is
+      the latest one, which the Decision records in `evidence_ids`. `_derive_selected_decision` runs
+      before the check; it builds a dict and stores nothing.
+    - `create_decision` (`:2909`) at `:2929`: after the separate-queue return and the
+      no-eligible-selection return (Option A, unchanged); before `_save_job` (`:2930`). The
+      selection and dataset are those of `_selected_scenario_and_dataset`.
+  - The selected report is not changed by D2. A Decision stored under such a selection with the
+    flag off is refused there by the classifier, through its recorded selection: 409 with
+    `GENERATION_UNRECORDED_DETAIL` for a missing, null, empty or blank token, and
+    `MISSING_DEPENDENCY_DETAIL` for a different token or a non-text value, which the G4 classifier
+    reports as a mismatch (§8.2 caveat). The tests pin both.
+- **Inherited from G5, pinned by G6 tests, with no G6 code:**
+  - The Decision is withheld when its own tokens, an upstream job's or its recorded selection's are
+    mismatched or unrecorded: the classifier policy (`workflow.py:728`) and the Decision check in
+    `_current_evidence` (`:949`). Option A is kept (`:957`): with no eligible selection
+    `decision_stale` stays false; for an eligible plan whose Decision is broken it is true, and
+    producing the Decision again from a valid chain clears it.
+  - The selected Decision refuses a broken DES, MC or validation input (`:2875`) and a selection
+    that does not bind (`_require_selected_separate_plan`, `:2028`).
+  - The selected report (preview, PDF and Excel agree) refuses a broken Decision or job chain with
+    409 (`reports.py:212`) and a selection that does not bind with 409 (`reports.py:161`). A scenario
+    without its dataset generation keeps the 422 (D1; `_require_verified_dataset_generation`,
+    `workflow.py:410`).
+  - The ID-scoped export says "Management recommendation unavailable" whenever the Decision is not
+    current (`current_decision_for_report`, `workflow.py:989`; `reports.py:604`).
+  - Same-id and byte-identical scenario replacement, and a dataset replaced together with its
+    cascaded scenario, serve and produce no Decision.
+  - Latest only, no fallback: a broken latest Decision is never replaced by an older current one.
+  - The dataset report is unchanged.
+  - Evidence that this is inherited: the G6 module run against the pre-G6 source, with only the two
+    new text constants added so that it can be collected, gave 41 passed and 15 failed. All 15
+    failures are the D2 tests.
+- **Evidence.** All runs were executed on 2026-09-29, before the commit, on files byte-identical to
+  the committed blobs: the committed blob ids of both files equal `git hash-object` of the gated
+  working files. The baseline and pre-G6 runs used exports of `3a617a86`; the fault run used a
+  scratch copy of the gated tree, restored to the gated hashes afterwards.
+
+  | Evidence | Result |
+  |---|---|
+  | Focused baseline at `3a617a86` (18 Decision, report, workflow and generation files; SQLite) | 394 passed, 1 xfailed |
+  | G6 module against the pre-G6 source plus the two text constants (SQLite) | 41 passed, 15 failed (the D2 tests) |
+  | `tests/test_generation_decision_report.py` on SQLite | 56 passed |
+  | The same module on local PostgreSQL 18.6 (`novaq_gen_verify_test`, non-superuser test role) | 56 passed, all 56 on `postgresql` |
+  | Full SQLite backend suite (`python -m pytest tests/ -x`, with `-p no:cacheprovider -q`) | 1530 passed; 94 skipped (91 in `test_generation_identity_migration.py`, 3 in `test_postgres_migration_chain.py`, all needing `NOVAQ_TEST_DATABASE_URL`); 1 xfailed (the strict MC xfail); exit 0 |
+  | Targeted local PostgreSQL 18.6 run: the G6 module plus the 18 baseline files | 450 passed, 1 xfailed, 0 skipped, 0 failed. 290 ran on `postgresql`; 161 used no database |
+  | Eighteen deliberate faults in a scratch copy of `workflow.py` and `reports.py`, run against the G6 module on SQLite | 18 of 18 caught |
+  | `ruff check .`, `mypy .` | clean; mypy: no issues in 168 source files |
+
+  - The faults: each D2 call removed; D2 active with the flag off; the two texts swapped; blank or
+    non-text read as a token; the comparison inverted; each D2 call moved before an existing
+    refusal; the report and Decision chain gates removed; the report ignoring the Decision's tokens;
+    the policy enabling no generation kind; `_current_evidence` skipping the Decision's
+    classification; the selection binding and the scenario provenance check disabled; a fallback to
+    an older current Decision in `_current_evidence` and in the selected report; and the ID-scoped
+    report taking the latest Decision unchecked.
+- **NOT TESTED or UNKNOWN:**
+  - the full backend suite on PostgreSQL (NOT RUN);
+  - the PostgreSQL migration and chain tests, which create databases through the cluster's
+    `postgres` maintenance database that this session was not authorized to use (NOT RUN);
+  - the fault run on PostgreSQL (NOT RUN);
+  - the CI `postgres-integration` job (NOT RUN) and PostgreSQL 16 (NOT RUN);
+  - production PostgreSQL version, Alembic revision and role privileges, and the Render facts in
+    §2 and §11 (UNKNOWN);
+  - whether any stored selection holds the state D2 now refuses: a matching scenario token with an
+    unrecorded or different dataset token (UNKNOWN). No code writes it, because `_save_job` stamps
+    both tokens together (INFERRED);
+  - enforcement in any deployment (not enabled; NOT TESTED).
+- G6 does not repair the exact-generation defect in the running application: enforcement is off.
+  It completes the Decision and report behaviour that enforcement (S3, release G-B, stage G9) will
+  switch on.
 
 ## 11. Deployment
 
@@ -828,7 +951,7 @@ Replacement construction: delete through the API, then insert directly with the 
 | G-T5 Selected-plan DES | rejected on a replaced scenario |
 | G-T6 MC and validation write-time gates (OD-G2) | Flag off: a DES/MC input that fails Step 5 rules is refused with 409 before computing, and no job is stored; an unstamped but otherwise eligible input is accepted. Enforcement on: a wrong-generation or unrecorded input is also refused |
 | G-T7 Decision evidence | never served or produced from a mismatched or unrecorded chain |
-| G-T8 PDF and Excel | ID-scoped export shows "recommendation unavailable"; selected report 409 |
+| G-T8 PDF and Excel | ID-scoped export shows "recommendation unavailable"; selected report 409 on broken Decision or job-chain generation evidence. A scenario without its verified dataset generation keeps the existing 422 (decision D1, §10) |
 | G-T9 Missing and mismatched identities | `GENERATION_UNRECORDED` and `GENERATION_MISMATCH` with the correct statuses; all reasons kept; mutation tests |
 | G-T10 Same id, same timestamp | rejected at every consumer |
 | G-T11 Byte-identical replacement | rejected at every consumer |
@@ -900,15 +1023,19 @@ Every R test asserts:
 | G8 release G-A | operations only | 0005 applied explicitly | §11.2 | any §11.2 fact is UNKNOWN |
 | G9 release G-B, with v3 | flag constant | legacy evidence non-current | G-T14, G-T17 | a pre-G writer may exist; v3 prerequisites missing |
 
-Status at `1b8a8bd2`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`), G3
-(`cb7f78be`), G4 (`446a1e18`) and G5 (`1b8a8bd2`) are committed locally and unpushed.
+Status at `4e89b7a8`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`), G3
+(`cb7f78be`), G4 (`446a1e18`), G5 (`1b8a8bd2`) and G6 (`4e89b7a8`) are committed locally and
+unpushed.
 - G2 changed `scenarios.py` and the dataset serializer in `datasets.py`.
 - G3 changed only `workflow.py` in production code.
 - G4 changed only `evidence_status.py` in production code, with the generation check off by
   default (§9.1).
 - G5 changed only `workflow.py` in production code. It wires enforcement behind
   `GENERATION_ENFORCEMENT_ENABLED = False`, so enforcement is off in the application (§8.2).
-- G6–G9 are not started and not authorized.
+- G6 changed only `workflow.py` in production code; `reports.py` needed no change, because the G5
+  helpers already give the report paths their G-T8 behaviour. Decision D3 read the row's "additive
+  details" as no new response fields, and G6 adds none. The flag is still off (§10.1).
+- G7–G9 are not started and not authorized.
 
 ## 15. Prototype verification evidence (disposable databases only)
 
@@ -968,8 +1095,8 @@ production pins.
   uses SQLite.
 - Startup-guard behaviour on uvicorn 0.52.4 and FastAPI 0.141.1.
 - Full application behaviour with enforcement on (NOT TESTED). The migration and ORM layer were
-  prototyped, and G5 tests its own consumers with the flag switched on (§8.2). The Decision and
-  report paths under enforcement (G6) and any deployment with enforcement on are not tested.
+  prototyped; G5 tests its own consumers (§8.2) and G6 the Decision and report paths (§10.1), both
+  with the flag switched on in tests only. Any deployment with enforcement on is not tested.
   Likewise a full pre-G application on 0005, and the full G-A application.
 - Whether the production platform runs a migration or status step on start, restart, redeploy or
   rollback, and so whether a pre-G rollback on 0005 can start at all (§11.1).
@@ -989,6 +1116,10 @@ production pins.
 - G5: the full backend suite on PostgreSQL (NOT RUN), the fault run on PostgreSQL (NOT RUN), the
   CI job, PostgreSQL 16 and production (§8.2). Enforcement is off in the application, so no
   deployment has run the checks.
+- G6: the full backend suite on PostgreSQL (NOT RUN), the PostgreSQL migration and chain tests that
+  need the `postgres` maintenance database (NOT RUN), the fault run on PostgreSQL (NOT RUN), the CI
+  job, PostgreSQL 16 and production (§10.1). Whether any stored selection holds the state decision
+  D2 refuses (UNKNOWN).
 - Which stored workflows reach selected MC or validation with an input that fails Step 5 rules,
   and so would meet the OD-G2 refusal (UNKNOWN). For the existing tests this is answered: exactly
   one, whose fixture was corrected (§7.2, D1).
