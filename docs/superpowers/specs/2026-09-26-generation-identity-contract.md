@@ -1,4 +1,4 @@
-# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2, G3 and G4 committed locally)
+# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2, G3, G4 and G5 committed locally)
 
 - **Status:** APPROVED SPECIFICATION. The design direction was accepted on 2026-09-26, and this
   contract on 2026-09-28, with OD-G2 approved (§8) and the legacy policy (§6) confirmed.
@@ -22,9 +22,15 @@
       check is **off by default**, and no application code turns it on. Its status is **COMMITTED
       — CLASSIFIER TESTS, FULL SQLITE SUITE AND A TARGETED LOCAL POSTGRESQL 18.6 RUN VERIFIED;
       FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§9.1).
-  - Nothing after G4 is implemented: G5–G9 are not started and not authorized. Application
-    behaviour with enforcement on is NOT TESTED, and the exact-generation defect is not resolved
-    (§6.2).
+    - G5: enforcement wiring in `workflow.py`, committed as `1b8a8bd2`. The wiring exists, but
+      `GENERATION_ENFORCEMENT_ENABLED = False` and no application code turns it on, so the
+      application's default behaviour is **enforcement off**. Its status is **COMMITTED — WIRING
+      VERIFIED ONLY BY TESTS THAT SWITCH THE FLAG ON, ON SQLITE AND A TARGETED LOCAL POSTGRESQL 18.6
+      RUN; FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§8.2).
+  - Nothing after G5 is implemented: G6–G9 are not started and not authorized. Enforcement is not
+    active in the application. Behaviour with enforcement on is tested only for G5's own consumers,
+    with the flag switched on in tests; the Decision and report paths under enforcement (G6) are
+    NOT TESTED. The exact-generation defect is not resolved in the running application (§6.2).
 - **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
   base the repository had no migration 0005 and no generation code (VERIFIED then by grep and file
   listing). Since `1f5c3ab3` it has both.
@@ -313,8 +319,12 @@ covered by the bullets after it.
 "Step 5 rules" means the current gate: existence, owner and analysis scope, chronology, current
 dataset and setup (Steps 1–5 and Option A).
 
-- The S2–S4 columns are specified behaviour (APPROVED SPECIFICATION). None of it is implemented.
-- Application behaviour in S3 and S4 is NOT TESTED.
+- The S2–S4 columns are specified behaviour (APPROVED SPECIFICATION).
+  - S2 stamping and the OD-G2 write gates are implemented (G2, G3; §7.1, §7.2).
+  - The S3 checks are wired but switched off (G5, §8.2), so the application is not in S3.
+  - S4 is not implemented.
+- Application behaviour in S3 is tested only through G5's tests of its own consumers, with the
+  flag switched on (§8.2). S4 is NOT TESTED.
 
 | Artifact | S0 | S1 | S2 | S3 | S4 (v3) |
 |---|---|---|---|---|---|
@@ -377,6 +387,8 @@ dataset and setup (Steps 1–5 and Option A).
 - It always stamps what was read. Under enforcement only, it refuses with 409 when
   `dataset.generation != scenario.dataset_generation`. With enforcement off it records the tokens
   and changes nothing else.
+  - Wired in G5 (`workflow.py:570-575` at `1b8a8bd2`, §8.2). A binding that is not recorded is
+    refused as well.
 - Stamping itself is behaviour-neutral in S2. The one intended S2 behaviour change is the OD-G2
   write-time gate (§8).
 
@@ -436,7 +448,8 @@ dataset and setup (Steps 1–5 and Option A).
   - the selected-plan MC and validation endpoints apply the OD-G2 gate (§8.1).
 - Not implemented in G3 (later stages): token checks, the enforcement-on 409 in `_save_job`, and the
   classifier changes. The classifier changes have since been committed as G4 (`446a1e18`, §9.1),
-  with the check off; the rest belongs to G5–G9.
+  with the check off. The token checks and the `_save_job` refusal have since been wired as G5
+  (`1b8a8bd2`, §8.2), with enforcement off.
 - Decisions approved 2026-09-28:
   - D1: the only existing test the OD-G2 gate reached,
     `test_selected_plan_validation.py::test_null_failure_rate_stays_null_and_inadequate`, used a
@@ -484,15 +497,15 @@ their token part (OD-G2, below).
 | Check | Rule |
 |---|---|
 | `_own_verified_scenario` | `dataset_generation` must be present and equal the live dataset token. Otherwise 422 "Scenario provenance is incomplete; recalculate and save a new plan." This check runs last, so existing reasons keep their messages. |
-| Selection-binding helper (used by `_selected_scenario` and `_require_selected_separate_plan`) | `selection.params.scenario_generation == scenario.generation`, otherwise no eligible selection. Selected-plan endpoints: 409 "The selected plan was replaced; select it again in Compare." |
+| Selection-binding helper (used by `_selected_scenario` and `_require_selected_separate_plan`) | `selection.params.scenario_generation == scenario.generation`, otherwise no eligible selection. Selected-plan endpoints: 409 "The selected plan was replaced; select it again in Compare." G5 uses this text for an actual token mismatch only; a selection with no recorded token gets its own approved text (§8.2) |
 | Classifier (§9) via `_current_evidence`, `require_dependencies_current`, `current_decision_for_report` | every recorded token must equal the live row's |
 | Write-time gates (OD-G2): selected MC (`des_job`), selected validation (`des_job`, `mc_job`) | from G-A: `require_dependencies_current` on every input before computing, whether enforcement is on or off. Under enforcement: matching recorded tokens as well |
-| `run_validation_current`, where it compares `dataset_id` inline (`workflow.py:1130` at `446a1e18`; `:1100` at `4db54722`) | classifier on the MC job, plus `mc.params.dataset_generation == dataset.generation` |
+| `run_validation_current`, where it compares `dataset_id` inline (`workflow.py:1250` at `1b8a8bd2`; `:1130` at `446a1e18`; `:1100` at `4db54722`) | classifier on the MC job, plus `mc.params.dataset_generation == dataset.generation`. G5 implements the token comparison only; the classifier part is not wired (approved deviation, §8.2) |
 | Existing integer `result.scenario_id` checks | kept as consistency checks |
 
 - `_latest_job` keeps selecting by id, with no fallback (D7 rule).
 
-### 8.1 OD-G2 — write-time dependency integrity (APPROVED 2026-09-28; items 1–3 implemented in `cb7f78be`)
+### 8.1 OD-G2 — write-time dependency integrity (APPROVED 2026-09-28; items 1–3 implemented in `cb7f78be`; item 4 wired, switched off, in `1b8a8bd2`)
 
 1. Before creating a new analytical job, the selected-plan Monte Carlo and validation endpoints
    check that their input evidence satisfies the existing Step 5 dependency-integrity rules
@@ -513,6 +526,97 @@ their token part (OD-G2, below).
 6. At `cb7f78be` both endpoints call it last, immediately before computing (decision D2, §7.2):
    selected MC on the DES job (`workflow.py:2323`), selected validation on the DES and MC jobs
    (`:2485`). Item 4, the token match under enforcement, is not implemented.
+7. At `1b8a8bd2` (G5) item 4 is wired but not active. The gates are at `workflow.py:2455` and
+   `:2617`. `require_dependencies_current` (`:837-852`) uses the policy, which enables both
+   generation kinds only while `GENERATION_ENFORCEMENT_ENABLED` is on (`:699`). The flag is off, so
+   item 4 does not apply in the application (§8.2).
+
+### 8.2 G5 status (committed `1b8a8bd2`, local, unpushed)
+
+- **Enforcement stays off.** VERIFIED from source at `1b8a8bd2`:
+  - `GENERATION_ENFORCEMENT_ENABLED = False` (`workflow.py:102`). It is read at call time through
+    `_generation_enforced` (`:105-106`). Nothing else in `backend/` assigns it (grep).
+  - While it is off, every check below is skipped and the policy enables no generation kind. The
+    application's default behaviour is therefore unchanged from Steps 1–5 and G1–G4. Turning it
+    on is G9.
+- **Implemented in `backend/api/workflow.py` only** (+148/−16), with the new
+  `tests/test_generation_enforcement_wiring.py` (57 tests). No other file changed, and no existing
+  test changed. VERIFIED from source at `1b8a8bd2`, all active only with the flag on:
+  - Policy: `generation_kinds` is both kinds only while the flag is on (`:699`).
+  - Live tokens: `_dataset_dependency` and `_scenario_dependency` supply the row's `generation`
+    (`:731`, `:796`).
+  - Scenario chain (decision D3): `_scenario_evidence_record` carries the scenario's stored
+    `dataset_generation` for its dataset reference, exactly as stored (NULL stays NULL,
+    `:774-776`). It is built in `workflow.py`, not through `evidence_status.scenario_record`.
+  - Recorded values: `_recorded_generation` (`:109-116`). Only non-blank text is a token. None,
+    blank text and non-text values are unrecorded and never match.
+  - §8 row 1: `_require_verified_dataset_generation` (`:400-411`) runs last on both schema
+    branches (`:377`, `:396`).
+  - Selection binding: `_selection_binding_problem` (`:641-654`).
+    - `_selected_scenario_and_dataset` uses it to report no eligible selection (`:636-637`).
+    - `_require_selected_separate_plan` uses it after every existing check, which is decision D5
+      (`:1996-2001`).
+  - OD-G2 token match (§8.1 item 4, and G-T6 with enforcement on): `require_dependencies_current`
+    (`:837-852`) with `_root_causes` (`:855-860`).
+  - `run_validation_current`: token check only (`:1263-1271`).
+  - `_save_job`: the §7 refusal (`:570-575`). No API path can reach it, because every
+    scenario-bound caller verifies the scenario first and that check refuses the same condition
+    (INFERRED from the call sites). It is tested by direct call.
+  - Unchanged: `_latest_job` keeps selecting the latest job only, with no fallback (`:518-533`,
+    D7 rule). `separate_comparison` is not changed (decision D7).
+- **Refusals with enforcement on** (texts approved 2026-09-29):
+
+  | Condition | Status | Text |
+  |---|---|---|
+  | Scenario without a matching verified dataset generation (§8 row 1) | 422 | "Scenario provenance is incomplete; recalculate and save a new plan." |
+  | `_save_job` generation disagreement (§7) | 409 | same as above |
+  | Selected-plan binding, token mismatch | 409 | "The selected plan was replaced; select it again in Compare." |
+  | Selected-plan binding, no token recorded | 409 | "The selection has no recorded generation identity and cannot be verified; select the plan again in Compare." |
+  | Shared-queue paths with no eligible selection | 409 | existing "Select a Scenario in Compare first." |
+  | OD-G2 input whose only cause is an unrecorded generation | 409 | "Evidence has no recorded generation identity and cannot be verified. Rerun the affected step." |
+  | OD-G2 input with a mismatch or any other Step 5 cause | 409 | existing `MISSING_DEPENDENCY_DETAIL` |
+  | Current validation, no recorded token | 409 | "Current Monte Carlo evidence has no recorded generation identity and cannot be verified against the current dataset. Rerun Current Monte Carlo." |
+  | Current validation, token mismatch | 409 | existing "Current Monte Carlo evidence is stale for this dataset. Rerun Current Monte Carlo." |
+
+- **Evidence.** All runs below were executed on 2026-09-29, in the session that implemented G5.
+  - The runs before the commit used the working tree. The committed blobs match that tree by
+    sha256: the test module byte for byte, and `workflow.py` once the working copy's CRLF line
+    endings are restored.
+  - After the commit, the G5 module, ruff and mypy were run again on the clean `1b8a8bd2` tree,
+    with the same results.
+
+  | Evidence | Result |
+  |---|---|
+  | `tests/test_generation_enforcement_wiring.py` on SQLite | 57 passed (before the commit and again on `1b8a8bd2`) |
+  | Full SQLite backend suite | 1474 passed; 94 skipped (91 in `test_generation_identity_migration.py`, 3 in `test_postgres_migration_chain.py`, all needing `NOVAQ_TEST_DATABASE_URL`); 1 xfailed (the strict MC xfail); exit 0 |
+  | Targeted local PostgreSQL 18.6 run (`novaq_gen_verify_test`, non-superuser test role): the G5 module plus the 16 Step 1–5, D7, G2–G4, selected-plan and report regression files | 381 passed, 0 failed, 0 skipped. 233 ran on `postgresql`; 148 used no database |
+  | The G5 module alone on PostgreSQL 18.6 | 57 passed. 56 ran on `postgresql`; 1 (the flag test) used no database |
+  | Twenty-two deliberate faults in a scratch copy of `workflow.py`, run against the G5 module on SQLite | 22 of 22 caught; the copy was restored to the gated hash |
+  | The G5 module against the pre-G5 source (`598b3ae3`) | not collectable: it references G5 names |
+  | `ruff check .`, `mypy .` | clean; mypy: no issues in 167 source files (before the commit and again on `1b8a8bd2`) |
+
+- **Caveats:**
+  - Current validation performs the approved token-only check. It does not apply the broader
+    classifier check of §8's `run_validation_current` row, which is not wired.
+  - The Decision and report paths share the wired helpers, so their behaviour also changes when
+    the flag is on. That behaviour is G6 (G-T7, G-T8): it is not tested and not claimed here. Their
+    flag-off regressions pass.
+  - Enforcement is not enabled by default, so the checks above do not run in the application.
+  - A stored token that is not text is reported as unrecorded by the workflow-level refusals. The
+    G4 classifier reports it as `GENERATION_MISMATCH`, so at the OD-G2 gate it would receive
+    `MISSING_DEPENDENCY_DETAIL`.
+    - No code writes such a value (INFERRED from the G3 stamping).
+    - That OD-G2 case is NOT TESTED.
+- **NOT TESTED or UNKNOWN:**
+  - the full backend suite on PostgreSQL (NOT RUN);
+  - the fault run on PostgreSQL (NOT RUN);
+  - the CI `postgres-integration` job (NOT RUN) and PostgreSQL 16 (NOT RUN);
+  - production PostgreSQL version, Alembic revision and role privileges, and the Render facts in
+    §2 and §11 (UNKNOWN);
+  - which stored workflows would meet the OD-G2 refusal (UNKNOWN; §16);
+  - enforcement in any deployment (not enabled; NOT TESTED).
+- G5 does not repair the exact-generation defect in the running application. It wires the checks
+  that enforcement (S3, release G-B, stage G9) will switch on.
 
 ## 9. Classifier changes (`evidence_status.py`)
 
@@ -570,10 +674,12 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
     requirement and classification is unchanged. `test_flag_off_results_are_identical_with_or_without_token_data`
     covers this (G-T13; `tests/test_evidence_status_generation.py:347-358`).
   - The only `EvidencePolicy` the application builds is `workflow._current_evidence_policy`
-    (`workflow.py:591-625` at `446a1e18`), and it enables no generation kind.
-    `test_the_application_policy_enables_no_generation_kind` pins this (`:361-365`).
-  - `workflow.py` is unchanged since `cb7f78be`, and no caller supplies `Dependency.generation`.
-    Wiring is G5, which is not started.
+    (`workflow.py:591-625` at `446a1e18`; `:662-700` at `1b8a8bd2`), and it enables no generation
+    kind. Since G5 it enables both kinds only while `GENERATION_ENFORCEMENT_ENABLED` is on, and
+    that flag is off (§8.2). `test_the_application_policy_enables_no_generation_kind` pins this
+    (`:361-365`).
+  - At `446a1e18`, `workflow.py` was unchanged since `cb7f78be` and no caller supplied
+    `Dependency.generation`. G5 (`1b8a8bd2`, §8.2) has since wired both, with enforcement off.
 - Evidence (VERIFIED). The PostgreSQL run (194), the full SQLite suite (1417) and the fault run
   (15 of 15) were not re-run on 2026-09-29. They are VERIFIED from the actual tool outputs
   recorded in the G4 session. The committed blobs of the three G4 files match, by sha256, the
@@ -601,10 +707,11 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
   - production PostgreSQL version, Alembic revision and role privileges, and the Render facts in
     §2 and §11 (UNKNOWN);
   - which stored workflows would meet the OD-G2 refusal (UNKNOWN; §16);
-  - application behaviour with a generation kind enabled (NOT TESTED; nothing enables one).
+  - application behaviour with a generation kind enabled (NOT TESTED at G4, when nothing enabled
+    one; G5 tests its own consumers with the flag switched on, §8.2).
 - No frontend file changed.
-- G4 does not repair the exact-generation defect. The check stays off until it is wired (G5) and
-  enforced (S3).
+- G4 does not repair the exact-generation defect. The check is now wired (G5, §8.2) but stays off
+  until enforcement is switched on (S3, G9).
 
 ## 10. Reports
 
@@ -717,7 +824,7 @@ Replacement construction: delete through the API, then insert directly with the 
 | G-T1 Scenario and dataset creation | every creation path sets a unique 32-hex token; the scenario save sets `dataset_generation` to the verified row's token |
 | G-T2 Selection binding | a stamped selection binds only to the same generation; unstamped or mismatched → no eligible selection; Option A preserved |
 | G-T3 Job stamping | all 12 `_save_job` call sites record the tokens of the rows actually read |
-| G-T4 Current DES (and Current MC/validation: `run_validation_current`, `workflow.py:1130` at `446a1e18`) | a replaced dataset (same id, same time, byte-identical) is rejected |
+| G-T4 Current DES (and Current MC/validation: `run_validation_current`, `workflow.py:1250` at `1b8a8bd2`; `:1130` at `446a1e18`) | a replaced dataset (same id, same time, byte-identical) is rejected |
 | G-T5 Selected-plan DES | rejected on a replaced scenario |
 | G-T6 MC and validation write-time gates (OD-G2) | Flag off: a DES/MC input that fails Step 5 rules is refused with 409 before computing, and no job is stored; an unstamped but otherwise eligible input is accepted. Enforcement on: a wrong-generation or unrecorded input is also refused |
 | G-T7 Decision evidence | never served or produced from a mismatched or unrecorded chain |
@@ -793,11 +900,15 @@ Every R test asserts:
 | G8 release G-A | operations only | 0005 applied explicitly | §11.2 | any §11.2 fact is UNKNOWN |
 | G9 release G-B, with v3 | flag constant | legacy evidence non-current | G-T14, G-T17 | a pre-G writer may exist; v3 prerequisites missing |
 
-Status at `446a1e18`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`), G3
-(`cb7f78be`) and G4 (`446a1e18`) are committed locally and unpushed. G2 changed `scenarios.py` and
-the dataset serializer in `datasets.py`. G3 changed only `workflow.py` in production code. G4
-changed only `evidence_status.py` in production code, with the generation check off by default
-(§9.1). G5–G9 are not started and not authorized.
+Status at `1b8a8bd2`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`), G3
+(`cb7f78be`), G4 (`446a1e18`) and G5 (`1b8a8bd2`) are committed locally and unpushed.
+- G2 changed `scenarios.py` and the dataset serializer in `datasets.py`.
+- G3 changed only `workflow.py` in production code.
+- G4 changed only `evidence_status.py` in production code, with the generation check off by
+  default (§9.1).
+- G5 changed only `workflow.py` in production code. It wires enforcement behind
+  `GENERATION_ENFORCEMENT_ENABLED = False`, so enforcement is off in the application (§8.2).
+- G6–G9 are not started and not authorized.
 
 ## 15. Prototype verification evidence (disposable databases only)
 
@@ -856,8 +967,10 @@ production pins.
 - Whether anything writes explicit ids or timestamps in production, and whether any deployment
   uses SQLite.
 - Startup-guard behaviour on uvicorn 0.52.4 and FastAPI 0.141.1.
-- Full application behaviour with enforcement on (NOT TESTED: only the migration and ORM layer were
-  prototyped). Likewise a full pre-G application on 0005, and the full G-A application.
+- Full application behaviour with enforcement on (NOT TESTED). The migration and ORM layer were
+  prototyped, and G5 tests its own consumers with the flag switched on (§8.2). The Decision and
+  report paths under enforcement (G6) and any deployment with enforcement on are not tested.
+  Likewise a full pre-G application on 0005, and the full G-A application.
 - Whether the production platform runs a migration or status step on start, restart, redeploy or
   rollback, and so whether a pre-G rollback on 0005 can start at all (§11.1).
 - PostgreSQL behaviour of the committed 0005 beyond local PostgreSQL 18.6: the CI job (PostgreSQL
@@ -873,6 +986,9 @@ production pins.
 - G4: the full backend suite on PostgreSQL (NOT RUN), the CI job, PostgreSQL 16 and production
   (§9.1). The local PostgreSQL 18.6 run does not verify the classifier on any database, because
   the classifier tests use none.
+- G5: the full backend suite on PostgreSQL (NOT RUN), the fault run on PostgreSQL (NOT RUN), the
+  CI job, PostgreSQL 16 and production (§8.2). Enforcement is off in the application, so no
+  deployment has run the checks.
 - Which stored workflows reach selected MC or validation with an input that fails Step 5 rules,
   and so would meet the OD-G2 refusal (UNKNOWN). For the existing tests this is answered: exactly
   one, whose fixture was corrected (§7.2, D1).
