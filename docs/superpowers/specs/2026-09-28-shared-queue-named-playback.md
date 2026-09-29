@@ -362,6 +362,64 @@ tests. The 88 source-level mutants covered:
   gitignored `outputs/technical-paper/build_chapters_4_5.py` only.
 - Frontend: not run; nothing under `frontend/` changed.
 
+## Follow-up: validation hardening (2026-09-29)
+
+A read-only re-audit of `028917fe` found two defects, both reproduced on `028917fe` before any change
+(scratch script, not committed). This follow-up changes only `simulation/shared_named_playback.py` and
+its tests. The engine (v3), the replications method (v2), the digest, the merge, and every named-DES
+rule are unchanged, and the playback's output for a valid trace is unchanged apart from the new
+check in `validation.checks`. `PLAYBACK_VERSION` is now `novaq-shared-named-playback-v2`.
+
+- **Defect 1: unapproved closing-policy labels were accepted.** On a day where nobody can serve after
+  closing, the events are the same under both policies. So `replay_named_trace` and
+  `build_named_playback` accepted any label: `"FOO"`, `None`, `"drain"`, `"Drain"`, `1`, `["DRAIN"]`,
+  and `("DRAIN",)` were all VALID on the `nobody_on_duty` and `no_eligible_drain_employee` scenarios.
+  - **Fix:** a new check, `closing_policy`, runs first. It applies the engine's own test
+    (`closing_policy not in CLOSING_POLICIES`) behind a string test, so the check is exact and
+    case-sensitive. It never normalizes a label or infers one from the events, and it never raises
+    (a numpy array would otherwise raise `ValueError`).
+  - `playback_from_named_replications` applies the same check before regeneration, raising
+    `NamedPlaybackError` with check `closing_policy`. On `028917fe` the engine refused the policy
+    there with `SharedSegmentError`. A relabel without a new digest is still `regeneration_identity`.
+  - `prepare_named_playback` takes the policy as an argument, and the engine refuses an invalid one
+    with `SharedSegmentError`, as it refuses any invalid input (unchanged).
+- **Defect 2: unhashable values raised `TypeError`.** Five places test a value by set or dict
+  membership: the customer `type`; a transition's `event`; the `(stage, event, from_state, to_state)`
+  tuple; a transition's `employee_id`; and the `(employee_id, actual_start)` key of a started engine
+  break. A list at any of them raised `TypeError`, including through `build_named_playback`.
+  - **Fix:** each value is tested as a string (or, for `actual_start`, as a finite real) before the
+    membership test. It then fails the check a hashable wrong value already failed: `event_vocabulary`
+    (`type`, `event`), `employee_transition_legal` (`stage`, `from_state`, `to_state` with a known
+    event), or `trace_structure` (`employee_id`). A malformed started break fails
+    `employee_reconciliation`. Nothing is converted.
+- **Tests** (`tests/test_shared_named_playback.py`, 22 new, 97 in the file). Run against the
+  `028917fe` module, the final test file fails all 22 new tests (acceptance, `TypeError`, `ValueError`,
+  or `SharedSegmentError`) and passes the other 75.
+  - Both approved policies are accepted by the replay, the build, and the stored-run path (DRAIN and
+    HARD_CUTOFF), with `playback_version` v2.
+  - Eleven unapproved labels are each rejected by the replay and the build with the same failure
+    (check, evidence), and the input is left unchanged. A numpy-array label is rejected.
+  - The stored-run path refuses a relabel (`regeneration_identity` with the old digest, or
+    `closing_policy` with a recomputed one); `prepare_named_playback` refuses `"drain"`.
+  - Six membership fields, each wrapped in a list and in a dict: the replay and the build fail the
+    pinned check at the pinned record, and the input is left unchanged.
+  - Started engine breaks with an unhashable employee_id or actual_start fail
+    `employee_reconciliation`.
+  - A sweep wraps every field of every customer event and transition on six days, in a list and in a
+    dict. Every replay returns a structured failure with a known check, and the days are unchanged.
+- **Gates (executed on the final text, 2026-09-29):**
+  - focused: playback 97, named replications 73, named DES 65, state machine 39, pin 9, all passed;
+  - all 14 `tests/test_shared_*.py` files: 791 passed;
+  - Separate Queue, the same 20 files: 182 passed;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 1824 passed, 3 skipped (PostgreSQL
+    rehearsal, `NOVAQ_TEST_DATABASE_URL` unset), 1 xfailed (the known strict xfail), in 641 s;
+  - `ruff check .`: clean; `mypy . --exclude '^outputs/'`: clean on 176 files; `git diff --check`:
+    clean.
+- **Open finding (VERIFIED, not fixed; outside this follow-up's scope).** An extra engine break,
+  shift, or interval record naming an employee who is not in the timeline (a string such as `"Z"`)
+  is still accepted. The reconciliation compares only the timeline's employees, so such a record is
+  ignored rather than rejected. Fixing it needs approval.
+
 ## Undetermined (UNKNOWN or INFERRED)
 
 1. Cross-version numpy stream equality: UNKNOWN (unchanged from 5B-4.4).

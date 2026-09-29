@@ -820,6 +820,28 @@ Current verified state:
   - the acceptance rule: UNKNOWN.
 - Next (needs explicit approval): 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
+## Shared Queue Enhancement: Phase 5B-4.5 Playback Validation Hardening (2026-09-29)
+
+Recorded in the playback spec, "Follow-up: validation hardening (2026-09-29)". Only `simulation/shared_named_playback.py` and its tests changed; the engine (v3), replications method (v2), digest, merge, and named-DES rules are unchanged.
+
+- Two defects, reproduced on `028917fe` before any change:
+  - `replay_named_trace` and `build_named_playback` accepted any closing-policy label (`"FOO"`, `None`, `"drain"`, ...) when the events are the same under both policies.
+  - An unhashable value at a set or dict membership test raised `TypeError` (customer `type`; transition `event`, `stage`, `from_state`, `to_state`, `employee_id`; a started engine break's `employee_id` or `actual_start`).
+- Fix:
+  - New first check `closing_policy`: the engine's exact `CLOSING_POLICIES` test behind a string test. Nothing is normalized or inferred.
+  - `playback_from_named_replications` applies it before regeneration (`NamedPlaybackError`, check `closing_policy`).
+  - Membership values are tested as strings (or finite reals) first and fail the check a hashable wrong value already failed. Nothing is converted.
+  - `PLAYBACK_VERSION` is v2.
+- Tests: 22 new (97 in the file). Against the `028917fe` module, all 22 fail and the other 75 pass.
+- Gates on the final text:
+  - focused: playback 97, named replications 73, named DES 65, state machine 39, pin 9, all passed;
+  - all `tests/test_shared_*.py`: 791 passed;
+  - Separate Queue (20 files): 182 passed;
+  - full backend suite: 1824 passed, 3 skipped, 1 xfailed;
+  - `ruff check .`: clean; `mypy . --exclude '^outputs/'`: clean on 176 files; `git diff --check`: clean.
+- Open (VERIFIED, not fixed, needs approval): an extra engine break, shift, or interval record naming an employee who is not in the timeline (for example `"Z"`) is still accepted, because the reconciliation compares only the timeline's employees.
+- Next (needs explicit approval): the open finding above, 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:

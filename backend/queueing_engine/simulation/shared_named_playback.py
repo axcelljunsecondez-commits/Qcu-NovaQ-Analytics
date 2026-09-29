@@ -43,7 +43,12 @@ from backend.queueing_engine.services.shared_workforce import (
     ShiftRules,
     WorkforceRules,
 )
-from backend.queueing_engine.simulation.shared_continuous_des import DRAIN, ENGINE_VERSION, HARD_CUTOFF
+from backend.queueing_engine.simulation.shared_continuous_des import (
+    CLOSING_POLICIES,
+    DRAIN,
+    ENGINE_VERSION,
+    HARD_CUTOFF,
+)
 from backend.queueing_engine.simulation.shared_employee_states import (
     AVAILABLE,
     BASE_STATES,
@@ -88,7 +93,9 @@ from backend.queueing_engine.simulation.shared_named_replications import (
 )
 from backend.queueing_engine.simulation.shared_replications import SEED_SCHEME
 
-PLAYBACK_VERSION = "novaq-shared-named-playback-v1"
+# v2 (5B-4.5 hardening): the closing policy must be an approved value, and a malformed trace field fails a check
+# instead of raising. Output for a valid trace is unchanged apart from the new check in validation.checks.
+PLAYBACK_VERSION = "novaq-shared-named-playback-v2"
 
 # ── Event vocabulary (from the named engine; anything else is rejected) ─────
 
@@ -165,6 +172,9 @@ UNSUPPORTED = {
 }
 
 CHECKS = {
+    "closing_policy": (
+        "The closing policy is exactly one of the approved strings, DRAIN or HARD_CUTOFF (the engine's test); it is "
+        "never normalized or inferred from the events."),
     "trace_complete": "The trace is not truncated.",
     "trace_structure": "Every record has the engine's fields, and the interleaving counts place every customer event.",
     "event_vocabulary": "Every customer event type and employee transition is in the named-engine vocabulary.",
@@ -256,6 +266,15 @@ def _whole(value: object) -> bool:
 
 def _time(value: object) -> bool:
     return isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(float(value))
+
+
+def _check_closing_policy(policy: object) -> None:
+    # The engine's test (``closing_policy not in CLOSING_POLICIES``) behind a string test, so any other value fails this
+    # check rather than raising (no hashing, and no equality with an arbitrary object). Exact and case-sensitive. The
+    # events cannot decide it: a day with nobody to serve after closing records the same events under both policies.
+    if not isinstance(policy, str) or policy not in CLOSING_POLICIES:
+        raise _fail("closing_policy", "The closing policy must be exactly DRAIN or HARD_CUTOFF.",
+                    {"closing_policy": policy, "approved": list(CLOSING_POLICIES)})
 
 
 def _period(t: float, closing: float) -> str:
@@ -659,7 +678,7 @@ class _Replay:
             customer = source == "customer"
             if customer and record["customer_id"] is not None and not _whole(record["customer_id"]):
                 raise _fail("trace_structure", "customer_id must be a whole number or None.", **where)
-            if not customer and record["employee_id"] not in self.state:
+            if not customer and (not isinstance(record["employee_id"], str) or record["employee_id"] not in self.state):
                 raise _fail("trace_structure", "The transition names an employee not in the timeline.", **where)
             slot = _CUSTOMER_SLOT[record["type"]] if customer else (
                 _PAIR_SLOT if record["stage"] == SERVICE_START else _TRANSITION_SLOT)
@@ -716,13 +735,15 @@ def _merge(result: dict[str, Any]) -> list[tuple[str, int, dict[str, Any]]]:
             if missing or not _time(record["t"]):
                 raise _fail("trace_structure", "A record lacks the engine's fields or a finite time.",
                             {"missing": missing}, source=source, source_index=index, event=dict(record))
-            if source == "customer" and record["type"] not in CUSTOMER_EVENT_TYPES:
+            # Every vocabulary value is a string. Testing that first means a malformed (for example unhashable)
+            # value fails the check instead of raising; nothing is converted.
+            if source == "customer" and (not isinstance(record["type"], str) or record["type"] not in CUSTOMER_EVENT_TYPES):
                 raise _fail("event_vocabulary", f"Unknown customer event type {record['type']!r}.",
                             source=source, source_index=index, event=dict(record))
             if source == "employee":
                 key = (record["stage"], record["event"], record["from_state"], record["to_state"])
-                if record["event"] not in _KNOWN_EVENTS or key not in EMPLOYEE_TRANSITIONS:
-                    known = record["event"] in _KNOWN_EVENTS
+                known = isinstance(record["event"], str) and record["event"] in _KNOWN_EVENTS
+                if not known or not all(isinstance(value, str) for value in key) or key not in EMPLOYEE_TRANSITIONS:
                     raise _fail("employee_transition_legal" if known else "event_vocabulary",
                                 f"Transition {key} is not in the named-engine vocabulary.",
                                 source=source, source_index=index, event=dict(record))
@@ -844,6 +865,12 @@ def _reconcile(replay: _Replay, result: dict[str, Any]) -> tuple[dict[str, Any],
           [(row["employee_id"], row["actual_start"], row["release"]) for employee_id in replay.ids
            for row in sorted((item for item in timeline["shifts"] if item["employee_id"] == employee_id
                               and item["activated"]), key=lambda item: item["actual_start"])])
+    # A started break is keyed below by (employee_id, actual_start), so a malformed key fails here instead of raising.
+    malformed = [dict(row) for row in timeline["breaks"] if row["actual_start"] is not None
+                 and (not isinstance(row["employee_id"], str) or not _time(row["actual_start"]))]
+    if malformed:
+        raise _fail("employee_reconciliation", "A started engine break has a non-string employee_id or a non-numeric "
+                    "actual_start.", {"breaks": malformed})
     breaks = [dict(row) for employee_id in replay.ids for row in replay.breaks[employee_id]]
     exact("employee_reconciliation", "started breaks (actual start, actual end, outcome)",
           [(row["employee_id"], row["actual_start"], row["actual_end"], row["outcome"]) for row in breaks],
@@ -922,6 +949,7 @@ def _replay(
     demand_periods: Sequence[DemandPeriod],
 ) -> tuple[_Replay, dict[str, Any], list[dict[str, str]]]:
     """The replay, the rebuilt tables, and the reconciliation methods; raises ``_Violation`` on a failed check."""
+    _check_closing_policy(result["closing_policy"])
     replay = _Replay(result, horizon, demand_periods)
     replay.run(_merge(result))
     rebuilt, methods = _reconcile(replay, result)
@@ -1113,8 +1141,8 @@ def rebuild_named_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
 def playback_from_named_replications(replication_result: dict[str, Any], replication_index: int) -> dict[str, Any]:
     """Playback of one replication of a ``run_named_replications`` result, checked against its recorded inputs and row.
 
-    Raises ``NamedPlaybackError`` (check ``regeneration_identity`` or ``stored_row``) when the run cannot be
-    regenerated exactly by this code, and for any failed replay check.
+    Raises ``NamedPlaybackError`` (check ``regeneration_identity``, ``closing_policy``, or ``stored_row``) when the
+    run cannot be regenerated exactly by this code, and for any failed replay check.
     """
     provenance = replication_result["provenance"]
 
@@ -1152,6 +1180,11 @@ def playback_from_named_replications(replication_result: dict[str, Any], replica
     if rebuilt_digest != recorded:
         refuse("The rebuilt inputs do not reproduce the recorded inputs_sha256.",
                {"recorded": recorded, "rebuilt": rebuilt_digest})
+    # The same closing-policy check as the replay, before regeneration (the digest records a value, not its approval).
+    try:
+        _check_closing_policy(provenance["closing_policy"])
+    except _Violation as violation:
+        raise NamedPlaybackError(violation.failure) from None
     playback = prepare_named_playback(
         inputs["horizon"], inputs["demand_periods"], inputs["employees"], inputs["rules"], inputs["roster"],
         root_entropy=provenance["root_entropy"], replication_index=replication_index,

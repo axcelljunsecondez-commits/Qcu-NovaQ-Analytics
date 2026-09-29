@@ -1191,6 +1191,163 @@ def test_a_failed_playback_raises_with_evidence_and_is_never_repaired():
     assert corrupted == before  # the trace is not repaired or changed
 
 
+# ── Validation hardening (5B-4.5 follow-up) ─────────────────────────────────
+#
+# Two defects reproduced on 028917fe: (1) replay_named_trace and build_named_playback accepted any closing-policy
+# label ("FOO", None, "drain", ...) on a day whose events are the same under both policies; (2) an unhashable value
+# in a field the replay tests by set or dict membership raised TypeError instead of failing a check.
+
+UNAPPROVED_POLICIES = ["FOO", None, "drain", "Drain", "hard_cutoff", "", 1, True, ["DRAIN"], ("DRAIN",), {"DRAIN": 1}]
+CUSTOMER_FIELDS = ("t", "type", "customer_id", "employee_id", "register_id", "queue_len_after",
+                   "employee_transitions_before")
+TRANSITION_FIELDS = ("t", "stage", "employee_id", "from_state", "to_state", "register_before", "register_after", "event")
+
+
+def _replication(name: str, policy: str) -> tuple[dict, list[DemandPeriod]]:
+    demand, roster, workforce, required = SCENARIOS[name]
+    return simulate_named_replication(HORIZON, demand, staff(roster), workforce, roster,
+                                      seed_sequence=replication_seed_sequence(0, 0), closing_policy=policy,
+                                      employee_policy=APPROVED_EMPLOYEE_POLICY, required_staffing=required), demand
+
+
+def _build(result: dict, demand: list[DemandPeriod]) -> dict:
+    playback: dict = shared_named_playback.build_named_playback(result, HORIZON, demand, replication_index=0,
+                                                                root_entropy=0)
+    return playback
+
+
+def test_approved_closing_policies_are_accepted_by_every_entry_point():
+    for policy in (DRAIN, HARD_CUTOFF):
+        accepted(simulate(CLOSING_ROSTER, CLOSING_RULES, CLOSING_ARRIVALS, policy=policy, required=TWO))
+        result, demand = _replication("overrun_and_contention", policy)
+        playback = _build(result, demand)
+        assert (playback["closing"]["policy"], playback["validation"]["valid"]) == (policy, True)
+        assert "closing_policy" in playback["validation"]["checks"]
+        assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v2"
+        run = replicate("overrun_and_contention", replications=2, seed=7, policy=policy)
+        assert playback_from_named_replications(run, 1)["summary"] == run["replications"][1]
+
+
+@pytest.mark.parametrize("label", UNAPPROVED_POLICIES, ids=repr)
+def test_an_unapproved_closing_policy_is_rejected_by_replay_and_build(label):
+    # Nobody can serve after closing on these days, so the events are the same under both policies and only the label
+    # differs. Exact values only: no case folding, no inference from the events, and the input is left as it was.
+    for name in ("nobody_on_duty", "no_eligible_drain_employee"):
+        result, demand = _replication(name, DRAIN)
+        assert replay_named_trace(result, HORIZON, demand)["valid"]
+        relabeled = dict(copy.deepcopy(result), closing_policy=label)
+        before = copy.deepcopy(relabeled)
+        checked = replay_named_trace(relabeled, HORIZON, demand)
+        assert not checked["valid"] and checked["failure"]["check"] == "closing_policy"
+        assert checked["failure"]["evidence"] == {"closing_policy": label, "approved": [DRAIN, HARD_CUTOFF]}
+        with pytest.raises(NamedPlaybackError) as caught:
+            _build(relabeled, demand)
+        assert caught.value.failure == checked["failure"]
+        assert relabeled == before
+
+
+def test_a_closing_policy_whose_equality_is_not_a_bool_is_rejected():
+    # A numpy array compares elementwise, so testing it against the approved strings would raise ValueError; the string
+    # test rejects it first.
+    result, demand = _replication("nobody_on_duty", DRAIN)
+    label = np.array([DRAIN, DRAIN])
+    checked = replay_named_trace(dict(result, closing_policy=label), HORIZON, demand)
+    assert not checked["valid"] and checked["failure"]["check"] == "closing_policy"
+    assert checked["failure"]["evidence"]["closing_policy"] is label
+
+
+def test_the_stored_run_path_applies_the_same_closing_policy_check():
+    run = replicate("nobody_on_duty", replications=2, seed=4, policy=DRAIN)
+    # A relabeled policy with the old digest is a digest mismatch, as before.
+    stale = copy.deepcopy(run)
+    stale["provenance"]["closing_policy"] = "drain"
+    _refused(stale, 0, "regeneration_identity")
+    # With a digest recomputed over the unapproved value, the replay's closing-policy check refuses it before any
+    # regeneration (on 028917fe the engine raised SharedSegmentError here).
+    for label in ("FOO", None, "drain", ["DRAIN"]):
+        relabeled = copy.deepcopy(run)
+        provenance = relabeled["provenance"]
+        provenance["closing_policy"] = label
+        provenance["inputs_sha256"] = named_inputs_digest(provenance["inputs"], label, provenance["employee_policy"])
+        assert _refused(relabeled, 0, "closing_policy")["evidence"]["closing_policy"] == label
+    # prepare_named_playback takes the policy as an argument, and the engine refuses it as it refuses any invalid input.
+    demand, roster, workforce, required = SCENARIOS["nobody_on_duty"]
+    with pytest.raises(SharedSegmentError, match="closing_policy must be DRAIN or HARD_CUTOFF"):
+        prepare_named_playback(HORIZON, demand, staff(roster), workforce, roster, root_entropy=4, replication_index=0,
+                               closing_policy="drain", employee_policy=APPROVED_EMPLOYEE_POLICY,
+                               required_staffing=required)
+
+
+@pytest.mark.parametrize("source, field, check", [
+    ("customer", "type", "event_vocabulary"),
+    ("employee", "event", "event_vocabulary"),
+    ("employee", "stage", "employee_transition_legal"),
+    ("employee", "from_state", "employee_transition_legal"),
+    ("employee", "to_state", "employee_transition_legal"),
+    ("employee", "employee_id", "trace_structure"),
+])
+def test_an_unhashable_value_in_a_membership_field_fails_its_check(source, field, check):
+    # The replay tests these fields by set or dict membership; on 028917fe each case raised TypeError. The value is
+    # the field's own value wrapped in a list or a dict, so it is unhashable and is not converted back.
+    result, demand = _replication("stable", DRAIN)
+    for wrap in (lambda value: [value], lambda value: {"value": value}):
+        corrupted = copy.deepcopy(result)
+        record = (corrupted["trace"] if source == "customer" else transitions(corrupted))[0]
+        record[field] = wrap(record[field])
+        before = copy.deepcopy(corrupted)
+        checked = replay_named_trace(corrupted, HORIZON, demand)
+        assert not checked["valid"], "an unhashable value was accepted"
+        failure = checked["failure"]
+        assert (failure["check"], failure["source"], failure["source_index"]) == (check, source, 0), failure
+        assert failure["event"][field] == record[field]
+        with pytest.raises(NamedPlaybackError) as caught:
+            _build(corrupted, demand)
+        assert caught.value.failure == failure
+        assert corrupted == before
+
+
+def test_an_unhashable_started_break_key_fails_reconciliation():
+    # Started engine breaks are keyed by (employee_id, actual_start); on 028917fe an unhashable key raised TypeError
+    # (an extra row escaped the comparison, and a second row for A broke its sort).
+    day = simulate([shift("A", 480, 720, rest=540)], rules(*LONG_SHIFT_BREAK, registers=1), [(0.75, 2.0), (1.125, 0.5)])
+    accepted(day)
+    for field, value in (("employee_id", ["A"]), ("actual_start", [1.25]), ("actual_start", {"t": 1.25})):
+        corrupted = copy.deepcopy(day)
+        corrupted["employee_timeline"]["breaks"].append(dict(corrupted["employee_timeline"]["breaks"][0], **{field: value}))
+        before = copy.deepcopy(corrupted)
+        failure = rejected(corrupted, "employee_reconciliation")
+        assert "non-string employee_id or a non-numeric actual_start" in failure["message"]
+        assert failure["evidence"]["breaks"][0][field] == value
+        assert corrupted == before
+
+
+def test_no_unhashable_trace_value_raises_or_is_accepted():
+    # Every field of every customer event and employee transition on six days, replaced in turn by its own value
+    # wrapped in a list and in a dict: each replay returns a structured failure with a known check.
+    days = [simulate(*NORMAL), simulate(*HANDOVER), simulate(*FCFS, required=THREE),
+            simulate(CLOSING_ROSTER, CLOSING_RULES, CLOSING_ARRIVALS, required=TWO),
+            simulate(CLOSING_ROSTER, CLOSING_RULES, CLOSING_ARRIVALS, policy=HARD_CUTOFF, required=TWO),
+            simulate([shift("A", 480, 720, rest=540)], rules(*LONG_SHIFT_BREAK, registers=1), [(0.75, 2.0), (1.125, 0.5)])]
+    replays = 0
+    for day in days:
+        pristine = copy.deepcopy(day)
+        for records, fields in ((day["trace"], CUSTOMER_FIELDS), (transitions(day), TRANSITION_FIELDS)):
+            assert all(set(record) == set(fields) for record in records)
+            for record in records:
+                for field in fields:
+                    original = record[field]
+                    for wrapped in ([original], {"value": original}):
+                        record[field] = wrapped
+                        checked = replay_named_trace(day, HORIZON, PERIODS)
+                        assert not checked["valid"], (field, record)
+                        assert checked["failure"]["check"] in shared_named_playback.CHECKS
+                        replays += 1
+                    record[field] = original
+        assert day == pristine  # the replay changed nothing
+    assert replays == 2 * sum(len(day["trace"]) * len(CUSTOMER_FIELDS) + len(transitions(day)) * len(TRANSITION_FIELDS)
+                              for day in days)
+
+
 # ── Isolation ───────────────────────────────────────────────────────────────
 
 
