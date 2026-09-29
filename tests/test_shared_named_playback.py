@@ -37,6 +37,7 @@ from backend.queueing_engine.simulation.shared_employee_states import (
     SERVING_SHIFT_ENDED,
     STAGES,
     TRUNCATED_BY_CLOSING,
+    UNFULFILLED,
     WAITING_FOR_REGISTER,
 )
 from backend.queueing_engine.simulation.shared_named_des import (
@@ -58,7 +59,9 @@ from backend.queueing_engine.simulation.shared_named_playback import (
 from backend.queueing_engine.simulation.shared_named_replications import (
     named_inputs_digest,
     named_inputs_snapshot,
+    named_replication_row,
     replication_seed_sequence,
+    run_named_replications,
     simulate_named_replication,
 )
 from tests.test_shared_employee_states import HORIZON, break_rule, rules, shift, staff
@@ -1223,7 +1226,7 @@ def test_approved_closing_policies_are_accepted_by_every_entry_point():
         playback = _build(result, demand)
         assert (playback["closing"]["policy"], playback["validation"]["valid"]) == (policy, True)
         assert "closing_policy" in playback["validation"]["checks"]
-        assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v2"
+        assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v3"  # v3: employee_identity
         run = replicate("overrun_and_contention", replications=2, seed=7, policy=policy)
         assert playback_from_named_replications(run, 1)["summary"] == run["replications"][1]
 
@@ -1346,6 +1349,194 @@ def test_no_unhashable_trace_value_raises_or_is_accepted():
         assert day == pristine  # the replay changed nothing
     assert replays == 2 * sum(len(day["trace"]) * len(CUSTOMER_FIELDS) + len(transitions(day)) * len(TRANSITION_FIELDS)
                               for day in days)
+
+
+# ── Employee referential integrity (5B-4.5 follow-up) ───────────────────────
+#
+# Reproduced on 086075f7: an extra interval, shift, break, or closing-input record naming an employee outside the
+# employee timeline was accepted, because the reconciliation compared only the timeline's employees (closing inputs
+# were not compared at all). The timeline's employees are the input employees (evaluate_roster reports every one,
+# rostered or not); ids are case-sensitive strings (shared_workforce._EMPLOYEE_ID) and are never normalized.
+
+ORPHAN_VARIANTS = ["interval_zero_length", "interval_whole_timeline_off", "shift_activated", "shift_not_activated",
+                   "break_started", "break_unfulfilled", "closing_input"]
+
+
+def _identity_result() -> tuple[dict, list[DemandPeriod]]:
+    # Employees A, B, C with at least one activated shift, one started break, and closing inputs (checked below).
+    demand, roster, workforce, required = SCENARIOS["overrun_and_contention"]
+    result = simulate_named_replication(HORIZON, demand, staff(roster), workforce, roster,
+                                        seed_sequence=replication_seed_sequence(3, 0), closing_policy=DRAIN,
+                                        employee_policy=APPROVED_EMPLOYEE_POLICY, required_staffing=required)
+    timeline = result["employee_timeline"]
+    assert sorted(timeline["state_totals"]) == ["A", "B", "C"] and result["at_close"]["closing_inputs"]
+    assert any(row["activated"] for row in timeline["shifts"])
+    assert any(row["actual_start"] is not None for row in timeline["breaks"])
+    return result, demand
+
+
+def _extra_record(result: dict, variant: str, employee_id: Any) -> tuple[dict, list]:
+    """A copy of ``result`` with one extra record for ``employee_id``; every legitimate record is left as it is."""
+    corrupted = copy.deepcopy(result)
+    timeline = corrupted["employee_timeline"]
+    shift_row = next(row for row in timeline["shifts"] if row["activated"])
+    started = next(row for row in timeline["breaks"] if row["actual_start"] is not None)
+    block, name, row = {
+        "interval_zero_length": ("employee_timeline", "intervals",
+                                 dict(timeline["intervals"][0], start=corrupted["finish"], end=corrupted["finish"])),
+        "interval_whole_timeline_off": ("employee_timeline", "intervals",
+                                        dict(timeline["intervals"][0], start=corrupted["begin"], end=corrupted["finish"],
+                                             state=OFF, register_id=None)),
+        "shift_activated": ("employee_timeline", "shifts", dict(shift_row)),
+        "shift_not_activated": ("employee_timeline", "shifts",
+                                dict(shift_row, activated=False, actual_start=None, activation_delay=None, release=None,
+                                     overrun=None)),
+        "break_started": ("employee_timeline", "breaks", dict(started)),
+        "break_unfulfilled": ("employee_timeline", "breaks",
+                              dict(started, actual_start=None, actual_end=None, delay=None, outcome=UNFULFILLED,
+                                   unfulfilled_cause="released")),
+        "closing_input": ("at_close", "closing_inputs", {"type": "Release"}),
+    }[variant]
+    records = corrupted[block][name]
+    records.append(dict(row, employee_id=employee_id))
+    return corrupted, records
+
+
+def _rejected_with(result: dict, demand: list[DemandPeriod], check: str) -> dict:
+    checked = replay_named_trace(result, HORIZON, demand)
+    assert not checked["valid"] and checked["failure"]["check"] == check, checked
+    failure: dict = checked["failure"]
+    return failure
+
+
+@pytest.mark.parametrize("variant", ORPHAN_VARIANTS)
+def test_an_extra_record_for_an_unknown_employee_is_rejected(variant):
+    result, demand = _identity_result()
+    corrupted, records = _extra_record(result, variant, "Z")
+    before = copy.deepcopy(corrupted)
+    checked = replay_named_trace(corrupted, HORIZON, demand)
+    assert not checked["valid"], "an orphan employee record was accepted"
+    failure = checked["failure"]
+    assert failure["check"] == "employee_identity"
+    record_type = ("at_close." if variant == "closing_input" else "employee_timeline.") + (
+        "closing_inputs" if variant == "closing_input" else variant.split("_")[0] + "s")
+    assert failure["evidence"] == {"record_type": record_type, "index": len(records) - 1, "record": records[-1],
+                                   "timeline_employees": ["A", "B", "C"]}
+    with pytest.raises(NamedPlaybackError) as caught:
+        _build(corrupted, demand)
+    assert caught.value.failure == failure
+    assert corrupted == before  # not dropped, not repaired, no employee created
+
+
+@pytest.mark.parametrize("variant", ["interval_zero_length", "interval_whole_timeline_off", "closing_input"])
+def test_an_orphan_record_is_rejected_when_every_aggregate_is_unchanged(variant):
+    # The extra record changes no count, total, or row value (the replication row, the state totals, the counts, and
+    # the staffing series are the engine's own); only the orphan record is inconsistent.
+    result, demand = _identity_result()
+    corrupted, _ = _extra_record(result, variant, "Z")
+    assert named_replication_row(corrupted, 0) == named_replication_row(result, 0)
+    assert all(corrupted[key] == result[key] for key in ("counts", "customers", "queue", "staffing"))
+    assert corrupted["employee_timeline"]["state_totals"] == result["employee_timeline"]["state_totals"]
+    assert replay_named_trace(corrupted, HORIZON, demand)["failure"]["check"] == "employee_identity"
+
+
+@pytest.mark.parametrize("employee_id", ["a", "A ", " A", "", "D", "Z" * 64], ids=repr)
+def test_an_id_that_only_resembles_a_timeline_employee_is_rejected(employee_id):
+    # Ids are exact, case-sensitive strings: "a" is not "A", and whitespace is not stripped. "D" and a 64-character id
+    # are well-formed ids of employees who are not in this run.
+    result, demand = _identity_result()
+    for variant in ORPHAN_VARIANTS:
+        corrupted, _ = _extra_record(result, variant, employee_id)
+        checked = replay_named_trace(corrupted, HORIZON, demand)
+        assert not checked["valid"] and checked["failure"]["check"] == "employee_identity", (variant, checked)
+
+
+def test_a_non_string_employee_id_in_an_employee_record_fails_without_raising():
+    # The 086075f7 contract holds: a malformed id fails a check. A started break keeps its earlier check
+    # (employee_reconciliation, its key guard); every other record fails employee_identity.
+    result, demand = _identity_result()
+    for variant in ORPHAN_VARIANTS:
+        for value in (["A"], {"id": "A"}, None, 5):
+            corrupted, _ = _extra_record(result, variant, value)
+            checked = replay_named_trace(corrupted, HORIZON, demand)
+            expected = "employee_reconciliation" if variant == "break_started" else "employee_identity"
+            assert not checked["valid"] and checked["failure"]["check"] == expected, (variant, value, checked)
+    # A closing input without an employee_id, or one that is not a record, fails the same check.
+    for record in ({"type": "Release"}, "Release Z"):
+        corrupted = copy.deepcopy(result)
+        corrupted["at_close"]["closing_inputs"].append(record)
+        failure = _rejected_with(corrupted, demand, "employee_identity")
+        assert failure["evidence"]["record"] == record
+
+
+def test_the_timeline_employee_set_itself_is_checked():
+    result, demand = _identity_result()
+    # A non-string timeline employee fails the check (on 086075f7 sorting the ids raised TypeError).
+    mixed = copy.deepcopy(result)
+    mixed["employee_timeline"]["state_totals"][5] = dict.fromkeys(BASE_STATES, 0.0)
+    assert _rejected_with(mixed, demand, "employee_identity")["evidence"]["timeline_employees"] == ["A", "B", "C", 5]
+    # A timeline employee without intervals still fails the interval comparison, as on 086075f7.
+    unknown = copy.deepcopy(result)
+    unknown["employee_timeline"]["state_totals"]["Z"] = dict.fromkeys(BASE_STATES, 0.0)
+    _rejected_with(unknown, demand, "employee_reconciliation")
+
+
+def test_an_unrostered_input_employee_is_on_the_timeline_and_accepted():
+    # The approved rule, not equality of every record: every input employee is on the timeline, rostered or not; only
+    # rostered employees have shifts and breaks. D is an input employee with no roster shift.
+    demand, roster, workforce, required = SCENARIOS["overrun_and_contention"]
+    employees = staff(roster + [shift("D", 480, 720)])
+    playback = prepare_named_playback(HORIZON, demand, employees, workforce, roster, root_entropy=3, replication_index=0,
+                                      closing_policy=DRAIN, employee_policy=APPROVED_EMPLOYEE_POLICY,
+                                      required_staffing=required)
+    assert sorted(playback["employees"]) == ["A", "B", "C", "D"]
+    assert {row["state"] for row in playback["employees"]["D"]} == {OFF}
+    assert "D" not in {row["employee_id"] for row in playback["shifts"] + playback["breaks"]}
+    assert "D" not in {event["employee_id"] for event in playback["events"]}
+    assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v3"
+    assert "employee_identity" in playback["validation"]["checks"]
+
+
+def test_the_input_employees_decide_what_the_result_alone_cannot(monkeypatch):
+    # An employee who is OFF all day with no other record looks like an unrostered employee, so only the inputs can
+    # tell. The engine never produces such a result; the two doctored engines below stand for a defective one.
+    real = shared_named_playback.simulate_named_replication
+    demand, roster, workforce, required = SCENARIOS["overrun_and_contention"]
+    employees = staff(roster + [shift("D", 480, 720)])
+
+    def with_extra(*args: Any, **kwargs: Any) -> dict:
+        # Z copies exactly what the engine records for the unrostered D: its intervals and state totals.
+        result: dict = real(*args, **kwargs)
+        timeline = result["employee_timeline"]
+        timeline["state_totals"]["Z"] = dict(timeline["state_totals"]["D"])
+        timeline["intervals"] += [dict(row, employee_id="Z") for row in timeline["intervals"] if row["employee_id"] == "D"]
+        return result
+
+    def without_d(*args: Any, **kwargs: Any) -> dict:
+        result: dict = real(*args, **kwargs)
+        timeline = result["employee_timeline"]
+        del timeline["state_totals"]["D"]
+        timeline["intervals"] = [row for row in timeline["intervals"] if row["employee_id"] != "D"]
+        return result
+
+    for doctored, difference in ((with_extra, ({"Z"}, set())), (without_d, (set(), {"D"}))):
+        monkeypatch.setattr(shared_named_playback, "simulate_named_replication", doctored)
+        with pytest.raises(NamedPlaybackError) as caught:
+            prepare_named_playback(HORIZON, demand, employees, workforce, roster, root_entropy=3, replication_index=0,
+                                   closing_policy=DRAIN, employee_policy=APPROVED_EMPLOYEE_POLICY,
+                                   required_staffing=required)
+        failure = caught.value.failure
+        timeline_ids, input_ids = set(failure["evidence"]["timeline_employees"]), set(failure["evidence"]["input_employees"])
+        assert failure["check"] == "employee_identity" and (timeline_ids - input_ids, input_ids - timeline_ids) == difference
+    # The stored-run path regenerates through prepare_named_playback, so it refuses in the same way (the run itself was
+    # recorded by the real engine).
+    run = run_named_replications(HORIZON, demand, employees, workforce, roster, replications=1, seed=3,
+                                 closing_policy=DRAIN, employee_policy=APPROVED_EMPLOYEE_POLICY,
+                                 required_staffing=required)
+    monkeypatch.setattr(shared_named_playback, "simulate_named_replication", with_extra)
+    assert _refused(run, 0, "employee_identity")["evidence"]["input_employees"] == ["A", "B", "C", "D"]
+    monkeypatch.setattr(shared_named_playback, "simulate_named_replication", real)
+    assert playback_from_named_replications(run, 0)["summary"] == run["replications"][0]
 
 
 # ── Isolation ───────────────────────────────────────────────────────────────

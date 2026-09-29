@@ -842,6 +842,27 @@ Recorded in the playback spec, "Follow-up: validation hardening (2026-09-29)". O
 - Open (VERIFIED, not fixed, needs approval): an extra engine break, shift, or interval record naming an employee who is not in the timeline (for example `"Z"`) is still accepted, because the reconciliation compares only the timeline's employees.
 - Next (needs explicit approval): the open finding above, 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
+## Shared Queue Enhancement: Phase 5B-4.5 Employee Referential Integrity (2026-09-29)
+
+Recorded in the playback spec, "Follow-up: employee referential integrity (2026-09-29)". This resolves the open finding above. Only `simulation/shared_named_playback.py` and its tests changed; `PLAYBACK_VERSION` is v3.
+
+- Defect, reproduced on `086075f7`: an extra record naming an employee outside the timeline was VALID in `replay_named_trace` and `build_named_playback`. It affected intervals, shifts, breaks, and closing inputs (the last was not in the earlier report). A non-string `state_totals` key raised `TypeError`.
+- Authoritative employee set: the run's input employees. `evaluate_roster` reports every one, rostered or not, so the timeline's `state_totals` keys are the input employees.
+- Rule (new check `employee_identity`):
+  - timeline keys are strings;
+  - every interval, shift, break, and closing input names one exactly (case-sensitive, never normalized);
+  - `prepare_named_playback` (and the stored-run path) requires the timeline's employees to equal the input employees.
+  - Existing checks keep their codes.
+- Limit (VERIFIED): from a result alone, an extra employee copying an unrostered employee's records cannot be told apart; only the input check rejects it.
+- Tests: 20 new (117 in the file); one assertion changed from v2 to v3. Against the `086075f7` module the final test file fails 21 (17 accept the orphan, 1 `TypeError`, 1 no refusal, 2 on the v3 version) and passes the other 96.
+- Gates on the final text:
+  - focused: playback 117, named replications 73, named DES 65, state machine 39, pin 9, `test_shared_segments.py` 51, all passed;
+  - all `tests/test_shared_*.py`: 811 passed;
+  - Separate Queue (20 files): 182 passed;
+  - full backend suite: 1844 passed, 3 skipped, 1 xfailed;
+  - `ruff check .`: clean; `mypy . --exclude '^outputs/'`: clean on 176 files; `git diff --check`: clean.
+- Next (needs explicit approval): 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:

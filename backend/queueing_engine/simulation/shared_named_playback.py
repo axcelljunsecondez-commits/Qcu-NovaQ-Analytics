@@ -95,7 +95,9 @@ from backend.queueing_engine.simulation.shared_replications import SEED_SCHEME
 
 # v2 (5B-4.5 hardening): the closing policy must be an approved value, and a malformed trace field fails a check
 # instead of raising. Output for a valid trace is unchanged apart from the new check in validation.checks.
-PLAYBACK_VERSION = "novaq-shared-named-playback-v2"
+# v3 (5B-4.5 hardening): an employee-indexed record naming an employee outside the employee timeline fails
+# employee_identity. Output for a valid trace is unchanged apart from the new check in validation.checks.
+PLAYBACK_VERSION = "novaq-shared-named-playback-v3"
 
 # ── Event vocabulary (from the named engine; anything else is rejected) ─────
 
@@ -215,6 +217,11 @@ CHECKS = {
     "customer_reconciliation": "Rebuilt customers, counts, waits, closing state, and line integrals equal the result.",
     "employee_reconciliation": (
         "Rebuilt employee intervals, shifts, breaks, staffing series, and finish equal the employee timeline."),
+    "employee_identity": (
+        "The employee timeline's employees (its state_totals keys, one per input employee) are strings, and every "
+        "interval, shift, break, and closing input names one of them; transitions, customer rows, and the DRAIN crew "
+        "are held to them by trace_structure, customer_reconciliation, and drain_frozen_crew. With the run's inputs, "
+        "the timeline's employees are exactly the input employees."),
 }
 
 TOLERANCE = {"rel": 1e-9, "abs": 1e-12}  # Phase 4 playback convention (shared_playback._TOLERANCE), float sums only
@@ -275,6 +282,25 @@ def _check_closing_policy(policy: object) -> None:
     if not isinstance(policy, str) or policy not in CLOSING_POLICIES:
         raise _fail("closing_policy", "The closing policy must be exactly DRAIN or HARD_CUTOFF.",
                     {"closing_policy": policy, "approved": list(CLOSING_POLICIES)})
+
+
+_EMPLOYEE_RECORDS = (("employee_timeline", "intervals"), ("employee_timeline", "shifts"),
+                     ("employee_timeline", "breaks"), ("at_close", "closing_inputs"))
+
+
+def _check_employee_references(result: dict[str, Any], employee_ids: Sequence[str]) -> None:
+    # Referential integrity: the reconciliation compares only the timeline's employees, so a record naming anyone else
+    # would otherwise be ignored. The id is tested as a string first (no hashing of a malformed value) and exactly
+    # (ids are case-sensitive; nothing is normalized).
+    known = frozenset(employee_ids)
+    for block, name in _EMPLOYEE_RECORDS:
+        for index, record in enumerate(result[block][name]):
+            employee_id = record.get("employee_id") if isinstance(record, dict) else None
+            if not isinstance(employee_id, str) or employee_id not in known:
+                raise _fail("employee_identity", f"A {block}.{name} record names an employee who is not in the employee "
+                            "timeline.", {"record_type": f"{block}.{name}", "index": index,
+                                          "record": dict(record) if isinstance(record, dict) else record,
+                                          "timeline_employees": sorted(known)})
 
 
 def _period(t: float, closing: float) -> str:
@@ -871,6 +897,7 @@ def _reconcile(replay: _Replay, result: dict[str, Any]) -> tuple[dict[str, Any],
     if malformed:
         raise _fail("employee_reconciliation", "A started engine break has a non-string employee_id or a non-numeric "
                     "actual_start.", {"breaks": malformed})
+    _check_employee_references(result, replay.ids)
     breaks = [dict(row) for employee_id in replay.ids for row in replay.breaks[employee_id]]
     exact("employee_reconciliation", "started breaks (actual start, actual end, outcome)",
           [(row["employee_id"], row["actual_start"], row["actual_end"], row["outcome"]) for row in breaks],
@@ -950,6 +977,10 @@ def _replay(
 ) -> tuple[_Replay, dict[str, Any], list[dict[str, str]]]:
     """The replay, the rebuilt tables, and the reconciliation methods; raises ``_Violation`` on a failed check."""
     _check_closing_policy(result["closing_policy"])
+    employees = list(result["employee_timeline"]["state_totals"])
+    if not all(isinstance(employee_id, str) for employee_id in employees):
+        raise _fail("employee_identity", "The employee timeline's employees (state_totals keys) must be strings.",
+                    {"timeline_employees": employees})
     replay = _Replay(result, horizon, demand_periods)
     replay.run(_merge(result))
     rebuilt, methods = _reconcile(replay, result)
@@ -1103,6 +1134,14 @@ def prepare_named_playback(
         seed_sequence=replication_seed_sequence(root_entropy, replication_index), closing_policy=closing_policy,
         employee_policy=employee_policy, required_staffing=required_staffing, max_trace_events=None,
     )
+    # With the inputs, the run's employees are known: the timeline holds exactly the input employees (evaluate_roster
+    # reports every one, rostered or not). The result alone cannot tell an extra employee from an unrostered one.
+    timeline_employees = list(result["employee_timeline"]["state_totals"])
+    input_employees = [employee.employee_id for employee in employees]
+    if set(timeline_employees) != set(input_employees):
+        raise NamedPlaybackError(_fail("employee_identity", "The employee timeline's employees differ from the run's "
+                                       "input employees.", {"timeline_employees": timeline_employees,
+                                                            "input_employees": input_employees}).failure)
     playback = build_named_playback(result, horizon, demand_periods, replication_index=replication_index,
                                     root_entropy=root_entropy)
     inputs = named_inputs_snapshot(horizon, demand_periods, employees, rules, roster, required_staffing)

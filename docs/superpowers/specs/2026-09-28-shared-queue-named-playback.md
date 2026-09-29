@@ -420,6 +420,82 @@ check in `validation.checks`. `PLAYBACK_VERSION` is now `novaq-shared-named-play
   is still accepted. The reconciliation compares only the timeline's employees, so such a record is
   ignored rather than rejected. Fixing it needs approval.
 
+## Follow-up: employee referential integrity (2026-09-29)
+
+This follow-up resolves the open finding above. It changes only `simulation/shared_named_playback.py`
+and its tests. `PLAYBACK_VERSION` is now `novaq-shared-named-playback-v3`.
+
+- **Defect, reproduced on `086075f7` before any change** (scratch script, not committed). An extra
+  record naming an employee outside the employee timeline (`"Z"`) was VALID in `replay_named_trace`
+  and `build_named_playback`, with every legitimate record unchanged.
+  - Affected record types: `employee_timeline.intervals`, `employee_timeline.shifts` (activated or
+    not), `employee_timeline.breaks` (started or unfulfilled), and `at_close.closing_inputs`. The
+    earlier report did not name the last one.
+  - Cause (verified in the code): `_reconcile` compared intervals, shifts, and breaks only for the
+    timeline's employees, and it did not compare closing inputs at all.
+  - Also: a non-string `state_totals` key raised `TypeError` when the replay sorted its employees.
+  - Already rejected, and unchanged: an extra DRAIN crew member (`drain_frozen_crew`), a customer row
+    (`customer_reconciliation`), a transition (`trace_structure`), a trace service event
+    (`same_time_order`), and a `state_totals` employee without intervals (`employee_reconciliation`).
+- **Authoritative employee set: the run's input employees.** The chain, from the code:
+  - `evaluate_roster` reports every input employee, rostered or not (`shared_workforce.py`).
+  - `EmployeeTimeline` has one employee per row, and each gets intervals over `[begin, finish)`.
+  - `state_totals` is built from those intervals.
+
+  So within a result, the `state_totals` keys (the replay's employees) are the input employees. The
+  sets legitimately differ elsewhere: the roster may omit input employees; only rostered employees
+  have shifts and breaks; only employees who go on duty have transitions; and an unrostered employee
+  appears only in intervals and state totals, OFF throughout.
+- **Rule (new check `employee_identity`).**
+  1. The `state_totals` keys are strings.
+  2. Every interval, shift, break, and closing-input record names one of them. The comparison is
+     exact: ids are case-sensitive strings (`shared_workforce._EMPLOYEE_ID`), and nothing is
+     normalized, dropped, or reassigned.
+  3. `prepare_named_playback`, and so the stored-run path, also requires the timeline's employees to
+     equal the input employees.
+  - The `086075f7` started-break key check and the existing checks above run first, so their check
+    codes are unchanged. Closing inputs' values are still not reconciled ("not applicable"); only
+    their employee ids are checked.
+- **Limit (VERIFIED by probe).** From a result alone, an extra employee whose records copy an
+  unrostered employee's (OFF intervals and totals) cannot be told apart. `replay_named_trace` and
+  `build_named_playback` accept it; only the input check in `prepare_named_playback` rejects it.
+- **Version.** No written versioning policy exists. In practice a version has changed whenever what a
+  module emits changed:
+  - named DES v3 for trace-only changes;
+  - replications method v2 for a new provenance key;
+  - playback v2 (`086075f7`) for a new `validation.checks` entry and a stricter acceptance contract.
+
+  This follow-up does both of the last, hence v3. One existing assertion changed from v2 to v3 (in
+  `test_approved_closing_policies_are_accepted_by_every_entry_point`).
+- **Tests** (`tests/test_shared_named_playback.py`, 20 new, 117 in the file). Against the `086075f7`
+  module, the final test file fails 21 and passes the other 96. Of the 21: 17 accept the orphan, 1
+  raises `TypeError`, 1 does not refuse the doctored engine, and 2 assert the v3 version (the changed
+  assertion and the unrostered-employee test).
+  - An extra record for `"Z"` in each of 7 variants (two intervals, two shifts, two breaks, a closing
+    input) is rejected by the replay and the build. The check, the record type, the index, the
+    record, and the timeline employees are pinned, and the input is left unchanged.
+  - Three of those variants change no aggregate (the replication row, counts, customers, queue,
+    staffing, and state totals are the same) and are still rejected.
+  - Ids that only resemble a timeline employee (`"a"`, `"A "`, `" A"`, `""`, `"D"`, and 64
+    characters) are rejected in every variant.
+  - Non-string ids fail without raising. A started break keeps `employee_reconciliation`; the others
+    fail `employee_identity`. So does a closing input with no employee_id or that is not a record.
+  - A non-string timeline employee fails `employee_identity`. A timeline employee without intervals
+    still fails `employee_reconciliation`.
+  - An unrostered input employee is on the timeline, OFF throughout, and accepted.
+  - With doctored engines (an extra employee copying an unrostered one's records; a missing one),
+    `prepare_named_playback` and the stored-run path refuse with `employee_identity`. The real engine
+    is accepted.
+- **Gates (executed on the final text, 2026-09-29):**
+  - focused: playback 117, named replications 73, named DES 65, state machine 39, pin 9, and
+    `tests/test_shared_segments.py` (isolation list) 51, all passed;
+  - all 14 `tests/test_shared_*.py` files: 811 passed;
+  - Separate Queue, the same 20 files: 182 passed;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 1844 passed, 3 skipped (PostgreSQL
+    rehearsal, `NOVAQ_TEST_DATABASE_URL` unset), 1 xfailed (the known strict xfail), in 813 s;
+  - `ruff check .`: clean; `mypy . --exclude '^outputs/'`: clean on 176 files; `git diff --check`:
+    clean.
+
 ## Undetermined (UNKNOWN or INFERRED)
 
 1. Cross-version numpy stream equality: UNKNOWN (unchanged from 5B-4.4).
