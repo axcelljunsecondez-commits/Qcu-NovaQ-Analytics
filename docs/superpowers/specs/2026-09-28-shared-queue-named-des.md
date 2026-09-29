@@ -454,5 +454,6 @@ customer result." Engine version `novaq-shared-named-des-v3`.
 - Seeded named replications (5B-4.4) need X5 and a decision on item 4 above. (Done in 5B-4.4:
   `2026-09-28-shared-queue-named-replications.md`.)
 - Named playback (5B-4.5): done, `2026-09-28-shared-queue-named-playback.md`.
-- Attribution reporting (5B-4.6) and workforce cost (5B-5) are not started. None may begin without
-  explicit approval.
+- Attribution reporting (5B-4.6): done, `2026-09-29-shared-queue-named-attribution.md`. It reads this
+  engine's `employee_timeline` and changes nothing in the engine (still v3).
+- Workforce cost (5B-5) is not started and may not begin without explicit approval.

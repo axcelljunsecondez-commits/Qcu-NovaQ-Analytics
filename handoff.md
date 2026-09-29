@@ -863,6 +863,62 @@ Recorded in the playback spec, "Follow-up: employee referential integrity (2026-
   - `ruff check .`: clean; `mypy . --exclude '^outputs/'`: clean on 176 files; `git diff --check`: clean.
 - Next (needs explicit approval): 5B-4.6 attribution reporting, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
+## Shared Queue Enhancement: Phase 5B-4.6 Named-Employee Attribution Reporting (2026-09-29)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-29-shared-queue-named-attribution.md` (approved as decisions D1-D8 on 2026-09-29; its section 12 records the implementation)
+- `docs/superpowers/plans/2026-09-29-shared-queue-named-attribution-plan.md`
+
+Current verified state:
+
+- New `simulation/shared_named_attribution.py` (`novaq-shared-named-attribution-v1`). `build_named_attribution(result, employees)` is a pure read of one named result's `employee_timeline` and the run's input employees.
+  - Its primary record is employee × shift × run. It adds per-employee sums over activated shifts.
+  - It adds no aggregation across replications, no verdict, and no pay or cost.
+  - Failures raise `NamedAttributionError` (check, message, evidence), through 11 checks. Nothing is repaired.
+- Per-shift allocation is exact, by `(employee_id, shift_index)`. The preconditions are checked on every input.
+- The quantities:
+  - shift timing, on-duty hours by base state, and register wait;
+  - after-closing and past-scheduled-end time as four disjoint cells, including `after_closing_and_past_scheduled_end_hours`, summed directly (D3);
+  - per break, `delay_from_scheduled_hours` and `delay_from_due_hours` (D2), and shortened and unfulfilled hours.
+- Units are hours (D1). `inputs_sha256` is `None`, with the reason (D4). There is no `paid` field (D5). There is no replication runner, and the rows are unchanged (D6).
+- D7: a derived duration within the house tolerance below zero is reported as 0.0; beyond the tolerance the call fails. Timing comparisons stay exact.
+- Defect found and fixed in the new module: malformed values beyond the float range (for example `10**400`) raised `OverflowError` instead of failing a check. This was VERIFIED before and after the fix.
+- Out-of-scope finding: the protected playback `_time()` helper was observed to raise `OverflowError` for `_time(10**400)`. Whether this propagates through `replay_named_trace` was not tested. Playback v3 was not modified during Phase 5B-4.6. A separate task was opened for it.
+- Spec correction: the section 7.4 example "stable day = zero attribution" was wrong. VERIFIED: 24 of 25 seeded stable replications are nonzero under each policy. The test uses `zero_arrivals` and a prescribed quiet day, and the contract is unchanged.
+- Docs: the policy spec's stale 5B-4.6 entries (P2 threshold, P8 mapping, P9 question) are corrected, with the original text kept. The named-DES spec's next-steps line is updated.
+- Tests: `tests/test_shared_named_attribution.py` is new, with 46 functions and 141 tests. It covers:
+  - hand cases H1-H8 and H1b;
+  - seeded identities on 10 scenarios × 2 policies × 25 replications, including the 5B-4.4 row;
+  - 85 malformed or order-violation cases;
+  - the D7 rule and its boundary;
+  - purity and isolation.
+
+  `tests/test_shared_segments.py`: the module joins the isolation set.
+- Fault injection, on a scratch copy; the working tree was untouched:
+  - Final pass on the final attribution implementation: 99 mutants in total. 94 were killed. 3 survived because the guarded conditions are input-unreachable through validated execution paths. 2 were demonstrated to be equivalent mutants. There were 0 timeouts and 0 harness failures.
+  - The three defensive checks (on-duty span, closing partition, and base-state partition) were retained, because forced or bypassed validation demonstrated that they still detect real malformed states.
+  - Earlier passes: 95 mutants with 55 killed, then 95 with 90 killed.
+  - The earlier 900-second mutation timeout did not reproduce, and its cause remains UNKNOWN. A separate scratch restore-path mistake occurred during manual reproduction and was corrected. There is no evidence that it caused the timeout.
+- Gates on the final code:
+  - focused: attribution 141, state machine 39, named DES 65, named replications 73, playback 117, segments 51, and pin 9, all passed;
+  - all `tests/test_shared_*.py` (15 files): 952 passed;
+  - Separate Queue (20 files): 182 passed;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 1985 passed, 3 skipped, 1 xfailed (baseline 1844 + 141). The skips are the PostgreSQL migration rehearsal tests, which need `NOVAQ_TEST_DATABASE_URL`; the xfail is the known 2026-09-19 `test_selected_mc_load` finding.
+  - The full backend suite completed in approximately 65 minutes. Other processes were active during the run; whether they caused the longer runtime is UNKNOWN.
+  - `ruff check .`: clean.
+  - `mypy . --exclude '^outputs/'`: success on 178 files. Plain `mypy .` shows only the 5 known errors in the gitignored `outputs/` script.
+  - `git diff --check`: clean.
+  - Documentation-only edits came after the gates, and no test reads those files.
+- Unchanged (`git diff 5a9738e2`): named DES v3, state machine v3, replications method v2, playback v3, Separate Queue, services, API, database, frontend, dependencies, and fixtures.
+- Undetermined:
+  - cross-version numpy stream equality: UNKNOWN;
+  - whether a derived duration ever takes the D7 zero or failure branch on engine output: NOT TESTED;
+  - whether 5B-4.6 must precede 5B-5: UNKNOWN;
+  - D15: UNKNOWN (undefined);
+  - the before-opening window shape: INFERRED and out of scope.
+- Next (needs explicit approval): 5B-5 workforce cost, an acceptance rule, API or UI exposure, and the playback overflow task.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:

@@ -307,3 +307,24 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Float sums are compared with the Phase 4 playback tolerance (rel 1e-9, abs 1e-12); times are always compared exactly. Reproducibility is still claimed only under the recorded runtime.
 - Playback v2 (2026-09-29 hardening): the closing policy must be exactly `DRAIN` or `HARD_CUTOFF` (check `closing_policy`, the engine's `CLOSING_POLICIES` test behind a string test; never normalized or inferred from events), and a malformed trace value fails a check instead of raising. An engine timeline record naming an employee outside the timeline is still accepted (open, needs approval).
 - Playback v3 (2026-09-29, resolves the item above): the run's input employees are the authoritative employee set (`evaluate_roster` reports every one, so they are the timeline's `state_totals` keys). Check `employee_identity` requires string timeline keys, requires every interval, shift, break, and closing input to name one of them exactly (case-sensitive, never normalized), and, in `prepare_named_playback`, requires the timeline's employees to equal the input employees. A result alone cannot tell an extra employee who copies an unrostered employee's records from a real one; only the input check can.
+
+## Shared-Queue Named Attribution (2026-09-29)
+
+- Phase 5B-4.6 is specified in `docs/superpowers/specs/2026-09-29-shared-queue-named-attribution.md`, approved by the product owner on 2026-09-29 as decisions D1-D8. `simulation/shared_named_attribution.py` (`novaq-shared-named-attribution-v1`) reports operational quantities per employee × shift × run from one named result's `employee_timeline` and the run's input employees.
+  - It runs no simulation and changes no record.
+  - It adds no aggregation across replications, no verdict, and no pay, overtime, or cost meaning (5B-5).
+- The engine interval's `shift_index` is the shift's position in the input roster, unique across the roster. It is `None` exactly on OFF intervals. No interval crosses closing or its own shift's scheduled end. So attribution to a shift is exact, and the module checks these preconditions on every input.
+- The after-closing and past-scheduled-end flags are independent. On-shift time falls into four disjoint cells (neither, after_closing_only, past_scheduled_end_only, both), and every field is summed directly from the intervals (D3). Subtraction and union formulas are reconciliation checks only. `past_scheduled_end_hours` equals the engine's `overrun`.
+- Per break (D2):
+  - `delay_from_scheduled_hours` is the engine's `delay` (from the roster start). It includes late split-shift activation, the minimum-gap push, and service.
+  - `delay_from_due_hours` is `actual_start - due`, the part caused by the service under way.
+  - `_total` means a sum across breaks only.
+  - A completed break reports `shortened_hours` exactly 0.0 by P1. Configured minus actual is ±2.2e-16 on some completed breaks, so it is not computed by subtraction.
+- Units are hours (D1); `configured_minutes` is the only source-unit field. `inputs_sha256` is `None`, because the full run inputs are unavailable (D4). The break `paid` flag is excluded (D5). There is no replication runner: regenerate through 5B-4.4, then attribute (D6).
+- D7: a derived duration `x = a - b` with a nonnegative true value is reported as `x` when `x >= 0`. It is `0.0` when `a < b` and `math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)` (the playback tolerance applied to the operands). Otherwise the check `finite_nonnegative` fails. The tolerance is never used for event order or timing comparisons, which stay exact.
+- Three checks are input-unreachable through validated paths but are retained, because the spec requires them and they fire when upstream validation is bypassed:
+  - on-duty span;
+  - closing partition;
+  - base-state partition.
+- Values beyond the float range must fail a check, not raise `OverflowError`. This was fixed in attribution. The protected playback `_time()` shows the same pattern; propagation is NOT TESTED, and it was not fixed in 5B-4.6.
+- The seeded `SCENARIOS["stable"]` day is not a zero-attribution day (24 of 25 replications nonzero under each policy). Use `zero_arrivals` or a prescribed quiet day for zero cases.
