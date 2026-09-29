@@ -273,6 +273,16 @@ SELECTION_GENERATION_UNRECORDED_DETAIL = (
     "The selection has no recorded generation identity and cannot be verified; "
     "select the plan again in Compare."
 )
+# G6 (decision D2, texts approved 2026-09-29): a Decision is produced only under a selection whose
+# recorded dataset generation is the verified dataset row's.
+SELECTION_DATASET_GENERATION_UNRECORDED_DETAIL = (
+    "The selection has no recorded dataset generation identity and cannot be verified; "
+    "select the plan again in Compare."
+)
+SELECTION_DATASET_GENERATION_MISMATCH_DETAIL = (
+    "The selection's recorded dataset generation does not match the verified dataset; "
+    "select the plan again in Compare."
+)
 
 
 def _job_setup_current(job: Job | None, analysis: AnalysisProject) -> bool:
@@ -652,6 +662,25 @@ def _selection_binding_problem(selection: Job, scenario: Scenario) -> str | None
     if recorded != scenario.generation:
         return SELECTED_PLAN_REPLACED_DETAIL
     return None
+
+
+def _require_selection_dataset_generation(selection: Job | None, dataset: Dataset) -> None:
+    """G6 (spec 2026-09-26 G-T7, decision D2): under enforcement a Decision is produced only when the
+    selection's recorded dataset generation is the verified dataset row's.
+
+    The selection binding above checks only the scenario token. A Decision records its selection,
+    so one produced under a selection whose dataset token is unrecorded or different would be
+    stored and then never served. Both Decision endpoints call this last, immediately before
+    persisting, so every existing refusal keeps its status and message. Off, nothing is checked.
+    """
+    if not _generation_enforced():
+        return
+    params = (selection.params_json if selection is not None else None) or {}
+    recorded = _recorded_generation(params.get("dataset_generation"))
+    if recorded is None:
+        raise HTTPException(status_code=409, detail=SELECTION_DATASET_GENERATION_UNRECORDED_DETAIL)
+    if recorded != dataset.generation:
+        raise HTTPException(status_code=409, detail=SELECTION_DATASET_GENERATION_MISMATCH_DETAIL)
 
 
 # ── D7 + Step 5: persisted evidence must resolve to live, in-scope dependencies ──
@@ -2860,6 +2889,7 @@ def create_selected_decision(
         failure_cap=float(failure_cap) if isinstance(failure_cap, (int, float)) else 0.0,
     )
     selection = _latest_job(db, user, "workflow_selection", analysis.id)
+    _require_selection_dataset_generation(selection, plan["dataset"])
     decision["evidence_ids"] = {
         "selection": selection.id if selection else None,
         "des": des_job.id,
@@ -2884,7 +2914,7 @@ def create_decision(
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
     evidence = _current_evidence(db, user, analysis)
-    scenario, dataset, _ = _selected_scenario_and_dataset(db, user, analysis)
+    scenario, dataset, selection = _selected_scenario_and_dataset(db, user, analysis)
     if (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues":
         # Separate plans are decided only from the selected-plan evidence chain;
         # the shared rules here must never produce or persist a verdict for them.
@@ -2896,6 +2926,7 @@ def create_decision(
     result = _derive_decision(analysis, scenario, evidence)
     if scenario is None or dataset is None:
         return {"decision": result, "persisted": False}
+    _require_selection_dataset_generation(selection, dataset)
     job = _save_job(
         db, user, "workflow_decision", analysis, scenario,
         {"evidence_ids": result["evidence_ids"]}, result, settings, dataset,
