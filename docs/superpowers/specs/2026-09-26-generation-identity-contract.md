@@ -1,4 +1,4 @@
-# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2, G3, G4, G5 and G6 committed locally)
+# Generation Identity — Implementation Contract (ACCEPTED; G1, G1-H, G2, G3, G4, G5, G6 and G7 committed locally)
 
 - **Status:** APPROVED SPECIFICATION. The design direction was accepted on 2026-09-26, and this
   contract on 2026-09-28, with OD-G2 approved (§8) and the legacy policy (§6) confirmed.
@@ -32,7 +32,13 @@
       pins G-T7 and G-T8 with tests; `reports.py` needed no change. The flag is still off. Its status
       is **COMMITTED — VERIFIED ONLY BY TESTS THAT SWITCH THE FLAG ON, ON SQLITE AND A TARGETED LOCAL
       POSTGRESQL 18.6 RUN; FULL POSTGRESQL SUITE, CI AND PRODUCTION GATES PENDING** (§10.1).
-  - Nothing after G6 is implemented: G7–G9 are not started and not authorized. Enforcement is not
+    - G7: the production startup and readiness guard on the database's Alembic heads, committed as
+      `e64b50cc`. It applies only when `Settings.environment == "production"`, requires exact head
+      equality, fails closed, and is independent of generation enforcement. Its status is
+      **COMMITTED — VERIFIED BY TESTS ON SQLITE AND A TARGETED LOCAL POSTGRESQL 18.6 RUN; FULL
+      POSTGRESQL SUITE, CI, PRODUCTION PINS AND PRODUCTION GATES PENDING** (§11.4). It is in
+      CONFLICT with §1 rule 6 once a later migration exists (§1).
+  - Nothing after G7 is implemented: G8–G9 are not started and not authorized. Enforcement is not
     active in the application: `GENERATION_ENFORCEMENT_ENABLED = False`, so its default behaviour is
     enforcement off. Behaviour with enforcement on is tested only with the flag switched on in
     tests, for G5's consumers (§8.2) and for the Decision and report paths (G6, §10.1). The
@@ -75,6 +81,12 @@
      through the production Compose migration chain on 0005, because its own Alembic and
      `migration_status` reject the revision (§6.2, §11.1). ORM compatibility is not deployment
      startability.
+   - **CONFLICTING since G7 (`e64b50cc`, §11.4).** The G7 production guard admits only a database
+     exactly at the code's Alembic heads (§11.1, G-T16, decision D1). Once a later migration exists,
+     a production backend that carries the guard refuses to start on the newer schema, although the
+     first half of this rule says an older backend must keep working on a migrated schema. The
+     second half (a newer backend refuses an unmigrated schema) holds. This conflict is recorded,
+     not resolved; resolving it needs a separate decision.
 
 ## 2. Verified baseline (at `4db54722` unless stated)
 
@@ -92,7 +104,7 @@
 | Alembic: `env.py` runs the whole upgrade inside one `begin_transaction()`. Alembic `SQLiteImpl.transactional_ddl = False` and `PostgresqlImpl.transactional_ddl = True` (local 1.19.1; production pins 1.19.2) | source, runtime check | VERIFIED |
 | Image: `Dockerfile.api` copies `alembic.ini` and `migrations/`; `CMD ["/bin/sh", "/app/backend/api/entrypoint.sh"]` | source | VERIFIED |
 | `entrypoint.sh` runs `backend.operations.preflight` (settings only), then uvicorn `backend.api.main:app` | source | VERIFIED |
-| `create_app` has no startup hook; `app = create_app()` runs at import (`main.py:266`); `/ready` is `SELECT 1` | source | VERIFIED |
+| `create_app` has no startup hook; `app = create_app()` runs at import (`main.py:266`); `/ready` is `SELECT 1`. Since G7 (`e64b50cc`): a production app has a lifespan guard and its `/ready` also checks the Alembic heads; `app = create_app()` is at `main.py:315` (§11.4) | source | VERIFIED |
 | `migration_status` exits 1 on any head mismatch | source; run in the prototype | VERIFIED |
 | Production Compose orders migrate → bootstrap-admin → api (`depends_on … service_completed_successfully`); the `migrate` service runs `alembic upgrade head && migration_status` | `docker-compose.production.yml` | VERIFIED |
 | Runbook: "Rollback is backup-first, not `alembic downgrade`" (`operations.md:216-220`); "Migration failure prevents API startup" describes the Compose ordering | `docs/operations.md` | VERIFIED (document) |
@@ -852,16 +864,20 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
 - **The Docker image runs `entrypoint.sh`** (VERIFIED). Whether Render runs that command, overrides
   it, or uses a native runtime with its own start command is **UNKNOWN**. So a guard placed only in
   `entrypoint.sh` might never run.
-- **Proposed guard: inside the application.** A FastAPI lifespan hook in `create_app` verifies,
-  when `NOVAQ_ENV=production`, that the database is exactly at the code's Alembic head. It uses the
-  same logic as `migration_status`; `alembic.ini` and `migrations/` are in the image.
+- **Guard inside the application** (proposed here; implemented in G7, `e64b50cc`, §11.4). A FastAPI
+  lifespan hook in `create_app` verifies, when `NOVAQ_ENV=production`, that the database is exactly
+  at the code's Alembic head. It uses the same logic as `migration_status`; `alembic.ini` and
+  `migrations/` are in the image.
   - It runs whenever `backend.api.main:app` is served, however uvicorn is launched.
   - Mechanism VERIFIED locally on a throwaway app with uvicorn 0.48.0 (§15.3): a lifespan exception
-    gives "Application startup failed. Exiting.", exit code 3, and nothing is served. The guard
-    itself is not implemented.
+    gives "Application startup failed. Exiting.", exit code 3, and nothing is served. Historical:
+    the guard itself was not implemented then. Since G7 the application's own guard gives the same
+    result with local uvicorn 0.48.0 (§11.4).
   - On the production pins (uvicorn 0.52.4, FastAPI 0.141.1) it is **NOT TESTED**.
-  - `entrypoint.sh` may run `migration_status` as well, as defence in depth.
+  - `entrypoint.sh` may run `migration_status` as well, as defence in depth. Decision D6
+    (2026-09-29): G7 does not add it, and `entrypoint.sh` is unchanged.
   - `/ready` also returns 503 on a mismatch, in case the schema changes under a running process.
+    Implemented in G7, in production only (§11.4).
 - **Limit of the guard:** it cannot help if Render serves a different application object (UNKNOWN,
   and a stop condition).
 - **How each backend behaves on each schema:**
@@ -874,8 +890,11 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
     available only while no pre-G instance restarts, redeploys or rolls back through a
     migration-checking start path. Whether the production platform has such a path is UNKNOWN.
   - A full pre-G application on 0005 is NOT TESTED.
-  - Newer backend on 0004: it would refuse to start through the guard (PROPOSED). Without the
-    guard, the new ORM models fail on their first query: `no such column` on SQLite (VERIFIED in
+  - Newer backend on 0004: it would refuse to start through the guard (PROPOSED). Since G7 a
+    production backend refuses to start on the previous revision: VERIFIED by tests on SQLite and
+    local PostgreSQL 18.6, and by a local uvicorn 0.48.0 start on SQLite (§11.4); NOT TESTED on the
+    production pins or on any deployment. Without the guard, the new ORM models fail on their first
+    query: `no such column` on SQLite (VERIFIED in
     the prototype and with the committed models), `UndefinedColumn` on PostgreSQL (VERIFIED in the
     prototype). With the committed models on local PostgreSQL 18.6 the first query raises a
     `DBAPIError` (VERIFIED; the test does not pin the subclass).
@@ -915,8 +934,8 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
 | Backend \ schema | 0004 | 0005 |
 |---|---|---|
 | pre-G (`4db54722`) | S0: normal | S1: ORM read and insert VERIFIED (prototype; committed 0005 on SQLite); **does not start through the Compose migrate chain** (its Alembic and `migration_status` reject 0005; VERIFIED on SQLite); full application NOT TESTED; writes unstamped evidence (fails closed later) |
-| G-A (stamping, enforcement off) | refuses to start: PROPOSED guard; only the mechanism is VERIFIED, on a throwaway app | S2: stamps tokens and applies the OD-G2 gate; **the identity defect remains** |
-| G-B (enforcement, v3) | refuses to start (PROPOSED guard) | S3/S4: unstamped evidence is never current (specified; NOT TESTED) |
+| G-A (stamping, enforcement off) | refuses to start in production: the G7 guard (`e64b50cc`), VERIFIED by tests on SQLite and local PostgreSQL 18.6 and a local uvicorn 0.48.0 start; production pins and deployment NOT TESTED (§11.4) | S2: stamps tokens and applies the OD-G2 gate; **the identity defect remains** |
+| G-B (enforcement, v3) | refuses to start in production (the same G7 guard, which does not depend on the enforcement flag; G-B itself is not built) | S3/S4: unstamped evidence is never current (specified; NOT TESTED) |
 
 - Rollback is backup-first.
 - Code-only rollback G-A → pre-G is schema-compatible at the ORM layer only (VERIFIED: prototype,
@@ -925,6 +944,101 @@ All reasons are collected; precedence picks only the headline. `DEPENDENCY_CREAT
   TESTED.
 - Code-only rollback G-B → G-A: both are specified on head 0005; NOT TESTED.
 - Schema rollback means restoring the backup (§6.2 R).
+
+### 11.4 G7 status (committed `e64b50cc`, local, unpushed)
+
+- **Files** (VERIFIED from `git show --stat e64b50cc`): `backend/api/main.py` (+50/−1),
+  `backend/operations/migration_status.py` (+66/−7) and the new `tests/test_startup_schema_guard.py`
+  (55 tests). `entrypoint.sh`, the migrations, the models, `workflow.py`, `evidence_status.py`,
+  `reports.py`, the frontend and the docs are unchanged. No existing test changed.
+- **Decisions of 2026-09-29:** D1 exact head equality (no subset, no superset); D2 the guard applies
+  only when `Settings.environment == "production"`; D3 fail closed; D4 the readiness text; D5 one
+  implementation shared with `migration_status`, whose CLI is unchanged; D6 no `entrypoint.sh`
+  change; D7 a targeted PostgreSQL run against the dedicated test database only.
+- **Generation enforcement is unaffected.** `GENERATION_ENFORCEMENT_ENABLED = False`
+  (`workflow.py:102` at `e64b50cc`). The guard does not read the flag; the tests give the same
+  result with the flag on and off.
+- **Startup** (VERIFIED from source at `e64b50cc`):
+  - `create_app` (`main.py:218`) sets `guard_schema = settings.environment == "production"`
+    (`:243`) and passes a lifespan only then (`:247`). Every other environment builds the app as
+    before, with no lifespan.
+  - The lifespan (`_schema_revision_guard`, `main.py:191-215`) resolves `alembic.ini` and
+    `migrations/` from the package (`REPO_ROOT`, `:47`), not from the working directory. It reads the
+    code's heads (`:204`), compares them with the database's, raises on any problem (`:206`,
+    `:211`), and keeps the verified heads for `/ready` (`:212`).
+  - Shared logic in `migration_status.py`: `expected_heads` (`:16`), `current_heads` (`:21`),
+    `head_mismatch` (`:26-30`, exact set equality), `code_config` (`:33-45`), `required_heads`
+    (`:48-57`) and `schema_head_problem` (`:60-71`).
+  - Startup is refused (fail closed) when:
+    - the database's heads are not exactly the code's: a previous, unknown or newer revision, extra
+      recorded heads, or no recorded revision at all (including a database built only by
+      `create_all`). The message is `migration_status`'s: "Database migration mismatch: expected
+      […], got […].";
+    - the revision cannot be read (database unreachable, `alembic_version` unreadable): "Database
+      migration revision cannot be read (<error type>).";
+    - the code's heads cannot be determined: `alembic.ini` missing (checked explicitly, because
+      Alembic reads a missing ini file as an empty one), `migrations/` missing, or a script directory
+      with no head: "Database migration heads cannot be determined (…).".
+  - These messages go to the startup exception and the server log only.
+- **`/ready`** (`main.py:284-296`):
+  - A database connectivity failure keeps its existing 503 "Database not ready." (`:289`).
+  - In production the revision is read again on every call (`:290-295`). A mismatch, an unreadable
+    revision, or heads the lifespan never established give 503 "Database schema is not at the
+    required migration revision." (`:50`). The response names no revision.
+  - At the exact head it returns 200.
+- **The `migration_status` CLI** (`main`, `migration_status.py:74-85`) behaves as before: it reads
+  `alembic.ini` from the working directory (`:75`), exits with the same mismatch message through
+  `SystemExit` (`:84`), and prints the same success line (`:85`).
+- **Environments.** Production is guarded; development, test and integration are not. The stacks
+  follow their actual `NOVAQ_ENV`, with no special case by stack name: the integration `api` and the
+  rehearsal `api-restored` run as integration (unguarded), and the rehearsal `api` runs as
+  production (`docker-compose.rehearsal.yml:5`) and is guarded. In the integration stack the API
+  starts only after `migrate` has run `alembic upgrade head && migration_status` (pinned by a test).
+  The rehearsal stack is layered on it and does not change that order (INFERRED from the files; the
+  stacks were not run).
+- **Evidence.** All runs were executed on 2026-09-29, before the commit, on files byte-identical to
+  the committed blobs: the committed blob ids of the three files equal `git hash-object` of the gated
+  working files. The baseline ran on `adbbe7d2`; the fault run used a scratch copy of the gated tree,
+  restored to the gated hashes afterwards.
+
+  | Evidence | Result |
+  |---|---|
+  | Baseline at `adbbe7d2`: readiness, production-hardening, migration and chain test files (SQLite) | 120 passed, 94 skipped (PostgreSQL-only), 0 failed |
+  | `tests/test_startup_schema_guard.py` on SQLite | 31 passed, 24 skipped (the PostgreSQL variants, which need `NOVAQ_TEST_DATABASE_URL`) |
+  | The G7 module, `test_readiness.py` and `test_production_hardening.py` on local PostgreSQL 18.6 (`novaq_gen_verify_test`, non-superuser test role; each case migrates a disposable schema; the maintenance database is never used) | 76 passed, 0 skipped, 0 failed. 33 ran on `postgresql`, 30 on SQLite, 13 used no database |
+  | Full SQLite backend suite (`python -m pytest tests/ -x`, with `-p no:cacheprovider -q`) | 1561 passed; 118 skipped (91 in `test_generation_identity_migration.py`, 3 in `test_postgres_migration_chain.py`, 24 in the G7 module, all needing `NOVAQ_TEST_DATABASE_URL`); 1 xfailed (the strict MC xfail); exit 0 |
+  | Fifteen deliberate faults in a scratch copy of `main.py` and `migration_status.py`, run against the G7 module on SQLite | 15 of 15 caught |
+  | `ruff check .`, `mypy .` | clean; mypy: no issues in 169 source files |
+
+  - The G7 module includes a real uvicorn start (local 0.48.0, SQLite) on the previous revision:
+    exit code 3 and "Application startup failed. Exiting.".
+  - The faults: the guard off in production; the guard on outside production; the `/ready` check
+    removed; a subset and a superset of the heads accepted; an unreadable revision treated as a
+    match; a script directory with no head accepted; a missing `alembic.ini` tolerated; the public
+    text changed; `/ready` trusting startup without re-reading; `/ready` treating an unverified
+    startup as ready; startup never refusing; the CLI's output changed; the CLI made independent of
+    the working directory; the application resolving its heads from the working directory.
+  - In the first fault run the changed public text was not caught, because the tests compared with
+    the application's own constant. The tests now state the approved text literally, and all 15
+    faults were run again and caught.
+- **An intermittent failure, cause UNKNOWN.** An earlier full SQLite run, made while other test runs
+  were active, stopped at
+  `test_dataset_staleness_probe.py::test_historical_dataset_report_stays_available_after_replacement`:
+  login returned 500, logged as argon2 `VerificationError`. That test passed on its own and in the
+  later uncontended full run above. The cause is UNKNOWN and is not attributed here.
+- **NOT TESTED or UNKNOWN:**
+  - the PostgreSQL migration and chain tests, which need the cluster's `postgres` maintenance
+    database (NOT RUN);
+  - the full backend suite on PostgreSQL and the fault run on PostgreSQL (NOT RUN);
+  - the CI `postgres-integration` job and PostgreSQL 16 (NOT RUN);
+  - the guard on the production pins, uvicorn 0.52.4 and FastAPI 0.141.1 (NOT TESTED);
+  - Render's start command, working directory, served application object and deploy behaviour
+    (UNKNOWN), and so whether the guard runs there at all;
+  - the production PostgreSQL version and Alembic revision, and whether the production application
+    role can read `alembic_version` (UNKNOWN).
+- **CONFLICTING:** §1 rule 6 against exact head equality once a later migration exists (§1).
+- `docs/operations.md:245-246` still describes `/ready` as a bounded database query only; it is not
+  updated by this contract sync.
 
 ## 12. Protected behaviour
 
@@ -959,7 +1073,7 @@ Replacement construction: delete through the API, then insert directly with the 
 | G-T13 Flag off | identical results to Steps 1–5 on the existing tests and the local fixture, except the OD-G2 refusals (G-T6). Each existing test those refusals affect is reported for review, never silently rewritten |
 | G-T14 Both engines | all of the above on SQLite, and on PostgreSQL through `NOVAQ_TEST_DATABASE_URL` |
 | G-T15 Rollback and retry | M1–M7 and R1–R11 below |
-| G-T16 Startup guard | the production app refuses to start on a mismatched head; `/ready` 503; dev and test unaffected |
+| G-T16 Startup guard | the production app refuses to start on a mismatched head; `/ready` 503; dev and test unaffected. G7 (§11.4): "production" means `Settings.environment == "production"`; integration is unaffected too |
 | G-T17 Protected behaviour | D-series suites, Step 1–5 suites, full backend and frontend suites; the strict xfail unchanged |
 
 **Migration tests:**
@@ -1023,9 +1137,9 @@ Every R test asserts:
 | G8 release G-A | operations only | 0005 applied explicitly | §11.2 | any §11.2 fact is UNKNOWN |
 | G9 release G-B, with v3 | flag constant | legacy evidence non-current | G-T14, G-T17 | a pre-G writer may exist; v3 prerequisites missing |
 
-Status at `4e89b7a8`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`), G3
-(`cb7f78be`), G4 (`446a1e18`), G5 (`1b8a8bd2`) and G6 (`4e89b7a8`) are committed locally and
-unpushed.
+Status at `e64b50cc`: G1 (`1f5c3ab3`, hardened by G1-H `05d64083`), G2 (`f495f0bd`), G3
+(`cb7f78be`), G4 (`446a1e18`), G5 (`1b8a8bd2`), G6 (`4e89b7a8`) and G7 (`e64b50cc`) are committed
+locally and unpushed.
 - G2 changed `scenarios.py` and the dataset serializer in `datasets.py`.
 - G3 changed only `workflow.py` in production code.
 - G4 changed only `evidence_status.py` in production code, with the generation check off by
@@ -1035,7 +1149,10 @@ unpushed.
 - G6 changed only `workflow.py` in production code; `reports.py` needed no change, because the G5
   helpers already give the report paths their G-T8 behaviour. Decision D3 read the row's "additive
   details" as no new response fields, and G6 adds none. The flag is still off (§10.1).
-- G7–G9 are not started and not authorized.
+- G7 changed `main.py` and `migration_status.py` in production code, and left `entrypoint.sh`
+  unchanged (decision D6). The guard applies in production only and does not depend on the flag,
+  which is still off (§11.4).
+- G8–G9 are not started and not authorized.
 
 ## 15. Prototype verification evidence (disposable databases only)
 
@@ -1083,7 +1200,8 @@ In every completing case, on both engines:
 
 A throwaway FastAPI app whose lifespan raises the `migration_status` message: uvicorn 0.48.0 logs
 "Application startup failed. Exiting." and exits with code 3. VERIFIED locally; NOT TESTED on the
-production pins.
+production pins. Since G7 the application's own guard gives the same exit code and message with local
+uvicorn 0.48.0 (§11.4); still NOT TESTED on the production pins.
 
 ## 16. Remaining unknowns
 
@@ -1120,6 +1238,13 @@ production pins.
   need the `postgres` maintenance database (NOT RUN), the fault run on PostgreSQL (NOT RUN), the CI
   job, PostgreSQL 16 and production (§10.1). Whether any stored selection holds the state decision
   D2 refuses (UNKNOWN).
+- G7: the PostgreSQL migration and chain tests that need the `postgres` maintenance database, the
+  full backend suite on PostgreSQL and the fault run on PostgreSQL (NOT RUN); the CI job and
+  PostgreSQL 16 (NOT RUN); the guard on the production pins (NOT TESTED); Render's start command,
+  working directory, served application object and deploy behaviour, the production PostgreSQL
+  version and revision, and the production application role's access to `alembic_version`
+  (UNKNOWN); the cause of the intermittent argon2 failure (UNKNOWN); §1 rule 6 against exact head
+  equality (CONFLICTING) (§11.4).
 - Which stored workflows reach selected MC or validation with an input that fails Step 5 rules,
   and so would meet the OD-G2 refusal (UNKNOWN). For the existing tests this is answered: exactly
   one, whose fixture was corrected (§7.2, D1).
