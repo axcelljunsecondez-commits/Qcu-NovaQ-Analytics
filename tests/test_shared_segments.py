@@ -364,7 +364,7 @@ SHARED_QUEUE_ENHANCEMENT_MODULES = {
     "shared_segments.py", "shared_capacity.py", "shared_continuous_des.py", "shared_day_cost.py",
     "shared_replications.py", "shared_playback.py", "shared_workforce.py", "shared_rostering.py",
     "shared_integrated.py", "shared_employee_states.py", "shared_named_des.py", "shared_named_replications.py",
-    "shared_named_playback.py", "shared_named_attribution.py",
+    "shared_named_playback.py", "shared_named_attribution.py", "shared_named_cost.py",
 }
 
 

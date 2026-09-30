@@ -950,6 +950,38 @@ Recorded in the playback spec, "Follow-up: numeric range (2026-09-30)". Made on 
   - from the 2026-09-29 probe: a huge or `Fraction` `register_count` (playback `handover`), a caller-supplied service rate beyond the float range (playback `_Replay.__init__`), `shared_segments._is_finite_real`, the named DES `servers` sum, and `shared_employee_states._handover`.
 - Next (needs explicit approval): the open items above, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
+## Shared Queue Enhancement: Phase 5B-5 Named Workforce Costing (2026-09-30)
+
+Spec and plan:
+
+- `docs/superpowers/specs/2026-09-30-shared-queue-named-workforce-cost.md` (approved on 2026-09-30 as decisions C1-C16, with C10b and C13 Option U; section 14.1 records the dated implementation-precondition corrections after the playback integration, and section 18 the implementation)
+- `docs/superpowers/plans/2026-09-30-shared-queue-named-workforce-cost-plan.md`
+
+Current verified state:
+
+- Base `feat/shared-queue-segments` at `40ee8dbe`. One local commit; not pushed, merged, or deployed.
+- New `services/shared_named_cost.py` (`novaq-shared-named-cost-v1`). `cost_named_workforce(result, employees, rates)` costs one named-DES run or one regenerated replication (C12). It is a pure read: no simulation, no random numbers, no input changed.
+  - It first runs `build_named_attribution`, whose failures propagate unchanged, and reads every operational quantity from it (C16). It then walks the same validated intervals in time order only to split paid time into regular and overtime.
+  - Failures raise `NamedCostError` (check, message, evidence) through 10 checks after attribution's 11. Nothing is repaired.
+- Cost = per employee `regular_paid_hours × regular_rate_per_hour + overtime_paid_hours × overtime_rate_per_hour` + `queue.customer_hours_total × waiting_rate` + `counts.unserved_at_close × unserved_customer_rate` when the unserved term applies. Named wages replace the Phase 3A capacity labor terms (C2); `shared_day_cost.py` is unchanged.
+- Paid time (C3, C4, C7): WAITING_FOR_REGISTER, AVAILABLE, and the three serving states are paid; OFF (including activation delay and split-shift rest) is unpaid; ON_BREAK is paid only when the engine break record it maps to (exact containment and tiling) has `paid` True. No break penalty or bonus.
+- Overtime (C5, C6, C14, C15): an instant past its shift's scheduled end, after closing, or after cumulative actual paid time (all earlier paid time, flagged or not, across split shifts) reaches the daily threshold; one premium per instant. A missing required threshold gives `HOURS_UNDETERMINED` (labor and total `None`), never `RATE_MISSING`. D7 (`derived_duration`) is used only for `R_k` and a crossing's T piece.
+- Statuses (C13): `COSTED`, `ZERO_QUANTITY` (an exact zero needs no rate, cost 0.0), `RATE_MISSING`, `HOURS_UNDETERMINED`, `NOT_APPLICABLE`. X6 (C10b): HARD_CUTOFF applies the unserved term even at 0 (`ZERO_QUANTITY`); DRAIN applies it only when the realized count is above 0. No verdict or acceptance field (C11); D15 stays UNKNOWN.
+- Implementation choices within the spec (section 18.3): `total_cost` is the fsum of the component costs (sections 9 and 11; section 3's `fsum(L, W, U)` grouping can differ only by rounding: CONFLICTING at rounding level); under DRAIN with an empty crew, the unserved ids must equal the waiting ids (the engine's X6 rule).
+- Tests: `tests/test_shared_named_cost.py` is new, with 53 functions and 137 tests: hand cases HC-A to HC-W3 plus the split-shift threshold regression; seeded identities on 10 scenarios × 2 policies × 25 replications against an exact-arithmetic walk; 78 malformed or overflow cases; rule-level walk tests; purity and isolation. `tests/test_shared_segments.py`: the module joins the isolation set.
+- Fault injection on scratch copies (working tree untouched): 106 mutants. First pass 86 killed; eight test gaps got tests. Final pass: 101 killed, 5 equivalent, 0 timeouts, 0 harness failures. `paid_partition`, `overtime_partition`, and `cost_arithmetic` are input-unreachable and kept; direct tests show they fire.
+- Gates on the final code:
+  - focused: cost 137, attribution 141, state machine 39, named DES 65, named replications 73, playback 167, segments 51, pin 9, and day cost 16, all passed;
+  - all 16 `tests/test_shared_*.py` files: 1139 passed;
+  - Separate Queue (20 files): 182 passed;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 2172 passed, 3 skipped, 1 xfailed, 6 subtests passed (734 s), which is the 2035 recorded for playback v4 plus the 137 new tests. The skips are the three `test_real_postgres_upgrade_paths_preserve_ownership` cases (PostgreSQL rehearsal; the reason was not printed); the xfail is the known `test_selected_mc_load::test_novamart_failing_lanes_are_stable_across_base_seeds`.;
+  - `ruff check .`: clean; `mypy . --exclude '^outputs/'`: no issues in 180 files; `git diff --check`: clean.
+  - The documentation was edited after the gates. No test reads these files.
+- Docs: the policy spec's P1, P9, X6, and 5B-5 rows carry dated corrections, with the original text kept.
+- Unchanged (`git diff 40ee8dbe`): named DES v3, state machine v3, attribution v1, playback v4, replications method v2, Phase 3A day cost, 5B-1 to 5B-3, Separate Queue, API, database, frontend, dependencies, and fixtures.
+- Undetermined: the C14 all-flagged branch and the D7 branches in the walk are INFERRED unreachable; tiny float slices are engine-reachable (tested on a 5-minute roster) but NOT TESTED on the seeded runs; Phase 5A D6 and D8 and D15 are UNKNOWN; cross-version numpy stream equality is UNKNOWN.
+- Next (needs explicit approval): cross-replication cost aggregation, an acceptance rule, API or UI exposure, and the open playback items listed above.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:

@@ -336,3 +336,15 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - base-state partition.
 - Values beyond the float range must fail a check, not raise `OverflowError`. This was fixed in attribution. The protected playback `_time()` shows the same pattern; propagation is NOT TESTED, and it was not fixed in 5B-4.6. (Superseded 2026-09-30: the propagation was VERIFIED and fixed in playback v4; see Named Playback above.)
 - The seeded `SCENARIOS["stable"]` day is not a zero-attribution day (24 of 25 replications nonzero under each policy). Use `zero_arrivals` or a prescribed quiet day for zero cases.
+
+## Shared-Queue Named Workforce Cost (2026-09-30)
+
+- Phase 5B-5 is specified in `docs/superpowers/specs/2026-09-30-shared-queue-named-workforce-cost.md`, approved by the product owner on 2026-09-30 as decisions C1-C16 (C10b; C13 Option U). `services/shared_named_cost.py` (`novaq-shared-named-cost-v1`) costs one named run: named wages for simulated paid time, the realized `queue.customer_hours_total`, and the unserved customers where the term applies.
+  - It first runs the 5B-4.6 attribution and reads its quantities; the walk over the same intervals only splits paid time into regular and overtime. No verdict, acceptance rule, or cross-replication aggregation (C11, C12); D15 stays UNKNOWN.
+  - Named wages replace the Phase 3A capacity labor terms (C2). `shared_day_cost.py` is unchanged; its status names are imported.
+- Paid: every on-duty state except ON_BREAK; ON_BREAK only when the mapped engine break record has `paid` True (the engine copies the flag and never uses it, and attribution does not validate it, so the cost module does). OFF is unpaid, including activation delay and split-shift rest.
+- Overtime is the union of past the shift's scheduled end, after closing, and cumulative actual paid time at or past the daily threshold; one premium per instant. The cumulative total counts all earlier paid time, including flagged overtime, and is never reset between split shifts.
+- A missing threshold is required only when some paid time is neither past the end nor after closing; then the hours are `HOURS_UNDETERMINED`, not `RATE_MISSING`. An exact zero quantity needs no rate (`ZERO_QUANTITY`, cost 0.0); `None` is never read as 0.
+- X6 named (C10b): HARD_CUTOFF applies the unserved term even with nobody unserved (`ZERO_QUANTITY`); DRAIN applies it only when the realized `counts.unserved_at_close` is above 0, never because the frozen crew was empty. Eligibility is never recomputed.
+- Float event times can leave a tiny regular or threshold slice at a crossing (2**-56 h on a 5-minute roster); it is kept as computed. Paid time above 0 that is entirely flagged is INFERRED unreachable from the engine (every activated shift starts before its scheduled end and before closing).
+- The spec has a rounding-level inconsistency: section 3 groups the total as `fsum(L, W, U)`, sections 9 and 11 as the fsum of the component costs. The implementation follows sections 9 and 11.
