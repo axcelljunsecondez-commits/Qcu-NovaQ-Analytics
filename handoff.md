@@ -921,7 +921,7 @@ Current verified state:
 
 ## Shared Queue Enhancement: Phase 5B-4.5 Playback Numeric Range Hardening (2026-09-30)
 
-Recorded in the playback spec, "Follow-up: numeric range (2026-09-30)". Branch `fix/named-playback-overflow`, from `156de75f`; it is not merged into `feat/shared-queue-segments` and not pushed. Only `simulation/shared_named_playback.py` and its tests changed. `PLAYBACK_VERSION` is v4. `shared_named_replications.py` is unchanged, and its `METHOD_VERSION` is still v2.
+Recorded in the playback spec, "Follow-up: numeric range (2026-09-30)". Made on branch `fix/named-playback-overflow`, from `156de75f`, as commit `b0040508`. On 2026-09-30 `b0040508` was fast-forwarded into `feat/shared-queue-segments` (`git merge --ff-only fix/named-playback-overflow`, conflict-free), which moved that branch from `156de75f` to `b0040508`. Nothing was pushed. Only `simulation/shared_named_playback.py` and its tests changed. `PLAYBACK_VERSION` is v4. `shared_named_replications.py` is unchanged, and its `METHOD_VERSION` is still v2.
 
 - Defect, VERIFIED on the v3 module (probe 2026-09-29, and the tests below): values beyond the float range raised `OverflowError` instead of failing a check. This covered huge whole-number or `Fraction` times, engine totals, and `unit_work`, and finite floats whose exact sum is beyond the range. Where probed, each escaped `replay_named_trace`, `build_named_playback`, or both. `playback_from_named_replications` with a doctored engine raised for every case probed: times, `unit_work`, a state total, and an after-closing interval. `build_named_playback` also raised from `named_replication_row`, which ran before the replay: `OverflowError`, or `SharedSegmentError` for inconsistent counts. The v2 hardening covered unhashable values only.
 - Fix (approved as Part A and B1, 2026-09-30):
@@ -939,12 +939,16 @@ Recorded in the playback spec, "Follow-up: numeric range (2026-09-30)". Branch `
   - full backend suite (`python -m pytest tests/ -x --tb=short`): 2035 passed, 3 skipped, 1 xfailed, 6 subtests passed. The skip reasons were not printed in this run. The full suite was not rerun before the change in this worktree, so the difference from the 1985 recorded for 5B-4.6 is not a verified delta;
   - `ruff check .`: clean; `mypy . --exclude '^outputs/'` and plain `mypy .` in this worktree: no issues in 178 files; `git diff --check`: clean.
   - The documentation was edited after the gates. No test reads these files.
+- Integration check (2026-09-30, after the fast-forward; separate from the gate runs above):
+  - the feature branch's tree was identical to `b0040508`, and `git diff --check` was clean for `156de75f..b0040508` and for the working tree;
+  - on that identical tree (run in the fix worktree), focused playback 167, named replications 73, named DES 65, state machine 39, pin 9, segments 51, and attribution 141 passed, and all 15 `tests/test_shared_*.py` files passed (1002);
+  - the full backend suite was not rerun after the integration. The full-suite result above is from the gate run before the integration.
 - Open (VERIFIED, not fixed; each needs approval):
   - the queue-area accumulation in `_reconcile` still raises `OverflowError` with exact `Fraction` times (present on v3 too);
   - an unknown `unfulfilled_cause` passes the replay, and `build_named_playback` raises `SharedSegmentError` from `named_replication_row` (present on v3 too; not an overflow);
   - non-finite values are accepted: a timeline beginning at -inf, and infinite queue integrals, replay as VALID (`math.isclose(inf, inf)` is True);
   - from the 2026-09-29 probe: a huge or `Fraction` `register_count` (playback `handover`), a caller-supplied service rate beyond the float range (playback `_Replay.__init__`), `shared_segments._is_finite_real`, the named DES `servers` sum, and `shared_employee_states._handover`.
-- Next (needs explicit approval): merging this branch into `feat/shared-queue-segments`, the open items above, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
+- Next (needs explicit approval): the open items above, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
