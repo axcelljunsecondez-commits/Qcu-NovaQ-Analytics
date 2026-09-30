@@ -697,6 +697,7 @@
   "simulation.current_mode_eyebrow": "Simulation · Current Configuration",
   "simulation.current_mode_help": "Optimization is unavailable for this analysis, so there is no optimized scenario. DES validates the current configured operation; results are CURRENT evidence, never an optimized recommendation.",
   "simulation.current_badge": "CURRENT configuration",
+  "simulation.no_current_run": "No current run for dataset #{{dataset}}.",
   "simulation.run_current_des": "Run Current DES",
   "simulation.validation_requires_mc": "Current validation needs Current Monte Carlo evidence first. Run Monte Carlo, then validate.",
   "optimize.blocked_continue_simulate": "Optimization cannot produce a scenario for this analysis. You can still validate the current operation in Simulate.",

@@ -4,6 +4,8 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { SimulationPage } from './SimulationPage'
+import en from '../../public/locales/en/translation.json'
+import tl from '../../public/locales/tl/translation.json'
 
 const getWorkflowMock = vi.fn()
 const runDesMock = vi.fn()
@@ -18,6 +20,7 @@ const runSelectedValidationMock = vi.fn()
 const runSelectedDecisionMock = vi.fn()
 const optimizeSpy = vi.fn()
 const getAnalysisMock = vi.fn()
+const getAnalysisCurrentMock = vi.fn()
 
 vi.mock('../api/workflow', () => ({
   getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
@@ -41,6 +44,7 @@ vi.mock('../api/optimization', () => ({
 
 vi.mock('../api/analyses', () => ({
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+  getAnalysisCurrent: (...args: unknown[]) => getAnalysisCurrentMock(...args),
 }))
 
 vi.mock('../api/auth', () => ({
@@ -184,6 +188,7 @@ beforeEach(() => {
   getAnalysisMock.mockReset().mockResolvedValue({
     analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue' } },
   })
+  getAnalysisCurrentMock.mockReset().mockResolvedValue(currentDatasetResponse(9))
   runDesMock.mockReset().mockResolvedValue({ evidence: job('workflow_des', trace) })
   runMcMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc', { results: [mcRow] }) })
   runValidationCurrentMock.mockReset().mockResolvedValue({
@@ -215,6 +220,11 @@ function separateSetup() {
   getAnalysisMock.mockResolvedValue({
     analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues' } },
   })
+}
+
+// GET /analyses/{id}/current: the dataset the server resolves as current for the analysis.
+function currentDatasetResponse(datasetId: number) {
+  return { dataset: { id: datasetId, analysis_id: 7, name: 'Checkout week' }, rows: [], kpis: {}, explanations: [] }
 }
 
 const separateTrace = {
@@ -555,6 +565,106 @@ describe('SimulationPage Simulate Current mode', () => {
     expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
     expect(screen.getAllByText('cashier-east').length).toBeGreaterThanOrEqual(2)
     expect(runValidationCurrentMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('SimulationPage Current mode without current evidence (D7)', () => {
+  const noCurrentEvidence = { selection: null, scenario: null, des_current: null, mc_current: null, validation_current: null }
+  const currentDes = () => job('workflow_des_current', { ...separateTrace, provenance: 'CURRENT' },
+    { scenario_id: null, dataset_id: 11 })
+
+  it('names the actual current dataset when Current DES has never run', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow(noCurrentEvidence))
+    renderPage()
+    expect(await screen.findByText('No current run for dataset #9.')).toBeInTheDocument()
+    expect(getAnalysisCurrentMock).toHaveBeenCalledWith(7)
+    expect(screen.queryByText('CURRENT configuration')).not.toBeInTheDocument()
+    expect(screen.getByText(/needs Current Monte Carlo evidence first/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Validate plan' })).not.toBeInTheDocument()
+  })
+
+  it('shows the same state, naming only the replacement dataset, once earlier Current results stop being current', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({ ...noCurrentEvidence, des_current: currentDes() }))
+    getAnalysisCurrentMock.mockResolvedValue(currentDatasetResponse(11))
+    const { queryClient } = renderPage()
+    expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
+    expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
+
+    // Dataset 12 replaced dataset 11: the server now withholds the dataset-11 run from every
+    // Current slot (backend D7 gate) and resolves dataset 12 as current. The workflow refetch
+    // lands first while the dataset lookup is still in flight.
+    let resolveLookup: (value: unknown) => void = () => {}
+    getWorkflowMock.mockResolvedValue(workflow(noCurrentEvidence))
+    getAnalysisCurrentMock.mockReturnValue(new Promise((resolve) => { resolveLookup = resolve }))
+    void queryClient.invalidateQueries()
+
+    await waitFor(() => expect(screen.queryByText('CURRENT configuration')).not.toBeInTheDocument())
+    expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
+    resolveLookup(currentDatasetResponse(12))
+    expect(await screen.findByText('No current run for dataset #12.')).toBeInTheDocument()
+    expect(screen.queryByText('CURRENT configuration')).not.toBeInTheDocument()
+    expect(screen.queryByText(/#11\b|dataset 11\b/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Validate plan' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the badge and results for a current run and shows no empty state', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({ ...noCurrentEvidence, des_current: currentDes() }))
+    renderPage()
+    expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Discrete-event simulation results by interval' })).toBeInTheDocument()
+    await waitFor(() => expect(getAnalysisCurrentMock).toHaveBeenCalledWith(7))
+    expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
+  })
+
+  it('replaces the empty state with the fresh run once Current DES completes', async () => {
+    const user = userEvent.setup()
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow(noCurrentEvidence))
+    runDesCurrentMock.mockResolvedValue({ evidence: currentDes() })
+    renderPage()
+    expect(await screen.findByText('No current run for dataset #9.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run Current DES' }))
+    expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
+    expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
+  })
+
+  it('shows no dataset number when the analysis has no valid current dataset', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow(noCurrentEvidence))
+    getAnalysisCurrentMock.mockRejectedValue(Object.assign(new Error('Request failed with status code 404'), {
+      response: { status: 404, data: { detail: 'This Analysis has no successfully processed dataset.' } },
+    }))
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Simulate Current' })).toBeInTheDocument()
+    await waitFor(() => expect(getAnalysisCurrentMock).toHaveBeenCalledWith(7))
+    expect(screen.getByRole('button', { name: 'Run Current DES' })).toBeInTheDocument()
+    expect(screen.queryByText(/No current run for dataset|dataset #/)).not.toBeInTheDocument()
+    expect(screen.queryByText('CURRENT configuration')).not.toBeInTheDocument()
+    expect(screen.getByText(/needs Current Monte Carlo evidence first/)).toBeInTheDocument()
+  })
+
+  it('does not look up the current dataset outside Current mode', async () => {
+    renderPage()
+    expect(await screen.findByText('Selected scenario: Plan A')).toBeInTheDocument()
+    expect(getAnalysisCurrentMock).not.toHaveBeenCalled()
+    expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
+  })
+
+  it('renders the Tagalog text and keeps the owner-approved wording in both locales', async () => {
+    expect(en['simulation.no_current_run']).toBe('No current run for dataset #{{dataset}}.')
+    expect(tl['simulation.no_current_run']).toBe('Walang kasalukuyang run para sa dataset #{{dataset}}.')
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow(noCurrentEvidence))
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/simulate" element={<SimulationPage />} />
+      </Routes>,
+      { route: '/analyses/7/simulate', lang: 'tl' },
+    )
+    expect(await screen.findByText('Walang kasalukuyang run para sa dataset #9.')).toBeInTheDocument()
   })
 })
 
