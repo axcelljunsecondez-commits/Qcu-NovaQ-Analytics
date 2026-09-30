@@ -20,7 +20,8 @@ Global rules:
 
 ## Step 0 — Approval gate
 
-- Output: answers to OD-1 … OD-11 (spec section 15) and to OD-12 below.
+- Output: answers to OD-2 … OD-11 (spec section 15) and to OD-12 below. OD-1 is decided: NOT
+  APPROVED for release G-A / DEFERRED (2026-09-30, spec section 15).
 - Stop condition: written approval of the spec and of the chosen options. No code before this.
 
 **OD-12 (release grouping).** Option (a): ship everything below in one release after Release A.
@@ -122,12 +123,15 @@ changed `workflow.py`. Recommended: (a).
 - Analytical implications: none (no value recomputed).
 - Persisted evidence: none written differently; old jobs untouched and no longer current.
 - API: `des_current`, `mc_current` and `validation_current` return `null` when not `CURRENT` (same
-  shape, stricter meaning). With OD-1, additive history entries (identity, status, reasons, no
-  values).
-- Frontend:
+  shape, stricter meaning). No history entries: OD-1 is not approved for release G-A and is
+  deferred (spec section 15).
+- Frontend (current evidence only; owner decision 2026-09-30, spec 5.1 and 9.2):
   - the "CURRENT configuration" badge and results appear only for current jobs;
-  - otherwise "No current run for dataset #N";
-  - Validate stays disabled without a current Current MC job.
+  - when no current run exists for the current dataset: "No current run for dataset #B", with B the
+    actual current dataset id. A never-run analysis and one whose earlier Current results are no
+    longer current show this same state;
+  - no historical entry, and no earlier dataset or run is named or exposed to explain the absence;
+  - Validate stays unavailable unless the Current MC job is current.
 - Tests: T6 (Current kinds), T7 (setup), T8 (dataset deleted); revised probe tests keep their
   dataset fingerprints.
 - Historical compatibility: jobs on replaced datasets become `STALE_DATASET`; jobs on deleted
@@ -186,6 +190,8 @@ changed `workflow.py`. Recommended: (a).
 
 ## Step 6 — Historical read-only access (only if OD-1 approves)
 
+- Status (2026-09-30): OUT OF SCOPE FOR RELEASE G-A. OD-1 is not approved for G-A and is deferred,
+  not permanently prohibited (spec section 15). Not implemented.
 - Files: `backend/api/workflow.py` or a new read-only router, frontend historical view component,
   locales.
 - Analytical implications: none; stored values only.

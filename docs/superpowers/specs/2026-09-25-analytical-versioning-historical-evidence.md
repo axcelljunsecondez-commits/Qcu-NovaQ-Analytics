@@ -197,6 +197,14 @@ historical evidence either (decision OD-1 is not approved), so a superseded Curr
 but unreachable. The coordinated frontend compatibility phase must address this distinction before
 the D7 repair is deployed.
 
+**Owner decision (2026-09-30), for release G-A.** OD-1 is not approved for G-A and is deferred
+(section 15). For G-A, "address this distinction" means: the user interface never presents
+non-current or stale evidence as current, and it states clearly that no current run exists for the
+current dataset. G-A is not required to tell a never-run analysis apart from one whose earlier
+Current results are no longer current: both deliberately show the one current-only state "No
+current run for dataset #B" (section 9.2). The blocker stays open until that frontend behavior is
+implemented (plan Step 3); it is not implemented.
+
 ### 5.2 One currentness policy (PROPOSED)
 
 A single module (for example `backend/api/evidence_status.py`) computes the status of section 4
@@ -220,7 +228,8 @@ A job is current only if all hold:
 
 `_current_evidence` returns only `CURRENT` jobs in its existing slots. Old jobs stay in the
 database untouched. Whether the workflow payload also lists them as history (identity, status,
-reasons, no values) or a separate read-only endpoint serves them is decision OD-1.
+reasons, no values) or a separate read-only endpoint serves them is decision OD-1. OD-1 is not
+approved for release G-A and is deferred (section 15), so G-A does neither; the old jobs stay stored.
 
 Dataset replacement then makes every dataset-bound artifact `STALE_DATASET` in one step; a setup
 change makes every job `STALE_SETUP` (as today). Nothing is recomputed.
@@ -253,8 +262,8 @@ change makes every job `STALE_SETUP` (as today). Nothing is recomputed.
 
 - `test_shared_scenario_evidence_stays_pinned_to_dataset_a` is **unchanged and still passes**: it
   still asserts `workflow["scenario"]["id"]` is the Dataset-A scenario. Under Step 4
-  `workflow["scenario"]` becomes `None` (or a history entry `STALE_DATASET`) and the scenario row
-  stays unchanged. D7 did not touch this path.
+  `workflow["scenario"]` becomes `None` (no history entry: OD-1 is not approved for release G-A,
+  section 15) and the scenario row stays unchanged. D7 did not touch this path.
 - `test_separate_decision_after_replacement_stays_insufficient` and
   `test_historical_dataset_report_stays_available_after_replacement` are unchanged and still pass.
   The historical report label of section 10 is not implemented.
@@ -264,7 +273,7 @@ No test is deleted; each keeps its dataset fingerprint assertions under its curr
 D7 closes Current-mode dataset currentness only. The rest of the historical-evidence compatibility
 problem is unresolved: schema-1 and scenario-bound currentness (Step 4), the missing-dependency
 guard (Step 5), version and accounting-marker policy (sections 3.2 and 6), and any historical
-display or endpoint (OD-1).
+display or endpoint (OD-1: not approved for release G-A, deferred; section 15).
 
 ### 5.4 Exact source identity (Step 5 finding) — RELEASE BLOCKER, unresolved
 
@@ -381,7 +390,8 @@ Safe to display original v2 results if all hold: served by a read-only endpoint 
 status and reasons with the payload; rendered in a separate view with a persistent banner naming
 the accounting version and the known deviations; no select, decide, current-report or compare
 action; null values rendered as undefined with their recorded reason. Compare never shows these
-values beside Current (section 9.2). Needs an additive endpoint (OD-1).
+values beside Current (section 9.2). Needs an additive endpoint (OD-1). OD-1 is not approved for
+release G-A and is deferred (section 15), so this view is not part of G-A.
 
 ## 8. Schema-1 dataset policy (Decision 3)
 
@@ -441,9 +451,12 @@ values in current positions (fail-closed across deploy skew, section 11).
 - **Compare (schema-1):** the scenario list shows each scenario's status; only `CURRENT` scenarios
   show totals and can be selected; "current total cost" states the dataset it was computed from.
 - **Simulate (Current mode):** the "CURRENT configuration" badge and results appear only for
-  `CURRENT` jobs; otherwise "No current run for dataset #B" plus, if OD-1 is approved, a collapsed
-  historical entry ("Run on dataset #A, not current"). The Validate action stays disabled unless the
-  Current MC job is `CURRENT`.
+  `CURRENT` jobs. When no current run exists for the current dataset, the page shows "No current
+  run for dataset #B", where B is the actual current dataset id. A never-run analysis and one whose
+  earlier Current results are no longer current show this same state (owner decision 2026-09-30,
+  section 5.1). The page shows no historical entry and does not name or expose an earlier dataset
+  or run to explain the absence: that would need OD-1, which is not approved for release G-A
+  (section 15). The Validate action stays unavailable unless the Current MC job is `CURRENT`.
 - **Simulate (selected plan):** replace the single generic message (`SimulationPage.tsx:831-846`,
   "no longer matches the current analysis data") with reason-specific text: engine version, dataset,
   setup, deleted scenario.
@@ -569,6 +582,14 @@ Also kept: the Monte Carlo strict xfail stays xfail.
 
 - **OD-1** Historical access: additive history entries in `GET /workflow` and/or a read-only
   `GET /analyses/{id}/evidence/{job_id}` for the historical detail view.
+  - **Decided by the product owner on 2026-09-30: NOT APPROVED for release G-A
+    (`2026-09-26-generation-identity-contract.md` §6.1); DEFERRED, not permanently prohibited.**
+  - G-A exposes current evidence only: no history entries in `GET /workflow`, no historical
+    endpoint and no historical view. Plan Step 6 is out of scope for G-A.
+  - Current mode shows "No current run for dataset #B" when no current run exists for the current
+    dataset (section 9.2). The owner's reading of the section 5.1 release blocker applies.
+  - Stored evidence is unchanged: historical jobs stay stored as today and nothing is deleted. The
+    decision concerns UI and API exposure only.
 - **OD-2** Optional `recalculated_from` lineage link on recalculated scenarios.
 - **OD-3** Dataset restore: none / explicit current-dataset pointer (migration) / content
   equivalence.
