@@ -21,7 +21,8 @@ Data labels:
   Distinct arrival rates fingerprint which generation produced a result (A: lambda 4, B: 99).
 - SYNTHETIC (direct row insert/edit): a stored row written or edited in place to reach a state no
   endpoint produces -- a reference to a foreign owner or analysis, an unrecorded dataset id, a
-  controlled creation time. Each such step is marked at its call site. No endpoint can produce a
+  controlled creation time, a freed scenario id written back on an engine whose sequence never
+  reissues one. Each such step is marked at its call site. No endpoint can produce a
   cross-owner reference, so those cases have no recorded counterpart.
 - RECORDED (shape only): analysis 21 of the local development database holds selection job 90 and
   DES job 91 naming scenario 31 and dataset 36, both of which are deleted; the export method is
@@ -105,16 +106,39 @@ class Shop:
         assert response.status_code == 201, response.text
         return response.json()["dataset"]["id"]
 
-    def seed_scenario(self, dataset_id: int, lam: float, *, name: str = "Plan") -> int:
-        """SYNTHETIC (direct row insert): a verified schema-1 snapshot pinned to a dataset."""
+    def seed_scenario(self, dataset_id: int, lam: float, *, name: str = "Plan",
+                      scenario_id: int | None = None) -> int:
+        """SYNTHETIC (direct row insert): a verified schema-1 snapshot pinned to a dataset.
+
+        ``scenario_id`` writes the row under that id instead of the engine's next one.
+        """
         with self.session_factory() as db:
             scenario = Scenario(
                 user_id=self.user_id, analysis_id=self.analysis_id, dataset_id=dataset_id,
                 name=name, settings_json={"calculation": schema1_snapshot(lam)},
                 results_json=shared_results(lam))
+            if scenario_id is not None:
+                scenario.id = scenario_id
             db.add(scenario)
             db.commit()
             return scenario.id
+
+    def seed_scenario_at_freed_id(self, freed_id: int, dataset_id: int, lam: float, *,
+                                  name: str) -> int:
+        """A new scenario under the id a deleted scenario held, on either test engine.
+
+        SQLite gives the next insert one more than the highest id still stored, so once the
+        newest scenario is deleted an ordinary insert reissues its id; that is asserted here, not
+        assumed. A PostgreSQL sequence never hands out a value twice, so there the freed id is
+        written explicitly -- SYNTHETIC (direct row insert under a chosen id). Either way the
+        result is the state the guard exists for: a different scenario under an id that stored
+        evidence already names.
+        """
+        if self.db_engine.dialect.name == "sqlite":
+            reissued = self.seed_scenario(dataset_id, lam, name=name)
+            assert reissued == freed_id, "SQLite reissues the highest freed id"
+            return reissued
+        return self.seed_scenario(dataset_id, lam, name=name, scenario_id=freed_id)
 
     def select(self, scenario_id: int):
         return self.client.post(f"/analyses/{self.analysis_id}/workflow/selection",
@@ -320,7 +344,8 @@ def test_a_scenario_newer_than_its_evidence_is_not_current(client, db_engine):
 
 
 def test_scenario_id_reuse_does_not_inherit_the_previous_generations_evidence(client, db_engine):
-    """Case 8, end to end: delete the newest scenario, save another, and the freed id comes back.
+    """Case 8, end to end: delete the newest scenario, save another, and the freed id comes back
+    (``Shop.seed_scenario_at_freed_id`` says how on each engine).
 
     The replacement is a different calculation (lambda 99 against lambda 4), so inheriting the
     old DES, MC and validation would present evidence about the deleted plan as evidence about
@@ -331,8 +356,8 @@ def test_scenario_id_reuse_does_not_inherit_the_previous_generations_evidence(cl
     with shop.session_factory() as db:
         stored_des_result = deepcopy(db.get(Job, jobs["des"]).result_json)
     assert client.delete(f"/scenarios/{first_id}", headers=shop.headers).status_code == 200
-    second_id = shop.seed_scenario(dataset_id, 99, name="Replacement")
-    assert second_id == first_id, "this engine reissues the freed id; the guard is what protects"
+    second_id = shop.seed_scenario_at_freed_id(first_id, dataset_id, 99, name="Replacement")
+    assert second_id == first_id, "the replacement holds the freed id; the guard is what protects"
     # SYNTHETIC (direct row edit): the replacement is saved in the same clock second as the
     # original run, so its recorded creation time is advanced to what a real save would carry.
     shop.forward_date_scenario(second_id, after=jobs["validation"])
@@ -567,8 +592,8 @@ def test_a_broken_decision_for_the_selected_scenario_is_stale_until_generated_ag
     shop = Shop(client, db_engine)
     dataset_id, first_id, jobs = _ready(shop)
     assert client.delete(f"/scenarios/{first_id}", headers=shop.headers).status_code == 200
-    second_id = shop.seed_scenario(dataset_id, 99, name="Replacement")
-    assert second_id == first_id, "this engine reissues the freed id"
+    second_id = shop.seed_scenario_at_freed_id(first_id, dataset_id, 99, name="Replacement")
+    assert second_id == first_id, "the replacement holds the freed id"
     # SYNTHETIC (direct row edit): the old chain predates the replacement, as it would after a
     # real clock tick, so the chronology guard can tell the generations apart.
     shop.backdate_jobs()
