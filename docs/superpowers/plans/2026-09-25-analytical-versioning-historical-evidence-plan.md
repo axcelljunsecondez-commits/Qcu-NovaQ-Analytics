@@ -1,10 +1,14 @@
 # Plan: Analytical Versioning and Historical Evidence Integrity
 
 Spec: `docs/superpowers/specs/2026-09-25-analytical-versioning-historical-evidence.md`.
-Status: **Steps 1 and 2 implemented. Steps 3-13 PROPOSED — not started. Each step needs explicit
-authorization.**
+Status: **Each step needs explicit authorization.** Original status line, now HISTORICAL: "Steps 1
+and 2 implemented. Steps 3-13 PROPOSED — not started." Since then, Steps 3 and 4 were committed in
+part (`bc303109`, `2038845b`) and Step 5 as INTERIM (`4db54722`), all on
+`fix/d1-replication-costs`; release grouping is decided by OD-12 (Step 0).
 
 Base: a new branch from `fix/d1-replication-costs` (`d4bca6af`) unless a step says otherwise.
+Release G-A is not built on this base: under OD-12 option (b)-G (Step 0) it is built on a
+`main`-based line by a separate porting stage, whose base revision is not decided.
 Test numbers (T1-T15) refer to spec section 14. Every step ends with the full gates: `python -m
 pytest tests/ -x --tb=short`, `ruff check .`, `mypy .`, and in `frontend/` `npm test`, `npm run
 typecheck`, `npm run lint`, `npm run build`, plus locale symmetry. The Monte Carlo strict xfail
@@ -20,14 +24,64 @@ Global rules:
 
 ## Step 0 — Approval gate
 
-- Output: answers to OD-2 … OD-11 (spec section 15) and to OD-12 below. OD-1 is decided: NOT
-  APPROVED for release G-A / DEFERRED (2026-09-30, spec section 15).
+- Output: answers to OD-2 … OD-11 (spec section 15). OD-1 is decided: NOT APPROVED for release
+  G-A / DEFERRED (2026-09-30, spec section 15). OD-12 is decided: option (b)-G (2026-09-30,
+  below).
 - Stop condition: written approval of the spec and of the chosen options. No code before this.
 
-**OD-12 (release grouping).** Option (a): ship everything below in one release after Release A.
-Option (b): ship steps 1-6 first from a branch off `main` (they only tighten eligibility), then
-rebase the D-repairs on top. Option (b) resolves D7 sooner but needs a rebase of `fix/d1` over
-changed `workflow.py`. Recommended: (a).
+**OD-12 (release grouping) — DECIDED by the product owner on 2026-09-30: option (b)-G.**
+
+The options as first written on 2026-09-25, before the generation-identity stages G1–G7 existed:
+option (a), ship everything below in one release after Release A; option (b), ship steps 1-6
+first from a branch off `main` (they only tighten eligibility), then rebase the D-repairs on top.
+Option (b) resolves D7 sooner but needs a rebase of `fix/d1` over changed `workflow.py`. The
+recommendation then was (a). It is superseded by the decision and no longer applies.
+
+Option (b)-G adapts option (b) to the later stages. Release G-A:
+
+- is built on a line based on `main`;
+- includes:
+  - Steps 1–5. Not steps 1–6: OD-1 is deferred for G-A, so Step 6 is excluded;
+  - the D7 frontend compatibility work that spec section 5.1 requires before the D7 repair is
+    deployed (the current-only state of spec section 9.2; Step 3);
+  - the generation-identity stages G1 through G7 (`2026-09-26-generation-identity-contract.md`
+    §14);
+- excludes:
+  - the D-repairs D1, D5, D10 and D2. They stay for a later line or a rebase;
+  - engine v3 (Step 9), the M3 accounting marker (Step 10) and any other version-marker release
+    work;
+- keeps `GENERATION_ENFORCEMENT_ENABLED = False`.
+
+A separate porting stage must build that line before G-A can exist. The committed Step and G
+commits on `fix/d1-replication-costs` cannot be reused there as they are (VERIFIED 2026-09-30 at
+`d771d1e7`):
+
+- `SELECTED_DES_PER_PERIOD_EXECUTION` and `SELECTED_DES_CONTINUOUS_DAY_EXECUTION` were added by D10
+  (`66ba238e`, `separate_optimization.py`) and do not exist on `main` (`1d3294cb`);
+- Step 1's `tests/test_evidence_status.py` (from `84e502bd`, lines 615-616) imports both;
+- Step 5's evidence policy in `backend/api/workflow.py` (from `4db54722`, line 725) lists both as
+  the current selected-plan DES basis.
+
+The port is not implemented. Whether it applies without conflicts is UNKNOWN, and so is any other
+dependency of the Step or G commits on the D-series.
+
+This is a release-grouping decision only. It does not decide the `main` base revision, or whether
+Steps 4 and 5 ship in full or in their current interim scope. It authorizes no porting,
+cherry-picking or rebasing, no frontend work, no Step 4 or 5 completion work, no deployment, no
+gathering of the contract's §11.2 production facts, and neither G8 nor G9.
+
+Unchanged by it:
+
+- the D-repairs are never released without steps 9 and 10 (global rules above);
+- the D7 repair is not deployed without its frontend compatibility work (spec section 5.1). That
+  work is not implemented;
+- spec section 5.4 (exact source identity) stays CONFLICTING: the spec and Step 5 below call it an
+  open release blocker, while the contract (§6.2) has G-A ship with the defect present and closes
+  it only with enforcement in G-B;
+- G8 (release G-A operations) stays BLOCKED. Its stop condition, any §11.2 fact UNKNOWN (contract
+  §14), holds: every §11.2 production fact is UNKNOWN;
+- G9 is not started;
+- `GENERATION_ENFORCEMENT_ENABLED = False` (`backend/api/workflow.py:102`).
 
 ## Step 1 — Evidence status module (pure, not wired) — IMPLEMENTED
 
@@ -205,7 +259,12 @@ changed `workflow.py`. Recommended: (a).
 
 ## Step 7 — Server-authoritative engine version at save (Release A; only if OD-4 approves)
 
-- Base: a branch from `main` (`scenarios.py` is not changed by the D-repair branch, so no conflict).
+- Base: a branch from `main`. Original rationale, now HISTORICAL and no longer sufficient:
+  "`scenarios.py` is not changed by the D-repair branch, so no conflict". The D-repair commits
+  (D1, D5, D10, D2) do not change `scenarios.py` (VERIFIED), but G2 (`f495f0bd`) does, and
+  OD-12 option (b)-G places G2 on the `main`-based G-A line. Step 7 also plans to change
+  `scenarios.py` (Files below). Whether the two conflict is UNKNOWN until that line is built or
+  the changes are compared.
 - Files: `backend/api/scenarios.py` (`_verify_separate_calculation`, `_verify_calculation`,
   stamping in `create_scenario`), tests.
 - Analytical implications: none; results are still the server's recomputation.
@@ -296,6 +355,12 @@ changed `workflow.py`. Recommended: (a).
 
 ## Step 13 — Integration and release (each action separately authorized)
 
+Status (2026-09-30): written for option (a) and SUPERSEDED for release G-A by OD-12 option (b)-G
+(Step 0). G-A is not produced by item 1's merge: a separate porting stage builds it on a
+`main`-based line, and the contract's §11.2 order applies to its release (stage G8, BLOCKED).
+Whether items 2-6 also apply to G-A, and how this step applies to the later line carrying the
+D-repairs, is not decided.
+
 1. Merge the result of steps 1-12 with `fix/d1` on an integration branch.
    `feat/shared-queue-segments` merges independently: zero path overlap (VERIFIED); T15 must pass
    on the merged tree.
@@ -309,10 +374,23 @@ changed `workflow.py`. Recommended: (a).
    - a new v3 save works;
    - Current DES is dataset-bound.
 
-Release order: Release A (step 7), then Release B (steps 1-6, 8-12 with the D-repairs), unless
-OD-12 (b) is chosen. No point in this order makes historical or incompatible evidence eligible
-for a current Decision or report:
+Release order: OD-12 option (b)-G was chosen on 2026-09-30 (Step 0). The order "Release A
+(step 7), then Release B (steps 1-6, 8-12 with the D-repairs)" was option (a) and no longer
+applies.
+
+- Release G-A, from a `main`-based line built by a separate porting stage: Steps 1–5, the required
+  D7 frontend compatibility work and G1–G7, with `GENERATION_ENFORCEMENT_ENABLED = False`. Step 6
+  is excluded (OD-1 deferred).
+- The D-repairs (D1, D5, D10, D2) follow on a later line or rebase, and only together with their
+  version markers (steps 9 and 10).
+- Step 7 (Release A) still ships before the release containing step 9. OD-12 does not set its
+  order relative to G-A, or the grouping of steps 8, 11 and 12.
+
+The intent is that no point in this order makes historical or incompatible evidence eligible for
+a current Decision or report (PROPOSED; the ported line is neither built nor tested):
 
 - Release A changes no eligibility.
-- Release B only tightens eligibility, and the D-repairs ship together with their version markers.
+- G-A only tightens eligibility: Steps 1–5 add refusals, and G1–G7 with enforcement off stamp
+  tokens and add the OD-G2 write refusals (contract §6.2, §8).
+- The D-repairs ship together with their version markers.
 - During deploy skew, the server enforces eligibility and new clients fail closed.
