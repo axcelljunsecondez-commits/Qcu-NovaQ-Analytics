@@ -884,7 +884,7 @@ Current verified state:
 - Units are hours (D1). `inputs_sha256` is `None`, with the reason (D4). There is no `paid` field (D5). There is no replication runner, and the rows are unchanged (D6).
 - D7: a derived duration within the house tolerance below zero is reported as 0.0; beyond the tolerance the call fails. Timing comparisons stay exact.
 - Defect found and fixed in the new module: malformed values beyond the float range (for example `10**400`) raised `OverflowError` instead of failing a check. This was VERIFIED before and after the fix.
-- Out-of-scope finding: the protected playback `_time()` helper was observed to raise `OverflowError` for `_time(10**400)`. Whether this propagates through `replay_named_trace` was not tested. Playback v3 was not modified during Phase 5B-4.6. A separate task was opened for it.
+- Out-of-scope finding: the protected playback `_time()` helper was observed to raise `OverflowError` for `_time(10**400)`. Whether this propagates through `replay_named_trace` was not tested. Playback v3 was not modified during Phase 5B-4.6. A separate task was opened for it. (Resolved 2026-09-30: the propagation was VERIFIED and fixed in playback v4; see "Phase 5B-4.5 Playback Numeric Range Hardening" below.)
 - Spec correction: the section 7.4 example "stable day = zero attribution" was wrong. VERIFIED: 24 of 25 seeded stable replications are nonzero under each policy. The test uses `zero_arrivals` and a prescribed quiet day, and the contract is unchanged.
 - Docs: the policy spec's stale 5B-4.6 entries (P2 threshold, P8 mapping, P9 question) are corrected, with the original text kept. The named-DES spec's next-steps line is updated.
 - Tests: `tests/test_shared_named_attribution.py` is new, with 46 functions and 141 tests. It covers:
@@ -918,6 +918,33 @@ Current verified state:
   - D15: UNKNOWN (undefined);
   - the before-opening window shape: INFERRED and out of scope.
 - Next (needs explicit approval): 5B-5 workforce cost, an acceptance rule, API or UI exposure, and the playback overflow task.
+
+## Shared Queue Enhancement: Phase 5B-4.5 Playback Numeric Range Hardening (2026-09-30)
+
+Recorded in the playback spec, "Follow-up: numeric range (2026-09-30)". Branch `fix/named-playback-overflow`, from `156de75f`; it is not merged into `feat/shared-queue-segments` and not pushed. Only `simulation/shared_named_playback.py` and its tests changed. `PLAYBACK_VERSION` is v4. `shared_named_replications.py` is unchanged, and its `METHOD_VERSION` is still v2.
+
+- Defect, VERIFIED on the v3 module (probe 2026-09-29, and the tests below): values beyond the float range raised `OverflowError` instead of failing a check. This covered huge whole-number or `Fraction` times, engine totals, and `unit_work`, and finite floats whose exact sum is beyond the range. Where probed, each escaped `replay_named_trace`, `build_named_playback`, or both. `playback_from_named_replications` with a doctored engine raised for every case probed: times, `unit_work`, a state total, and an after-closing interval. `build_named_playback` also raised from `named_replication_row`, which ran before the replay: `OverflowError`, or `SharedSegmentError` for inconsistent counts. The v2 hardening covered unhashable values only.
+- Fix (approved as Part A and B1, 2026-09-30):
+  - `_time` and `_close_enough` catch `OverflowError`, and `near` guards its `float()` conversions. The value then fails the existing check.
+  - A new `_fsum` wrapper is used at the served-wait sum (`customer_reconciliation`), the state totals, and `_hours_in` (`employee_reconciliation`).
+  - `unit_work` is tested before the division (`service_duration`).
+  - `_outside_horizon` runs inside the exception boundary of both entry points. Its overflow was reproduced: in the replay with the timeline beginning at -DBL_MAX, and in the build within the replay's tolerance band. That the band is the only route in the build is INFERRED.
+  - B1: `build_named_playback` replays first, then builds the row. A row `OverflowError` fails the new check `summary_row`. Corrupted counts now raise `NamedPlaybackError(customer_reconciliation)` instead of `SharedSegmentError`.
+- Valid output: a scratch comparison of 276 outputs from the v3 and v4 modules was identical apart from `provenance.playback_version` and the appended `summary_row` check (VERIFIED; not committed).
+- Tests: 10 new functions and 50 new tests (167 in the file); two version assertions changed from v3 to v4. Against the v3 module, the final test file fails 52 and passes 115. Of the 52: 43 `OverflowError`, 2 `SharedSegmentError`, 2 `TypeError`, 2 old-message `service_duration`, and 3 on the version. Fault injection: 13 of 13 mutants killed. The first run killed 12; the build `_outside_horizon` mutant was killed after the tolerance-band test was added.
+- Gates on the final code (2026-09-30):
+  - focused: playback 167, named replications 73, named DES 65, state machine 39, pin 9, segments 51, and attribution 141, all passed;
+  - all 15 `tests/test_shared_*.py` files: 1002 passed;
+  - Separate Queue (20 files): 182 passed;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 2035 passed, 3 skipped, 1 xfailed, 6 subtests passed. The skip reasons were not printed in this run. The full suite was not rerun before the change in this worktree, so the difference from the 1985 recorded for 5B-4.6 is not a verified delta;
+  - `ruff check .`: clean; `mypy . --exclude '^outputs/'` and plain `mypy .` in this worktree: no issues in 178 files; `git diff --check`: clean.
+  - The documentation was edited after the gates. No test reads these files.
+- Open (VERIFIED, not fixed; each needs approval):
+  - the queue-area accumulation in `_reconcile` still raises `OverflowError` with exact `Fraction` times (present on v3 too);
+  - an unknown `unfulfilled_cause` passes the replay, and `build_named_playback` raises `SharedSegmentError` from `named_replication_row` (present on v3 too; not an overflow);
+  - non-finite values are accepted: a timeline beginning at -inf, and infinite queue integrals, replay as VALID (`math.isclose(inf, inf)` is True);
+  - from the 2026-09-29 probe: a huge or `Fraction` `register_count` (playback `handover`), a caller-supplied service rate beyond the float range (playback `_Replay.__init__`), `shared_segments._is_finite_real`, the named DES `servers` sum, and `shared_employee_states._handover`.
+- Next (needs explicit approval): merging this branch into `feat/shared-queue-segments`, the open items above, 5B-5 workforce cost, an acceptance rule, and API or UI exposure.
 
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 

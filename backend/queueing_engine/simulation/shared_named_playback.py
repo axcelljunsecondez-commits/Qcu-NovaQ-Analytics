@@ -21,7 +21,7 @@ from __future__ import annotations
 import bisect
 import math
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict
 from numbers import Integral, Real
 from typing import Any, NoReturn
@@ -97,7 +97,10 @@ from backend.queueing_engine.simulation.shared_replications import SEED_SCHEME
 # instead of raising. Output for a valid trace is unchanged apart from the new check in validation.checks.
 # v3 (5B-4.5 hardening): an employee-indexed record naming an employee outside the employee timeline fails
 # employee_identity. Output for a valid trace is unchanged apart from the new check in validation.checks.
-PLAYBACK_VERSION = "novaq-shared-named-playback-v3"
+# v4 (5B-4.5 hardening): a value or a sum beyond the float range fails a check instead of raising OverflowError;
+# build_named_playback replays before it computes the replication row, and a row that cannot be computed fails
+# summary_row. Output for a valid trace is unchanged apart from the new check in validation.checks.
+PLAYBACK_VERSION = "novaq-shared-named-playback-v4"
 
 # ── Event vocabulary (from the named engine; anything else is rejected) ─────
 
@@ -222,6 +225,9 @@ CHECKS = {
         "interval, shift, break, and closing input names one of them; transitions, customer rows, and the DRAIN crew "
         "are held to them by trace_structure, customer_reconciliation, and drain_frozen_crew. With the run's inputs, "
         "the timeline's employees are exactly the input employees."),
+    "summary_row": (
+        "The replication row (named_replication_row) can be computed from the replayed result; a value or a sum beyond "
+        "the float range fails here instead of raising."),
 }
 
 TOLERANCE = {"rel": 1e-9, "abs": 1e-12}  # Phase 4 playback convention (shared_playback._TOLERANCE), float sums only
@@ -264,7 +270,19 @@ def _fail(check: str, message: str, evidence: dict[str, Any] | None = None, **wh
 
 
 def _close_enough(a: float, b: float) -> bool:
-    return math.isclose(a, b, rel_tol=TOLERANCE["rel"], abs_tol=TOLERANCE["abs"])
+    try:
+        return math.isclose(a, b, rel_tol=TOLERANCE["rel"], abs_tol=TOLERANCE["abs"])
+    except OverflowError:  # an exact (whole or Fraction) value beyond the float range is not close to anything
+        return False
+
+
+def _fsum(values: Iterable[float], check: str, message: str, evidence: dict[str, Any] | None = None) -> float:
+    # Finite floats can have an exact sum beyond the float range, and a whole number or Fraction beyond it cannot be
+    # converted; either fails ``check`` instead of raising OverflowError.
+    try:
+        return math.fsum(values)
+    except OverflowError:
+        raise _fail(check, message, evidence) from None
 
 
 def _whole(value: object) -> bool:
@@ -272,7 +290,12 @@ def _whole(value: object) -> bool:
 
 
 def _time(value: object) -> bool:
-    return isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(float(value))
+    if not isinstance(value, Real) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:  # a whole number or Fraction beyond the float range
+        return False
 
 
 def _check_closing_policy(policy: object) -> None:
@@ -563,6 +586,9 @@ class _Replay:
                 raise _fail("customer_single_service", "The service ends with a different employee or register.",
                             {"customer": dict(customer)}, **where)
             engine = self.engine_row(customer_id, where)
+            if not _time(engine["unit_work"]):  # tested first: dividing a malformed or out-of-range value would raise
+                raise _fail("service_duration", "The engine's unit_work is not a finite number.",
+                            {"unit_work": engine["unit_work"]}, **where)
             expected = customer["service_start_hours"] + engine["unit_work"] / self.mu(customer["service_start_hours"])
             if t != expected:
                 raise _fail("service_duration", "The service does not last unit_work / mu(start).",
@@ -802,8 +828,10 @@ def _merged_intervals(rows: Sequence[Sequence[Any]]) -> list[tuple[float, float,
 
 def _hours_in(intervals: dict[str, list[tuple[float, float, str, int | None]]], states: frozenset[str],
               start: float, end: float) -> float:
-    return math.fsum(min(end, high) - max(start, low) for rows in intervals.values() for low, high, state, _ in rows
-                     if state in states and low < end and high > start)
+    return _fsum((min(end, high) - max(start, low) for rows in intervals.values() for low, high, state, _ in rows
+                  if state in states and low < end and high > start), "employee_reconciliation",
+                 "The rebuilt employee-hours are beyond the float range.",
+                 {"states": sorted(states), "start": start, "end": end})
 
 
 def _reconcile(replay: _Replay, result: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
@@ -817,7 +845,11 @@ def _reconcile(replay: _Replay, result: dict[str, Any]) -> tuple[dict[str, Any],
         methods.append({"quantity": quantity, "method": "exact"})
 
     def near(check: str, quantity: str, rebuilt: float, engine: float) -> None:
-        if not _close_enough(float(rebuilt), float(engine)):
+        try:
+            close = _close_enough(float(rebuilt), float(engine))
+        except OverflowError:  # a value beyond the float range is not within the tolerance
+            close = False
+        if not close:
             raise _fail(check, f"{quantity}: the rebuilt value differs from the engine's beyond the tolerance.",
                         {"rebuilt": rebuilt, "engine": engine, "tolerance": TOLERANCE})
         methods.append({"quantity": quantity, "method": "tolerance"})
@@ -850,7 +882,8 @@ def _reconcile(replay: _Replay, result: dict[str, Any]) -> tuple[dict[str, Any],
         "served_after_closing": sum(1 for row in served if row["service_start_hours"] >= closing),
     }, result["counts"])
     waits = [row["wait_hours"] for row in served]
-    exact("customer_reconciliation", "mean_wait_hours", math.fsum(waits) / len(waits) if waits else None,
+    wait_sum = _fsum(waits, "customer_reconciliation", "mean_wait_hours: the rebuilt wait sum is beyond the float range.")
+    exact("customer_reconciliation", "mean_wait_hours", wait_sum / len(waits) if waits else None,
           result["mean_wait_hours"])
     exact("customer_reconciliation", "queue.max_length_in_horizon", replay.max_queue_in_horizon,
           result["queue"]["max_length_in_horizon"])
@@ -880,7 +913,9 @@ def _reconcile(replay: _Replay, result: dict[str, Any]) -> tuple[dict[str, Any],
     exact("employee_reconciliation", "employee state and register intervals", intervals, engine_intervals)
     for employee_id in replay.ids:
         for state, hours in timeline["state_totals"][employee_id].items():
-            total = math.fsum(end - start for start, end, own, _ in intervals[employee_id] if own == state)
+            total = _fsum((end - start for start, end, own, _ in intervals[employee_id] if own == state),
+                          "employee_reconciliation", "state_totals: a rebuilt total is beyond the float range.",
+                          {"employee_id": employee_id, "state": state})
             if not _close_enough(total, hours):
                 raise _fail("employee_reconciliation", "state_totals: a rebuilt total differs beyond the tolerance.",
                             {"employee_id": employee_id, "state": state, "rebuilt": total, "engine": hours})
@@ -1009,6 +1044,7 @@ def replay_named_trace(
     """
     try:
         replay, rebuilt, methods = _replay(result, horizon, demand_periods)
+        outside = _outside_horizon(rebuilt["intervals"], replay.closing)
     except _Violation as violation:
         return {"valid": False, "failure": violation.failure}
     return {
@@ -1022,7 +1058,7 @@ def replay_named_trace(
         "shifts": rebuilt["shifts"],
         "breaks": rebuilt["breaks"],
         "closing": {"policy": result["closing_policy"], "closing_hours": replay.closing, **replay.at_close},
-        "outside_horizon": _outside_horizon(rebuilt["intervals"], replay.closing),
+        "outside_horizon": outside,
         "reconciliation": methods,
     }
 
@@ -1050,10 +1086,16 @@ def build_named_playback(
     root_entropy: int,
 ) -> dict[str, Any]:
     """A checked playback of one full-trace named replication result; raises ``NamedPlaybackError`` on any failure."""
-    row = named_replication_row(result, replication_index)
     try:
+        # The replay runs first, so a result it rejects fails the same check here as in replay_named_trace.
         replay, rebuilt, methods = _replay(result, horizon, demand_periods)
+        try:
+            row = named_replication_row(result, replication_index)
+        except OverflowError as error:  # for example an overrun or delay the replay does not reconcile
+            raise _fail("summary_row", "The replication row cannot be computed from the result: a value or a sum is "
+                        "beyond the float range.", {"error": str(error)}) from None
         methods = methods + _row_reconciliation(replay, rebuilt, row)
+        outside = _outside_horizon(rebuilt["intervals"], replay.closing)
     except _Violation as violation:
         raise NamedPlaybackError(violation.failure) from None
     timeline = result["employee_timeline"]
@@ -1081,7 +1123,7 @@ def build_named_playback(
             "shifts_not_activated": [dict(item) for item in timeline["shifts"] if not item["activated"]],
         },
         "closing": {"policy": result["closing_policy"], "closing_hours": replay.closing, **replay.at_close},
-        "outside_horizon": _outside_horizon(rebuilt["intervals"], replay.closing),
+        "outside_horizon": outside,
         "summary": row,
         "validation": {"valid": True, "checks": dict(CHECKS)},
         "reconciliation": methods,

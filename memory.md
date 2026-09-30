@@ -305,8 +305,16 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - Equal digests mean equal recorded values only; the digest is not tamper-proof and not semantic equivalence.
 - `playback_from_named_replications(run, i)` refuses when versions, the stored row's identity, the input digest, or the rebuilt inputs do not match. It then regenerates through the unchanged 5B-4.4 seed path and requires the regenerated row to equal the stored row exactly.
 - Float sums are compared with the Phase 4 playback tolerance (rel 1e-9, abs 1e-12); times are always compared exactly. Reproducibility is still claimed only under the recorded runtime.
-- Playback v2 (2026-09-29 hardening): the closing policy must be exactly `DRAIN` or `HARD_CUTOFF` (check `closing_policy`, the engine's `CLOSING_POLICIES` test behind a string test; never normalized or inferred from events), and a malformed trace value fails a check instead of raising. An engine timeline record naming an employee outside the timeline is still accepted (open, needs approval).
+- Playback v2 (2026-09-29 hardening): the closing policy must be exactly `DRAIN` or `HARD_CUTOFF` (check `closing_policy`, the engine's `CLOSING_POLICIES` test behind a string test; never normalized or inferred from events), and a malformed trace value fails a check instead of raising. An engine timeline record naming an employee outside the timeline is still accepted (open, needs approval). (Correction, 2026-09-30: v2 covered unhashable values only. A value beyond the float range, or finite floats whose sum is beyond it, still raised `OverflowError` through v3; see v4.)
 - Playback v3 (2026-09-29, resolves the item above): the run's input employees are the authoritative employee set (`evaluate_roster` reports every one, so they are the timeline's `state_totals` keys). Check `employee_identity` requires string timeline keys, requires every interval, shift, break, and closing input to name one of them exactly (case-sensitive, never normalized), and, in `prepare_named_playback`, requires the timeline's employees to equal the input employees. A result alone cannot tell an extra employee who copies an unrostered employee's records from a real one; only the input check can.
+- Playback v4 (2026-09-30, approved Part A and B1): a value or a sum beyond the float range fails a check instead of raising `OverflowError`.
+  - `_time`, `_close_enough`, and `near` guard their conversions, and the value then fails its existing check.
+  - `_fsum` (the served-wait sum, the state totals, `_hours_in`) turns an overflowing sum into its caller's check.
+  - `unit_work` is tested before the division (`service_duration`).
+  - `_outside_horizon` runs inside both entry points' exception boundary.
+  - `build_named_playback` replays first, then builds the row; a row `OverflowError` fails the new check `summary_row`. Corrupted counts now raise `NamedPlaybackError(customer_reconciliation)`, not `SharedSegmentError`.
+  - Valid output is unchanged apart from the version and the appended check (276-output scratch comparison).
+  - Still open and not fixed (details in the playback spec, "Follow-up: numeric range"): queue-area overflow with exact `Fraction` times; an unknown `unfulfilled_cause` escaping the build as `SharedSegmentError`; non-finite begin and queue integrals accepted; `register_count` and caller service-rate overflow in the playback; and the same unguarded pattern in `shared_segments._is_finite_real`, the named DES `servers` sum, and `shared_employee_states._handover`.
 
 ## Shared-Queue Named Attribution (2026-09-29)
 
@@ -326,5 +334,5 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   - on-duty span;
   - closing partition;
   - base-state partition.
-- Values beyond the float range must fail a check, not raise `OverflowError`. This was fixed in attribution. The protected playback `_time()` shows the same pattern; propagation is NOT TESTED, and it was not fixed in 5B-4.6.
+- Values beyond the float range must fail a check, not raise `OverflowError`. This was fixed in attribution. The protected playback `_time()` shows the same pattern; propagation is NOT TESTED, and it was not fixed in 5B-4.6. (Superseded 2026-09-30: the propagation was VERIFIED and fixed in playback v4; see Named Playback above.)
 - The seeded `SCENARIOS["stable"]` day is not a zero-attribution day (24 of 25 replications nonzero under each policy). Use `zero_arrivals` or a prescribed quiet day for zero cases.

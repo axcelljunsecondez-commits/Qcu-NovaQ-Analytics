@@ -13,11 +13,15 @@ is UNKNOWN). Corrupted traces are built by editing a deep copy of an engine resu
 from __future__ import annotations
 
 import ast
+import contextlib
 import copy
 import dataclasses
 import hashlib
 import inspect
+import math
 import random
+import sys
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -1226,7 +1230,7 @@ def test_approved_closing_policies_are_accepted_by_every_entry_point():
         playback = _build(result, demand)
         assert (playback["closing"]["policy"], playback["validation"]["valid"]) == (policy, True)
         assert "closing_policy" in playback["validation"]["checks"]
-        assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v3"  # v3: employee_identity
+        assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v4"  # v4: summary_row
         run = replicate("overrun_and_contention", replications=2, seed=7, policy=policy)
         assert playback_from_named_replications(run, 1)["summary"] == run["replications"][1]
 
@@ -1493,7 +1497,7 @@ def test_an_unrostered_input_employee_is_on_the_timeline_and_accepted():
     assert {row["state"] for row in playback["employees"]["D"]} == {OFF}
     assert "D" not in {row["employee_id"] for row in playback["shifts"] + playback["breaks"]}
     assert "D" not in {event["employee_id"] for event in playback["events"]}
-    assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v3"
+    assert playback["provenance"]["playback_version"] == "novaq-shared-named-playback-v4"
     assert "employee_identity" in playback["validation"]["checks"]
 
 
@@ -1537,6 +1541,271 @@ def test_the_input_employees_decide_what_the_result_alone_cannot(monkeypatch):
     assert _refused(run, 0, "employee_identity")["evidence"]["input_employees"] == ["A", "B", "C", "D"]
     monkeypatch.setattr(shared_named_playback, "simulate_named_replication", real)
     assert playback_from_named_replications(run, 0)["summary"] == run["replications"][0]
+
+
+# ── Numeric range (5B-4.5 follow-up, playback v4) ───────────────────────────
+#
+# Reproduced on 5a9738e2 (unchanged at 156de75f): a whole number or Fraction beyond the float range in a time, an engine
+# total, or unit_work, and finite floats whose exact sum is beyond the float range, raised OverflowError out of
+# replay_named_trace, build_named_playback, and playback_from_named_replications. build_named_playback also raised from
+# named_replication_row (OverflowError, or SharedSegmentError for inconsistent counts) because it ran before the replay.
+# Each now fails a check. Such values are doctored: the engine never produces them.
+
+DBL_MAX = sys.float_info.max
+BEYOND_FLOAT_RANGE = [10**400, -(10**400), Fraction(10**400), Fraction(-(10**400))]
+BEYOND_IDS = ["int", "negative_int", "fraction", "negative_fraction"]
+
+
+def _fails_everywhere(result: dict, demand: list[DemandPeriod], check: str) -> dict:
+    """The replay and, for a replication result, the build fail ``check`` with one failure; nothing raises or changes."""
+    before = copy.deepcopy(result)
+    checked = replay_named_trace(result, HORIZON, demand)
+    assert not checked["valid"] and checked["failure"]["check"] == check, checked.get("failure")
+    if "replication" in result:
+        with pytest.raises(NamedPlaybackError) as caught:
+            _build(result, demand)
+        assert caught.value.failure == checked["failure"]
+    assert result == before
+    failure: dict = checked["failure"]
+    return failure
+
+
+def _scaled(value: Any, factor: float) -> Any:
+    """Every float times a power of two, which is exact inside the float range, so the trace stays self-consistent."""
+    if isinstance(value, float):
+        return value * factor
+    if isinstance(value, dict):
+        return {key: _scaled(item, factor) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_scaled(item, factor) for item in value]
+    return value
+
+
+def _with_begin(result: dict, begin: float) -> dict:
+    """The timeline begins at ``begin``: every employee is OFF from there, in the engine's record and in the replay."""
+    moved = copy.deepcopy(result)
+    old = moved["begin"]
+    moved["begin"] = moved["employee_timeline"]["begin"] = begin
+    rows = moved["employee_timeline"]["intervals"]
+    for employee_id in moved["employee_timeline"]["state_totals"]:
+        first = min((row for row in rows if row["employee_id"] == employee_id), key=lambda row: row["start"])
+        assert first["start"] == old
+        if first["state"] == OFF:
+            first["start"] = begin
+        else:
+            rows.insert(rows.index(first), dict(first, start=begin, end=old, state=OFF, register_id=None,
+                                                shift_index=None))
+    for employee_id, totals in moved["employee_timeline"]["state_totals"].items():
+        for state in totals:
+            with contextlib.suppress(OverflowError):  # the replay's own sum overflows first; the claim is never read
+                totals[state] = math.fsum(row["end"] - row["start"] for row in rows
+                                          if row["employee_id"] == employee_id and row["state"] == state)
+    return moved
+
+
+@pytest.mark.parametrize("value", BEYOND_FLOAT_RANGE, ids=BEYOND_IDS)
+@pytest.mark.parametrize("source", ["customer", "employee"])
+def test_a_time_beyond_the_float_range_fails_trace_structure(source, value):
+    result, demand = _replication("stable", DRAIN)
+    corrupted = copy.deepcopy(result)
+    (corrupted["trace"] if source == "customer" else transitions(corrupted))[3]["t"] = value
+    failure = _fails_everywhere(corrupted, demand, "trace_structure")
+    assert (failure["source"], failure["source_index"], failure["event"]["t"]) == (source, 3, value)
+    assert failure["message"] == "A record lacks the engine's fields or a finite time."
+
+
+@pytest.mark.parametrize("value", BEYOND_FLOAT_RANGE, ids=BEYOND_IDS)
+def test_a_started_break_beyond_the_float_range_fails_employee_reconciliation(value):
+    result, demand = _identity_result()
+    corrupted = copy.deepcopy(result)
+    started = next(row for row in corrupted["employee_timeline"]["breaks"] if row["actual_start"] is not None)
+    started["actual_start"] = value
+    failure = _fails_everywhere(corrupted, demand, "employee_reconciliation")
+    assert "non-numeric actual_start" in failure["message"]
+    assert [row["actual_start"] for row in failure["evidence"]["breaks"]] == [value]
+
+
+@pytest.mark.parametrize("value", [*BEYOND_FLOAT_RANGE, math.inf, math.nan, None, "0.5"],
+                         ids=[*BEYOND_IDS, "inf", "nan", "none", "string"])
+def test_unit_work_that_is_not_a_finite_number_fails_service_duration(value):
+    # Tested before the division (unit_work / mu), which raised OverflowError (whole or Fraction) or TypeError.
+    result, demand = _replication("stable", DRAIN)
+    corrupted = copy.deepcopy(result)
+    end = next(event for event in corrupted["trace"] if event["type"] == "service_end")
+    corrupted["customers"][end["customer_id"] - 1]["unit_work"] = value
+    failure = _fails_everywhere(corrupted, demand, "service_duration")
+    assert failure["message"] == "The engine's unit_work is not a finite number."
+    assert failure["event"] == end and failure["evidence"]["unit_work"] is value
+
+
+@pytest.mark.parametrize("value", BEYOND_FLOAT_RANGE, ids=BEYOND_IDS)
+@pytest.mark.parametrize("path, check, message", [
+    (("employee_timeline", "state_totals", "A", OFF), "employee_reconciliation",
+     "state_totals: a rebuilt total differs beyond the tolerance."),
+    (("queue", "customer_hours_in_horizon"), "customer_reconciliation",
+     "queue.customer_hours_in_horizon: the rebuilt value differs from the engine's beyond the tolerance."),
+    (("queue", "customer_hours_after_closing"), "customer_reconciliation",
+     "queue.customer_hours_after_closing: the rebuilt value differs from the engine's beyond the tolerance."),
+    (("staffing", "windows", 0, "busy_employee_hours"), "employee_reconciliation", ": busy_employee_hours differs."),
+], ids=["state_totals", "queue_in_horizon", "queue_after_closing", "staffing_window"])
+def test_an_engine_total_beyond_the_float_range_is_not_within_the_tolerance(path, check, message, value):
+    # Compared with math.isclose, which raised OverflowError converting the engine's value.
+    result, demand = _identity_result()
+    corrupted = copy.deepcopy(result)
+    container = corrupted
+    for key in path[:-1]:
+        container = container[key]
+    container[path[-1]] = value
+    failure = _fails_everywhere(corrupted, demand, check)
+    assert failure["message"].endswith(message) and failure["evidence"]["engine"] == value
+
+
+def test_finite_times_whose_wait_sum_is_beyond_the_float_range_fail_customer_reconciliation():
+    # Every float of a real replication times 2**1018: each is finite, but the served waits sum beyond the float range
+    # (math.fsum raised "intermediate overflow in fsum"). The build fails the same check; it raised from
+    # named_replication_row before the replay ran first.
+    result, demand = _identity_result()
+    failure = _fails_everywhere(_scaled(result, 2.0**1018), demand, "customer_reconciliation")
+    assert failure["message"] == "mean_wait_hours: the rebuilt wait sum is beyond the float range."
+    scaled = _scaled(result, 2.0**1015)  # below the limit the same scaling is accepted by every entry point
+    assert replay_named_trace(scaled, HORIZON, demand)["valid"]
+    assert _build(scaled, demand)["validation"]["valid"]
+
+
+def test_finite_employee_hours_beyond_the_float_range_fail_employee_reconciliation():
+    # A state total: a HANDOVER day times 2**980 whose timeline begins at -DBL_MAX, so A's OFF hours (before its shift
+    # and after its release) are finite pieces whose sum is beyond the float range.
+    failure = _fails_everywhere(_with_begin(_scaled(simulate(*HANDOVER), 2.0**980), -DBL_MAX), PERIODS,
+                                "employee_reconciliation")
+    assert failure["message"] == "state_totals: a rebuilt total is beyond the float range."
+    assert failure["evidence"] == {"employee_id": "A", "state": OFF}
+    # A staffing window: three employees accepting all horizon, times 2**1021 (2**1020 is accepted).
+    day = simulate(*SURPLUS, required=THREE)
+    assert replay_named_trace(_scaled(day, 2.0**1020), HORIZON, PERIODS)["valid"]
+    failure = _fails_everywhere(_scaled(day, 2.0**1021), PERIODS, "employee_reconciliation")
+    window = _scaled(day, 2.0**1021)["staffing"]["windows"][0]
+    assert failure["message"] == "The rebuilt employee-hours are beyond the float range."
+    assert failure["evidence"] == {"states": [AVAILABLE, SERVING], "start": window["start"], "end": window["end"]}
+
+
+def test_employee_hours_outside_the_horizon_beyond_the_float_range_fail_instead_of_raising():
+    # With the timeline beginning at -DBL_MAX, A and B are each OFF for DBL_MAX hours before opening: every check passes,
+    # and _outside_horizon, which ran after the replay's exception boundary, raised OverflowError.
+    day = simulate(*HANDOVER)
+    failure = _fails_everywhere(_with_begin(day, -DBL_MAX), PERIODS, "employee_reconciliation")
+    assert failure["message"] == "The rebuilt employee-hours are beyond the float range."
+    assert failure["evidence"] == {"states": [OFF], "start": -math.inf, "end": 0.0}
+    checked = replay_named_trace(_with_begin(day, -DBL_MAX / 4), HORIZON, PERIODS)  # a quarter of the range is accepted
+    assert checked["valid"] and checked["outside_horizon"]["before_opening_hours_by_state"][OFF] == DBL_MAX / 2
+    # The build: its row sums each state's totals across employees before _outside_horizon runs. With the engine's OFF
+    # totals set rel 5e-10 below the rebuilt ones (inside the replay's tolerance), that sum stays in the float range while
+    # the before-opening hours pass it, so only _outside_horizon overflows.
+    result, demand = _identity_result()
+    limit = Fraction(DBL_MAX) + Fraction(2) ** 970  # an exact sum of at least this rounds beyond the float range
+    moved = _with_begin(result, float(-limit * (1 + Fraction(1, 4 * 10**9)) / len(result["employee_timeline"]["state_totals"])))
+    for totals in moved["employee_timeline"]["state_totals"].values():
+        totals[OFF] *= 1 - 5e-10
+    assert math.isfinite(math.fsum(totals[OFF] for totals in moved["employee_timeline"]["state_totals"].values()))
+    failure = _fails_everywhere(moved, demand, "employee_reconciliation")
+    assert failure["message"] == "The rebuilt employee-hours are beyond the float range."
+    assert failure["evidence"] == {"states": [OFF], "start": -math.inf, "end": 0.0}
+
+
+@pytest.mark.parametrize("block, field, value, count", [
+    ("shifts", "overrun", 10**400, 1),
+    ("shifts", "overrun", 1.5e308, 2),  # finite; their sum is beyond the float range
+    ("shifts", "activation_delay", Fraction(10**400), 1),
+    ("breaks", "delay", -(10**400), 1),
+], ids=["overrun_int", "overrun_finite_sum", "activation_delay_fraction", "break_delay_negative_int"])
+def test_a_replication_row_that_cannot_be_computed_fails_summary_row(monkeypatch, block, field, value, count):
+    # The replay does not reconcile overruns, activation delays, or break delays (roster inputs), so the result replays
+    # validly; named_replication_row sums them and raised OverflowError out of build_named_playback.
+    result, demand = _identity_result()
+    corrupted = copy.deepcopy(result)
+    rows = [row for row in corrupted["employee_timeline"][block]
+            if (row["activated"] if block == "shifts" else row["actual_start"] is not None)]
+    assert len(rows) >= count
+    for row in rows[:count]:
+        row[field] = value
+    before = copy.deepcopy(corrupted)
+    assert replay_named_trace(corrupted, HORIZON, demand)["valid"]
+    with pytest.raises(NamedPlaybackError) as caught:
+        _build(corrupted, demand)
+    failure = caught.value.failure
+    assert failure["check"] == "summary_row" and failure["check"] in shared_named_playback.CHECKS
+    assert failure["message"] == ("The replication row cannot be computed from the result: a value or a sum is beyond "
+                                  "the float range.")
+    assert isinstance(failure["evidence"]["error"], str) and failure["evidence"]["error"]
+    assert corrupted == before
+    # The stored-run path regenerates through build_named_playback, so a defective engine is refused the same way.
+    run = replicate("overrun_and_contention", replications=1, seed=3, policy=DRAIN)
+    real = shared_named_playback.simulate_named_replication
+
+    def doctored(*args: Any, **kwargs: Any) -> dict:
+        regenerated: dict = real(*args, **kwargs)
+        targets = [row for row in regenerated["employee_timeline"][block]
+                   if (row["activated"] if block == "shifts" else row["actual_start"] is not None)]
+        for row in targets[:count]:
+            row[field] = value
+        return regenerated
+
+    monkeypatch.setattr(shared_named_playback, "simulate_named_replication", doctored)
+    with pytest.raises(NamedPlaybackError) as caught:
+        playback_from_named_replications(run, 0)
+    assert caught.value.failure["check"] == "summary_row"
+
+
+@pytest.mark.parametrize("change, check, message", [
+    (lambda r: r["counts"].update(arrivals=r["counts"]["arrivals"] + 1), "customer_reconciliation", "counts: "),
+    (lambda r: r["counts"].update(departed=10**400), "customer_reconciliation", "counts: "),
+    (lambda r: next(row for row in r["customers"] if row["wait_hours"] is not None).update(wait_hours=10**400),
+     "customer_reconciliation", "customers (every field"),
+    (lambda r: next(row for row in r["employee_timeline"]["intervals"] if row["after_closing"]).update(end=10**400),
+     "employee_reconciliation", "employee state and register intervals: "),
+    (lambda r: r.update(finish=10**400), "employee_reconciliation", "finish: "),
+    (lambda r: r.update(closing_time=Fraction(10**400)), "closing_rules", ""),
+], ids=["counts_inconsistent", "counts_beyond_range", "wait_hours", "after_closing_interval", "finish", "closing_time"])
+def test_the_build_fails_as_the_replay_does_because_the_replay_runs_before_the_row(change, check, message):
+    # On 156de75f the build computed named_replication_row first: inconsistent counts raised SharedSegmentError ("does
+    # not conserve customers") and the other cases raised OverflowError, where replay_named_trace failed a check. The
+    # build now replays first and raises NamedPlaybackError with the replay's failure.
+    result, demand = _identity_result()
+    corrupted = copy.deepcopy(result)
+    change(corrupted)
+    failure = _fails_everywhere(corrupted, demand, check)
+    assert failure["message"].startswith(message)
+
+
+def test_exact_in_range_fractions_are_accepted_and_change_no_playback_output():
+    # Each float field, in turn, replaced by the equal Fraction: the playback is valid and equal to the original.
+    result, demand = _identity_result()
+    original = _build(result, demand)
+    assert original["provenance"]["playback_version"] == "novaq-shared-named-playback-v4"
+    assert original["validation"]["checks"] == shared_named_playback.CHECKS and "summary_row" in original["validation"][
+        "checks"]
+    first_by_field: dict[str, tuple] = {}
+
+    def walk(value: Any, path: tuple) -> None:
+        if isinstance(value, float):
+            first_by_field.setdefault("/".join("*" if isinstance(key, int) else str(key) for key in path), path)
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                walk(item, (*path, key))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, (*path, index))
+
+    walk(result, ())
+    assert {"trace/*/t", "employee_timeline/transitions/*/t", "customers/*/unit_work", "begin", "finish",
+            "employee_timeline/intervals/*/start", "queue/customer_hours_in_horizon"} <= set(first_by_field)
+    for path in first_by_field.values():
+        variant = copy.deepcopy(result)
+        container = variant
+        for key in path[:-1]:
+            container = container[key]
+        container[path[-1]] = Fraction(container[path[-1]])
+        assert replay_named_trace(variant, HORIZON, demand)["valid"], path
+        assert _build(variant, demand) == original, path
 
 
 # ── Isolation ───────────────────────────────────────────────────────────────

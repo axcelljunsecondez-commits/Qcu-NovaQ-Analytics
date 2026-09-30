@@ -496,6 +496,110 @@ and its tests. `PLAYBACK_VERSION` is now `novaq-shared-named-playback-v3`.
   - `ruff check .`: clean; `mypy . --exclude '^outputs/'`: clean on 176 files; `git diff --check`:
     clean.
 
+## Follow-up: numeric range (2026-09-30)
+
+A read-only probe (2026-09-29, on a scratch copy of `5a9738e2`) found that values beyond the float range escaped as
+`OverflowError`. The fix was made on branch `fix/named-playback-overflow` from `156de75f`, where this module and its
+tests were unchanged since `5a9738e2`. It changes only `simulation/shared_named_playback.py` and its tests. The engine
+(v3), `shared_named_replications.py` and its method (v2, `METHOD_VERSION` unchanged), the digest, the merge, and every
+named-DES rule are unchanged. `PLAYBACK_VERSION` is now `novaq-shared-named-playback-v4`.
+
+- **Correction to the v2 record.** The v2 hardening made unhashable values fail a check. It did not cover numeric
+  range: a whole number or `Fraction` beyond the float range, and finite floats whose exact sum is beyond it, still
+  raised `OverflowError` through v3 (VERIFIED on the v3 module).
+- **Defects, reproduced on the v3 module before any change.** The results were doctored; the engine never produces
+  these values.
+  - `_time` (`float(value)`): a huge whole number or `Fraction` in a trace or transition `t`, or in a started engine
+    break's `actual_start`.
+  - `_close_enough` (`math.isclose`) and `near` (`float()`): a huge engine state total, queue integral, or
+    staffing-window series value.
+  - `unit_work / mu` in the service-duration check: a huge `unit_work`. `None` or a string raised `TypeError`.
+  - `math.fsum` on finite floats: the served-wait sum (every float of a real replication times 2**1018), a
+    per-employee state total, and `_hours_in` for a staffing window.
+  - `_outside_horizon`, which ran after the exception boundary. With the timeline beginning at -DBL_MAX every check
+    passed, and `replay_named_trace` raised from `_outside_horizon` -> `_hours_in`.
+  - `build_named_playback` computed `named_replication_row` before the replay. It raised `OverflowError` from that
+    function (the wait sum, state totals, after-closing intervals, overruns, activation and break delays, and finish
+    minus closing) and `SharedSegmentError` for inconsistent counts, where `replay_named_trace` failed a check or
+    accepted the result.
+  - Where probed, each escaped `replay_named_trace`, `build_named_playback`, or both. `playback_from_named_replications`
+    was probed with a doctored engine (trace and transition times, `unit_work`, a state total, an after-closing
+    interval) and raised in every case.
+- **Fix:**
+  - `_time` and `_close_enough` return False on `OverflowError`. `near` treats an `OverflowError` from its `float()`
+    conversions as outside the tolerance.
+  - A new `_fsum` wrapper turns `OverflowError` into the caller's existing check. It is used at the served-wait sum
+    (`customer_reconciliation`), the state totals (`employee_reconciliation`), and `_hours_in`
+    (`employee_reconciliation`), which serves the staffing windows, the row's after-closing hours, and
+    `_outside_horizon`.
+  - `unit_work` is tested as a finite real before the division; otherwise `service_duration` fails with "The engine's
+    unit_work is not a finite number." This also turns `None` or a string (formerly `TypeError`) into that failure, and
+    gives `inf` or NaN (formerly `service_duration` with the duration message) the new message.
+  - `_outside_horizon` runs inside the exception boundary of both `replay_named_trace` and `build_named_playback`.
+  - B1: `build_named_playback` replays first, then computes `named_replication_row` inside the same boundary. An
+    `OverflowError` from the row fails the new check `summary_row`, with the error text as evidence. A result the replay
+    rejects fails the same check in the build, so inconsistent counts now raise
+    `NamedPlaybackError(customer_reconciliation)` instead of `SharedSegmentError`.
+  - Existing check codes are unchanged. `summary_row` is appended to `CHECKS`.
+- **Reachability of the `_outside_horizon` boundary (VERIFIED by tests).** In the replay, a timeline beginning at
+  -DBL_MAX reaches it. In the build, it is reached when the engine's OFF totals lie inside the replay's tolerance below
+  the rebuilt ones (rel 5e-10 in the test), so that the row's cross-employee sum stays in the float range. That this is
+  the only route in the build is INFERRED: the row sums each state's totals across employees before
+  `_outside_horizon` runs.
+- **Valid output unchanged (VERIFIED by a scratch comparison, not committed).** The v3 module (a `git archive` of
+  `156de75f`) and the v4 module each produced 276 outputs: `replay_named_trace` and `build_named_playback` on 10 seeded
+  scenarios x 2 policies x 6 seeds, `playback_from_named_replications` on each scenario and policy, and
+  `replay_named_trace` on 16 prescribed days. After removing `provenance.playback_version` and the appended
+  `summary_row` check, all 276 were identical.
+- **Tests** (`tests/test_shared_named_playback.py`: 10 new functions, 50 new tests, 167 in the file; the two v3 version
+  assertions changed to v4):
+  - a time beyond the float range (4 values, in the trace and in the transitions): `trace_structure`;
+  - a started break's `actual_start` beyond it: `employee_reconciliation`;
+  - `unit_work` beyond it, `inf`, NaN, `None`, or a string: `service_duration`;
+  - an engine state total, queue integral, or staffing-window value beyond it: its existing check;
+  - finite floats whose sum is beyond it: the served-wait sum, a state total, and a staffing window, each with an
+    accepted control;
+  - `_outside_horizon` in the replay and in the build;
+  - `summary_row` for an overrun, a finite overrun sum, an activation delay, and a break delay, which the replay
+    accepts, and through the stored-run path with a doctored engine;
+  - the build failing exactly as the replay does, for inconsistent or out-of-range counts, a wait, an after-closing
+    interval, the finish, and the closing time;
+  - every float field in turn replaced by the equal `Fraction`: valid, and the playback equal to the original.
+
+  Against the v3 module (the `156de75f` archive with the new test file), 52 tests fail and 115 pass. Of the 52: 43
+  raise `OverflowError`; 2 raise `SharedSegmentError` (counts); 2 raise `TypeError` (`unit_work` `None` and string);
+  2 (`unit_work` `inf` and NaN) already failed `service_duration`, with the old message; and 3 assert the v4 version.
+- **Fault injection** (scratch copy; the working tree was untouched). 13 mutants each undo one change: the `_time`,
+  `_close_enough`, and `near` guards; `_fsum` at each of its three sites; the `unit_work` test; `_outside_horizon`
+  outside the boundary in the replay and in the build; the `summary_row` guard; the row before the replay; the `CHECKS`
+  entry; and the version. First run: 12 of 13 killed. The build `_outside_horizon` mutant survived, so the
+  tolerance-band test was added. Final run: 13 of 13 killed.
+- **Gates (executed on the final code, 2026-09-30):**
+  - focused: playback 167, named replications 73, named DES 65, state machine 39, pin 9, `tests/test_shared_segments.py`
+    51, and attribution 141, all passed;
+  - all 15 `tests/test_shared_*.py` files: 1002 passed;
+  - Separate Queue, the same 20 files: 182 passed;
+  - full backend suite (`python -m pytest tests/ -x --tb=short`): 2035 passed, 3 skipped, 1 xfailed, 6 subtests
+    passed, in 484 s. The skip reasons were not printed in this run. The full suite was not rerun before the change in
+    this worktree, so no verified pre-change count is claimed;
+  - `ruff check .`: clean; `mypy . --exclude '^outputs/'` and plain `mypy .` in this worktree: no issues in 178 files;
+    `git diff --check`: clean.
+- **Open (VERIFIED, not fixed, outside this follow-up; each needs approval):**
+  - The queue-area accumulation in `_reconcile` (`area[...] += queue_len * (t2 - t1)`) is not an `fsum` site. With
+    exact `Fraction` times (a consistent HARD_CUTOFF day times 2**1021), a term beyond the float range still raises
+    `OverflowError` from `replay_named_trace`. It is present on v3 as well.
+  - An engine break with an unknown `unfulfilled_cause` passes the replay, which does not reconcile unfulfilled breaks.
+    `build_named_playback` then raises `SharedSegmentError` from `named_replication_row`. It is present on v3 as well.
+    It is not an overflow, so `summary_row` does not cover it.
+  - Non-finite values are accepted: a timeline beginning at -inf, and infinite queue integrals (floats times 2**1021),
+    replay as VALID, because `math.isclose(inf, inf)` is True.
+  - From the 2026-09-29 probe, outside this module or out of scope:
+    - a huge or `Fraction` `register_count` (`MemoryError` or `TypeError` in `_Replay.handover`);
+    - a caller-supplied service rate beyond the float range (`float()` in `_Replay.__init__`);
+    - `services/shared_segments._is_finite_real`, which has the same unguarded `float()`;
+    - the named DES `servers` sum (`shared_named_des.py`);
+    - `simulation/shared_employee_states._handover` (`MemoryError` on a huge `register_count`).
+
 ## Undetermined (UNKNOWN or INFERRED)
 
 1. Cross-version numpy stream equality: UNKNOWN (unchanged from 5B-4.4).
