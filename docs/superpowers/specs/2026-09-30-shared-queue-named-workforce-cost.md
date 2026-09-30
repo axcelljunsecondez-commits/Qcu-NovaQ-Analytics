@@ -246,8 +246,18 @@ W       = cost(queue.customer_hours_total, waiting_rate)
 U       = cost(counts.unserved_at_close, unserved_customer_rate)   if X6 applies (section 7)
         = NOT_APPLICABLE (not a term)                                otherwise
 
-C_total = fsum(L, W, U if X6 applies)   if none of them is None, else None
+C_total = fsum of every COSTED and ZERO_QUANTITY component cost, taken flat:
+          L_e_reg and L_e_ot of every employee, W, and U if X6 applies
+        = None if any component is RATE_MISSING or HOURS_UNDETERMINED
 ```
+
+- **Canonical grouping (corrected 2026-09-30, approved by the product owner).** The `C_total` line
+  read `C_total = fsum(L, W, U if X6 applies)   if none of them is None, else None`. That nested
+  grouping can differ from the flat one by float rounding: component costs 1e16, 1.0, and 1.0 give
+  1e16 nested and 1.0000000000000002e16 flat. The flat fsum of sections 9 and 11 is canonical; it
+  is what the implementation computes and what `cost_arithmetic` checks. `L_e` and `L` are the
+  reported subtotals (`labor_cost` and `labor.total_cost`), not terms of `C_total`. The `None` rules
+  apply before the final fsum. No code changed.
 
 - **Units:**
   - paid hours × currency per hour;
@@ -460,6 +470,9 @@ separately:
        `drain_crew == []`, and the unserved rows' ids are exactly `waiting_customer_ids`. This is the
        approved X6 mechanism, confirmed from the engine's evidence;
      - if `drain_crew` is non-empty, then `unserved_at_close == 0`.
+     - Approved 2026-09-30 as a reconciliation invariant: if `drain_crew` is empty, the unserved
+       rows' ids are exactly `waiting_customer_ids`, whatever the count (so an empty crew with
+       customers waiting and nobody unserved fails). Section 18.3, item 2, gives its scope.
 
 A failure raises `NamedCostError` with the evidence. Nothing is repaired.
 
@@ -943,11 +956,28 @@ None changes an approved rule.
    implementation follows sections 9 and 11 (`cost_arithmetic`). `labor.total_cost` is the fsum of the
    employees' `labor_cost`, and each `labor_cost` is the fsum of its two component costs, where
    sections 3 and 9 agree. On the hand cases, all binary-exact, both groupings give the same values.
+   Resolved 2026-09-30 by the product owner: the flat grouping of sections 9 and 11 is canonical, and
+   section 3 is corrected to state it. No code changed.
 2. **DRAIN with an empty crew (`unserved_consistency`).** Section 7 rule 5 checks a positive unserved
    count and a non-empty crew. The implementation also requires, with an empty crew, that the unserved
    ids equal the waiting ids, so an empty crew with customers waiting and nobody unserved fails. This
    is the engine's X6 rule (`shared_named_des.py`, lines 416-417: with an empty crew, every waiting
    customer is unserved). It changes no cost of a valid run.
+   - **Approved by the product owner on 2026-09-30** as a validation and reconciliation invariant,
+     not a costing rule. Its scope:
+     - It applies only under DRAIN with an empty frozen crew, the exact engine condition in which
+       the X6 `no_eligible_employee` path makes every admitted waiting customer unserved
+       (`shared_named_cost.py`, the `unserved_consistency` branch for an empty crew). With a crew,
+       the check requires only `unserved_at_close == 0`.
+     - It never decides applicability. C10b stays authoritative: the DRAIN unserved term applies
+       because `counts.unserved_at_close > 0`, computed from the counts alone. The invariant is a
+       gate that rejects inconsistent engine data before any cost is built.
+     - Same population (VERIFIED): `waiting_customer_ids` is `list(queue)` taken at the closing
+       instant (`shared_named_des.py`, line 405). Only the closing trace record comes between it and
+       `unserve(t, NO_ELIGIBLE_EMPLOYEE)` (lines 413-417). `unserve` pops that same queue and is the
+       only place a customer's `unserved_reason` is set (lines 371-374). So the ids it marks
+       unserved are exactly `waiting_customer_ids`, and the equality is not forced onto a different
+       population.
 3. **Withheld lists.** `labor_cost_withheld` and `labor.withheld` name only required items (a
    missing required rate or threshold). A `None` rate beside a missing required threshold appears only
    in `missing`, with status `HOURS_UNDETERMINED` and requirement `undetermined` (section 9).
@@ -1066,6 +1096,7 @@ database, frontend, dependencies, and fixtures. The only tracked code file chang
 - Phase 5A D6 and D8 contents: UNKNOWN. D15: UNKNOWN; no verdict (C11).
 - The C14 all-flagged branch and the D7 branches in the walk: INFERRED unreachable.
 - Tiny slices on the seeded runs: NOT TESTED. Cross-version numpy stream equality: UNKNOWN.
-- The `total_cost` grouping: CONFLICTING at rounding level within this spec (18.3).
+- The `total_cost` grouping: CONFLICTING at rounding level within this spec (18.3). Resolved
+  2026-09-30: the flat grouping is canonical (section 3).
 - Cross-replication cost aggregation, an acceptance rule, and API or UI exposure: out of scope; each
   needs its own approval.
