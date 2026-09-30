@@ -303,6 +303,21 @@ def test_6_a_deleted_dataset_is_never_treated_as_current(workspace):
     assert workspace.stored_job(jobs["des"]) is not None
 
 
+def test_6_deleting_a_non_current_dataset_changes_neither_current_nor_evidence(workspace):
+    dataset_a = workspace.upload(2, "a.csv")
+    workspace.run_all()
+    dataset_b = workspace.upload(6, "b.csv")
+    later = workspace.run_all()
+    before = workspace.workflow()
+    assert workspace.slots() == later
+
+    # B has the higher id, so A was never current: deleting it moves nothing.
+    workspace.delete_dataset(dataset_a)
+    current = workspace.client.get(f"/analyses/{workspace.analysis_id}/current").json()
+    assert current["dataset"]["id"] == dataset_b
+    assert workspace.workflow() == before
+
+
 # ── 7. No valid current dataset ────────────────────────────────────────────
 
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithProviders } from '../test/test-utils'
+import { makeQueryClient, renderWithProviders } from '../test/test-utils'
 import type { QueueSetup } from '../api/types'
 import { getAnalysisCurrent, listAnalysisDatasets } from '../api/analyses'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
@@ -170,6 +170,28 @@ describe('three-sheet upload', () => {
     const { file } = await uploadFile('events.csv')
     await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file))
     expect(previewMock).not.toHaveBeenCalled()
+  })
+
+  it('drops this analysis\'s cached workflow result and marks its current dataset stale after an upload', async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['workflow', 7], { des_current: { params: { dataset_id: 2 } } })
+    queryClient.setQueryData(['workflow', 8], { des_current: { params: { dataset_id: 5 } } })
+    queryClient.setQueryData(['current', 7], { dataset: { id: 2 } })
+    const user = userEvent.setup()
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} />
+      </Routes>,
+      { route: '/analyses/7/setup', queryClient },
+    )
+    const file = new File(['x'], 'events.csv')
+    await user.upload(await screen.findByLabelText('Upload Data'), file)
+    await user.click(screen.getByRole('button', { name: 'Upload and process' }))
+    await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file))
+    await waitFor(() => expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined())
+    expect(queryClient.getQueryState(['current', 7])?.isInvalidated).toBe(true)
+    // Another analysis's current dataset did not change.
+    expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
   })
 })
 

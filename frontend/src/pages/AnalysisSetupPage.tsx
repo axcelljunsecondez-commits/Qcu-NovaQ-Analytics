@@ -80,6 +80,9 @@ export function AnalysisSetupPage() {
       setNotice(data.dataset.validation.message)
       void client.invalidateQueries({ queryKey: ['datasets', id] })
       void client.invalidateQueries({ queryKey: ['current', id] })
+      // The new dataset is now current: drop cached workflow evidence so a page never shows the
+      // previous dataset's runs, even while its fresh request is in flight (invalidation would).
+      void client.resetQueries({ queryKey: ['workflow', id] })
       if (variables.applySetup) void client.invalidateQueries({ queryKey: ['analysis', id] })
     },
     onError: (error) => setNotice(messageOf(error, t('errors.upload'))),
