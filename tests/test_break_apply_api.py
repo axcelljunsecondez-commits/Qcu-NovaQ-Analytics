@@ -171,25 +171,49 @@ def test_apply_request_bounds_and_auth(db_engine, client):
     assert _stored_setup(db_engine, analysis_id) == setup
 
 
-def _add_job(db, user_id, analysis_id, kind, setup, scenario_id=None):
+def _add_job(db, user_id, analysis_id, kind, setup, scenario_id=None, dataset_id=None, **params):
+    """A completed job as the real endpoints record one.
+
+    ``dataset_id`` is part of that record: since D7 (plan Step 3) a Current-kind job without a
+    recorded dataset is not current evidence, so a fixture that omits it no longer stands in for
+    a real run.
+    """
     db.add(Job(user_id=user_id, kind=kind, status="completed", tenant_id=None,
                params_json={"analysis_id": analysis_id, "scenario_id": scenario_id,
-                            "setup_hash": setup_fingerprint(setup)},
+                            "dataset_id": dataset_id,
+                            "setup_hash": setup_fingerprint(setup), **params},
                result_json={}, finished_at=datetime.now(timezone.utc)))
 
 
 def test_apply_makes_earlier_evidence_stale(db_engine, client):
     analysis_id, setup = _workspace(db_engine)
+    dataset_id = _dataset_id(db_engine, analysis_id)
     with make_sessionmaker(db_engine)() as db:
         analysis = db.get(AnalysisProject, analysis_id)
+        mc_id = None
         for kind in ("workflow_des_current", "workflow_mc_current", "workflow_validation_current"):
-            _add_job(db, analysis.user_id, analysis_id, kind, setup)
+            # Current validation records the Current MC job it aggregated, as its endpoint does.
+            links = {"mc_job_id": mc_id} if kind == "workflow_validation_current" else {}
+            _add_job(db, analysis.user_id, analysis_id, kind, setup, dataset_id=dataset_id, **links)
+            db.flush()
+            if kind == "workflow_mc_current":
+                mc_id = db.query(Job.id).order_by(Job.id.desc()).first()[0]
         _add_job(db, analysis.user_id, analysis_id, "workflow_selection", setup, scenario_id=999)
         _add_job(db, analysis.user_id, analysis_id, "workflow_decision", setup, scenario_id=999)
         db.commit()
     login(client, "brk@example.com", "pw")
     before = client.get(f"/analyses/{analysis_id}/workflow").json()
-    assert before["des_current"] is not None and before["decision_stale"] is False
+    # The Current-mode chain is real evidence on the current dataset, so it is current here and
+    # must stop being current after the apply: that is this test's subject.
+    assert before["des_current"] is not None
+    assert before["mc_current"] is not None and before["validation_current"] is not None
+    # The selection and decision fixtures name scenario 999, which does not exist, so there is no
+    # eligible selected scenario. The stored Decision is not served (Step 5), and `decision_stale`
+    # keeps its established meaning: with nothing selected there is no Decision to regenerate, so
+    # it stays False until the Setup changes (asserted after the apply below). Step 5 had briefly
+    # asserted True here; that value told the page to "generate again" a Decision that no
+    # generation could clear (Step 5 final review, Option A).
+    assert before["decision"] is None and before["decision_stale"] is False
     proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
     assert _apply(client, analysis_id, _from(proposal)).status_code == 200
     after = client.get(f"/analyses/{analysis_id}/workflow").json()
