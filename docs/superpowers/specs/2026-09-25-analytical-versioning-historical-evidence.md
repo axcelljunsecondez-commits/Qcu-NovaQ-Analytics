@@ -2,6 +2,16 @@
 
 Date: 2026-09-25. Status: **PROPOSED — awaiting product-owner review. Nothing here is implemented.**
 
+Status update (2026-10-01): "Nothing here is implemented" above is HISTORICAL.
+
+- The product owner has decided OD-1 (section 15), OD-12, OD-GA-C1 and OD-GA-C2 (plan Step 0).
+- The release G-A scope of this design is implemented, and the G-A implementation milestone is
+  complete on `port/g-a-stage1` at `e7e3cdae` (plan Step 0, "G-A implementation completion
+  record"). It is not released.
+- Everything outside G-A stays as written: engine v3, the M3 marker, OD-1 history, Step 11 report
+  identity and OD-2 … OD-11.
+- The section 5.4 defect stays open (OD-GA-C2).
+
 Base code for every source reference: `fix/d1-replication-costs` at `d4bca6af` (main `1d3294cb` plus
 D1 `c25591a7`, D5 `5291f7ec`, D10 `66ba238e`, D2 `d4bca6af`). Shared-queue references:
 `feat/shared-queue-segments` at `c37c4f00`.
@@ -203,7 +213,12 @@ non-current or stale evidence as current, and it states clearly that no current 
 current dataset. G-A is not required to tell a never-run analysis apart from one whose earlier
 Current results are no longer current: both deliberately show the one current-only state "No
 current run for dataset #B" (section 9.2). The blocker stays open until that frontend behavior is
-implemented (plan Step 3); it is not implemented.
+implemented (plan Step 3); it is not implemented (as of 2026-09-30).
+
+**Status (2026-10-01).** The frontend behavior is implemented on `port/g-a-stage1` (`88c6f4da`).
+The cache fixes `822d5053` and `e7e3cdae` keep a previous dataset's or Setup's evidence from being
+shown as current. This blocker's condition is therefore met for the G-A implementation. That is an
+implementation result: the D7 repair is not deployed.
 
 ### 5.2 One currentness policy (PROPOSED)
 
@@ -275,7 +290,7 @@ problem is unresolved: schema-1 and scenario-bound currentness (Step 4), the mis
 guard (Step 5), version and accounting-marker policy (sections 3.2 and 6), and any historical
 display or endpoint (OD-1: not approved for release G-A, deferred; section 15).
 
-### 5.4 Exact source identity (Step 5 finding) — RELEASE BLOCKER, unresolved
+### 5.4 Exact source identity (Step 5 finding) — RELEASE BLOCKER for exact-generation enforcement (G-B/G9; qualified by OD-GA-C2), unresolved
 
 **What the Step 5 interim repair provides (VERIFIED on its tested tree).** Every persisted workflow
 job used as evidence — every workflow slot, both Decision endpoints and the selected-plan report
@@ -322,6 +337,19 @@ Write-time consumers that the guard does not cover:
 
 **Status.** This is an unresolved identity/provenance defect and a release blocker. The Step 5
 guard rejects broken references; it is not an exact-generation solution.
+
+**Staging (owner decision OD-GA-C2, 2026-10-01; plan Step 0).** The contract's staging is adopted.
+
+- The defect above stays OPEN and unrepaired in G-A, with its severity unchanged. G-A does not
+  claim otherwise.
+- "Release blocker" is qualified, not withdrawn:
+  - the defect blocks the stage that requires exact-generation enforcement, and any release
+    criterion that requires exact identity;
+  - G-B/G9 must close it before then;
+  - it does not block the G-A implementation milestone, which keeps
+    `GENERATION_ENFORCEMENT_ENABLED = False` (contract §6.1, §6.2).
+- Since this section was written, the token mechanism described below has been implemented as
+  G1–G7 with enforcement off. Enforcement (S3) belongs to G-B.
 
 **Direction approved in principle (2026-09-26); implementation not authorized.**
 

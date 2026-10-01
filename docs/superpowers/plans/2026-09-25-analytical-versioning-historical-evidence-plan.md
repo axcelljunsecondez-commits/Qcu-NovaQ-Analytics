@@ -5,10 +5,14 @@ Status: **Each step needs explicit authorization.** Original status line, now HI
 and 2 implemented. Steps 3-13 PROPOSED — not started." Since then, Steps 3 and 4 were committed in
 part (`bc303109`, `2038845b`) and Step 5 as INTERIM (`4db54722`), all on
 `fix/d1-replication-costs`; release grouping is decided by OD-12 (Step 0).
+Current status (2026-10-01): the G-A implementation milestone is COMPLETE on `port/g-a-stage1` at
+`e7e3cdae` (Step 0, "G-A implementation completion record"). This is not a release: G8, CI,
+PostgreSQL 16, production verification and G-B/G9 are not complete.
 
 Base: a new branch from `fix/d1-replication-costs` (`d4bca6af`) unless a step says otherwise.
 Release G-A is not built on this base: under OD-12 option (b)-G (Step 0) it is built on a
-`main`-based line by a separate porting stage, whose base revision is not decided.
+`main`-based line by a separate porting stage. That line is `port/g-a-stage1`, branched from `main`
+at `2d063c91` (VERIFIED 2026-10-01).
 Test numbers (T1-T15) refer to spec section 14. Every step ends with the full gates: `python -m
 pytest tests/ -x --tb=short`, `ruff check .`, `mypy .`, and in `frontend/` `npm test`, `npm run
 typecheck`, `npm run lint`, `npm run build`, plus locale symmetry. The Monte Carlo strict xfail
@@ -26,7 +30,7 @@ Global rules:
 
 - Output: answers to OD-2 … OD-11 (spec section 15). OD-1 is decided: NOT APPROVED for release
   G-A / DEFERRED (2026-09-30, spec section 15). OD-12 is decided: option (b)-G (2026-09-30,
-  below).
+  below). OD-GA-C1 and OD-GA-C2 are decided (2026-10-01, below).
 - Stop condition: written approval of the spec and of the chosen options. No code before this.
 
 **OD-12 (release grouping) — DECIDED by the product owner on 2026-09-30: option (b)-G.**
@@ -65,6 +69,12 @@ commits on `fix/d1-replication-costs` cannot be reused there as they are (VERIFI
 The port is not implemented. Whether it applies without conflicts is UNKNOWN, and so is any other
 dependency of the Step or G commits on the D-series.
 
+Update (2026-10-01; the paragraph above is HISTORICAL, as of 2026-09-30): the port is implemented
+on `port/g-a-stage1` (`92d95bed` and the commits after it; see the completion record below). There
+the two execution constants are labels only: `separate_optimization.py` defines them as exactly the
+two `execution` strings that `main`'s `workflow.py` already writes. No D10 accounting change was
+ported (VERIFIED 2026-10-01).
+
 This is a release-grouping decision only. It does not decide the `main` base revision, or whether
 Steps 4 and 5 ship in full or in their current interim scope. It authorizes no porting,
 cherry-picking or rebasing, no frontend work, no Step 4 or 5 completion work, no deployment, no
@@ -74,14 +84,115 @@ Unchanged by it:
 
 - the D-repairs are never released without steps 9 and 10 (global rules above);
 - the D7 repair is not deployed without its frontend compatibility work (spec section 5.1). That
-  work is not implemented;
+  work is not implemented (as of 2026-09-30; implemented on `port/g-a-stage1` since `88c6f4da`, see
+  the completion record below);
 - spec section 5.4 (exact source identity) stays CONFLICTING: the spec and Step 5 below call it an
   open release blocker, while the contract (§6.2) has G-A ship with the defect present and closes
-  it only with enforcement in G-B;
+  it only with enforcement in G-B (as of 2026-09-30; resolved for G-A by OD-GA-C2 below, which adopts
+  the contract's staging; the defect itself stays open);
 - G8 (release G-A operations) stays BLOCKED. Its stop condition, any §11.2 fact UNKNOWN (contract
   §14), holds: every §11.2 production fact is UNKNOWN;
 - G9 is not started;
 - `GENERATION_ENFORCEMENT_ENABLED = False` (`backend/api/workflow.py:102`).
+
+**OD-GA-C1 (CI and PostgreSQL 16) — DECIDED by the product owner on 2026-10-01.**
+
+- Actual CI, including its PostgreSQL 16 `postgres-integration` job, is not a prerequisite of the
+  G-A implementation milestone. That milestone is declared from the agreed implementation scope and
+  its required local gates (Base paragraph above).
+- CI and PostgreSQL 16 remain required release and integration assurance before any production or
+  release action whose gates require them. G8 or a release may require them, or stronger evidence.
+- Their status is unchanged: CI is NOT RUN and PostgreSQL 16 is NOT TESTED. Neither is claimed to
+  pass, and CI is neither removed nor weakened.
+- The pending "CI … gates" in the contract's stage statuses (contract header, §5.5, §16) are read
+  under this decision.
+
+**OD-GA-C2 (spec section 5.4 versus contract §6.2) — DECIDED by the product owner on 2026-10-01:
+the contract's staging is adopted.**
+
+- G-A keeps `GENERATION_ENFORCEMENT_ENABLED = False`.
+- The exact-generation (source-identity) defect of spec section 5.4 stays an explicitly known OPEN
+  defect. G-A does not claim it is repaired, and its severity is unchanged.
+- The G-A implementation milestone may complete with the defect open, because the
+  identity-enforcement repair belongs to G-B/G9 under the approved staged contract (§6.1, §6.2,
+  §14).
+- G-B/G9 must close the defect before the stage that requires exact-generation enforcement, and
+  before any release criterion that requires exact identity is treated as met.
+- "Release blocker" in spec section 5.4 and in Step 5 below is qualified accordingly: the defect
+  blocks the stage that requires exact-generation enforcement, not the G-A implementation milestone.
+
+**G-A implementation completion record (2026-10-01).**
+
+"G-A implementation complete" means:
+
+- the agreed G-A scope (OD-12 option (b)-G, with Steps 4 and 5 at the owner-approved final scope)
+  exists on the G-A line;
+- the required local gates (Base paragraph above) passed;
+- no VERIFIED G-A implementation defect is open, except defects the staged contract explicitly
+  defers (the section 5.4 defect, OD-GA-C2);
+- `GENERATION_ENFORCEMENT_ENABLED = False`.
+
+It does **not** mean that G-A is deployed or production-approved, that G8 is complete, that the
+§11.2 production facts are known, that CI passed, that PostgreSQL 16 was tested, that section 5.4 is
+fixed, or that G-B/G9 is complete.
+
+Line: `port/g-a-stage1` at `e7e3cdae`, branched from `main` at `2d063c91`; local, no upstream, not
+pushed. Commits: `92d95bed` (port of Steps 1–5 and G1–G7), `00582c11` (portable Step 5 id-reuse
+tests), `88c6f4da` (D7 frontend current-only state), `822d5053` (cached workflow evidence dropped
+when the current dataset changes), `32e00ce7` (Steps 4 and 5 at the final scope), `e7e3cdae`
+(cached workflow evidence dropped when the Setup changes).
+
+Scope, each COMPLETE (VERIFIED 2026-10-01 by inspecting `e7e3cdae` and by the tests below):
+
+- Steps 1–5 at the owner-approved final scope:
+  - 4c: scenario responses report `evidence_status` and `evidence_reasons`;
+  - 4d/4e: the shared Compare view shows each scenario's status and reasons, gives totals, chart
+    and selection to `CURRENT` scenarios only, names the dataset of its totals, and drops cached
+    statuses when the dataset or the Setup changes;
+  - 4f/5e: Simulate names an unavailable selection's status and reason;
+  - 5d: a dependency refusal names the missing record when it is known (generation refusals keep
+    their G5/G6 texts), and the Decision page shows the server's detail.
+- D7 frontend: Current mode shows current runs only, and otherwise "No current run for dataset #B"
+  (spec sections 5.1 and 9.2).
+- G1–G7. On the port, migration 0005, `models.py`, `generation_guards.py`, `evidence_status.py`,
+  `current_dataset.py`, `main.py`, `migration_status.py` and `datasets.py` are byte-identical to
+  this branch at `bb9ada41`. `workflow.py` and `scenarios.py` differ because the D-repairs are
+  excluded and 4c/5d were added.
+- Dataset-change cache fix (`822d5053`) and Setup-change workflow-cache fix (`e7e3cdae`).
+- Excluded work is absent: no D-repair test module, no engine v3 marker, no Step 6 endpoint and no
+  Step 11 report change.
+- Enforcement OFF: `GENERATION_ENFORCEMENT_ENABLED = False` (`backend/api/workflow.py:106` on the
+  port), and no production code switches it on.
+
+Verification:
+
+- Full SQLite backend suite (VERIFIED 2026-10-01 at `e7e3cdae`, run without `-x`): 1699
+  collected; 1580 passed, 118 skipped, 1 xfailed, 0 failed, 0 errors; 6 subtests passed.
+  - Every skip requires `NOVAQ_TEST_DATABASE_URL` (PostgreSQL only).
+  - The xfail is the Monte Carlo strict xfail.
+- `ruff check .` and `mypy .` (166 source files) clean (VERIFIED 2026-10-01 at `e7e3cdae`).
+- Frontend: 53 files / 388 tests passed, including the EN/TL locale symmetry test; `typecheck`,
+  `lint` and `build` passed. VERIFIED 2026-10-01 on the tree committed as `e7e3cdae`: the gates ran
+  before the commit, and the committed content was checked identical to the tested tree.
+- Local PostgreSQL 18.6: REPORTED, not re-run on 2026-10-01.
+  - Earlier sessions reported, on `port/g-a-stage1`, the Stage-1 PostgreSQL set at 666/666
+    (`00582c11`) and a targeted 144 passed (`32e00ce7`).
+  - This branch's contract §5.5 records the G1 migration's PostgreSQL 18.6 gate.
+  - Migration 0005 and its tests on the port are byte-identical to this branch (VERIFIED
+    2026-10-01).
+- PostgreSQL 16: NOT TESTED. Actual CI: NOT RUN (OD-GA-C1). Live browser: NOT TESTED.
+
+Still open after the milestone; none of these is resolved by this record:
+
+- G8 (release G-A) is not started and stays BLOCKED: every §11.2 production fact, including the
+  production revision, is UNKNOWN.
+- G-B/G9 is not started, and the section 5.4 defect stays open (OD-GA-C2).
+- Contract §1 rule 6 versus G7 (CONFLICTING).
+- The contract's S0 ("pre-G backend (`4db54722` rules)") does not describe `main`, which the G-A
+  line is based on: `4db54722` is not an ancestor of `main` at `2d063c91` (VERIFIED 2026-10-01).
+  Recorded here, not resolved.
+- The placement of historical report labels (4h) between Step 4's test T9 and Step 11.
+- OD-2 … OD-11, Steps 6–13, the D-repairs and engine v3.
 
 ## Step 1 — Evidence status module (pure, not wired) — IMPLEMENTED
 
@@ -193,6 +304,11 @@ Unchanged by it:
 - Engine version: none.
 - Stop: the revised probe tests are presented for review with the old and new assertions side by
   side; full gates green.
+- Status (2026-10-01): COMPLETE for G-A on `port/g-a-stage1`.
+  - The backend (`bc303109` on this branch) is ported in `92d95bed`.
+  - The frontend current-only state is `88c6f4da`.
+  - Cached workflow evidence is dropped when the current dataset changes (`822d5053`) or the Setup
+    changes (`e7e3cdae`), so no page shows a previous dataset's or Setup's evidence as current.
 
 ## Step 4 — Schema-1 dataset currentness
 
@@ -214,6 +330,10 @@ Unchanged by it:
 - Engine version: none.
 - Stop: full gates; a local read-only check that scenario 12 would be reported `STALE_DATASET` and
   scenario 13 `CURRENT` (offline, no DB writes).
+- Status (2026-10-01): COMPLETE at the owner-approved final scope on `port/g-a-stage1` (`92d95bed`,
+  `32e00ce7`): 4c and 4d/4e (Step 0, completion record). The "report labelled historical" clause of
+  T9 is not implemented: historical report labels (4h) and their placement between T9 and Step 11
+  stay open (Step 0).
 
 ## Step 5 — Missing-dependency guard
 
@@ -241,6 +361,15 @@ Unchanged by it:
   - **Open release blocker:** exact source identity (spec section 5.4). The `created_at` guard
     is not an exact-generation solution, and the generation-token mechanism is approved in
     principle only.
+- Status (2026-10-01): COMPLETE at the owner-approved final scope on `port/g-a-stage1` (`92d95bed`,
+  `00582c11`, `32e00ce7`). The INTERIM status above is HISTORICAL.
+  - Both "Not done" items are done: 5d (a dependency refusal names the missing record when it is
+    known, for example "dataset #N") and 4f/5e (Simulate shows an unavailable selection's status,
+    such as "Source deleted", and its reason).
+  - The open release blocker above is qualified by OD-GA-C2 (Step 0), not withdrawn. The
+    exact-source-identity defect stays OPEN and G-A does not repair it. It blocks the stage that
+    requires exact-generation enforcement (G-B/G9), not the G-A implementation milestone.
+  - The generation-token mechanism is now implemented as G1–G7, with enforcement off (contract §14).
 
 ## Step 6 — Historical read-only access (only if OD-1 approves)
 
@@ -387,7 +516,9 @@ applies.
   order relative to G-A, or the grouping of steps 8, 11 and 12.
 
 The intent is that no point in this order makes historical or incompatible evidence eligible for
-a current Decision or report (PROPOSED; the ported line is neither built nor tested):
+a current Decision or report (PROPOSED. As of 2026-10-01 the ported line is built and passes its
+local gates (Step 0, completion record), but it is not released, its CI has not run and no deploy
+skew has been exercised):
 
 - Release A changes no eligibility.
 - G-A only tightens eligibility: Steps 1–5 add refusals, and G1–G7 with enforcement off stamp

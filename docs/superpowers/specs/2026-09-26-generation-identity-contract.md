@@ -43,6 +43,14 @@
     enforcement off. Behaviour with enforcement on is tested only with the flag switched on in
     tests, for G5's consumers (§8.2) and for the Decision and report paths (G6, §10.1). The
     exact-generation defect is not resolved in the running application (§6.2).
+  - G-A (2026-10-01): G1–G7 are ported to `port/g-a-stage1` (`92d95bed`), and the G-A
+    implementation milestone is complete there at `e7e3cdae` (plan Step 0, "G-A implementation
+    completion record").
+    - Under owner decision OD-GA-C1 (plan Step 0), the "CI … gates pending" in the stage statuses
+      above are release and integration assurance, not prerequisites of that milestone. CI is NOT
+      RUN and PostgreSQL 16 is NOT TESTED, and G8 or a release may still require them.
+    - Under OD-GA-C2, the exact-generation defect stays open in G-A, and G-B/G9 must close it
+      (§6.2).
 - **Base:** `4db54722` (interim Step 5 commit) on `fix/d1-replication-costs`. Historical: at that
   base the repository had no migration 0005 and no generation code (VERIFIED then by grep and file
   listing). Since `1f5c3ab3` it has both.
@@ -299,6 +307,8 @@ covered by the bullets after it.
   PostgreSQL 16 verification, and not production verification.
 - G1 is **PROVISIONALLY COMMITTED — SQLITE AND LOCAL POSTGRESQL 18.6 VERIFIED; CI AND PRODUCTION
   GATES PENDING**. Full application behaviour with enforcement on remains NOT TESTED (§6.2).
+  Under OD-GA-C1 (2026-10-01, plan Step 0), the pending CI gate does not block the G-A
+  implementation milestone. It stays release and integration assurance and is NOT RUN.
 - Any later change to the migration, the models or these tests repeats every G1 gate on both
   engines. The results above do not verify a modified 0005.
 - G1-H (`05d64083`) modified 0005, so the rule above applied to it:
@@ -359,10 +369,14 @@ dataset and setup (Steps 1–5 and Option A).
 | **Creating a selected-plan MC or validation job** (OD-G2) | existence, engine and setup checks (and, for validation, the MC → DES link); no `require_dependencies_current` on the input (`workflow.py:2261-2277`, `:2417-2438`; VERIFIED) | same (pre-G code) | input DES/MC jobs must pass Step 5 rules, or 409 before computing. An input that lacks a token but is otherwise eligible is accepted | Step 5 rules **and** matching recorded tokens on every input | plus the engine reasons |
 
 - **The known exact-generation defect is still present in S0, S1 and S2** (spec
-  `2026-09-25-analytical-versioning-historical-evidence.md` §5.4, release blocker).
+  `2026-09-25-analytical-versioning-historical-evidence.md` §5.4, release blocker; qualified by
+  owner decision OD-GA-C2, 2026-10-01: it blocks the stage that requires exact-generation
+  enforcement).
   - Enforcement (S3) is what closes it. S2 only records the tokens that S3 needs.
   - **Release G-A does not complete the identity repair.** The release blocker stays open until
     G-B.
+  - Under OD-GA-C2 (plan Step 0), this defect does not block the G-A implementation milestone. G-A
+    does not claim it is repaired, and G-B/G9 must close it.
 - **Rollback G-B → G-A:** enforcement off, Step 5 rules only, and the defect returns. Tokens stay,
   and stamped evidence becomes eligible again when enforcement returns.
 - **Rollback G-A → pre-G on 0005:**
@@ -1153,6 +1167,10 @@ locally and unpushed.
   unchanged (decision D6). The guard applies in production only and does not depend on the flag,
   which is still off (§11.4).
 - G8–G9 are not started and not authorized.
+
+Status at 2026-10-01: G1–G7 are ported to `port/g-a-stage1` (`92d95bed`), where the G-A
+implementation milestone is complete (plan Step 0). G8 is still not started: it stays BLOCKED,
+because the §11.2 facts are UNKNOWN. G9 is not started.
 
 ## 15. Prototype verification evidence (disposable databases only)
 
