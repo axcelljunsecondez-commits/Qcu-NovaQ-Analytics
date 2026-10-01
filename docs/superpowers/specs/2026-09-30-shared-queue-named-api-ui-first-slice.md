@@ -11,6 +11,15 @@ Status: **PROPOSED. Nothing in this document is implemented.**
   response limits are UNKNOWN.
 - No code, test, schema, migration, or dependency was changed while writing or correcting this document.
 
+**Update 2026-10-01 (implementation; the status lines above are kept as history):**
+
+- G-A is complete. Its final implementation commit `e7e3cdae` was integrated into `feat/shared-queue-segments` by
+  the no-fast-forward merge `a49bb1f1` (section 21.1). `GENERATION_ENFORCEMENT_ENABLED` stays `False`.
+- The product owner's master continuation prompt (2026-10-01) authorized LOCAL implementation of this first
+  slice. The backend (Stage 1) and frontend (Stage 2) are implemented locally, including B1 (section 21).
+- The API limits remain provisional and **NOT PRODUCTION-APPROVED**. Production facts are still UNKNOWN, so
+  this is LOCAL IMPLEMENTATION COMPLETE, not production or deployment ready. Nothing is pushed or deployed.
+
 - Date: 2026-09-30
 - Branch: `feat/shared-queue-segments` at `90fdf9e2` (re-verified before writing, section 1.1)
 - Approved inputs: decisions A1-A6 and the first-slice flow supplied by the product owner on
@@ -1308,3 +1317,138 @@ Status (2026-10-01):
 | Platform limits | UNKNOWN |
 | API limits | Provisional: 9 replications, 52 segments, 24 employees, 48 shifts; NOT PRODUCTION-APPROVED |
 | API/UI implementation | NOT AUTHORIZED |
+
+---
+
+## 21. Implementation record (2026-10-01; LOCAL IMPLEMENTATION, not production or deployment ready)
+
+Authorized by the product owner's master continuation prompt of 2026-10-01 (local commits only; no push, merge to
+`main`, or deploy). Sections 1-20 above are kept as written; where they say "not implemented" or "not authorized",
+this section is the dated update.
+
+### 21.1 G-A integration (Stage 0.5)
+
+- Before: `e7e3cdae` (final G-A, `port/g-a-stage1`) was not an ancestor of `620f20df`. Merge base `2d063c91`.
+  The two lines changed no file in common, and `git merge-tree --write-tree` reported no conflict (VERIFIED).
+- Method: `git merge --no-ff e7e3cdae` gave merge commit `a49bb1f1` (parents `620f20df`, `e7e3cdae`). A
+  fast-forward was impossible (both lines had moved on). A merge keeps `e7e3cdae` reachable by ancestry and
+  rewrites none of the 27 Shared Queue commits; a cherry-pick or a rebase would have done one or the other.
+- Checked after the merge (VERIFIED): the tree equals the trial merge; the diff from each parent into the merge
+  equals the other line's own change; `GENERATION_ENFORCEMENT_ENABLED = False` (`backend/api/workflow.py:106`).
+- Gates on `a49bb1f1`, run from a detached scratch checkout (VERIFIED, local only):
+  - SQLite full suite: 2719 passed, 118 skipped (every skip is a `NOVAQ_TEST_DATABASE_URL` PostgreSQL variant),
+    1 xfailed (the known `test_selected_mc_load` finding).
+  - PostgreSQL 16.15 (disposable `postgres:16-alpine`, the digest pinned in `Dockerfile.db`): the CI
+    `postgres-integration` file list plus all 22 test files G-A added or changed, 777 passed, 0 skipped.
+  - Frontend (byte-identical to the frontend of `e7e3cdae`): 53 files, 388 tests passed; `tsc -b` and `oxlint`
+    clean.
+- G-A compatibility (VERIFIED by reading the merged code): the only `Job` query in G-A filters by `kind`
+  (`workflow._latest_job`), so `shared_named_replications` Jobs are never read or classified by G-A evidence
+  logic; the generation guards cover only `datasets` and `scenarios`. The run records the selected row's
+  `Dataset.generation` as stored (OD-2); no second generation mechanism exists.
+
+### 21.2 Production unknowns, classified
+
+None is a local implementation blocker; each is a RELEASE/DEPLOYMENT blocker:
+
+- production `RESULT_JSONB_MAX_BYTES` (the adapter reads `settings.result_jsonb_max_bytes` at run time for the 413
+  backstop and reports it in R1);
+- the Render request timeout and the production runtime;
+- the Cloudflare Pages `/api` bridge timeout and response limits for multi-megabyte R6 responses;
+- the production PostgreSQL version (B1 fails closed on whatever database it runs on).
+
+The section 6.2 constants are implemented as provisional module constants in `shared_named.py`, exposed through
+R1 with `status: "provisional_not_production_approved"`. They are still NOT PRODUCTION-APPROVED.
+
+### 21.3 Files
+
+- Backend: `backend/api/shared_named.py` (new); `backend/api/main.py` (import and `include_router`, 2 lines);
+  `tests/test_api_shared_named.py` (new); `tests/test_shared_segments.py` (the isolation guard now requires the
+  adapter to be the exact single importer, by path).
+- Frontend: `src/api/sharedNamed.ts`; `src/lib/namedWorkforce.ts`; in `src/components/simulation/`:
+  `SimulationModeSwitch.tsx`, `NamedSharedQueueSimulation.tsx`, `NamedWorkforceForm.tsx`,
+  `NamedReplicationTable.tsx`, `NamedSharedQueuePlayback.tsx`, `NamedAttributionTables.tsx`, with a test beside
+  each (the switch is covered by the page tests); `src/pages/SimulationPage.tsx` (an insertion, +27/-1);
+  `src/pages/SimulationPageNamedMode.test.tsx` (new); 248 `simulation.named_*` keys in each of `en` and `tl`.
+- Test data: `src/test/fixtures/sharedNamed.json` holds the unchanged R1-R6 responses for SYNTHETIC inputs,
+  written by `scripts/generate_shared_named_fixture.py` (SQLite, this machine's runtime; not observed data).
+- Unchanged (VERIFIED by `git diff`): `backend/queueing_engine/**`, `migrations/`, `requirements*`, `workflow.py`,
+  `simulation.py`, `optimization.py`, `analysis_schemas.py`, `scenarios.py`, `reports.py`, `backend/db/**`,
+  `settings.py`, `router.tsx`, `types.ts`, `workflow.ts`, Compare, Decision, Reports, `LiveSimulationPlayback`,
+  `SeparateSimulationPlayback`, `StoreFloorView`, and `SimulationPage.test.tsx`.
+
+### 21.4 Implementation decisions inside the approved contract
+
+1. **NaN and ±Infinity (section 11).** FastAPI's default validation response echoes each offending input. A
+   non-finite input cannot be encoded as JSON, so on an ordinary route such a 422 becomes a 500. This is VERIFIED
+   and pre-existing across the app (reproduced on `POST /analyses`); it is not fixed here. The named router uses
+   its own `APIRoute` class that returns FastAPI's validation list with each non-finite input shown as its JSON
+   token text, so R2 and R3 return 422 as section 11 requires.
+2. **Limits.** Counts above `N_MAX`, `S_MAX`, `E_MAX`, `R_MAX`, and the list bounds are refused by the adapter
+   with `limit_exceeded` before any computation, in R3 and also in R2 (section 11 states the rule without naming
+   a route). The schema checks types, finiteness, strict integers, extra keys, and minimum lengths only.
+3. **Ineligible reasons** are stable codes: `queue_structure_not_shared_queue`, `capacity_not_unlimited`,
+   `abandonment_not_not_modeled`.
+4. **B1 checks**, made on the database's representation, read by a column `SELECT` inside the flushed
+   transaction: `inputs_fingerprint` (recomputed from the re-read inputs), `recorded_fingerprint`,
+   `stored_row_count`, `stored_row` (int, float, and bool kept distinct, floats compared by bits, arrays equal
+   whether list or tuple), each `REQUIRED_PROVENANCE` field, and `persisted_structure`. The aggregate summary is
+   not a B1 field, because section 3 lists only the fingerprint, rows, and required provenance.
+5. A pre-persistence fingerprint that differs from `provenance.inputs_sha256` would be a domain defect; the
+   adapter answers 500 `inputs_digest_inconsistent` (no test reaches it).
+6. **JSONB key order (VERIFIED finding).** PostgreSQL `jsonb` does not keep object key order: the first version
+   of test 9 failed on PostgreSQL 16.15 because `params_json` came back reordered. The "server keys after request
+   keys" order exists at construction and in SQLite's JSON text only. What the order protects holds on its own:
+   every request model forbids extra keys, so a request can never supply a server key (tested for each server
+   key). The test now checks the exact key set everywhere and the order only on SQLite.
+7. **Cost (section 15, item 13).** The only response keys containing "cost" are the domain's `monetary_cost`
+   disclaimer strings; no cost value is exposed, and the named workforce-cost module is not imported.
+8. **R1 versions:** `named_api_version` (`novaq-shared-named-api-v1`), `method_version`, and
+   `named_engine_version`; every run's provenance carries all versions.
+9. **Frontend.** The named-mode page tests live in a new file, so `SimulationPage.test.tsx` is unchanged and
+   passes unmodified. The switch also renders on the legacy shared-queue screens (section 9.1). Pay fields start
+   as an explicit "Not supplied" (sent as `null`, never 0); every other field starts empty. Run is enabled only
+   for a runnable R2 result on the identical form fingerprint plus a valid replication count and seed. The event
+   log shows 100 events per page and the scrubber steps through all events; employee lanes are derived only from
+   recorded transitions.
+10. **Process deviation.** No separate implementation plan file was written; section 20's stages served as the
+    plan.
+
+### 21.5 Verification on the final code
+
+All results below come from the final tree, committed as `6ecd9c6f` (parent `a49bb1f1`; local, not pushed).
+
+- Backend full suite (`python -m pytest tests/ -x --tb=short`, SQLite): 2856 passed, 123 skipped, 1 xfailed
+  (the known `test_selected_mc_load` finding). Every skip is a `NOVAQ_TEST_DATABASE_URL` PostgreSQL variant:
+  the 118 of the `a49bb1f1` run plus the 5 PostgreSQL tests of the named module. From the same run's JUnit
+  report:
+  - `tests/test_api_shared_named.py`: 137 passed, 5 skipped;
+  - all 16 `tests/test_shared_*.py` files: 1139 passed;
+  - the 18 files matching `*separate*`: 168 passed;
+  - `test_production_hardening` 19, `test_workflow_api` 18, `test_simulation_api` 27, `test_optimization_api` 8,
+    `test_scenarios_api` 14, and `test_reports_api` 14 passed.
+- PostgreSQL 16.15 (disposable local container): `tests/test_api_shared_named.py` 141 passed, 1 skipped (the
+  SQLite-only `1e16` case, by design). This includes the B1 test with all five points of section 3 (a normal run
+  commits; a `1e16` pay rate, which `jsonb` returns as an integer, is rolled back with
+  `persistence_identity_mismatch`; no Job remains; no run id appears in the response or in R4; a run tampered
+  after commit is refused by R6 with 409 `stored_row`) and the light, maximum-structure (52 segments, 24
+  employees, 48 split shifts with breaks), busy (demand x5), and stress (demand x10) round trips. An earlier run
+  of a previous test revision had 1 failure, the key-order finding in 21.4 item 6.
+- Frontend: `npm test` 61 files, 443 tests passed (388 before this slice, 55 new; `SimulationPage.test.tsx`
+  unmodified). `npm run typecheck`, `npm run lint`, and `npm run build` exited 0; the build keeps the existing
+  large-chunk warning. An earlier full run had 1 timeout (10 s) in `CurrentDatasetCache.test.tsx` while three
+  suites ran at once; that file passed 6/6 alone and the full rerun passed.
+- `ruff check .`: clean. `mypy . --exclude '^outputs/'`: no issues in 200 files. `git diff --cached --check`:
+  clean.
+- Protected paths: `git diff` shows no change under `backend/queueing_engine/`, `migrations/`, or
+  `requirements*`, nor in the unchanged lists of section 14. `GENERATION_ENFORCEMENT_ENABLED = False`.
+
+### 21.6 Not done, UNKNOWN, or CONFLICTING
+
+- Stage 3 (section 17: local-stack browser checks with network evidence) is NOT TESTED.
+- The production facts in 21.2 remain UNKNOWN; this work neither affects nor claims G8.
+- The quality of the Filipino wording is UNKNOWN (the keys are symmetric; the wording needs owner review).
+- `handoff.md` records the Separate Queue regressions as "20 files" but never lists them; 18 test files match
+  `*separate*` (CONFLICTING count, recorded, not resolved).
+- The NumPy pins stay CONFLICTING (section 7); regeneration fails closed with 409 across versions.
+- The app-wide NaN-to-500 behavior outside the named router (21.4, item 1) is a pre-existing defect, not fixed.

@@ -987,6 +987,27 @@ Current verified state:
 - Phase status (2026-09-30): implementation `19ff54a1`; spec clarification `6777ad3f`. Phase 5B-5 remains closed. API or UI exposure is not approved. Cross-replication cost aggregation is not approved. D15 and the acceptance rule remain UNKNOWN, and no verdict exists.
 - Next (needs explicit approval): cross-replication cost aggregation, an acceptance rule, API or UI exposure, and the open playback items listed above.
 
+## Shared Queue Enhancement: Named Shared Queue API/UI First Slice (2026-10-01)
+
+Spec: `docs/superpowers/specs/2026-09-30-shared-queue-named-api-ui-first-slice.md` (A1-A6 and OD-1 to OD-9 approved 2026-09-30; numeric identity B1 and the 422/409 identity codes approved 2026-10-01). Section 21 is the implementation record. No separate plan file was written; the spec's section 20 stages served as the plan.
+
+Current verified state:
+
+- Authorization: the product owner's master continuation prompt (2026-10-01) authorized LOCAL implementation. Production facts stay release blockers, not local blockers. Nothing is pushed, merged to `main`, or deployed.
+- G-A integration: `e7e3cdae` (final G-A) merged into `feat/shared-queue-segments` as `a49bb1f1` (`--no-ff`; parents `620f20df`, `e7e3cdae`). No file was changed on both lines. Gates on `a49bb1f1`: SQLite 2719 passed, 118 skipped (all PostgreSQL variants), 1 xfailed; PostgreSQL 16.15 (CI postgres file list plus the 22 G-A test files) 777 passed, 0 skipped; frontend 53 files and 388 tests, typecheck and lint clean. `GENERATION_ENFORCEMENT_ENABLED` stays `False`.
+- Implementation commit: `6ecd9c6f` (parent `a49bb1f1`) (local, not pushed).
+- Backend: `backend/api/shared_named.py` is the one thin adapter (A6). Routes R1-R6 under `/analyses/{analysis_id}/shared-named/`: `contract`, `validate`, `runs` (create and list), `runs/{run_id}`, `runs/{run_id}/replications/{i}`. Each run is one Job of kind `shared_named_replications` with the unchanged `run_named_replications` output and `params_json.dataset_generation` from the explicitly selected dataset row. No migration, workforce table, stored playback, or cost.
+  - B1: insert and flush, re-read `result_json` with a column `SELECT` in the same transaction, and compare the fingerprint, every stored row (int, float, and bool distinct; floats by bits), and the required provenance. Any difference rolls back and returns 422 `persistence_identity_mismatch` with no run id. On PostgreSQL 16.15 a pay rate of `1e16` is refused this way (JSONB returns it as an integer).
+  - R6 keeps the protected regeneration contract: 409 `regeneration_identity` (with the domain check, or `attribution_stored_row` for the D6 guard) on an existing run that no longer reproduces; other playback or attribution failures are 500.
+  - The named router keeps NaN and ±Infinity bodies at 422 with its own route class. App-wide, such bodies return 500 (pre-existing; not fixed).
+  - Limits stay provisional and NOT PRODUCTION-APPROVED: replications 9, required-staffing segments 52, employees 24, roster shifts 48 (availability 3, break rules 3, breaks per rule 2, breaks per shift 2). The 413 backstop reads `RESULT_JSONB_MAX_BYTES` at run time.
+- Frontend: `?mode=named` on `/analyses/:analysisId/simulate`, offered only for `shared_queue` analyses. Without the parameter the page renders as before (`SimulationPage.test.tsx` unchanged and passing). The named view covers eligibility, a persistent banner, an explicit dataset selector, the workforce form with no defaults, validation, a run control gated on a runnable validation of the exact form, the runs list with Setup currency, run evidence, the replication table and descriptive aggregate (minutes for waits, "—" for null, no verdict), and the selected replication's playback and attribution. 248 `simulation.named_*` keys in each of `en` and `tl`; the Filipino wording quality is UNKNOWN.
+- Findings: PostgreSQL `jsonb` does not keep object key order (a first test version failed on it; the key set is now checked, order only on SQLite); `handoff.md`'s "Separate Queue (20 files)" is not enumerated, and 18 files match `*separate*`.
+- Gates on the final code: backend full suite 2856 passed, 123 skipped (all PostgreSQL variants), 1 xfailed; within it the named module 137 passed and 5 skipped, all 16 `tests/test_shared_*.py` files 1139 passed, and the 18 `*separate*` files 168 passed. On PostgreSQL 16.15 the named module had 141 passed and 1 skipped (SQLite-only by design), including B1's five points and the light, maximum-structure, busy, and stress round trips. Frontend 61 files and 443 tests (388 before, 55 new); typecheck, lint, and build exit 0. Ruff clean; mypy clean on 200 files.
+- NOT TESTED: the spec's Stage 3 browser and local-stack checks; production behavior of any kind.
+- Phase status (2026-10-01): LOCAL IMPLEMENTATION COMPLETE; not production or deployment ready. Out of scope and not started: Compare, Decision verdict, D15, Reports, workforce-cost UI or aggregation, roster-optimizer API or UI, G8 release, G9/G-B, generation enforcement.
+- Next (needs approval): Stage 3 browser and local-stack integration; production limit verification (with G8); the app-wide NaN-to-500 defect; owner review of the Filipino wording.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:

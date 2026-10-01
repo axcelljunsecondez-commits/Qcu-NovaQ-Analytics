@@ -350,3 +350,15 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - Float event times can leave a tiny regular or threshold slice at a crossing (2**-56 h on a 5-minute roster); it is kept as computed. Paid time above 0 that is entirely flagged is INFERRED unreachable from the engine (every activated shift starts before its scheduled end and before closing).
 - The spec has a rounding-level inconsistency: section 3 groups the total as `fsum(L, W, U)`, sections 9 and 11 as the fsum of the component costs. The implementation follows sections 9 and 11. (Superseded 2026-09-30: resolved by the product owner in docs commit `6777ad3f`. The canonical `total_cost` is a single flat `fsum` over every applicable component cost, and section 3 now states it. Employee `labor_cost` (`L_e`) and `labor.total_cost` (`L`) remain reported subtotals, and `total_cost` is never recomputed as the nested `fsum(L, W, U)`. The implementation `19ff54a1` is unchanged.)
 - Status (2026-09-30): implementation `19ff54a1`, spec clarification `6777ad3f`. Phase 5B-5 remains closed. API or UI exposure and cross-replication cost aggregation are not approved. D15 and the acceptance rule remain UNKNOWN, and no verdict exists.
+
+## Shared-Queue Named API/UI First Slice (2026-10-01)
+
+- G-A is integrated into `feat/shared-queue-segments` by the merge `a49bb1f1` (parents `620f20df` and the final G-A `e7e3cdae`). Generation enforcement stays off.
+- `backend/api/shared_named.py` is the only file outside the enhancement modules allowed to import them (A6). The isolation guard in `tests/test_shared_segments.py` requires it to be the exact single importer.
+- Routes R1-R6 live under `/analyses/{analysis_id}/shared-named/`. Each run is one Job of kind `shared_named_replications`; it is not a workflow kind, and G-A evidence never reads it, because G-A queries Jobs only by kind. The run records the explicitly selected dataset and that row's G-A `generation`.
+- B1 is implemented: the run is written, re-read from the database in the same transaction, and committed only on exact agreement; otherwise 422 `persistence_identity_mismatch` and no run id. Regeneration of an existing run that no longer reproduces is 409 `regeneration_identity`.
+- PostgreSQL `jsonb` does not preserve object key order, so key-order contracts on JSON columns are checkable only before storage or on SQLite.
+- FastAPI's default validation response turns a NaN or ±Infinity request body into a 500 app-wide (pre-existing). The named router keeps them at 422 with its own route class.
+- The limits (replications 9, segments 52, employees 24, shifts 48) remain provisional and NOT PRODUCTION-APPROVED until the production result cap and platform limits are verified (OD-9).
+- Named mode is `?mode=named` on the Simulate route, for `shared_queue` analyses only; without it the legacy page is unchanged.
+- Workforce cost, Compare, Decision, Reports, and cross-replication cost aggregation stay out of scope.
