@@ -1,7 +1,7 @@
 import simulationDefaults from '../api/simulation-defaults.json'
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type {
   SelectedDesPeriod,
@@ -31,6 +31,8 @@ import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
 import { LiveSimulationPlayback } from '../components/simulation/LiveSimulationPlayback'
 import { SeparateSimulationPlayback } from '../components/simulation/SeparateSimulationPlayback'
+import { NamedSharedQueueSimulation } from '../components/simulation/NamedSharedQueueSimulation'
+import { SimulationModeSwitch, type SimulationMode } from '../components/simulation/SimulationModeSwitch'
 import { selectPlaybackLayout } from '../lib/simulationPlayback'
 import {
   FailureRateBars,
@@ -617,6 +619,7 @@ function SelectedPeriodDetail({ period }: { period: SelectedDesPeriod }) {
 export function SimulationPage() {
   const { t } = useTranslation()
   const analysisId = Number(useParams().analysisId)
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('des')
   const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ des: null, mc: null, validate: null })
@@ -715,6 +718,27 @@ export function SimulationPage() {
 
   if (!Number.isInteger(analysisId)) return <ApiState.ErrorState />
   if (workflow.isLoading || analysis.isLoading) return <ApiState.Loading />
+
+  // Named Shared Queue mode (spec 2026-09-30 §9.1): shared-queue analyses only, and only when chosen
+  // explicitly with ?mode=named. Without it the page renders exactly as before; other structures
+  // ignore the parameter. The named view needs neither a Compare selection nor workflow evidence.
+  const isSharedQueue = analysis.data?.analysis.queue_setup.queue_structure === 'shared_queue'
+  const simulationMode: SimulationMode = isSharedQueue && searchParams.get('mode') === 'named' ? 'named' : 'legacy'
+  const modeSwitch = isSharedQueue ? (
+    <SimulationModeSwitch
+      mode={simulationMode}
+      onChange={(mode) => setSearchParams((params) => {
+        const next = new URLSearchParams(params)
+        if (mode === 'named') next.set('mode', 'named')
+        else next.delete('mode')
+        return next
+      })}
+    />
+  ) : null
+  if (simulationMode === 'named') {
+    return <NamedSharedQueueSimulation analysisId={analysisId} modeSwitch={modeSwitch} />
+  }
+
   if (workflow.isError || !workflow.data) return <ApiState.ErrorState />
 
   const scenario = workflow.data.scenario
@@ -754,6 +778,7 @@ export function SimulationPage() {
             <h1 className="page-title">{t('simulation.title')}</h1>
           </div>
         </div>
+        {modeSwitch}
         {selectionUnavailable ?? (
           <div className="alert alert-warn">
             {t('simulation.select_scenario_first')}{' '}
@@ -915,6 +940,7 @@ export function SimulationPage() {
           </p>
         </div>
       </div>
+      {modeSwitch}
       {isCurrentMode && trace && (
         <p className="form-hint">
           <span className="badge badge-ok">{t('simulation.current_badge')}</span>
