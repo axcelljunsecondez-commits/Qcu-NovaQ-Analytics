@@ -1008,6 +1008,19 @@ Current verified state:
 - Phase status (2026-10-01): LOCAL IMPLEMENTATION COMPLETE; not production or deployment ready. Out of scope and not started: Compare, Decision verdict, D15, Reports, workforce-cost UI or aggregation, roster-optimizer API or UI, G8 release, G9/G-B, generation enforcement.
 - Next (needs approval): Stage 3 browser and local-stack integration; production limit verification (with G8); the app-wide NaN-to-500 defect; owner review of the Filipino wording.
 
+## Shared Queue Enhancement: Stage 3 Local Integration (2026-10-01)
+
+This dated update supersedes only the first-slice section's Stage 3 `NOT TESTED` and "Next" statements above. The previous implementation and gate history remains as recorded there. Detailed evidence is in spec section 21.7; browser screenshots and synthetic fixtures are untracked under `output/playwright/stage3/`.
+
+- VERIFIED: `docker-compose.integration.yml` ran locally as `novaq_stage3` with PostgreSQL 16.15; `/healthz` and `/api/ready` returned 200 at `127.0.0.1:18080`.
+- VERIFIED: a new shared queue (`unlimited`, `not_modeled`) accepted a two-period aggregate CSV without variance, K, or theta; named validation was runnable with period-aligned staffing. Seed 7 and 9 replications created one completed `shared_named_replications` Job. Browser list, run detail, R6 replication 0 and 8, playback, attribution, and the `X-CSRF-Token` header on named POSTs were checked.
+- VERIFIED: variance-bearing aggregate data produced the named M/M/c scope refusal. An intentional stored-row edit in the disposable database produced R6 409 `regeneration_identity` / `stored_row`; restoration was checked by R6 200.
+- VERIFIED: legacy shared DES, Compare, Decision, and Reports worked on the same stack. Separate Queue used a synthetic event-derived fixture for a selectable replicated-DES scenario; its selected-plan DES playback, Monte Carlo, validation, conditional Decision, and Reports rendered. The app withheld unsupported savings and ROI. These outcomes are local test results, not operational conclusions.
+- VERIFIED: no first-slice defect was reproduced, so no application or test file was changed. Generation enforcement remains `False`. No production access, push, merge, or deployment occurred.
+- UNKNOWN: production result-size cap, Render timeout, Cloudflare `/api` limits, production PostgreSQL version, and Filipino wording quality. The 9/52/24/48 limits remain NOT PRODUCTION-APPROVED. The app-wide NaN-to-500 behavior and NumPy pin conflict remain separate findings.
+
+- VERIFIED final-tree gates: backend 2856 passed, 123 PostgreSQL-variant skips, 1 known xfail, 6 subtests; named API on local PostgreSQL 16.15 141 passed, 1 SQLite-only skip; frontend 61 files / 443 tests passed, typecheck, lint, build exited 0; Ruff passed; mypy had no issues in 200 source files; git diff --check passed. The first bare Ruff command could not resolve on PATH, so the installed .venv Ruff executable ran the same gate. No frontend timeout occurred. Build kept its large-chunk advisory.
+
 ## Engineering Governance: Zero-Fabrication Protocol (2026-09-25)
 
 Current verified state:
