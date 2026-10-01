@@ -239,7 +239,7 @@ def upgrade_table(table: str) -> None:
         op.add_column(table, sa.Column("generation", sa.String(32), nullable=True))
     # Only rows without a token get one: an assigned token is never replaced.
     op.execute(sa.text(f"UPDATE {table} SET generation = {token} WHERE generation IS NULL"))
-    duplicated = op.get_bind().execute(sa.text(
+    duplicated: Sequence[Any] = op.get_bind().execute(sa.text(
         f"SELECT id FROM {table} WHERE generation IN "
         f"(SELECT generation FROM {table} GROUP BY generation HAVING count(*) > 1) ORDER BY id"
     )).scalars().all()
@@ -455,7 +455,7 @@ def assert_downgraded() -> None:
     if REGISTRY in _inspector().get_table_names():
         left.append(REGISTRY)
     if bind.dialect.name == "sqlite":
-        names = bind.execute(sa.text("SELECT name FROM sqlite_master WHERE type = 'trigger'")).scalars()
+        names: Any = bind.execute(sa.text("SELECT name FROM sqlite_master WHERE type = 'trigger'")).scalars()
         left += [name for name in names if name in SQLITE_TRIGGERS]
     else:
         names = bind.execute(sa.text(

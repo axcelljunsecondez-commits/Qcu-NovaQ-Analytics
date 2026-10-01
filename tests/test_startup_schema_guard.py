@@ -119,6 +119,7 @@ def open_revision_database(dialect: str, directory: Path, monkeypatch: Any) -> I
     source = os.environ.get("NOVAQ_TEST_DATABASE_URL")
     if not source:
         pytest.skip("NOVAQ_TEST_DATABASE_URL is required for the PostgreSQL variant")
+    assert source is not None
     url = make_url(source)
     if url.get_backend_name() != "postgresql" or not (url.database or "").endswith("_test"):
         pytest.fail("The PostgreSQL variant requires a dedicated database ending in _test")

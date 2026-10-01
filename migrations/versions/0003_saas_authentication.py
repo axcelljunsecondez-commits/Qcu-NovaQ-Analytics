@@ -93,7 +93,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    null_passwords = bind.execute(sa.text("SELECT COUNT(*) FROM users WHERE password_hash IS NULL")).scalar_one()
+    null_passwords: int = bind.execute(sa.text("SELECT COUNT(*) FROM users WHERE password_hash IS NULL")).scalar_one()
     if null_passwords:
         raise RuntimeError(
             "Cannot downgrade while Google-only users have no password. Set passwords for those accounts first."
