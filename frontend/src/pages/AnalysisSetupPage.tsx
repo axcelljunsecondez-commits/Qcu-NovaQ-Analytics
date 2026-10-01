@@ -66,7 +66,11 @@ export function AnalysisSetupPage() {
   useEffect(() => { if (analysis.data) { setSetup(normalizeSetup(analysis.data.analysis.queue_setup)) } }, [analysis.data])
   const save = useMutation({
     mutationFn: () => patchAnalysis(id, { queue_setup: setup }),
-    onSuccess: () => { setFormError(null); setNotice(t('analyses.setup_saved')); void client.invalidateQueries({ queryKey: ['analysis', id] }) },
+    onSuccess: () => {
+      setFormError(null); setNotice(t('analyses.setup_saved')); void client.invalidateQueries({ queryKey: ['analysis', id] })
+      // A Setup change can make saved scenarios stale: drop their cached evidence status (4d).
+      void client.resetQueries({ queryKey: ['scenarios', id] })
+    },
   })
   const [preview, setPreview] = useState<Extract<DatasetPreviewOut, { mode: 'multi_sheet' }> | null>(null)
   const [pendingConfirm, setPendingConfirm] = useState(false)
@@ -83,6 +87,8 @@ export function AnalysisSetupPage() {
       // The new dataset is now current: drop cached workflow evidence so a page never shows the
       // previous dataset's runs, even while its fresh request is in flight (invalidation would).
       void client.resetQueries({ queryKey: ['workflow', id] })
+      // Saved scenarios of the replaced dataset are no longer current (4d).
+      void client.resetQueries({ queryKey: ['scenarios', id] })
       if (variables.applySetup) void client.invalidateQueries({ queryKey: ['analysis', id] })
     },
     onError: (error) => setNotice(messageOf(error, t('errors.upload'))),

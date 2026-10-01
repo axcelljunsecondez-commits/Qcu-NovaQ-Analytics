@@ -834,6 +834,22 @@ describe('break schedule optimizer', () => {
     confirm.mockRestore()
   })
 
+  it('drops the cached scenario statuses of this analysis once breaks are applied', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    optimizeSeparateBreaksMock.mockResolvedValue(result)
+    applySeparateBreaksMock.mockResolvedValue({ analysis: { id: 7 }, moves_applied: 1 })
+    const { queryClient } = renderAt('separate_queues')
+    queryClient.setQueryData(['scenarios', 7], { scenarios: [{ id: 1, evidence_status: 'CURRENT' }] })
+    queryClient.setQueryData(['scenarios', 8], { scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    await user.click(await screen.findByRole('button', applyButton))
+    await waitFor(() => expect(applySeparateBreaksMock).toHaveBeenCalled())
+    await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+    confirm.mockRestore()
+  })
+
   it('disables Apply with a note when the proposal is not on the latest dataset', async () => {
     const user = userEvent.setup()
     listDatasetsMock.mockResolvedValue({ datasets: [{ ...dataset, id: 2, name: 'newer' }, dataset] })

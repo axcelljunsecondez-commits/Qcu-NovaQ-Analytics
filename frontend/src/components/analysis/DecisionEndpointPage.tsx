@@ -5,6 +5,7 @@ import { getAnalysis } from '../../api/analyses'
 import { createWorkflowDecision, getWorkflow, runSelectedDecision } from '../../api/workflow'
 import { DecisionEndpoint } from '../decision/DecisionEndpoint'
 import { ApiState } from '../ui/ApiState'
+import { messageOf } from '../../lib/format'
 
 export function DecisionEndpointPage() {
   const { t } = useTranslation()
@@ -46,7 +47,7 @@ export function DecisionEndpointPage() {
       decision={decision}
       decisionStale={workflow.data.decision_stale}
       isPending={derive.isPending}
-      error={derive.isError ? t('errors.server') : null}
+      error={derive.isError ? messageOf(derive.error, t('errors.server')) : null}
       onDerive={() => derive.mutate()}
     />
   )

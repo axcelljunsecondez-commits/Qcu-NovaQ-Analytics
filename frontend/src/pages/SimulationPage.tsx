@@ -40,7 +40,7 @@ import {
   RhoMeanP95Lines,
   UtilizationHeatmap,
 } from '../components/charts/Charts'
-import { downloadCsv, fmt, fmtDecimal, fmtFrCi, fmtPct, fmtPctDecimal } from '../lib/format'
+import { downloadCsv, evidenceStatusKey, fmt, fmtDecimal, fmtFrCi, fmtPct, fmtPctDecimal } from '../lib/format'
 
 type Tab = 'des' | 'mc' | 'validate'
 
@@ -731,6 +731,20 @@ export function SimulationPage() {
     && selectedCalculation.schema_version === 2
     && scenario !== null
     && scenario !== undefined
+  // 4f/5e: a recorded selection whose scenario is withheld names the unavailable evidence and why.
+  // No selection, or a status without a label, keeps the existing guidance.
+  const selectionEvidence = workflow.data.selection_evidence
+  const unavailableKey = !scenario && selectionEvidence && selectionEvidence.evidence_status !== 'CURRENT'
+    ? evidenceStatusKey(selectionEvidence.evidence_status)
+    : null
+  const selectionUnavailable = unavailableKey && selectionEvidence ? (
+    <div role="status" className="alert alert-warn" data-testid="selection-unavailable" style={{ marginTop: '12px' }}>
+      {t('simulation.selection_unavailable', { scenario: selectionEvidence.scenario_id ?? '—', status: t(unavailableKey) })}{' '}
+      <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+      {selectionEvidence.evidence_reasons?.[0]?.detail && <p className="form-hint">{selectionEvidence.evidence_reasons[0].detail}</p>}
+    </div>
+  ) : null
+
   if (!scenario && !isCurrentMode) {
     return (
       <div>
@@ -740,10 +754,12 @@ export function SimulationPage() {
             <h1 className="page-title">{t('simulation.title')}</h1>
           </div>
         </div>
-        <div className="alert alert-warn">
-          {t('simulation.select_scenario_first')}{' '}
-          <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
-        </div>
+        {selectionUnavailable ?? (
+          <div className="alert alert-warn">
+            {t('simulation.select_scenario_first')}{' '}
+            <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+          </div>
+        )}
       </div>
     )
   }
@@ -761,10 +777,12 @@ export function SimulationPage() {
             <h1 className="page-title">{t('simulation.title')}</h1>
           </div>
         </div>
-        <div className="alert alert-warn" style={{ marginTop: '12px' }}>
-          {t('simulation.sep_stale_body')}{' '}
-          <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
-        </div>
+        {selectionUnavailable ?? (
+          <div className="alert alert-warn" style={{ marginTop: '12px' }}>
+            {t('simulation.sep_stale_body')}{' '}
+            <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+          </div>
+        )}
       </div>
     )
   }

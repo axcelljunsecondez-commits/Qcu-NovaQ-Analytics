@@ -179,3 +179,17 @@ describe('DecisionEndpointPage', () => {
     expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
 })
+
+describe('DecisionEndpointPage refusal detail (5d)', () => {
+  it('shows the server detail naming the missing dependency instead of a generic error', async () => {
+    const detail = 'Evidence references records that no longer exist: dataset #12. Rerun the affected step.'
+    createDecisionMock.mockRejectedValue(Object.assign(new Error('Request failed with status code 409'), {
+      response: { status: 409, data: { detail } },
+    }))
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Generate Decision' }))
+    expect(await screen.findByText(detail)).toHaveAttribute('role', 'alert')
+    expect(screen.queryByText('The server encountered an error. Please try again.')).not.toBeInTheDocument()
+  })
+})

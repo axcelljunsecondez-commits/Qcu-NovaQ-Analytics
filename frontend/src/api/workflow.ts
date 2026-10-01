@@ -1,5 +1,6 @@
 import { http } from '../lib/http'
 import type {
+  EvidenceReason,
   ObservedWaitSummary,
   SelectedDesResult,
   SelectedDecision,
@@ -64,9 +65,17 @@ export interface WorkflowDecision {
   provenance_warning: string
 }
 
+/** 4f/5e: why the recorded selection does or does not yield the selected scenario. */
+export interface SelectionEvidence {
+  scenario_id: number | null
+  evidence_status: string
+  evidence_reasons: EvidenceReason[]
+}
+
 export interface WorkflowEvidence {
   analysis_id: number
   selection: WorkflowJob | null
+  selection_evidence?: SelectionEvidence | null
   scenario: WorkflowScenario | null
   des: WorkflowJob<SimulationTrace> | null
   des_current: WorkflowJob<SimulationTrace> | null

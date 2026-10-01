@@ -55,6 +55,11 @@ MISSING_DEPENDENCY_DETAIL = (
     "Evidence references a record that no longer exists or is not this Analysis's. "
     "Rerun the affected step."
 )
+# 5d: a refusal whose missing record is known names it. MISSING_DEPENDENCY_DETAIL stays the text
+# of generation refusals (G5, G6) and of a refusal that records no reason.
+MISSING_DATASET_99999_DETAIL = (
+    "Evidence references records that no longer exist: dataset #99999. Rerun the affected step."
+)
 
 
 def shared_setup() -> dict[str, Any]:
@@ -510,10 +515,10 @@ def test_a_selected_chain_job_naming_a_missing_scenario_blocks_report_and_decisi
     decided = client.post(f"/analyses/{analysis_id}/workflow/decision/selected",
                           headers=headers, json={})
     assert decided.status_code == 409, decided.text
-    assert decided.json()["detail"] == MISSING_DEPENDENCY_DETAIL
+    assert decided.json()["detail"] == MISSING_DATASET_99999_DETAIL
     preview = client.get(f"/reports/analyses/{analysis_id}/selected/preview", headers=headers)
     assert preview.status_code == 409, preview.text
-    assert preview.json()["detail"] == MISSING_DEPENDENCY_DETAIL
+    assert preview.json()["detail"] == MISSING_DATASET_99999_DETAIL
     report = client.get(f"/reports/analyses/{analysis_id}/selected/pdf", headers=headers)
     assert report.status_code == 409
     with session_factory() as db:                            # case 13

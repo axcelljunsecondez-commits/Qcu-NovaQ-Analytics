@@ -9,6 +9,7 @@ import { AnalysisSetupPage } from './AnalysisSetupPage'
 import { DatasetsPage } from './DatasetsPage'
 import { SimulationPage } from './SimulationPage'
 import { DecisionEndpointPage } from '../components/analysis/DecisionEndpointPage'
+import { ComparisonPage } from './ComparisonPage'
 
 // A dataset upload or deletion can change which dataset is current for an analysis. The workflow
 // evidence cached for the replaced dataset must never be shown again, not even while the fresh
@@ -21,6 +22,7 @@ const listAnalysisDatasetsMock = vi.fn()
 const uploadAnalysisDatasetMock = vi.fn()
 const listDatasetsMock = vi.fn()
 const deleteDatasetMock = vi.fn()
+const listScenariosMock = vi.fn()
 const unexpectedCall = vi.fn()
 
 vi.mock('../api/workflow', () => ({
@@ -36,6 +38,9 @@ vi.mock('../api/workflow', () => ({
   runSelectedValidation: (...args: unknown[]) => unexpectedCall(...args),
   runSelectedDecision: (...args: unknown[]) => unexpectedCall(...args),
   createWorkflowDecision: (...args: unknown[]) => unexpectedCall(...args),
+  selectWorkflowScenario: (...args: unknown[]) => unexpectedCall(...args),
+  getSeparateComparison: (...args: unknown[]) => unexpectedCall(...args),
+  getObservedWait: (...args: unknown[]) => unexpectedCall(...args),
 }))
 
 vi.mock('../api/optimization', () => ({
@@ -52,6 +57,11 @@ vi.mock('../api/analyses', () => ({
   previewAnalysisDataset: (...args: unknown[]) => unexpectedCall(...args),
   patchAnalysis: (...args: unknown[]) => unexpectedCall(...args),
   downloadSetupWorkbook: (...args: unknown[]) => unexpectedCall(...args),
+}))
+
+vi.mock('../api/scenarios', () => ({
+  listScenarios: (...args: unknown[]) => listScenariosMock(...args),
+  createScenario: (...args: unknown[]) => unexpectedCall(...args),
 }))
 
 vi.mock('../api/datasets', () => ({
@@ -178,6 +188,25 @@ function serverWorkflow() {
   }
 }
 
+const planRow = {
+  time: '08:00-09:00', lambda_: 30, mu: 12, c_current: 3, c_optimal: 4, rho_current: 0.9, rho_optimal: 0.7,
+  Wq_current: 0.1, Wq_optimal: 0.05, Lq_current: 3.5, Lq_optimal: 0.5, cost_current: 800, cost_optimal: 500,
+  delta_cost: 300, delta_Wq: 0.05, delta_Lq: 3, delta_c: 1, delta_rho: -0.2, waiting_cost_current: 300,
+  waiting_cost_optimal: 150, abandonment_cost_current: 100, abandonment_cost_optimal: 50, cost_per_server: 87,
+  current_stable: true, optimized_stable: true, recommendation: '', warning: '',
+}
+
+// GET /scenarios as the 4c backend serves it: the saved plan is CURRENT only on its own dataset.
+function serverScenarios() {
+  const current = currentDatasetId() === server.evidenceFor
+  return [{
+    id: 3, analysis_id: 7, dataset_id: server.evidenceFor, name: 'Plan A', settings: {},
+    results: { results: [planRow] }, created_at: '2026-09-13T00:00:00Z',
+    evidence_status: current ? 'CURRENT' : 'STALE_DATASET',
+    evidence_reasons: current ? [] : [{ code: 'DATASET_NOT_CURRENT', subject: 'scenario 3', detail: 'Scenario is stale for the current dataset.' }],
+  }]
+}
+
 function datasetRow(id: number) {
   return {
     id, analysis_id: 7, name: `Week ${id}`, source_filename: `week-${id}.csv`, source_format: 'csv', row_count: 1,
@@ -186,6 +215,17 @@ function datasetRow(id: number) {
 }
 
 let workflowGate: Promise<void> | null = null
+let scenariosGate: Promise<void> | null = null
+
+// Holds every scenario-list request until the returned function is called.
+function holdScenarioRequests(): () => void {
+  let release: () => void = () => {}
+  scenariosGate = new Promise<void>((resolve) => { release = resolve })
+  return () => {
+    scenariosGate = null
+    release()
+  }
+}
 
 // Holds every workflow request until the returned function is called.
 function holdWorkflowRequests(): () => void {
@@ -241,6 +281,7 @@ function Nav() {
       <Link to="/analyses/7/simulate">Open Simulate</Link>
       <Link to="/analyses/7/decision">Open Decision</Link>
       <Link to="/datasets">Open Datasets</Link>
+      <Link to="/analyses/7/compare">Open Compare</Link>
     </nav>
   )
 }
@@ -257,6 +298,7 @@ function renderApp(route: string) {
         <Route path="/analyses/:analysisId/simulate" element={<SimulationPage />} />
         <Route path="/analyses/:analysisId/decision" element={<DecisionEndpointPage />} />
         <Route path="/datasets" element={<DatasetsPage />} />
+        <Route path="/analyses/:analysisId/compare" element={<ComparisonPage />} />
       </Routes>
     </>,
     { route, queryClient },
@@ -302,6 +344,11 @@ beforeEach(() => {
   })
   listAnalysisDatasetsMock.mockReset().mockImplementation(async () => ({ datasets: server.datasets.map(datasetRow) }))
   listDatasetsMock.mockReset().mockImplementation(async () => ({ datasets: server.datasets.map(datasetRow) }))
+  scenariosGate = null
+  listScenariosMock.mockReset().mockImplementation(async () => {
+    if (scenariosGate) await scenariosGate
+    return { scenarios: serverScenarios() }
+  })
   uploadAnalysisDatasetMock.mockReset().mockImplementation(async () => {
     const id = (server.datasets[0] ?? 10) + 1
     server.datasets = [id, ...server.datasets]
@@ -425,5 +472,25 @@ describe('Current dataset changes and cached workflow evidence', () => {
     expect(current?.dataset.id).toBe(12)
     expect(workflow).toEqual(serverWorkflow())
     expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
+  })
+
+  it('never shows the scenario of a replaced dataset as current on Compare after a Setup upload', async () => {
+    server.structure = 'shared_queue'
+    const user = userEvent.setup()
+    renderApp('/analyses/7/compare')
+    expect(await screen.findByTestId('compare-totals-dataset')).toHaveTextContent('Totals computed from dataset #11.')
+
+    await uploadOnSetup(user, 12)
+    const release = holdScenarioRequests()
+    const watch = watchForText(['Current Total Cost', 'Totals computed from dataset'])
+    const requestsBefore = listScenariosMock.mock.calls.length
+    await user.click(screen.getByRole('link', { name: 'Open Compare' }))
+    expect(watch.seen()).toEqual([])
+    await waitFor(() => expect(listScenariosMock.mock.calls.length).toBeGreaterThan(requestsBefore))
+    expect(watch.seen()).toEqual([])
+
+    release()
+    expect(await screen.findByTestId('compare-not-current')).toHaveTextContent('Stale: dataset replaced')
+    expect(watch.stop()).toEqual([])
   })
 })

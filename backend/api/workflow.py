@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import statistics
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -21,6 +23,7 @@ from backend.api.current_dataset import resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.evidence_status import (
     GENERATION_KINDS,
+    PRECEDENCE,
     SELECTED_DES_ENGINE,
     SELECTED_MC_ENGINE,
     ArtifactRef,
@@ -29,7 +32,9 @@ from backend.api.evidence_status import (
     EvidenceAssessment,
     EvidencePolicy,
     EvidenceRecord,
+    EvidenceStatus,
     GenerationRequirement,
+    Reason,
     ReasonCode,
     SetupBinding,
     VersionFamily,
@@ -235,6 +240,9 @@ def _operationally_complete(rows: list[dict[str, Any]]) -> bool:
     )
 
 
+UNSUPPORTED_SEPARATE_SNAPSHOT = "not a supported Separate optimization snapshot"
+
+
 def _separate_schedule_problem(scenario: Scenario) -> str | None:
     """Return None when a saved Separate plan is complete and selectable.
 
@@ -245,7 +253,7 @@ def _separate_schedule_problem(scenario: Scenario) -> str | None:
     calc = (scenario.settings_json or {}).get("calculation") or {}
     if (calc.get("schema_version") != 2
             or calc.get("engine_version") != SEPARATE_DES_ENGINE_VERSION):
-        return "not a supported Separate optimization snapshot"
+        return UNSUPPORTED_SEPARATE_SNAPSHOT
     schedule = (scenario.results_json or {}).get("schedule")
     if not isinstance(schedule, dict) or schedule.get("overall") != "COMPLETE":
         return "schedule is not COMPLETE"
@@ -343,81 +351,173 @@ def _own_verified_scenario_and_dataset(
     """The verified scenario and the dataset row it was verified against.
 
     Evidence built on the scenario records that row's generation (G3), so it is returned rather
-    than read again.
+    than read again. Eligibility is decided by ``_scenario_evidence``; this raises its first
+    failure, with the status and detail each check has always had.
     """
+    evidence = _scenario_evidence(db, user, analysis, scenario_id)
+    if evidence.refusal is not None:
+        raise HTTPException(status_code=422, detail=evidence.refusal)
+    # No failed check means both rows were read and resolved.
+    assert evidence.scenario is not None and evidence.dataset is not None
+    return evidence.scenario, evidence.dataset
+
+
+SCENARIO_UNVERIFIED_DETAIL = "Select a verified Scenario from this Analysis."
+SCENARIO_DATASET_UNAVAILABLE_DETAIL = "Scenario source Dataset is unavailable."
+
+
+@dataclass(frozen=True)
+class ScenarioEvidence:
+    """Whether a saved scenario can be the analysis's selected current scenario (spec §4.1, 4c).
+
+    ``reasons`` holds every failed check, headline status first. ``refusal`` is the detail the
+    selection chokepoint raises: the first failure in the chokepoint's own check order, which is
+    not the §4.1 precedence when several checks fail. Both are empty exactly when the scenario is
+    CURRENT.
+    """
+
+    status: EvidenceStatus
+    reasons: tuple[Reason, ...]
+    refusal: str | None
+    scenario: Scenario | None
+    dataset: Dataset | None
+
+
+def _scenario_evidence(
+    db: Session, user: User, analysis: AnalysisProject, scenario_id: int
+) -> ScenarioEvidence:
+    """Every check ``_own_verified_scenario_and_dataset`` applies, without raising.
+
+    The one source of scenario eligibility: the chokepoint raises ``refusal`` and the scenario
+    responses report ``status`` and ``reasons``. Checks run in the chokepoint's order. A check
+    that reads a record an earlier check could not establish (the scenario in scope, its dataset
+    resolved) is skipped, so no reason describes a record that was not read.
+    """
+    failures: list[tuple[Reason, str]] = []
+    subject = str(ArtifactRef("scenario", scenario_id))
+
+    def fail(code: ReasonCode, reason_subject: str, detail: str) -> None:
+        failures.append((Reason(code, reason_subject, detail), detail))
+
     scenario = db.get(Scenario, scenario_id)
-    if (
-        scenario is None
-        or scenario.user_id != user.id
-        or scenario.analysis_id != analysis.id
-        or scenario.dataset_id is None
-        or not (scenario.settings_json or {}).get("calculation")
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="Select a verified Scenario from this Analysis.",
-        )
+    if scenario is None:
+        fail(ReasonCode.DEPENDENCY_MISSING, subject, SCENARIO_UNVERIFIED_DETAIL)
+        return _scenario_evidence_result(failures, None, None)
+    if scenario.user_id != user.id or scenario.analysis_id != analysis.id:
+        fail(ReasonCode.OUT_OF_SCOPE, subject, SCENARIO_UNVERIFIED_DETAIL)
+        return _scenario_evidence_result(failures, scenario, None)
+    if scenario.dataset_id is None:
+        fail(ReasonCode.DATASET_UNRECORDED, subject, SCENARIO_UNVERIFIED_DETAIL)
+    if not (scenario.settings_json or {}).get("calculation"):
+        fail(ReasonCode.VERSION_UNRECORDED, subject, SCENARIO_UNVERIFIED_DETAIL)
+    if scenario.dataset_id is None or failures:
+        return _scenario_evidence_result(failures, scenario, None)
+    dataset_subject = str(ArtifactRef("dataset", scenario.dataset_id))
     dataset = db.get(Dataset, scenario.dataset_id)
-    if (
-        dataset is None
-        or dataset.user_id != user.id
-        or dataset.analysis_id != analysis.id
-        or not (dataset.validation_report_json or {}).get("ok")
-    ):
-        raise HTTPException(status_code=422, detail="Scenario source Dataset is unavailable.")
+    if dataset is None:
+        fail(ReasonCode.DEPENDENCY_MISSING, dataset_subject, SCENARIO_DATASET_UNAVAILABLE_DETAIL)
+    elif dataset.user_id != user.id or dataset.analysis_id != analysis.id:
+        fail(ReasonCode.DEPENDENCY_OUT_OF_SCOPE, dataset_subject, SCENARIO_DATASET_UNAVAILABLE_DETAIL)
+    elif not (dataset.validation_report_json or {}).get("ok"):
+        # The resolver never makes a dataset without an ok validation report current.
+        fail(ReasonCode.DATASET_NOT_CURRENT, dataset_subject, SCENARIO_DATASET_UNAVAILABLE_DETAIL)
+    resolved = dataset if not failures else None
     snapshot = (scenario.settings_json or {}).get("calculation") or {}
     if snapshot.get("schema_version") == 2:
         problem = _separate_schedule_problem(scenario)
         if problem is not None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Separate plan is not selectable: {problem}.",
-            )
-        if scenario.dataset_id != _current_valid_dataset_id(db, user, analysis):
-            raise HTTPException(
-                status_code=422,
-                detail="Separate plan is stale for the current dataset.",
-            )
+            code = (ReasonCode.VERSION_UNSUPPORTED if problem == UNSUPPORTED_SEPARATE_SNAPSHOT
+                    else ReasonCode.CALCULATION_UNSUPPORTED)
+            fail(code, subject, f"Separate plan is not selectable: {problem}.")
+        if resolved is not None:
+            stale = _dataset_staleness(db, user, analysis, scenario.dataset_id)
+            if stale is not None:
+                fail(stale, subject, "Separate plan is stale for the current dataset.")
         if _scenario_setup_problem(scenario, analysis) is not None:
-            raise HTTPException(
-                status_code=422,
-                detail="Separate plan is stale for the current Setup.",
-            )
-        _require_verified_dataset_generation(scenario, dataset)
-        return scenario, dataset
-    if _scenario_setup_problem(scenario, analysis) is not None:
-        raise HTTPException(
-            status_code=422,
-            detail="Scenario is not verifiable for the current Setup queue structure.",
-        )
-    if not _operationally_complete(_scenario_rows(scenario)):
-        raise HTTPException(status_code=422, detail="Scenario comparison evidence is incomplete.")
-    # Step 4: a schema-1 snapshot is evidence of the dataset it was calculated on. It is checked
-    # last so that a missing dataset, a changed Setup or incomplete evidence keeps reporting its
-    # own reason instead of being reported as staleness. The current dataset comes from the one
-    # resolver (backend.api.current_dataset, via _current_valid_dataset_id); nothing here infers
-    # identity from queue types or from matching results.
-    if scenario.dataset_id != _current_valid_dataset_id(db, user, analysis):
-        raise HTTPException(
-            status_code=422,
-            detail="Scenario is stale for the current dataset.",
-        )
-    _require_verified_dataset_generation(scenario, dataset)
-    return scenario, dataset
+            fail(ReasonCode.SETUP_CHANGED, subject, "Separate plan is stale for the current Setup.")
+    else:
+        if _scenario_setup_problem(scenario, analysis) is not None:
+            fail(ReasonCode.SETUP_QUEUE_TYPE_MISMATCH, subject,
+                 "Scenario is not verifiable for the current Setup queue structure.")
+        try:
+            complete = _operationally_complete(_scenario_rows(scenario))
+        except HTTPException as exc:
+            fail(ReasonCode.RESULT_INCOMPLETE, subject, str(exc.detail))
+        else:
+            if not complete:
+                fail(ReasonCode.RESULT_INCOMPLETE, subject, "Scenario comparison evidence is incomplete.")
+        # Step 4: a schema-1 snapshot is evidence of the dataset it was calculated on. It is checked
+        # last so that a missing dataset, a changed Setup or incomplete evidence keeps reporting its
+        # own reason instead of being reported as staleness. The current dataset comes from the one
+        # resolver (backend.api.current_dataset, via _current_valid_dataset_id); nothing here infers
+        # identity from queue types or from matching results.
+        if resolved is not None:
+            stale = _dataset_staleness(db, user, analysis, scenario.dataset_id)
+            if stale is not None:
+                fail(stale, subject, "Scenario is stale for the current dataset.")
+    if resolved is not None:
+        generation = _dataset_generation_problem(scenario, resolved)
+        if generation is not None:
+            fail(generation, dataset_subject, SCENARIO_PROVENANCE_DETAIL)
+    return _scenario_evidence_result(failures, scenario, resolved)
 
 
-def _require_verified_dataset_generation(scenario: Scenario, dataset: Dataset) -> None:
+def _scenario_evidence_result(
+    failures: list[tuple[Reason, str]], scenario: Scenario | None, dataset: Dataset | None
+) -> ScenarioEvidence:
+    if not failures:
+        return ScenarioEvidence(EvidenceStatus.CURRENT, (), None, scenario, dataset)
+    # §4.1: the headline is the first status in precedence order; the sort is stable, so reasons
+    # of one status keep the chokepoint's order.
+    reasons = tuple(sorted((reason for reason, _ in failures), key=lambda item: PRECEDENCE.index(item.status)))
+    return ScenarioEvidence(reasons[0].status, reasons, failures[0][1], scenario, dataset)
+
+
+def _dataset_staleness(
+    db: Session, user: User, analysis: AnalysisProject, dataset_id: int
+) -> ReasonCode | None:
+    current = _current_valid_dataset_id(db, user, analysis)
+    if dataset_id == current:
+        return None
+    return ReasonCode.NO_CURRENT_DATASET if current is None else ReasonCode.DATASET_NOT_CURRENT
+
+
+def _dataset_generation_problem(scenario: Scenario, dataset: Dataset) -> ReasonCode | None:
     """G5 (spec 2026-09-26 §8): under enforcement a scenario is eligible only when the dataset
     generation its save verified is present and is the live row's.
 
-    Called last on both schema branches, so every existing refusal keeps its own reason. A NULL
-    binding (every scenario saved before G2) is never treated as a match.
+    Checked last on both schema branches, so every existing refusal keeps its own reason. A NULL
+    binding (every scenario saved before G2) is never treated as a match. Off, nothing is checked.
     """
     if not _generation_enforced():
-        return
+        return None
     recorded = _recorded_generation(scenario.dataset_generation)
-    if recorded is None or recorded != dataset.generation:
-        raise HTTPException(status_code=422, detail=SCENARIO_PROVENANCE_DETAIL)
+    if recorded is None:
+        return ReasonCode.GENERATION_UNRECORDED
+    if recorded != dataset.generation:
+        return ReasonCode.GENERATION_MISMATCH
+    return None
+
+
+def _evidence_fields(status: EvidenceStatus, reasons: tuple[Reason, ...]) -> dict[str, Any]:
+    return {
+        "evidence_status": status.value,
+        "evidence_reasons": [
+            {"code": reason.code.value, "subject": reason.subject, "detail": reason.detail}
+            for reason in reasons
+        ],
+    }
+
+
+def scenario_evidence_fields(db: Session, user: User, scenario: Scenario) -> dict[str, Any]:
+    """4c: a saved scenario's eligibility in its own analysis, as the scenario responses report it."""
+    analysis = db.get(AnalysisProject, scenario.analysis_id) if scenario.analysis_id is not None else None
+    if analysis is None:
+        reason = Reason(ReasonCode.ANALYSIS_UNRECORDED, str(ArtifactRef("scenario", scenario.id)),
+                        SCENARIO_UNVERIFIED_DETAIL)
+        return _evidence_fields(reason.status, (reason,))
+    evidence = _scenario_evidence(db, user, analysis, scenario.id)
+    return _evidence_fields(evidence.status, evidence.reasons)
 
 
 def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[dict[str, Any]]:
@@ -663,6 +763,34 @@ def _selection_binding_problem(selection: Job, scenario: Scenario) -> str | None
     return None
 
 
+def _selection_evidence(
+    db: Session, user: User, analysis: AnalysisProject, selection: Job | None
+) -> dict[str, Any] | None:
+    """4f/5e: why the recorded selection does or does not yield the selected scenario.
+
+    It makes the same two decisions ``_selected_scenario_and_dataset`` makes, from the same
+    functions, so a withheld scenario always has a reason here and a returned one is CURRENT. Only
+    the scenario id, status and reasons are exposed: no scenario or result payload is restored.
+    """
+    if selection is None:
+        return None
+    subject = str(ArtifactRef("job:workflow_selection", selection.id))
+    scenario_id = (selection.params_json or {}).get("scenario_id")
+    if not isinstance(scenario_id, int):
+        reason = Reason(ReasonCode.REFERENCE_UNRECORDED, subject, "The selection records no scenario id.")
+        return {"scenario_id": None, **_evidence_fields(reason.status, (reason,))}
+    evidence = _scenario_evidence(db, user, analysis, scenario_id)
+    status, reasons = evidence.status, evidence.reasons
+    if evidence.refusal is None and evidence.scenario is not None:
+        problem = _selection_binding_problem(selection, evidence.scenario)
+        if problem is not None:
+            code = (ReasonCode.GENERATION_UNRECORDED if problem == SELECTION_GENERATION_UNRECORDED_DETAIL
+                    else ReasonCode.GENERATION_MISMATCH)
+            reason = Reason(code, subject, problem)
+            status, reasons = reason.status, (reason,)
+    return {"scenario_id": scenario_id, **_evidence_fields(status, reasons)}
+
+
 def _require_selection_dataset_generation(selection: Job | None, dataset: Dataset) -> None:
     """G6 (spec 2026-09-26 G-T7, decision D2): under enforcement a Decision is produced only when the
     selection's recorded dataset generation is the verified dataset row's.
@@ -875,17 +1003,81 @@ def require_dependencies_current(
     for job in jobs:
         assessment = _assess_evidence(db, job, context, policy)
         if not assessment.is_current:
-            detail = (GENERATION_UNRECORDED_DETAIL if _root_causes(assessment) == {ReasonCode.GENERATION_UNRECORDED}
-                      else MISSING_DEPENDENCY_DETAIL)
-            raise HTTPException(status_code=409, detail=detail)
+            raise HTTPException(status_code=409, detail=_dependency_refusal_detail(assessment))
+
+
+def _root_reasons(assessment: EvidenceAssessment) -> list[Reason]:
+    """Every reason in an assessment and its upstream assessments, less the derived UPSTREAM_* ones.
+
+    In a fixed order (each assessment's own reasons are sorted), without repeats.
+    """
+    found = [reason for reason in assessment.reasons if not reason.code.name.startswith("UPSTREAM_")]
+    for upstream in assessment.dependencies:
+        found += [reason for reason in _root_reasons(upstream) if reason not in found]
+    return found
 
 
 def _root_causes(assessment: EvidenceAssessment) -> set[ReasonCode]:
-    """Every reason in an assessment and its upstream assessments, less the derived UPSTREAM_* ones."""
-    causes = {reason.code for reason in assessment.reasons if not reason.code.name.startswith("UPSTREAM_")}
-    for upstream in assessment.dependencies:
-        causes |= _root_causes(upstream)
-    return causes
+    return {reason.code for reason in _root_reasons(assessment)}
+
+
+_GENERATION_CODES = frozenset({ReasonCode.GENERATION_UNRECORDED, ReasonCode.GENERATION_MISMATCH})
+_OUT_OF_SCOPE_CODES = frozenset({ReasonCode.OUT_OF_SCOPE, ReasonCode.DEPENDENCY_OUT_OF_SCOPE})
+_SUBJECT_LABELS = {
+    "job:workflow_selection": "selection",
+    "job:workflow_des": "DES run",
+    "job:workflow_mc": "Monte Carlo run",
+    "job:workflow_validation": "validation run",
+    "job:workflow_decision": "Decision",
+    "job:workflow_des_current": "Current DES run",
+    "job:workflow_mc_current": "Current Monte Carlo run",
+    "job:workflow_validation_current": "Current validation run",
+}
+_SUBJECT = re.compile(r"(?P<kind>\S+) (?:(?P<id>\d+)|\(unrecorded id\))")
+
+
+def _describe_subject(subject: str) -> str:
+    """``dataset 12`` -> ``dataset #12``; ``job:workflow_des 40`` -> ``DES run #40``."""
+    match = _SUBJECT.fullmatch(subject)
+    if match is None:
+        return subject
+    label = _SUBJECT_LABELS.get(match["kind"], match["kind"])
+    return f"{label} #{match['id']}" if match["id"] is not None else f"{label} (unrecorded id)"
+
+
+def _named_subjects(reasons: list[Reason], codes: frozenset[ReasonCode]) -> str:
+    return ", ".join(dict.fromkeys(_describe_subject(reason.subject) for reason in reasons if reason.code in codes))
+
+
+def _dependency_refusal_detail(assessment: EvidenceAssessment) -> str:
+    """5d: the 409 detail naming the record a refused chain depends on.
+
+    A record that no longer exists, is not this Analysis's, or was created after the evidence that
+    cites it is named as such. Only when none is, the chain's other causes are named with the
+    classifier's own wording, so a stale dataset or Setup is never called deleted. Generation
+    refusals keep their approved texts (G5, G6), and a refusal without a recorded reason keeps
+    the generic one.
+    """
+    reasons = _root_reasons(assessment)
+    codes = {reason.code for reason in reasons}
+    if codes == {ReasonCode.GENERATION_UNRECORDED}:
+        return GENERATION_UNRECORDED_DETAIL
+    if not reasons or codes & _GENERATION_CODES:
+        return MISSING_DEPENDENCY_DETAIL
+    sentences = []
+    deleted = _named_subjects(reasons, frozenset({ReasonCode.DEPENDENCY_MISSING}))
+    if deleted:
+        sentences.append(f"Evidence references records that no longer exist: {deleted}.")
+    outside = _named_subjects(reasons, _OUT_OF_SCOPE_CODES)
+    if outside:
+        sentences.append(f"Evidence references records that are not this Analysis's: {outside}.")
+    later = _named_subjects(reasons, frozenset({ReasonCode.DEPENDENCY_CREATED_AFTER}))
+    if later:
+        sentences.append(f"Evidence references records created after the evidence that cites them: {later}.")
+    if not sentences:
+        causes = "; ".join(f"{_describe_subject(reason.subject)}: {reason.detail.rstrip('.')}" for reason in reasons)
+        sentences.append(f"Evidence is not current: {causes}.")
+    return " ".join(sentences) + " Rerun the affected step."
 
 
 def _assess_evidence(
@@ -966,6 +1158,7 @@ def _current_evidence(
     return {
         "analysis_id": analysis.id,
         "selection": _job_out(selection),
+        "selection_evidence": _selection_evidence(db, user, analysis, selection),
         "scenario": {
             "id": scenario.id,
             "name": scenario.name,

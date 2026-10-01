@@ -15,7 +15,7 @@ from backend.api.analysis_schemas import STORED_SETUP, QueueSetup, setup_status,
 from backend.api.current_dataset import resolve_current_dataset
 from backend.api.datasets import _to_out as dataset_out
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
-from backend.api.scenarios import _to_out as scenario_out
+from backend.api.scenarios import scenario_out
 from backend.api.settings import Settings
 from backend.data import uploads
 from backend.data.analysis_ingestion import AnalysisIngestionError, normalize_analysis_input
@@ -384,4 +384,4 @@ def list_analysis_scenarios(
         if item.dataset_id is None
         or (item.dataset is not None and item.dataset.user_id == user.id and item.dataset.analysis_id == analysis_id)
     ]
-    return {"scenarios": [scenario_out(item) for item in consistent]}
+    return {"scenarios": [scenario_out(db, user, item) for item in consistent]}

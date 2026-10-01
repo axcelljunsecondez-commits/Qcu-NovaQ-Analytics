@@ -30,7 +30,7 @@ from tests.test_separate_report import _api_workspace
 from tests.test_step5_missing_dependency import (
     DES_PAYLOAD,
     MC_PAYLOAD,
-    MISSING_DEPENDENCY_DETAIL,
+    MISSING_DATASET_99999_DETAIL,
     VALIDATION_PAYLOAD,
     Shop,
 )
@@ -247,7 +247,7 @@ def test_selected_mc_refuses_a_des_input_that_fails_step5_before_computing(clien
     _refuse_computation(monkeypatch, "mc_simulate_segments")
     response = client.post(f"/analyses/{analysis_id}/workflow/simulation/mc/selected", headers=headers, json={})
     assert response.status_code == 409
-    assert response.json()["detail"] == MISSING_DEPENDENCY_DETAIL
+    assert response.json()["detail"] == MISSING_DATASET_99999_DETAIL
     assert _count(db_engine, "workflow_mc") == before
 
 
@@ -260,7 +260,7 @@ def test_selected_validation_refuses_a_broken_input_before_computing(client, db_
     response = client.post(f"/analyses/{analysis_id}/workflow/simulation/validation/selected",
                            headers=headers, json={})
     assert response.status_code == 409
-    assert response.json()["detail"] == MISSING_DEPENDENCY_DETAIL
+    assert response.json()["detail"] == MISSING_DATASET_99999_DETAIL
     assert _count(db_engine, "workflow_validation") == before
 
 

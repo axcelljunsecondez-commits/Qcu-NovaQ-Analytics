@@ -48,6 +48,12 @@ class ScenarioPatch(BaseModel):
     results: dict | None = None
 
 
+class EvidenceReasonOut(BaseModel):
+    code: str
+    subject: str
+    detail: str
+
+
 class ScenarioOut(BaseModel):
     id: int
     analysis_id: int | None
@@ -59,6 +65,10 @@ class ScenarioOut(BaseModel):
     generation: str | None = None
     provenance: str = "legacy_unverified"
     roi_unavailable_reason: str | None = None
+    # 4c: whether the scenario can be selected as current evidence, and why not. Required, so no
+    # scenario response is built without them.
+    evidence_status: str
+    evidence_reasons: list[EvidenceReasonOut]
 
     model_config = {"from_attributes": True}
 
@@ -79,8 +89,17 @@ def _shared_roi_reason(results: dict | None) -> str | None:
     return unstable_current_reason(rows)
 
 
-def _to_out(scenario: Scenario) -> dict:
+def scenario_out(db: Session, user: User, scenario: Scenario) -> dict:
+    """A scenario response, with its eligibility in its own analysis (4c)."""
+    # Imported here: backend.api.workflow imports this module.
+    from backend.api.workflow import scenario_evidence_fields
+
+    return _to_out(scenario, scenario_evidence_fields(db, user, scenario))
+
+
+def _to_out(scenario: Scenario, evidence: dict) -> dict:
     payload = {
+        **evidence,
         "id": scenario.id,
         "analysis_id": scenario.analysis_id,
         "dataset_id": scenario.dataset_id,
@@ -334,7 +353,7 @@ def create_scenario(
     db.add(scenario)
     db.commit()
     db.refresh(scenario)
-    return {"scenario": _to_out(scenario)}
+    return {"scenario": scenario_out(db, user, scenario)}
 
 
 @router.get("")
@@ -360,7 +379,7 @@ def list_scenarios(
             and scenario.dataset.analysis_id == scenario.analysis_id
         )
     ]
-    return {"scenarios": [_to_out(scenario) for scenario in scenarios]}
+    return {"scenarios": [scenario_out(db, user, scenario) for scenario in scenarios]}
 
 
 @router.get("/{scenario_id}")
@@ -369,7 +388,7 @@ def get_scenario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    return {"scenario": _to_out(_own_scenario(db, user, scenario_id))}
+    return {"scenario": scenario_out(db, user, _own_scenario(db, user, scenario_id))}
 
 
 @router.patch("/{scenario_id}")
@@ -398,7 +417,7 @@ def patch_scenario(
         scenario.results_json = payload.results
     db.commit()
     db.refresh(scenario)
-    return {"scenario": _to_out(scenario)}
+    return {"scenario": scenario_out(db, user, scenario)}
 
 
 @router.delete("/{scenario_id}")

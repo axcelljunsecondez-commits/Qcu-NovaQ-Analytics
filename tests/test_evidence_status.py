@@ -12,6 +12,7 @@ Two kinds of fixtures, labelled on every test:
 
 from __future__ import annotations
 
+import ast
 import copy
 import itertools
 import json
@@ -576,17 +577,116 @@ def test_malformed_inputs_are_rejected():
                    deps=[dataset_dep(), Dependency(ArtifactRef("scenario", 301), True, OWNER, ANALYSIS, at(1), other)]))
 
 
+CLASSIFIER = "backend.api.evidence_status"
+# The calls that load a module or look one up, with their parameter names in order.
+IMPORT_CALLS: dict[str, tuple[str, ...]] = {
+    "builtins.__import__": ("name", "globals", "locals", "fromlist", "level"),
+    "importlib.__import__": ("name", "globals", "locals", "fromlist", "level"),
+    "importlib.import_module": ("name", "package"),
+    "builtins.getattr": ("object", "name"),
+}
+
+
+def _names_the_classifier(value: Any) -> bool:
+    """Whether ``value`` is a module path or file path of the classifier: one word ending in
+    ``.evidence_status`` or ``evidence_status.py``. Prose that mentions it has spaces."""
+    return (isinstance(value, str) and not any(char.isspace() for char in value)
+            and (value.endswith(".evidence_status") or re.split(r"[/\\]", value)[-1] == "evidence_status.py"))
+
+
+def _wires_the_classifier(path: Path) -> bool:
+    """Whether the module at ``path`` imports, loads or refers to the classifier module in any form its
+    code states: an absolute, relative or aliased import (also one inside a function); ``__import__``
+    (also with ``fromlist``), ``importlib.import_module`` or ``getattr`` naming it; a dotted reference
+    through a name bound to its package, such as ``api.evidence_status`` after ``from backend import api``;
+    or a module-path or file-path string for it. A field, key, attribute or word ``evidence_status`` on
+    anything other than the ``backend.api`` package is not wiring."""
+    package = list(path.relative_to(REPO_ROOT).parts[:-1])
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+
+    def absolute(module: str, level: int) -> str:
+        """``module`` imported ``level`` packages up from ``path`` (as written when ``level`` is 0)."""
+        return ".".join(package[:len(package) + 1 - level] + ([module] if module else [])) if level else module
+
+    def literal(node: ast.AST | None) -> Any:
+        """The value ``node`` states literally, joining strings added with ``+``; None otherwise."""
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left, right = literal(node.left), literal(node.right)
+            return left + right if isinstance(left, str) and isinstance(right, str) else None
+        try:
+            return ast.literal_eval(node) if isinstance(node, ast.expr) else None
+        except (ValueError, TypeError, SyntaxError):
+            return None
+
+    # Each name an import binds anywhere in the module, to the dotted path it stands for.
+    bound = {"__import__": "builtins.__import__", "getattr": "builtins.getattr"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                bound[alias.asname or top] = alias.name if alias.asname else top
+        elif isinstance(node, ast.ImportFrom):
+            base = absolute(node.module or "", node.level)
+            bound.update((alias.asname or alias.name, f"{base}.{alias.name}") for alias in node.names)
+
+    def loaded(node: ast.AST) -> list[str]:
+        """The dotted paths ``node`` loads or refers to, the one it evaluates to first."""
+        if isinstance(node, ast.Name):
+            return [bound[node.id]] if node.id in bound else []
+        if isinstance(node, ast.Attribute):
+            return [f"{owner}.{node.attr}" for owner in loaded(node.value)[:1]]
+        function = loaded(node.func)[:1] if isinstance(node, ast.Call) else []
+        if not isinstance(node, ast.Call) or not function or function[0] not in IMPORT_CALLS:
+            return []
+        given = dict(zip(IMPORT_CALLS[function[0]], node.args))
+        given.update((keyword.arg, keyword.value) for keyword in node.keywords if keyword.arg)
+        name = literal(given.get("name"))
+        if not isinstance(name, str):
+            return []
+        if function[0] == "builtins.getattr":
+            return [f"{owner}.{name}" for owner in loaded(given["object"])[:1]] if "object" in given else []
+        if function[0] == "importlib.import_module":
+            anchor, rest = str(literal(given.get("package")) or "").split("."), name.lstrip(".")
+            level = len(name) - len(rest)
+            return [".".join(anchor[:len(anchor) + 1 - level] + ([rest] if rest else [])) if level else name]
+        level, fromlist = literal(given.get("level")), literal(given.get("fromlist"))
+        level = level if isinstance(level, int) else 0
+        fromlist = [item for item in fromlist if isinstance(item, str)] if isinstance(fromlist, (list, tuple)) else []
+        module = absolute(name, level)
+        evaluates_to = module if fromlist else absolute(name.partition(".")[0], level)
+        return [evaluates_to, module, *(f"{module}.{item}" for item in fromlist)]
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = absolute(node.module or "", node.level)
+            names = [base, *(f"{base}.{alias.name}" for alias in node.names)]
+        elif isinstance(node, (ast.Constant, ast.BinOp)):
+            if _names_the_classifier(literal(node)):
+                return True
+            continue
+        else:
+            names = loaded(node)
+        if any(name == CLASSIFIER or name.startswith(f"{CLASSIFIER}.") for name in names):
+            return True
+    return False
+
+
 def test_only_the_reviewed_consumer_is_wired_into_the_application():
     """Step 1 kept the classifier isolated; Step 3 (D7) wired exactly one consumer.
 
     Previous expectation: no backend module referenced ``evidence_status`` at all.
-    Corrected expectation: ``workflow.py`` does, and nothing else yet. The remaining consumers
-    named in spec section 5.2 (scenario selection, reports, decisions) are later steps, so this
-    list still guards against unreviewed integration.
+    Corrected expectation: ``workflow.py`` imports the classifier, and nothing else yet. The remaining
+    consumers named in spec section 5.2 (scenario selection, reports, decisions) are later steps, so
+    this list still guards against unreviewed integration. The guard looks for imports of the
+    classifier, not for the word: Step 4c scenario responses carry fields named ``evidence_status``
+    and ``evidence_reasons`` that ``workflow.py`` computes, and a field name is not wiring.
     """
+    classifier = REPO_ROOT / "backend" / "api" / "evidence_status.py"
     importers = [path.relative_to(REPO_ROOT).as_posix()
                  for path in (REPO_ROOT / "backend").rglob("*.py")
-                 if path.name != "evidence_status.py" and "evidence_status" in path.read_text(encoding="utf-8")]
+                 if path != classifier and _wires_the_classifier(path)]
     assert importers == ["backend/api/workflow.py"]
 
 

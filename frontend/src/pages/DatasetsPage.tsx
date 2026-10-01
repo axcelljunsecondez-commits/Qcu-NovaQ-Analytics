@@ -48,6 +48,8 @@ export function DatasetsPage() {
       // dropped (reset, not invalidated, so it is never shown while refetching).
       void queryClient.resetQueries({ queryKey: ['workflow'] })
       void queryClient.invalidateQueries({ queryKey: ['current'] })
+      // Saved scenarios' evidence status (4d) follows the current dataset too.
+      void queryClient.resetQueries({ queryKey: ['scenarios'] })
     },
   })
 

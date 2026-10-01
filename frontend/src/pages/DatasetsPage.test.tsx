@@ -124,6 +124,19 @@ describe('DatasetsPage', () => {
     expect(queryClient.getQueryState(['current', 7, 1])?.isInvalidated).toBe(true)
   })
 
+  it('drops the cached scenario statuses of every analysis after a delete', async () => {
+    deleteDatasetMock.mockResolvedValue({})
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['scenarios', 7], { scenarios: [{ id: 1, evidence_status: 'CURRENT' }] })
+    queryClient.setQueryData(['scenarios', 8], { scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+    const user = userEvent.setup()
+    renderWithProviders(<DatasetsPage />, { route: '/datasets', queryClient })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['scenarios', 8])).toBeUndefined()
+  })
+
   it('shows empty state when there are no datasets', async () => {
     listDatasetsMock.mockResolvedValue({ datasets: [] })
     renderWithProviders(<DatasetsPage />, { route: '/datasets' })

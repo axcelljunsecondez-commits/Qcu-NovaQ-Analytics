@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { SimulationPage } from './SimulationPage'
@@ -1107,5 +1107,58 @@ describe('selected separate plan simulation', () => {
     await user.click(screen.getByRole('button', { name: 'Run selected MC' }))
     await waitFor(() => expect(runSelectedMcMock).toHaveBeenCalledTimes(1))
     expect(runSelectedMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.75 })
+  })
+})
+
+describe('SimulationPage unavailable selected evidence (4f, 5e)', () => {
+  const staleSelection = {
+    scenario_id: 3, evidence_status: 'STALE_DATASET',
+    evidence_reasons: [{ code: 'DATASET_NOT_CURRENT', subject: 'scenario 3', detail: 'Scenario is stale for the current dataset.' }],
+  }
+  const deletedSelection = {
+    scenario_id: 3, evidence_status: 'MISSING_DEPENDENCY',
+    evidence_reasons: [{ code: 'DEPENDENCY_MISSING', subject: 'scenario 3', detail: 'Select a verified Scenario from this Analysis.' }],
+  }
+
+  it('names the unavailable selected scenario and why instead of the generic guidance', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection_evidence: staleSelection }))
+    renderPage()
+    const note = await screen.findByTestId('selection-unavailable')
+    expect(note).toHaveTextContent('Selected scenario #3 is unavailable: Stale: dataset replaced.')
+    expect(note).toHaveTextContent('Scenario is stale for the current dataset.')
+    expect(within(note).getByRole('link', { name: 'Compare' })).toHaveAttribute('href', '/analyses/7/compare')
+    expect(screen.queryByText(/Select a verified scenario in Compare/)).not.toBeInTheDocument()
+  })
+
+  it('shows a deleted selected plan as Source deleted, not as Current mode', async () => {
+    separateSetup()
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection_evidence: deletedSelection }))
+    renderPage()
+    expect(await screen.findByTestId('selection-unavailable'))
+      .toHaveTextContent('Selected scenario #3 is unavailable: Source deleted.')
+    expect(screen.queryByText(/no longer matches the current analysis data/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Simulate Current' })).not.toBeInTheDocument()
+    expect(getAnalysisCurrentMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps the existing guidance when the reported status has no label', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({
+      scenario: null, selection_evidence: { ...staleSelection, evidence_status: 'SOMETHING_NEW' },
+    }))
+    renderPage()
+    expect(await screen.findByText(/Select a verified scenario in Compare/)).toBeInTheDocument()
+    expect(screen.queryByTestId('selection-unavailable')).not.toBeInTheDocument()
+  })
+
+  it('renders the approved Tagalog text', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection_evidence: deletedSelection }))
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/simulate" element={<SimulationPage />} />
+      </Routes>,
+      { route: '/analyses/7/simulate', lang: 'tl' },
+    )
+    expect(await screen.findByTestId('selection-unavailable'))
+      .toHaveTextContent('Hindi available ang napiling scenario #3: Tinanggal ang pinagmulan.')
   })
 })

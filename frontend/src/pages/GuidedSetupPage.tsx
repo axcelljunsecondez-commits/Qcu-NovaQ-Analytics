@@ -43,6 +43,8 @@ export function GuidedSetupPage() {
     mutationFn: (setup: QueueSetup) => patchAnalysis(id, { queue_setup: setup }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['analysis', id] })
+      // A Setup change can make saved scenarios stale: drop their cached evidence status (4d).
+      void queryClient.resetQueries({ queryKey: ['scenarios', id] })
       navigate(`/analyses/${id}/setup`, { replace: true })
     },
     onError: () => setError(t('errors.server')),

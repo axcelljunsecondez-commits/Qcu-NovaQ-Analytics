@@ -117,3 +117,18 @@ describe('GuidedSetupPage chooser', () => {
     expect(patchAnalysisMock).not.toHaveBeenCalled()
   })
 })
+
+describe('scenario evidence cache (4d)', () => {
+  it('drops the cached scenario statuses of this analysis once the Setup is saved', async () => {
+    const user = userEvent.setup()
+    const { queryClient } = renderPage()
+    queryClient.setQueryData(['scenarios', 7], { scenarios: [{ id: 1, evidence_status: 'CURRENT' }] })
+    queryClient.setQueryData(['scenarios', 8], { scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+    await screen.findByText('Help me choose')
+    await user.click(screen.getByRole('radio', { name: 'Yes' }))
+    await user.click(await screen.findByRole('button', { name: 'Use Shared Queue' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalled())
+    await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+  })
+})
