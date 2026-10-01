@@ -42,6 +42,9 @@ export function GuidedSetupPage() {
   const save = useMutation({
     mutationFn: (setup: QueueSetup) => patchAnalysis(id, { queue_setup: setup }),
     onSuccess: async () => {
+      // Workflow evidence records the Setup it was computed for: drop it before anything else, so
+      // no page shows evidence of the previous Setup, even while its fresh request is in flight.
+      void queryClient.resetQueries({ queryKey: ['workflow', id] })
       await queryClient.invalidateQueries({ queryKey: ['analysis', id] })
       // A Setup change can make saved scenarios stale: drop their cached evidence status (4d).
       void queryClient.resetQueries({ queryKey: ['scenarios', id] })

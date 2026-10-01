@@ -132,3 +132,19 @@ describe('scenario evidence cache (4d)', () => {
     expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
   })
 })
+
+describe('workflow evidence cache', () => {
+  it('drops this analysis\'s cached workflow result by the time it returns to Setup', async () => {
+    const user = userEvent.setup()
+    const { queryClient } = renderPage()
+    queryClient.setQueryData(['workflow', 7], { des_current: { params: { dataset_id: 2 } } })
+    queryClient.setQueryData(['workflow', 8], { des_current: { params: { dataset_id: 5 } } })
+    await screen.findByText('Help me choose')
+    await user.click(screen.getByRole('radio', { name: 'Yes' }))
+    await user.click(await screen.findByRole('button', { name: 'Use Shared Queue' }))
+    expect(await screen.findByText('Canonical setup')).toBeInTheDocument()
+    expect(patchAnalysisMock).toHaveBeenCalledTimes(1)
+    expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined()
+    expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
+  })
+})

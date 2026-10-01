@@ -312,3 +312,22 @@ describe('scenario evidence cache (4d)', () => {
     expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
   })
 })
+
+describe('workflow evidence cache after a Setup save', () => {
+  it('drops this analysis\'s cached workflow result and keeps another analysis\'s', async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['workflow', 7], { des_current: { params: { dataset_id: 2 } } })
+    queryClient.setQueryData(['workflow', 8], { des_current: { params: { dataset_id: 5 } } })
+    const user = userEvent.setup()
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} />
+      </Routes>,
+      { route: '/analyses/7/setup', queryClient },
+    )
+    await user.click(await screen.findByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchMock).toHaveBeenCalledWith(7, expect.objectContaining({ queue_setup: expect.anything() })))
+    await waitFor(() => expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
+  })
+})

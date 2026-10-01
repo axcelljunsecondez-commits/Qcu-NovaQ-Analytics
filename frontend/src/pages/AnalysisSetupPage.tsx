@@ -68,6 +68,9 @@ export function AnalysisSetupPage() {
     mutationFn: () => patchAnalysis(id, { queue_setup: setup }),
     onSuccess: () => {
       setFormError(null); setNotice(t('analyses.setup_saved')); void client.invalidateQueries({ queryKey: ['analysis', id] })
+      // Workflow evidence records the Setup it was computed for: drop it so no page shows evidence
+      // of the previous Setup, even while its fresh request is in flight (invalidation would).
+      void client.resetQueries({ queryKey: ['workflow', id] })
       // A Setup change can make saved scenarios stale: drop their cached evidence status (4d).
       void client.resetQueries({ queryKey: ['scenarios', id] })
     },
