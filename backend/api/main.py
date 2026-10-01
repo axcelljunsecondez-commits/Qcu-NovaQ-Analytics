@@ -6,12 +6,16 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -36,9 +40,14 @@ from backend.api.users import router as users_router
 from backend.api.workflow import router as workflow_router
 from backend.db.session import create_engine_for
 from backend.db.session import get_db as global_get_db
+from backend.operations.migration_status import code_config, required_heads, schema_head_problem
 
 logger = logging.getLogger("novaq.api")
 SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+# G7 (decision D4): the public readiness text for a schema that is not, or cannot be shown to be, at
+# the code's migration heads. It names no revision.
+SCHEMA_REVISION_DETAIL = "Database schema is not at the required migration revision."
 
 
 class CsrfDoubleSubmitMiddleware:
@@ -179,6 +188,33 @@ def _header_from_scope(scope: dict, name: str) -> str | None:
     return None
 
 
+def _schema_revision_guard(engine: Engine):
+    """G7 (spec 2026-09-26 §11.1, gate G-T16): a production app serves only a database exactly at the
+    code's Alembic heads.
+
+    The lifespan runs whenever this app is served, however uvicorn is launched. It fails closed
+    (decision D3): heads that cannot be determined, a revision that cannot be read, and any other
+    revision all refuse startup, so nothing is served. The heads are resolved from the package, not the
+    working directory, and are kept for ``/ready``.
+    """
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        try:
+            expected = required_heads(code_config(REPO_ROOT / "alembic.ini", REPO_ROOT / "migrations"))
+        except Exception as exc:
+            raise RuntimeError(
+                f"Database migration heads cannot be determined ({type(exc).__name__}: {exc})."
+            ) from exc
+        problem = schema_head_problem(engine, expected)
+        if problem is not None:
+            raise RuntimeError(problem)
+        app.state.required_heads = frozenset(expected)
+        yield
+
+    return lifespan
+
+
 def create_app(
     engine=None,
     settings: Settings | None = None,
@@ -202,7 +238,14 @@ def create_app(
         finally:
             db.close()
 
-    app = FastAPI(title="NovaQ — Queueing Analytics", version="1.0.0")
+    # G7 (decision D2): only production checks the database revision. Every other environment builds
+    # the app exactly as before, with no lifespan.
+    guard_schema = settings.environment == "production"
+    app = FastAPI(
+        title="NovaQ — Queueing Analytics",
+        version="1.0.0",
+        lifespan=_schema_revision_guard(engine) if guard_schema else None,
+    )
     app.state.settings = settings
     app.state.email_sender = email_sender or build_email_sender(settings)
     app.state.google_token_verifier = google_token_verifier or OfficialGoogleTokenVerifier()
@@ -244,6 +287,12 @@ def create_app(
             db.execute(text("SELECT 1"))
         except SQLAlchemyError as exc:
             raise HTTPException(status_code=503, detail="Database not ready.") from exc
+        if guard_schema:
+            # G7: the revision is read again on every call, in case the schema changes under the running
+            # process. Heads the lifespan did not establish are unverified, never a match.
+            required = getattr(app.state, "required_heads", None)
+            if required is None or schema_head_problem(engine, set(required)) is not None:
+                raise HTTPException(status_code=503, detail=SCHEMA_REVISION_DETAIL)
         return {"status": "ready"}
 
     app.include_router(auth_router)

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithProviders } from '../test/test-utils'
+import { makeQueryClient, renderWithProviders } from '../test/test-utils'
 import { DatasetsPage } from './DatasetsPage'
 
 const listDatasetsMock = vi.fn()
@@ -104,6 +104,37 @@ describe('DatasetsPage', () => {
     await waitFor(() => {
       expect(deleteDatasetMock).toHaveBeenCalledWith(1)
     })
+  })
+
+  it('drops every cached workflow result and marks current-dataset lookups stale after a delete', async () => {
+    // The deleted row may have been an analysis's current dataset; the response does not say which.
+    deleteDatasetMock.mockResolvedValue({})
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['workflow', 7], { des_current: { params: { dataset_id: 1 } } })
+    queryClient.setQueryData(['workflow', 8], { des_current: { params: { dataset_id: 5 } } })
+    queryClient.setQueryData(['current', 7], { dataset: { id: 1 } })
+    queryClient.setQueryData(['current', 7, 1], { dataset: { id: 1 } })
+    const user = userEvent.setup()
+    renderWithProviders(<DatasetsPage />, { route: '/datasets', queryClient })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['workflow', 8])).toBeUndefined()
+    expect(queryClient.getQueryState(['current', 7])?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(['current', 7, 1])?.isInvalidated).toBe(true)
+  })
+
+  it('drops the cached scenario statuses of every analysis after a delete', async () => {
+    deleteDatasetMock.mockResolvedValue({})
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['scenarios', 7], { scenarios: [{ id: 1, evidence_status: 'CURRENT' }] })
+    queryClient.setQueryData(['scenarios', 8], { scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+    const user = userEvent.setup()
+    renderWithProviders(<DatasetsPage />, { route: '/datasets', queryClient })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['scenarios', 8])).toBeUndefined()
   })
 
   it('shows empty state when there are no datasets', async () => {

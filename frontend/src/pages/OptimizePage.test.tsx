@@ -810,12 +810,14 @@ describe('break schedule optimizer', () => {
     expect(screen.queryByRole('button', applyButton)).not.toBeInTheDocument()
   })
 
-  it('confirms with the list of moves, applies, and invalidates analysis and evidence', async () => {
+  it('confirms with the list of moves, applies, invalidates analysis and drops workflow evidence', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     optimizeSeparateBreaksMock.mockResolvedValue(result)
     applySeparateBreaksMock.mockResolvedValue({ analysis: { id: 7 }, moves_applied: 1 })
     const { queryClient } = renderAt('separate_queues')
+    queryClient.setQueryData(['workflow', 7], { des_current: { params: { dataset_id: 1 } } })
+    queryClient.setQueryData(['workflow', 8], { des_current: { params: { dataset_id: 5 } } })
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
     await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
     await user.click(await screen.findByRole('button', applyButton))
@@ -827,10 +829,30 @@ describe('break schedule optimizer', () => {
       7, { target_rho: 0.85, max_shift_minutes: 120, setup_hash: 'hash-1', dataset_id: 1 },
     ))
     expect(await screen.findByText('Setup updated with the proposed breaks. Rerun the workflow from Current.')).toBeInTheDocument()
-    for (const key of [['analysis', 7], ['workflow', 7], ['current', 7], ['separate-comparison', 7]]) {
+    for (const key of [['analysis', 7], ['current', 7], ['separate-comparison', 7]]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: key })
     }
+    // Workflow evidence is dropped, not merely invalidated: invalidated data would still be shown
+    // while the fresh request is in flight. Another analysis's evidence is untouched.
+    expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined()
+    expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
     expect(screen.queryByRole('button', applyButton)).not.toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('drops the cached scenario statuses of this analysis once breaks are applied', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    optimizeSeparateBreaksMock.mockResolvedValue(result)
+    applySeparateBreaksMock.mockResolvedValue({ analysis: { id: 7 }, moves_applied: 1 })
+    const { queryClient } = renderAt('separate_queues')
+    queryClient.setQueryData(['scenarios', 7], { scenarios: [{ id: 1, evidence_status: 'CURRENT' }] })
+    queryClient.setQueryData(['scenarios', 8], { scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    await user.click(await screen.findByRole('button', applyButton))
+    await waitFor(() => expect(applySeparateBreaksMock).toHaveBeenCalled())
+    await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
     confirm.mockRestore()
   })
 

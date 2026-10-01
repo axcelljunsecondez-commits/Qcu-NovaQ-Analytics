@@ -26,7 +26,7 @@ import {
   runWorkflowValidation,
   runWorkflowValidationCurrent,
 } from '../api/workflow'
-import { getAnalysis } from '../api/analyses'
+import { getAnalysis, getAnalysisCurrent } from '../api/analyses'
 import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
 import { LiveSimulationPlayback } from '../components/simulation/LiveSimulationPlayback'
@@ -40,7 +40,7 @@ import {
   RhoMeanP95Lines,
   UtilizationHeatmap,
 } from '../components/charts/Charts'
-import { downloadCsv, fmt, fmtDecimal, fmtFrCi, fmtPct, fmtPctDecimal } from '../lib/format'
+import { downloadCsv, evidenceStatusKey, fmt, fmtDecimal, fmtFrCi, fmtPct, fmtPctDecimal } from '../lib/format'
 
 type Tab = 'des' | 'mc' | 'validate'
 
@@ -643,6 +643,16 @@ export function SimulationPage() {
     queryFn: () => getAnalysis(analysisId),
     enabled: Number.isInteger(analysisId),
   })
+  // Current mode only: the dataset the server's Current-evidence gate treats as current (the same
+  // resolver serves GET /analyses/{id}/current). Never inferred from stored runs or scenarios.
+  const currentDataset = useQuery({
+    queryKey: ['current', analysisId],
+    queryFn: () => getAnalysisCurrent(analysisId),
+    enabled: Number.isInteger(analysisId) && workflow.data !== undefined && !workflow.data.scenario
+      && !workflow.data.selection && analysis.data?.analysis.queue_setup.queue_structure === 'separate_queues',
+    retry: false,
+    staleTime: 0,
+  })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
   const desRun = useMutation({
     mutationFn: () => runWorkflowDes(analysisId, {
@@ -721,6 +731,20 @@ export function SimulationPage() {
     && selectedCalculation.schema_version === 2
     && scenario !== null
     && scenario !== undefined
+  // 4f/5e: a recorded selection whose scenario is withheld names the unavailable evidence and why.
+  // No selection, or a status without a label, keeps the existing guidance.
+  const selectionEvidence = workflow.data.selection_evidence
+  const unavailableKey = !scenario && selectionEvidence && selectionEvidence.evidence_status !== 'CURRENT'
+    ? evidenceStatusKey(selectionEvidence.evidence_status)
+    : null
+  const selectionUnavailable = unavailableKey && selectionEvidence ? (
+    <div role="status" className="alert alert-warn" data-testid="selection-unavailable" style={{ marginTop: '12px' }}>
+      {t('simulation.selection_unavailable', { scenario: selectionEvidence.scenario_id ?? '—', status: t(unavailableKey) })}{' '}
+      <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+      {selectionEvidence.evidence_reasons?.[0]?.detail && <p className="form-hint">{selectionEvidence.evidence_reasons[0].detail}</p>}
+    </div>
+  ) : null
+
   if (!scenario && !isCurrentMode) {
     return (
       <div>
@@ -730,10 +754,12 @@ export function SimulationPage() {
             <h1 className="page-title">{t('simulation.title')}</h1>
           </div>
         </div>
-        <div className="alert alert-warn">
-          {t('simulation.select_scenario_first')}{' '}
-          <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
-        </div>
+        {selectionUnavailable ?? (
+          <div className="alert alert-warn">
+            {t('simulation.select_scenario_first')}{' '}
+            <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+          </div>
+        )}
       </div>
     )
   }
@@ -751,10 +777,12 @@ export function SimulationPage() {
             <h1 className="page-title">{t('simulation.title')}</h1>
           </div>
         </div>
-        <div className="alert alert-warn" style={{ marginTop: '12px' }}>
-          {t('simulation.sep_stale_body')}{' '}
-          <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
-        </div>
+        {selectionUnavailable ?? (
+          <div className="alert alert-warn" style={{ marginTop: '12px' }}>
+            {t('simulation.sep_stale_body')}{' '}
+            <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+          </div>
+        )}
       </div>
     )
   }
@@ -781,6 +809,14 @@ export function SimulationPage() {
   const validationCurrentVerdict = validationCurrent?.result.verdict ?? null
   const hasMcCurrent = (workflow.data.mc_current?.result.results ?? []).length > 0
     || (mcCurrentRun.data?.evidence.result.results ?? []).length > 0
+  // A dataset number is shown only from a settled lookup: none while it (re)fetches, so an earlier
+  // dataset is never named, and none when the analysis has no valid current dataset (404).
+  const lookedUpDatasetId = currentDataset.isSuccess && !currentDataset.isFetching
+    ? currentDataset.data.dataset.id
+    : undefined
+  const currentDatasetId = typeof lookedUpDatasetId === 'number' && Number.isInteger(lookedUpDatasetId)
+    ? lookedUpDatasetId
+    : null
   const cap = Number(failureCap)
   const savedCapValue = validationEvidence?.params.mc_failure_rate_cap
   const savedFailureCap = typeof savedCapValue === 'number' && validProbability(savedCapValue)
@@ -936,6 +972,9 @@ export function SimulationPage() {
               </button>
             </div>
           </div>
+          {isCurrentMode && !trace && currentDatasetId !== null && (
+            <p role="status" className="form-hint">{t('simulation.no_current_run', { dataset: currentDatasetId })}</p>
+          )}
           {trace && (
             <>
               <div className="card-grid">

@@ -74,6 +74,8 @@ const rows: OptimizationOut[] = [
   },
 ]
 
+// 4c: the server reports these scenarios CURRENT. Current-only totals, charts and selection need
+// that status; a scenario without it is not current (see the evidence-status tests below).
 const scenarios = [
   {
     id: 1,
@@ -82,6 +84,8 @@ const scenarios = [
     settings: {},
     results: { results: rows },
     created_at: '2026-08-01T10:00:00Z',
+    evidence_status: 'CURRENT',
+    evidence_reasons: [],
   },
   {
     id: 2,
@@ -90,6 +94,8 @@ const scenarios = [
     settings: {},
     results: { results: rows },
     created_at: '2026-08-02T10:00:00Z',
+    evidence_status: 'CURRENT',
+    evidence_reasons: [],
   },
 ]
 
@@ -424,6 +430,97 @@ describe('ComparisonPage', () => {
   })
 })
 
+describe('shared comparison evidence status (4d, 4e)', () => {
+  const verified = { provenance: 'verified_snapshot', settings: { calculation: { engine_version: 'test' } } }
+  const stale = {
+    ...scenarios[1],
+    evidence_status: 'STALE_DATASET',
+    evidence_reasons: [{ code: 'DATASET_NOT_CURRENT', subject: 'scenario 2', detail: 'Scenario is stale for the current dataset.' }],
+  }
+
+  function renderShared() {
+    return renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/compare" element={<ComparisonPage />} />
+      </Routes>,
+      { route: '/analyses/7/compare' },
+    )
+  }
+
+  function withStatus(status: Record<string, unknown>) {
+    const scenario: Record<string, unknown> = { ...scenarios[0], ...verified }
+    delete scenario.evidence_status
+    delete scenario.evidence_reasons
+    return { ...scenario, ...status }
+  }
+
+  it('labels a current scenario and names the dataset its totals come from', async () => {
+    listScenariosMock.mockResolvedValue({ scenarios: [{ ...scenarios[0], ...verified }] })
+    const { container } = renderShared()
+    expect(await screen.findByTestId('compare-totals-dataset')).toHaveTextContent('Totals computed from dataset #1.')
+    expect(screen.getAllByText('Current', { selector: '.badge' }).length).toBeGreaterThan(0)
+    expect(screen.getByText('Current Total Cost')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select for Simulation' })).toBeEnabled()
+    expect(screen.queryByTestId('compare-not-current')).not.toBeInTheDocument()
+  })
+
+  it('keeps a stale scenario visible with its status and reason, without totals or selection', async () => {
+    listScenariosMock.mockResolvedValue({ scenarios: [{ ...stale, ...verified }] })
+    const { container } = renderShared()
+    const notice = await screen.findByTestId('compare-not-current')
+    expect(notice).toHaveTextContent('Stale: dataset replaced')
+    expect(notice).toHaveTextContent('Not current: totals and selection are unavailable.')
+    expect(notice).toHaveTextContent('Scenario is stale for the current dataset.')
+    expect(screen.getByRole('option', { name: 'Plan B' })).toBeInTheDocument()
+    expect(screen.queryByText('Current Total Cost')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('compare-totals-dataset')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select for Simulation' })).toBeDisabled()
+    expect(screen.queryByText('Current', { selector: '.badge' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['absent', {}],
+    ['null', { evidence_status: null, evidence_reasons: null }],
+    ['unrecognized', { evidence_status: 'SOMETHING_NEW', evidence_reasons: [] }],
+  ])('treats a scenario with an %s status as not current and invents no status', async (_label, status) => {
+    listScenariosMock.mockResolvedValue({ scenarios: [withStatus(status)] })
+    const { container } = renderShared()
+    const notice = await screen.findByTestId('compare-not-current')
+    expect(notice).toHaveTextContent('Not current: totals and selection are unavailable.')
+    expect(notice.querySelector('.badge')).toBeNull()
+    expect(screen.queryByText('Current Total Cost')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select for Simulation' })).toBeDisabled()
+  })
+
+  it('leaves a stale scenario out of the comparison chart and says why', async () => {
+    listScenariosMock.mockResolvedValue({ scenarios: [scenarios[0], stale] })
+    const user = userEvent.setup()
+    const { container } = renderShared()
+    await user.click(await screen.findByRole('checkbox', { name: 'Plan A' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Plan B' }))
+    expect(await screen.findByTestId('compare-not-current-excluded'))
+      .toHaveTextContent('Plan B are not current and are left out of the comparison.')
+    expect(container.querySelector('[data-testid="chart-scenario-compare"]')).not.toBeInTheDocument()
+    expect(screen.getByText('Stale: dataset replaced', { selector: '.badge' })).toBeInTheDocument()
+  })
+
+  it('shows the server refusal instead of a generic error when selection is refused', async () => {
+    const detail = 'Scenario is stale for the current dataset.'
+    selectWorkflowScenarioMock.mockRejectedValue(Object.assign(new Error('Request failed with status code 422'), {
+      response: { status: 422, data: { detail } },
+    }))
+    listScenariosMock.mockResolvedValue({ scenarios: [{ ...scenarios[0], ...verified }] })
+    const user = userEvent.setup()
+    renderShared()
+    await user.click(await screen.findByRole('button', { name: 'Select for Simulation' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(detail)
+    expect(screen.queryByText('The server encountered an error. Please try again.')).not.toBeInTheDocument()
+  })
+})
+
 describe('separate comparison', () => {
   function renderSeparate() {
     getAnalysisMock.mockResolvedValue({
@@ -511,6 +608,20 @@ describe('separate comparison', () => {
     await user.click(screen.getByRole('button', { name: 'Select for Simulation' }))
     await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 12))
     expect(optimizeSeparateSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows the server refusal instead of a generic error when selecting a plan is refused', async () => {
+    const user = userEvent.setup()
+    const detail = 'Separate plan is stale for the current dataset.'
+    selectWorkflowScenarioMock.mockRejectedValue(Object.assign(new Error('Request failed with status code 422'), {
+      response: { status: 422, data: { detail } },
+    }))
+    getSeparateComparisonMock.mockResolvedValue(comparisonResponse([plan(11, 'Optimal @ 60%', 0.6)]))
+    renderSeparate()
+    await user.click(await screen.findByRole('radio', { name: /Optimal @ 60%/ }))
+    await user.click(screen.getByRole('button', { name: 'Select for Simulation' }))
+    expect(await screen.findByText(detail)).toBeInTheDocument()
+    expect(screen.queryByText('The server encountered an error. Please try again.')).not.toBeInTheDocument()
   })
 
   it('marks stale plans and blocks their selection', async () => {

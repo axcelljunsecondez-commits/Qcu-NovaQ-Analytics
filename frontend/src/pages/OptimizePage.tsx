@@ -331,9 +331,14 @@ function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
       })
       setResult(null)
       setApplied(true)
-      for (const key of ['analysis', 'workflow', 'current', 'separate-comparison']) {
+      for (const key of ['analysis', 'current', 'separate-comparison']) {
         void queryClient.invalidateQueries({ queryKey: [key, analysisId] })
       }
+      // Workflow evidence records the Setup it was computed for: drop it so the previous Setup's
+      // evidence is not shown while its fresh request is in flight (invalidation would show it).
+      void queryClient.resetQueries({ queryKey: ['workflow', analysisId] })
+      // Applied breaks change the Setup, so saved scenarios' evidence status can change (4d).
+      void queryClient.resetQueries({ queryKey: ['scenarios', analysisId] })
     } catch (err) {
       setError(messageOf(err, t('errors.server')))
     } finally {
