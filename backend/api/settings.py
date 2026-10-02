@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import math
 import os
@@ -123,6 +125,28 @@ class Settings:
         self.environment = os.environ.get("NOVAQ_ENV", "development").strip().lower()
         if self.environment not in {"development", "test", "integration", "production"}:
             raise ValueError("NOVAQ_ENV must be development, test, integration, or production")
+        self.proxy_mode = os.environ.get("NOVAQ_PROXY_MODE", "direct").strip().lower()
+        if self.proxy_mode not in {"direct", "pages_signed"}:
+            raise ValueError("NOVAQ_PROXY_MODE must be direct or pages_signed")
+        self.proxy_assertion_secret = env_value("NOVAQ_PROXY_ASSERTION_SECRET")
+        self.proxy_assertion_previous_secret = env_value("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET")
+        if self.proxy_mode == "pages_signed":
+            for name, value in (
+                ("NOVAQ_PROXY_ASSERTION_SECRET", self.proxy_assertion_secret),
+                ("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET", self.proxy_assertion_previous_secret),
+            ):
+                if value is None and name.endswith("PREVIOUS_SECRET"):
+                    continue
+                if not value or len(value) != 43:
+                    raise ValueError(f"{name} must encode 32 random bytes as base64url")
+                try:
+                    decoded = base64.urlsafe_b64decode(value + "=")
+                except (ValueError, binascii.Error) as exc:
+                    raise ValueError(f"{name} must encode 32 random bytes as base64url") from exc
+                if len(decoded) != 32 or base64.urlsafe_b64encode(decoded).decode().rstrip("=") != value:
+                    raise ValueError(f"{name} must encode 32 random bytes as base64url")
+            if self.proxy_assertion_secret == self.proxy_assertion_previous_secret:
+                raise ValueError("Proxy assertion active and previous secrets must differ")
 
         self.session_cookie_name = os.environ.get("SESSION_COOKIE_NAME", "novaq_session")
         self.csrf_cookie_name = os.environ.get("CSRF_COOKIE_NAME", "novaq_csrf")
@@ -144,7 +168,7 @@ class Settings:
         raw_origins = os.environ.get("ALLOWED_ORIGINS", "").strip()
         self.allowed_origins = _origins(raw_origins) if raw_origins else []
         self.cors_methods = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
-        self.cors_headers = ["Content-Type", "X-CSRF-Token", "X-Request-ID"]
+        self.cors_headers = ["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-NovaQ-Client-Protocol"]
 
         self.email_delivery_mode = os.environ.get("EMAIL_DELIVERY_MODE", "console").strip().lower()
         if self.email_delivery_mode not in {"console", "smtp"}:
@@ -233,7 +257,7 @@ class Settings:
             raise ValueError("DATABASE_URL does not agree with POSTGRES_DB")
         if self.public_app_url not in self.allowed_origins:
             raise ValueError("PUBLIC_APP_URL must be included in ALLOWED_ORIGINS")
-        if self.forwarded_allow_ips in {"", "*", "0.0.0.0/0"}:
+        if self.proxy_mode == "direct" and self.forwarded_allow_ips in {"", "*", "0.0.0.0/0"}:
             raise ValueError("Production requires an explicit trusted FORWARDED_ALLOW_IPS value")
         if self.api_workers != 1:
             raise ValueError("The initial production topology requires API_WORKERS=1")

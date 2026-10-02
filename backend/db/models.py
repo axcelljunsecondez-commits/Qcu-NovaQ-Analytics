@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.db import generation_guards
 from backend.db.base import Base
+
+
+def new_generation() -> str:
+    """Return a fresh generation token: a random UUID written as 32 lowercase hex characters.
+
+    The token is independent of the row's id, creation time and content, so a row that reuses a
+    deleted row's id and timestamp still gets a different token (spec 2026-09-26, §3–§4).
+    """
+    return uuid.uuid4().hex
 
 
 class User(Base):
@@ -132,6 +143,7 @@ class Dataset(Base):
     """Uploaded-and-normalized workload dataset owned by a user."""
 
     __tablename__ = "datasets"
+    __table_args__ = (UniqueConstraint("generation", name="uq_datasets_generation"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -148,6 +160,9 @@ class Dataset(Base):
     )
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set once at insert. Migration 0005 also installs a database default, and the database refuses
+    # any change to the token and any reissue of it (generation_registry, below).
+    generation: Mapped[str] = mapped_column(String(32), default=new_generation)
 
     user: Mapped[User] = relationship(back_populates="datasets")
     analysis: Mapped[AnalysisProject | None] = relationship(back_populates="datasets")
@@ -160,6 +175,7 @@ class Scenario(Base):
     """Saved scenario: settings, results, and an optional source dataset."""
 
     __tablename__ = "scenarios"
+    __table_args__ = (UniqueConstraint("generation", name="uq_scenarios_generation"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -172,6 +188,12 @@ class Scenario(Base):
     results_json: Mapped[dict] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set once at insert. Migration 0005 also installs a database default, and the database refuses
+    # any change to the token and any reissue of it (generation_registry, below).
+    generation: Mapped[str] = mapped_column(String(32), default=new_generation)
+    # The dataset generation a save verified. No default of any kind: NULL means not established,
+    # which is every scenario saved before this is stamped.
+    dataset_generation: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="scenarios")
     analysis: Mapped[AnalysisProject | None] = relationship(back_populates="scenarios")
@@ -197,3 +219,8 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="jobs")
+
+
+# Tokens issued by datasets and scenarios, and the guards that make them immutable and never reissued.
+# Migration 0005 installs them on migrated databases; this installs them when create_all builds a schema.
+generation_registry = generation_guards.register(Base.metadata)

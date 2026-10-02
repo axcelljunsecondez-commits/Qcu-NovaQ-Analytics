@@ -101,6 +101,13 @@ export interface DatasetValidation {
   derived_statistics?: Record<string, unknown>[]
 }
 
+/** One failed eligibility check, as the server reports it (4c, 4f). */
+export interface EvidenceReason {
+  code: string
+  subject: string
+  detail: string
+}
+
 export interface DatasetOut {
   id: number
   analysis_id: number | null

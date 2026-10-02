@@ -43,6 +43,13 @@ export function DatasetsPage() {
     mutationFn: (id: number) => deleteDataset(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['datasets'] })
+      // Deleting an analysis's current dataset makes another one current. The response does not
+      // say which analysis the row belonged to, so every analysis's cached workflow evidence is
+      // dropped (reset, not invalidated, so it is never shown while refetching).
+      void queryClient.resetQueries({ queryKey: ['workflow'] })
+      void queryClient.invalidateQueries({ queryKey: ['current'] })
+      // Saved scenarios' evidence status (4d) follows the current dataset too.
+      void queryClient.resetQueries({ queryKey: ['scenarios'] })
     },
   })
 

@@ -257,14 +257,16 @@ def test_validation_passes_and_persists_with_full_identity(db_engine, client):
 def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows):
     from datetime import datetime, timezone
 
-    from backend.db.models import Job, User
+    from backend.db.models import Job, Scenario, User
     from tests.helpers import make_sessionmaker
 
     with make_sessionmaker(db_engine)() as db:
         user = db.query(User).filter_by(email=email).one()
         job = Job(
             user_id=user.id, kind="workflow_mc", status="completed",
+            # dataset_id: the scenario's dataset, as every stored scenario-bound job records it.
             params_json={"analysis_id": analysis_id, "scenario_id": scenario_id,
+                         "dataset_id": db.get(Scenario, scenario_id).dataset_id,
                          "des_job_id": des_job_id, "failure_threshold": 0.75,
                          "failure_rate_cap": 0.05, "num_trials": 2000,
                          "engine": "selected-plan-measured-mc",

@@ -31,6 +31,8 @@ def main() -> None:
 
     def request(path, method="GET", payload=None, raw=None, content_type=None, csrf=True, status=200):
         headers = {}
+        if path.startswith("/api"):
+            headers["X-NovaQ-Client-Protocol"] = "2"
         if csrf:
             token = next((c.value for c in jar if c.name == "novaq_csrf"), None)
             if token:
@@ -80,10 +82,16 @@ def main() -> None:
         jar.add_cookie_header(plain)
         assert plain.get_header("Cookie") is None, "Secure cookies leaked to HTTP"
         request("/api/auth/me", status=200)
-        origin_req = urllib.request.Request(base + "/api/auth/me", headers={"Origin": base})
+        origin_req = urllib.request.Request(
+            base + "/api/auth/me",
+            headers={"Origin": base, "X-NovaQ-Client-Protocol": "2"},
+        )
         with opener.open(origin_req, timeout=30) as response:
             assert response.headers.get("Access-Control-Allow-Origin") == base
-        denied_req = urllib.request.Request(base + "/api/auth/me", headers={"Origin": "https://untrusted.example"})
+        denied_req = urllib.request.Request(
+            base + "/api/auth/me",
+            headers={"Origin": "https://untrusted.example", "X-NovaQ-Client-Protocol": "2"},
+        )
         with opener.open(denied_req, timeout=30) as response:
             assert response.headers.get("Access-Control-Allow-Origin") is None
     request("/api/auth/me")

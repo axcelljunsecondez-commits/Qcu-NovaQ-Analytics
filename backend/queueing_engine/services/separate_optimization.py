@@ -66,6 +66,12 @@ from backend.queueing_engine.simulation.queue_lifecycle import (
 # (9b1f95a4); v1 snapshots hold 24 h per-period figures and are unsupported.
 SEPARATE_DES_ENGINE_VERSION = "novaq-2026-09-separate-des-v2"
 
+# Execution labels of a stored selected-plan DES result: the exact ``execution`` strings that
+# backend/api/workflow.py writes for the per-period and the continuous-day runs.
+SELECTED_DES_PER_PERIOD_EXECUTION = "selected-plan routing DES (period-independent, no carryover)"
+SELECTED_DES_CONTINUOUS_DAY_EXECUTION = (
+    "selected-plan continuous-day routing DES (queues and breaks carry across periods)")
+
 SEPARATE_MIN_UTILIZATION = 0.40
 SEPARATE_MAX_UTILIZATION = 0.90
 SEPARATE_DEFAULT_UTILIZATION = 0.70

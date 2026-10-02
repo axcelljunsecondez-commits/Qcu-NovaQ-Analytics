@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,31 @@ def test_production_preflight_accepts_secure_fixture(monkeypatch):
     settings = Settings()
     assert settings.secure_cookies is True
     assert settings.cors_methods == ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
-    assert settings.cors_headers == ["Content-Type", "X-CSRF-Token", "X-Request-ID"]
+    assert settings.cors_headers == ["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-NovaQ-Client-Protocol"]
+
+
+def test_pages_signed_requires_dedicated_secret_and_keeps_direct_wildcard_fence(monkeypatch):
+    production_environment(monkeypatch)
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
+    with pytest.raises(ValueError, match="FORWARDED_ALLOW_IPS"):
+        Settings()
+    monkeypatch.setenv("NOVAQ_PROXY_MODE", "pages_signed")
+    with pytest.raises(ValueError, match="NOVAQ_PROXY_ASSERTION_SECRET"):
+        Settings()
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_SECRET", "short-secret")
+    with pytest.raises(ValueError, match="NOVAQ_PROXY_ASSERTION_SECRET"):
+        Settings()
+    active = base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip("=")
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_SECRET", active)
+    settings = Settings()
+    assert settings.proxy_mode == "pages_signed"
+    assert settings.forwarded_allow_ips == "*"
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET", active)
+    with pytest.raises(ValueError, match="must differ"):
+        Settings()
+    previous = base64.urlsafe_b64encode(bytes(range(32, 64))).decode().rstrip("=")
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET", previous)
+    assert Settings().proxy_assertion_previous_secret == previous
 
 
 @pytest.mark.parametrize(
@@ -88,7 +113,7 @@ def test_cors_allows_only_configured_origin(db_engine):
         headers={
             "Origin": "https://novaq.example",
             "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type,x-csrf-token,x-request-id",
+            "Access-Control-Request-Headers": "content-type,x-csrf-token,x-request-id,x-novaq-client-protocol",
         },
     )
     assert preflight.status_code == 200
@@ -111,7 +136,9 @@ def test_unexpected_error_is_sanitized(db_engine):
     def unexpected() -> None:
         raise RuntimeError("database password and C:/secret/path")
 
-    response = TestClient(app, raise_server_exceptions=False).get("/test-unexpected")
+    client = TestClient(app, raise_server_exceptions=False)
+    client.headers["X-NovaQ-Client-Protocol"] = "2"
+    response = client.get("/test-unexpected")
     assert response.status_code == 500
     assert response.json()["code"] == "internal_error"
     assert "password" not in response.text
@@ -123,6 +150,7 @@ def test_rate_limit_returns_429_and_retry_after(db_engine):
     settings.rate_limit_auth = 1
     app = create_app(engine=db_engine, settings=settings, email_sender=FakeEmailSender())
     client = TestClient(app)
+    client.headers["X-NovaQ-Client-Protocol"] = "2"
     payload = {"email": "missing@example.com", "password": "wrong"}
     assert client.post("/auth/login", json=payload).status_code == 401
     limited = client.post("/auth/login", json=payload)

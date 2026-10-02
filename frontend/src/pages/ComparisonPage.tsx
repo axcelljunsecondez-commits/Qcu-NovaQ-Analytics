@@ -22,7 +22,21 @@ import { ApiState } from '../components/ui/ApiState'
 import { MetricCard } from '../components/ui/MetricCard'
 import { getWorkflow, selectWorkflowScenario, getSeparateComparison } from '../api/workflow'
 import { getAnalysis } from '../api/analyses'
+import { evidenceStatusKey, messageOf } from '../lib/format'
 import { ObservedWaitTable } from './AnalysisCurrentPage'
+
+// 4d: current-only totals and selection need a scenario the server reports CURRENT. No status,
+// or any other status, is not current.
+function isCurrentScenario(scenario: ScenarioOut | null | undefined): boolean {
+  return scenario?.evidence_status === 'CURRENT'
+}
+
+function EvidenceBadge({ scenario }: { scenario: ScenarioOut }) {
+  const { t } = useTranslation()
+  const key = evidenceStatusKey(scenario.evidence_status)
+  if (!key) return null
+  return <span className={`badge ${isCurrentScenario(scenario) ? 'badge-ok' : 'badge-warn'}`}>{t(key)}</span>
+}
 
 function formatCount(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—'
@@ -314,7 +328,7 @@ function SeparateComparisonView({ analysisId }: { analysisId: number }) {
             )}
             {selection.isError && (
               <div role="alert" className="alert alert-error" style={{ marginTop: '10px' }}>
-                {t('errors.server')}
+                {messageOf(selection.error, t('errors.server'))}
               </div>
             )}
           </div>
@@ -394,17 +408,23 @@ export function ComparisonPage() {
   )
 
   const compared = useMemo(
-    () => selectedScenarios.filter((scenario) => operationalComparisonComplete(rowsOf(scenario))),
+    () => selectedScenarios.filter((scenario) => isCurrentScenario(scenario) && operationalComparisonComplete(rowsOf(scenario))),
+    [selectedScenarios],
+  )
+
+  const notCurrentSelected = useMemo(
+    () => selectedScenarios.filter((scenario) => !isCurrentScenario(scenario)),
     [selectedScenarios],
   )
 
   const incompleteSelected = useMemo(
-    () => selectedScenarios.filter((scenario) => !operationalComparisonComplete(rowsOf(scenario))),
+    () => selectedScenarios.filter((scenario) => isCurrentScenario(scenario) && !operationalComparisonComplete(rowsOf(scenario))),
     [selectedScenarios],
   )
 
   const totals = comparisonTotals(rows)
   const operationallyComparable = operationalComparisonComplete(rows)
+  const selectedIsCurrent = isCurrentScenario(selected)
   const hasVerifiedOptimizedScenario = useMemo(
     () => scenarios.some((scenario) => scenario.provenance === 'verified_snapshot' && operationalComparisonComplete(rowsOf(scenario))),
     [scenarios],
@@ -492,6 +512,7 @@ export function ComparisonPage() {
               || !hasVerifiedOptimizedScenario
               || selected.provenance !== 'verified_snapshot'
               || !operationallyComparable
+              || !selectedIsCurrent
               || selection.isPending
             }
             onClick={() => selection.mutate()}
@@ -499,6 +520,15 @@ export function ComparisonPage() {
             {selection.isPending ? t('common.loading') : t('compare.select_for_simulation')}
           </button>
         </div>
+        {selected && selectedIsCurrent && (
+          <p className="form-hint" style={{ marginTop: '8px' }}><EvidenceBadge scenario={selected} /></p>
+        )}
+        {selected && !selectedIsCurrent && (
+          <div role="status" className="alert alert-warn" data-testid="compare-not-current" style={{ marginTop: '10px' }}>
+            <EvidenceBadge scenario={selected} /> {t('compare.not_current_no_totals')}
+            {selected.evidence_reasons?.[0]?.detail && <p className="form-hint">{selected.evidence_reasons[0].detail}</p>}
+          </div>
+        )}
         {selectedForSimulation && (
           <div className="alert alert-ok" style={{ marginTop: '10px' }}>
             {t('compare.selected_for_simulation', { name: selected?.name })}
@@ -506,7 +536,7 @@ export function ComparisonPage() {
         )}
         {selection.isError && (
           <div role="alert" className="alert alert-error" style={{ marginTop: '10px' }}>
-            {t('errors.server')}
+            {messageOf(selection.error, t('errors.server'))}
           </div>
         )}
       </div>
@@ -517,9 +547,12 @@ export function ComparisonPage() {
       )}
 
       {/* Quick Summary */}
-      {totals && operationallyComparable && (
+      {totals && operationallyComparable && selectedIsCurrent && (
         <>
           <p role="status" className="alert alert-info">{t('compare.period_cost_note')}</p>
+          {selected?.dataset_id !== null && selected?.dataset_id !== undefined && (
+            <p className="form-hint" data-testid="compare-totals-dataset">{t('compare.current_totals_dataset', { dataset: selected.dataset_id })}</p>
+          )}
           <div className="card-grid" style={{ marginTop: '12px' }}>
             <MetricCard label={t('compare.current_total_cost')} value={`₱${totals.current.toLocaleString()}`} />
             <MetricCard label={t('compare.optimized_total_cost')} value={`₱${totals.optimal.toLocaleString()}`} />
@@ -602,7 +635,7 @@ export function ComparisonPage() {
         </>
       )}
 
-      {totals && <div className="card" style={{ marginTop: '12px' }}><CostWaterfall rows={rows} /></div>}
+      {totals && selectedIsCurrent && <div className="card" style={{ marginTop: '12px' }}><CostWaterfall rows={rows} /></div>}
 
       {/* Multi-Scenario Compare */}
       <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
@@ -612,7 +645,8 @@ export function ComparisonPage() {
             <label htmlFor="compare-multi" style={{ fontSize: '14px', fontWeight: 800 }}>{t('compare.select_scenarios')}</label>
             <div id="compare-multi" className="checkbox-list" role="group" aria-label={t('compare.select_scenarios')} style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
               {scenarios.map((s) => (
-                <label key={normalizeScenarioId(s.id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                <div key={normalizeScenarioId(s.id)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
                   <input
                     type="checkbox"
                     checked={selectedScenarioIds.includes(normalizeScenarioId(s.id))}
@@ -628,6 +662,8 @@ export function ComparisonPage() {
                   />
                   {s.name}
                 </label>
+                <EvidenceBadge scenario={s} />
+                </div>
               ))}
             </div>
           </div>
@@ -636,6 +672,13 @@ export function ComparisonPage() {
           <p className="page-caption" style={{ marginTop: '8px' }}>{t('compare.min_two')}</p>
         ) : (
           <>
+            {notCurrentSelected.length > 0 && (
+              <div role="status" className="alert alert-warn" data-testid="compare-not-current-excluded" style={{ marginTop: '8px' }}>
+                {t('compare.not_current_excluded', {
+                  names: notCurrentSelected.map((scenario) => scenario.name).join(', '),
+                })}
+              </div>
+            )}
             {incompleteSelected.length > 0 && (
               <div role="alert" className="alert alert-warn" style={{ marginTop: '8px' }}>
                 {t('compare.incomplete_scenarios', {

@@ -1,4 +1,6 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useLayoutEffect, useSyncExternalStore } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
@@ -7,6 +9,7 @@ import { RequireRole } from './auth/RequireRole'
 import { AppLayout } from './components/layout/AppLayout'
 import { AnalysisWorkspace } from './components/analysis/AnalysisWorkspace'
 import { ApiState } from './components/ui/ApiState'
+import { bindActiveQueryClient, isClientUpdateRequired, subscribeClientUpdate } from './lib/http'
 
 // oxlint-disable react/only-export-components -- router module intentionally owns lazy route components and router config
 const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })))
@@ -49,7 +52,24 @@ const AnalysisCurrentPage = lazy(() => import('./pages/AnalysisCurrentPage').the
 const DecisionEndpointPage = lazy(() => import('./components/analysis/DecisionEndpointPage').then((m) => ({ default: m.DecisionEndpointPage })))
 
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
-function RootLayout() {
+function RootLayout({ reloadDocument }: { reloadDocument: () => void }) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const updateRequired = useSyncExternalStore(subscribeClientUpdate, isClientUpdateRequired)
+  useLayoutEffect(() => bindActiveQueryClient(queryClient), [queryClient])
+
+  if (updateRequired) {
+    return (
+      <main className="empty-state" role="alert" aria-live="assertive" style={{ minHeight: '100vh' }}>
+        <h1>{t('errors.client_update_title')}</h1>
+        <p>{t('errors.client_update_body')}</p>
+        <button type="button" className="btn-primary" onClick={reloadDocument}>
+          {t('errors.client_update_reload')}
+        </button>
+      </main>
+    )
+  }
+
   return (
     <AuthProvider>
       <Suspense fallback={<ApiState.Loading />}>
@@ -59,10 +79,10 @@ function RootLayout() {
   )
 }
 
-export function createAppRouter() {
+export function createAppRouter(reloadDocument: () => void = () => window.location.reload()) {
   return createBrowserRouter([
     {
-      element: <RootLayout />,
+      element: <RootLayout reloadDocument={reloadDocument} />,
       children: [
         {
           path: '/login',

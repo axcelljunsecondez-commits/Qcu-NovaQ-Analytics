@@ -1,0 +1,2 @@
+# False positive: "synthetic_accounting_key" is a synthetic accounting-marker label in a test fixture, not a credential.
+92d95beda2bcf9e01fa702ad03a78c89c7334702:tests/test_evidence_status.py:generic-api-key:559

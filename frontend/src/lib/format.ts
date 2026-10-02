@@ -95,3 +95,13 @@ export function messageOf(error: unknown, fallback: string): string {
   const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
   return typeof detail === 'string' ? detail : fallback
 }
+
+const EVIDENCE_STATUSES = new Set(['CURRENT', 'STALE_DATASET', 'STALE_SETUP', 'MISSING_DEPENDENCY', 'MISSING_PROVENANCE', 'UNSUPPORTED'])
+
+/**
+ * The label key of an evidence status the server reports (4c, 4f). An absent or unrecognized
+ * status has none: it is treated as not current and is not given a status of its own.
+ */
+export function evidenceStatusKey(status: unknown): string | null {
+  return typeof status === 'string' && EVIDENCE_STATUSES.has(status) ? `evidence.status.${status}` : null
+}

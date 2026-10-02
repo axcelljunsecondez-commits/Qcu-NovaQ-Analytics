@@ -1,4 +1,5 @@
 import { http } from '../lib/http'
+import type { EvidenceReason } from './types'
 
 export interface ScenarioOut {
   id: number | string
@@ -10,6 +11,10 @@ export interface ScenarioOut {
   created_at: string
   provenance?: string
   roi_unavailable_reason?: string | null
+  // 4c: only 'CURRENT' allows current-only totals and selection. Anything else, including an
+  // absent value, is not current.
+  evidence_status?: string | null
+  evidence_reasons?: EvidenceReason[] | null
 }
 
 export interface ScenarioIn {

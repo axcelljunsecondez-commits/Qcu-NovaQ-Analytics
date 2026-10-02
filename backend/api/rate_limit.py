@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import math
 import threading
 import time
@@ -80,13 +79,15 @@ class ResourceLimitMiddleware:
         if rule is None:
             return await self.app(scope, receive, send)
         bucket, limit = rule
-        cookies = _cookies(scope)
-        session = cookies.get(settings.session_cookie_name)
-        if session:
-            key = "session:" + hashlib.sha256(session.encode()).hexdigest()[:24]
+        if settings.proxy_mode == "pages_signed":
+            # The outer proxy middleware has authenticated this value. A raw cookie is never identity.
+            address = scope.get("state", {}).get("verified_client_ip")
+            if not address:
+                return await JSONResponse({"code": "proxy_assertion_required"}, status_code=403)(scope, receive, send)
         else:
             client = scope.get("client")
-            key = "client:" + (str(client[0]) if client else "unknown")
+            address = str(client[0]) if client else "unknown"
+        key = "client:" + address
         retry = scope["app"].state.rate_limiter.consume(bucket, key, limit, settings.rate_limit_window_seconds)
         if retry is not None:
             request_id = scope.get("state", {}).get("request_id", "unknown")
@@ -102,15 +103,3 @@ class ResourceLimitMiddleware:
             )
             return await response(scope, receive, send)
         return await self.app(scope, receive, send)
-
-
-def _cookies(scope: dict) -> dict[str, str]:
-    for key, value in scope.get("headers", []):
-        if key.lower() == b"cookie":
-            result = {}
-            for pair in value.decode(errors="ignore").split(";"):
-                name, separator, item = pair.strip().partition("=")
-                if separator:
-                    result[name] = item
-            return result
-    return {}

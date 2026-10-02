@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithProviders } from '../test/test-utils'
+import { makeQueryClient, renderWithProviders } from '../test/test-utils'
 import type { QueueSetup } from '../api/types'
 import { getAnalysisCurrent, listAnalysisDatasets } from '../api/analyses'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
@@ -171,6 +171,28 @@ describe('three-sheet upload', () => {
     await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file))
     expect(previewMock).not.toHaveBeenCalled()
   })
+
+  it('drops this analysis\'s cached workflow result and marks its current dataset stale after an upload', async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['workflow', 7], { des_current: { params: { dataset_id: 2 } } })
+    queryClient.setQueryData(['workflow', 8], { des_current: { params: { dataset_id: 5 } } })
+    queryClient.setQueryData(['current', 7], { dataset: { id: 2 } })
+    const user = userEvent.setup()
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} />
+      </Routes>,
+      { route: '/analyses/7/setup', queryClient },
+    )
+    const file = new File(['x'], 'events.csv')
+    await user.upload(await screen.findByLabelText('Upload Data'), file)
+    await user.click(screen.getByRole('button', { name: 'Upload and process' }))
+    await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file))
+    await waitFor(() => expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined())
+    expect(queryClient.getQueryState(['current', 7])?.isInvalidated).toBe(true)
+    // Another analysis's current dataset did not change.
+    expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
+  })
 })
 
 describe('setup workbook export and break labels', () => {
@@ -253,5 +275,59 @@ describe('Why This Model?', () => {
     expect(disclosure).not.toHaveAttribute('open')
     expect(within(disclosure).getByText('05:00-06:00 · cashier_1: Parallel M/G/1')).toBeInTheDocument()
     expect(within(disclosure).getByText('05:00-06:00 · cashier_2: Parallel M/G/1')).toBeInTheDocument()
+  })
+})
+
+describe('scenario evidence cache (4d)', () => {
+  function renderSeeded() {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['scenarios', 7], { scenarios: [{ id: 1, evidence_status: 'CURRENT' }] })
+    queryClient.setQueryData(['scenarios', 8], { scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} />
+      </Routes>,
+      { route: '/analyses/7/setup', queryClient },
+    )
+    return queryClient
+  }
+
+  it('drops the cached scenario statuses of this analysis after an upload', async () => {
+    const queryClient = renderSeeded()
+    const user = userEvent.setup()
+    const file = new File(['x'], 'events.csv')
+    await user.upload(await screen.findByLabelText('Upload Data'), file)
+    await user.click(screen.getByRole('button', { name: 'Upload and process' }))
+    await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file))
+    await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+  })
+
+  it('drops the cached scenario statuses of this analysis after the Setup is saved', async () => {
+    const queryClient = renderSeeded()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchMock).toHaveBeenCalledWith(7, expect.objectContaining({ queue_setup: expect.anything() })))
+    await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
+  })
+})
+
+describe('workflow evidence cache after a Setup save', () => {
+  it('drops this analysis\'s cached workflow result and keeps another analysis\'s', async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(['workflow', 7], { des_current: { params: { dataset_id: 2 } } })
+    queryClient.setQueryData(['workflow', 8], { des_current: { params: { dataset_id: 5 } } })
+    const user = userEvent.setup()
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} />
+      </Routes>,
+      { route: '/analyses/7/setup', queryClient },
+    )
+    await user.click(await screen.findByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchMock).toHaveBeenCalledWith(7, expect.objectContaining({ queue_setup: expect.anything() })))
+    await waitFor(() => expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined())
+    expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
   })
 })

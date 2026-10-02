@@ -126,9 +126,15 @@ def _scenario(results):
                     results_json=results, created_at=datetime.now(timezone.utc))
 
 
+# The evidence fields every scenario response carries (4c), as reported for a scenario with no
+# recorded analysis like the one above; the serializer only copies them.
+_EVIDENCE = {"evidence_status": "MISSING_PROVENANCE", "evidence_reasons": [
+    {"code": "ANALYSIS_UNRECORDED", "subject": "scenario 1", "detail": "Select a verified Scenario from this Analysis."}]}
+
+
 def test_scenario_out_carries_shared_reason_and_null_otherwise():
     from backend.api.scenarios import _to_out
     unstable = [_row("09:00-10:00"), _row("11:00-12:00", current_stable=False, cost_current=None)]
-    assert _to_out(_scenario({"results": unstable}))["roi_unavailable_reason"] == unstable_current_reason(unstable)
-    assert _to_out(_scenario({"comparison": [_row("09:00-10:00")]}))["roi_unavailable_reason"] is None
-    assert _to_out(_scenario({"schedule": {"periods": []}}))["roi_unavailable_reason"] is None
+    assert _to_out(_scenario({"results": unstable}), _EVIDENCE)["roi_unavailable_reason"] == unstable_current_reason(unstable)
+    assert _to_out(_scenario({"comparison": [_row("09:00-10:00")]}), _EVIDENCE)["roi_unavailable_reason"] is None
+    assert _to_out(_scenario({"schedule": {"periods": []}}), _EVIDENCE)["roi_unavailable_reason"] is None
