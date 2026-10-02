@@ -106,6 +106,7 @@ def test_forgot_is_generic_and_reset_revokes_sessions(db_engine, app, client, em
     from fastapi.testclient import TestClient
 
     other = TestClient(app)
+    other.headers["X-NovaQ-Client-Protocol"] = "2"
     assert login(other, "recover@example.com", "oldpassword") == 200
     clear_cookies(client)
     known = client.post("/auth/forgot-password", json={"email": "recover@example.com"})

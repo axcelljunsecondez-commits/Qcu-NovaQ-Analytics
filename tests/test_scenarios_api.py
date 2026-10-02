@@ -28,7 +28,9 @@ SCENARIO_BODY = {
 @pytest.fixture
 def small_result_client(db_engine, monkeypatch):
     monkeypatch.setenv("RESULT_JSONB_MAX_BYTES", "1024")
-    return TestClient(create_app(engine=db_engine, settings=Settings()))
+    client = TestClient(create_app(engine=db_engine, settings=Settings()))
+    client.headers["X-NovaQ-Client-Protocol"] = "2"
+    return client
 
 
 def test_create_scenario(db_engine, client):

@@ -181,6 +181,7 @@ def test_change_password_revokes_other_sessions_but_not_current(db_engine, app, 
     assert login(client, "two@example.com", "pass1") == 200
 
     other = TestClient(app)
+    other.headers["X-NovaQ-Client-Protocol"] = "2"
     assert login(other, "two@example.com", "pass1") == 200
     assert other.get("/auth/me").status_code == 200
 

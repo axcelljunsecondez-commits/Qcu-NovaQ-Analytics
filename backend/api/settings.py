@@ -144,7 +144,7 @@ class Settings:
         raw_origins = os.environ.get("ALLOWED_ORIGINS", "").strip()
         self.allowed_origins = _origins(raw_origins) if raw_origins else []
         self.cors_methods = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
-        self.cors_headers = ["Content-Type", "X-CSRF-Token", "X-Request-ID"]
+        self.cors_headers = ["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-NovaQ-Client-Protocol"]
 
         self.email_delivery_mode = os.environ.get("EMAIL_DELIVERY_MODE", "console").strip().lower()
         if self.email_delivery_mode not in {"console", "smtp"}:

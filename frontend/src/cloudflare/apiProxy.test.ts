@@ -75,6 +75,7 @@ describe('proxyApiRequest', () => {
           Cookie: 'novaq_session=s1; novaq_csrf=c1',
           Origin: 'https://novaq.pages.dev',
           'X-CSRF-Token': 'c1',
+          'X-NovaQ-Client-Protocol': '2',
           'X-Request-ID': 'req-123',
           'X-Forwarded-For': '203.0.113.9',
           'X-Real-IP': '203.0.113.9',
@@ -92,11 +93,46 @@ describe('proxyApiRequest', () => {
     const sent = init.headers as Headers
     expect(sent.get('cookie')).toBe('novaq_session=s1; novaq_csrf=c1')
     expect(sent.get('x-csrf-token')).toBe('c1')
+    expect(sent.get('x-novaq-client-protocol')).toBe('2')
     expect(sent.get('origin')).toBe('https://novaq.pages.dev')
     expect(sent.get('content-type')).toBe('application/json')
     expect(sent.get('x-request-id')).toBe('req-123')
     for (const name of ['x-forwarded-for', 'x-real-ip', 'cf-connecting-ip', 'authorization', 'host']) {
       expect(sent.has(name)).toBe(false)
+    }
+  })
+
+  it('never synthesizes or repairs the client protocol header', async () => {
+    const fetchMock = stubFetch(new Response(null, { status: 204 }))
+    const endpoint = 'https://novaq.pages.dev/api/scenarios'
+
+    await proxyApiRequest(new Request(endpoint), env)
+    await proxyApiRequest(new Request(endpoint, {
+      headers: { 'X-NovaQ-Client-Protocol': '1' },
+    }), env)
+
+    const mixed = new Headers()
+    mixed.append('X-NovaQ-Client-Protocol', '2')
+    mixed.append('X-NovaQ-Client-Protocol', '1')
+    const mixedRequest = new Request(endpoint, { headers: mixed })
+    await proxyApiRequest(mixedRequest, env)
+
+    const repeated = new Headers()
+    repeated.append('X-NovaQ-Client-Protocol', '2')
+    repeated.append('X-NovaQ-Client-Protocol', '2')
+    const repeatedRequest = new Request(endpoint, { headers: repeated })
+    await proxyApiRequest(repeatedRequest, env)
+
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    const sent = fetchMock.mock.calls.map(([, init]) => init.headers as Headers)
+    expect(sent[0].has('x-novaq-client-protocol')).toBe(false)
+    expect(sent[1].get('x-novaq-client-protocol')).toBe('1')
+    expect(sent[2].get('x-novaq-client-protocol')).toBe(mixedRequest.headers.get('x-novaq-client-protocol'))
+    expect(sent[2].get('x-novaq-client-protocol')).toBe('2, 1')
+    expect(sent[3].get('x-novaq-client-protocol')).toBe(repeatedRequest.headers.get('x-novaq-client-protocol'))
+    expect(sent[3].get('x-novaq-client-protocol')).toBe('2, 2')
+    for (const headers of sent.slice(1)) {
+      expect(headers.get('x-novaq-client-protocol')).not.toBe('2')
     }
   })
 
@@ -142,6 +178,29 @@ describe('proxyApiRequest', () => {
     )
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({ detail: 'CSRF token mismatch.' })
+  })
+
+  it('preserves a protocol-fence 403 body and cache headers', async () => {
+    const body = {
+      code: 'client_update_required',
+      detail: 'NovaQ has been updated. Reload the application.',
+      request_id: 'req-403',
+    }
+    stubFetch(Response.json(body, {
+      status: 403,
+      headers: {
+        'Cache-Control': 'private, no-store',
+        Vary: 'X-NovaQ-Client-Protocol',
+        'X-Request-ID': 'req-403',
+      },
+    }))
+
+    const response = await proxyApiRequest(new Request('https://novaq.pages.dev/api/scenarios'), env)
+    expect(response.status).toBe(403)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+    expect(response.headers.get('vary')).toBe('X-NovaQ-Client-Protocol')
+    expect(response.headers.get('x-request-id')).toBe('req-403')
+    expect(await response.json()).toEqual(body)
   })
 
   it('rewrites API-origin redirects back under /api and leaves external ones alone', async () => {

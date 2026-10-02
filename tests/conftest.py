@@ -67,7 +67,9 @@ def app(db_engine):
 
 @pytest.fixture
 def client(app):
-    return TestClient(app)
+    client = TestClient(app)
+    client.headers["X-NovaQ-Client-Protocol"] = "2"
+    return client
 
 
 @pytest.fixture

@@ -441,6 +441,7 @@ def test_the_shared_decision_checks_the_selection_dataset_generation_after_every
     # Shared rules on a separate-queue analysis never persist, whatever the selection records. The second
     # owner signs in on a client of their own.
     other = TestClient(app)
+    other.headers["X-NovaQ-Client-Protocol"] = "2"
     analysis_id, _, scenario_id, headers = _plan(other, db_engine, "g6-sep-d2-order@example.com")
     assert _post(other, headers, analysis_id, "selection", {"scenario_id": scenario_id}).status_code == 200
     _set_token(db_engine, _latest(db_engine, "workflow_selection"), "dataset_generation", _DROP)

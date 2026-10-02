@@ -22,6 +22,7 @@ const FORWARDED_REQUEST_HEADERS = [
   'origin',
   'user-agent',
   'x-csrf-token',
+  'x-novaq-client-protocol',
   'x-request-id',
 ]
 

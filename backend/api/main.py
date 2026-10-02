@@ -48,6 +48,76 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # G7 (decision D4): the public readiness text for a schema that is not, or cannot be shown to be, at
 # the code's migration heads. It names no revision.
 SCHEMA_REVISION_DETAIL = "Database schema is not at the required migration revision."
+CLIENT_PROTOCOL_HEADER = b"x-novaq-client-protocol"
+CLIENT_PROTOCOL_VERSION = b"2"
+
+
+class ClientCompatibilityMiddleware:
+    """Refuse API calls from a client that cannot safely read G-A evidence."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        method = scope["method"]
+        path = scope["path"]
+        exempt = (
+            method == "OPTIONS"
+            or (method in {"GET", "HEAD"} and path in {"/health", "/ready"})
+            or (method == "POST" and path == "/auth/logout")
+        )
+        if not exempt:
+            values = [
+                value
+                for name, value in scope.get("headers", [])
+                if name.lower() == CLIENT_PROTOCOL_HEADER
+            ]
+            if values != [CLIENT_PROTOCOL_VERSION]:
+                response = JSONResponse(
+                    {
+                        "code": "client_update_required",
+                        "detail": "NovaQ has been updated. Reload the application.",
+                        "request_id": str(scope["state"].get("request_id", "unknown")),
+                    },
+                    status_code=403,
+                    headers={
+                        "Cache-Control": "private, no-store",
+                        "Vary": "X-NovaQ-Client-Protocol",
+                    },
+                )
+                return await response(scope, receive, send)
+
+            async def send_with_private_response(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    vary = [
+                        part.strip()
+                        for name, value in headers
+                        if name.lower() == b"vary"
+                        for part in value.decode("latin-1").split(",")
+                        if part.strip()
+                    ]
+                    if not any(part.lower() == "x-novaq-client-protocol" for part in vary):
+                        vary.append("X-NovaQ-Client-Protocol")
+                    headers = [
+                        (name, value)
+                        for name, value in headers
+                        if name.lower() not in {b"cache-control", b"vary"}
+                    ]
+                    headers.extend(
+                        [
+                            (b"cache-control", b"private, no-store"),
+                            (b"vary", ", ".join(vary).encode("latin-1")),
+                        ]
+                    )
+                    message["headers"] = headers
+                await send(message)
+
+            return await self.app(scope, receive, send_with_private_response)
+        return await self.app(scope, receive, send)
 
 
 class CsrfDoubleSubmitMiddleware:
@@ -254,6 +324,7 @@ def create_app(
     app.dependency_overrides[global_get_db] = get_db
 
     app.add_middleware(RequestLogMiddleware)
+    app.add_middleware(ClientCompatibilityMiddleware)
     app.add_middleware(ResourceLimitMiddleware)
     app.add_middleware(CsrfDoubleSubmitMiddleware)
     app.add_middleware(ErrorBoundaryMiddleware)

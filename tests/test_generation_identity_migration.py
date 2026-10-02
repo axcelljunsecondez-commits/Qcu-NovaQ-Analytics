@@ -680,6 +680,7 @@ def test_application_on_the_migrated_schema_assigns_and_reports_tokens(database,
     engine = create_engine_for(database.url)
     try:
         client = TestClient(create_app(engine=engine, settings=Settings(), email_sender=FakeEmailSender()))
+        client.headers["X-NovaQ-Client-Protocol"] = "2"
         create_user(engine, "g@example.com", "pw")
         assert login(client, "g@example.com", "pw") == 200
         supplied = {"generation": "f" * 32, "dataset_generation": "e" * 32}

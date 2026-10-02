@@ -694,7 +694,9 @@ def test_every_legacy_job_kind_is_non_current_under_enforcement_and_left_unchang
     for path, body in [("selection", {"scenario_id": scenario_id}), *SELECTED_STEPS, ("decision/selected", {})]:
         response = _post(client, headers, analysis_id, path, body)
         assert response.status_code == 200, (path, response.text)
-    workspace = Workspace(TestClient(app), db_engine, email="g5-legacy-kinds@example.com")
+    other = TestClient(app)
+    other.headers["X-NovaQ-Client-Protocol"] = "2"
+    workspace = Workspace(other, db_engine, email="g5-legacy-kinds@example.com")
     workspace.upload(2, "a.csv")
     workspace.run_all()
     with make_sessionmaker(db_engine)() as db:

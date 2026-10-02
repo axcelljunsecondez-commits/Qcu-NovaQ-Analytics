@@ -33,7 +33,7 @@ def test_production_preflight_accepts_secure_fixture(monkeypatch):
     settings = Settings()
     assert settings.secure_cookies is True
     assert settings.cors_methods == ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
-    assert settings.cors_headers == ["Content-Type", "X-CSRF-Token", "X-Request-ID"]
+    assert settings.cors_headers == ["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-NovaQ-Client-Protocol"]
 
 
 @pytest.mark.parametrize(
@@ -88,7 +88,7 @@ def test_cors_allows_only_configured_origin(db_engine):
         headers={
             "Origin": "https://novaq.example",
             "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type,x-csrf-token,x-request-id",
+            "Access-Control-Request-Headers": "content-type,x-csrf-token,x-request-id,x-novaq-client-protocol",
         },
     )
     assert preflight.status_code == 200
@@ -111,7 +111,9 @@ def test_unexpected_error_is_sanitized(db_engine):
     def unexpected() -> None:
         raise RuntimeError("database password and C:/secret/path")
 
-    response = TestClient(app, raise_server_exceptions=False).get("/test-unexpected")
+    client = TestClient(app, raise_server_exceptions=False)
+    client.headers["X-NovaQ-Client-Protocol"] = "2"
+    response = client.get("/test-unexpected")
     assert response.status_code == 500
     assert response.json()["code"] == "internal_error"
     assert "password" not in response.text
@@ -123,6 +125,7 @@ def test_rate_limit_returns_429_and_retry_after(db_engine):
     settings.rate_limit_auth = 1
     app = create_app(engine=db_engine, settings=settings, email_sender=FakeEmailSender())
     client = TestClient(app)
+    client.headers["X-NovaQ-Client-Protocol"] = "2"
     payload = {"email": "missing@example.com", "password": "wrong"}
     assert client.post("/auth/login", json=payload).status_code == 401
     limited = client.post("/auth/login", json=payload)

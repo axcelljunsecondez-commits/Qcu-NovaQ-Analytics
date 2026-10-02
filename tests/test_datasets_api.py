@@ -36,7 +36,9 @@ def small_limit_app(db_engine, monkeypatch):
 
 @pytest.fixture
 def small_limit_client(small_limit_app):
-    return TestClient(small_limit_app)
+    client = TestClient(small_limit_app)
+    client.headers["X-NovaQ-Client-Protocol"] = "2"
+    return client
 
 
 def upload(client: TestClient, filename: str, data: bytes, headers: dict | None = None):

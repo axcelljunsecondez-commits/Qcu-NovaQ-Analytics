@@ -477,6 +477,8 @@ describe('shared comparison evidence status (4d, 4e)', () => {
     expect(screen.queryByTestId('compare-totals-dataset')).not.toBeInTheDocument()
     expect(container.querySelector('[data-testid="chart-cost-waterfall"]')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Select for Simulation' })).toBeDisabled()
+    expect(selectWorkflowScenarioMock).not.toHaveBeenCalled()
+    expect(screen.queryByText('₱0')).not.toBeInTheDocument()
     expect(screen.queryByText('Current', { selector: '.badge' })).not.toBeInTheDocument()
   })
 
