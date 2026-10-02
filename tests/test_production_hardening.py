@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,30 @@ def test_production_preflight_accepts_secure_fixture(monkeypatch):
     assert settings.secure_cookies is True
     assert settings.cors_methods == ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     assert settings.cors_headers == ["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-NovaQ-Client-Protocol"]
+
+
+def test_pages_signed_requires_dedicated_secret_and_keeps_direct_wildcard_fence(monkeypatch):
+    production_environment(monkeypatch)
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
+    with pytest.raises(ValueError, match="FORWARDED_ALLOW_IPS"):
+        Settings()
+    monkeypatch.setenv("NOVAQ_PROXY_MODE", "pages_signed")
+    with pytest.raises(ValueError, match="NOVAQ_PROXY_ASSERTION_SECRET"):
+        Settings()
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_SECRET", "short-secret")
+    with pytest.raises(ValueError, match="NOVAQ_PROXY_ASSERTION_SECRET"):
+        Settings()
+    active = base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip("=")
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_SECRET", active)
+    settings = Settings()
+    assert settings.proxy_mode == "pages_signed"
+    assert settings.forwarded_allow_ips == "*"
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET", active)
+    with pytest.raises(ValueError, match="must differ"):
+        Settings()
+    previous = base64.urlsafe_b64encode(bytes(range(32, 64))).decode().rstrip("=")
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET", previous)
+    assert Settings().proxy_assertion_previous_secret == previous
 
 
 @pytest.mark.parametrize(

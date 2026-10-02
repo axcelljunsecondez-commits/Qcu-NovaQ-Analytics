@@ -30,6 +30,7 @@ from backend.api.email_delivery import build_email_sender
 from backend.api.google_auth import OfficialGoogleTokenVerifier
 from backend.api.onboarding import router as onboarding_router
 from backend.api.optimization import router as optimization_router
+from backend.api.proxy_assertion import NonceReplayCache, ProxyAssertionMiddleware
 from backend.api.rate_limit import FixedWindowLimiter, ResourceLimitMiddleware
 from backend.api.reports import router as reports_router
 from backend.api.scenarios import router as scenarios_router
@@ -321,6 +322,7 @@ def create_app(
     app.state.google_token_verifier = google_token_verifier or OfficialGoogleTokenVerifier()
     app.state.logger = logger
     app.state.rate_limiter = FixedWindowLimiter()
+    app.state.proxy_replay_cache = NonceReplayCache()
     app.dependency_overrides[global_get_db] = get_db
 
     app.add_middleware(RequestLogMiddleware)
@@ -336,6 +338,7 @@ def create_app(
         allow_methods=settings.cors_methods,
         allow_headers=settings.cors_headers,
     )
+    app.add_middleware(ProxyAssertionMiddleware)
 
     @app.exception_handler(auth.AuthApiError)
     async def auth_api_error_handler(request: Request, exc: auth.AuthApiError) -> JSONResponse:
