@@ -35,6 +35,9 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   `kjtkkdatiapmzcmhmlbp` (novaq-RECOVERY).
 - Smoke test (Render logs): Google login, Analysis 6, calculations,
   Comparison, PDF, Excel and logout all returned 200, with no 5xx.
+- SMTP test passed on 2026-10-06 at 15:28 UTC. A password reset for the
+  owner's own account was REPORTED delivered. The request returned 200 with no
+  delivery error, and reset token `259` was issued (GO packet §6).
 - Issue found in the window:
   - Render injects a `FORWARDED_ALLOW_IPS` value outside the dashboard keys,
     and the production validator refuses it. The first deploy therefore failed
@@ -46,7 +49,8 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
     packet §6, follow-up row). Render sits behind Cloudflare, so the tested
     values never yield the end user's IP.
-  - Run the SMTP test.
+  - Find out why the app's `event=` security log lines do not appear in
+    Render's log view.
   - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,
     weekly manual backups, the direct `onrender.com` URL) by 2026-11-04.
 - `1fbe812c` (signed Pages ingress) is excluded from G-A.
