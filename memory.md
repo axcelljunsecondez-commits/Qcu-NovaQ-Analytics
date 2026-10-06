@@ -1,5 +1,34 @@
 ﻿# NovaQ Project Memory
 
+## G8 G-A release policy (owner decision, 2026-10-04)
+
+The owner selected Option A for the G-A release: preserve the G7 exact-head
+production guard and plan maintenance around `0005`, with backup-first
+recovery. The historical requirement that an older backend keep working on a
+newer migrated schema is superseded for this release; do not promise
+zero-downtime deployment or a restartable old-code rollback. This policy is
+documented in `docs/superpowers/specs/2026-10-04-g8-release-policy.md`.
+
+Production migration, Render changes and deployment require a reviewed release
+packet and explicit owner authorization. The local policy decision does not
+turn G-A's generation enforcement on.
+
+G-A `2ccb86527a0f48928e4d5c26f3d9bd5f0e6abc35` was released on 2026-10-06
+under owner GO. The record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md`
+§6. Durable facts:
+- Production Supabase is at `0005`, with RLS on all public tables and no
+  `anon`/`authenticated` grants.
+- Render runs with `NOVAQ_ENV=production`, so the G7 guard is active, and with
+  `FORWARDED_ALLOW_IPS=127.0.0.1`.
+- Render injects its own `FORWARDED_ALLOW_IPS` that the production validator
+  refuses. Any production preflight must account for platform-injected
+  variables, not only dashboard keys.
+- Render backend auto-deploy and Pages production automatic deployments stay
+  off; releases are deployed deliberately.
+- Supabase Free has no scheduled backups. Back up manually with the encrypted
+  `pg_dump` procedure, and recover only into a separate project, never over
+  live data.
+
 ## Product Direction
 
 NovaQ is currently a web-based, pilot-deployable capstone system, not a full commercial SaaS product.

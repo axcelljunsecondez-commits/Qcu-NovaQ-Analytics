@@ -242,10 +242,15 @@ invalid magic/members, `.xls`, and unsafe expansions return sanitized errors.
 
 ### Health, logs, alerts, and session maintenance
 
-`/health` is process liveness; `/ready` performs a bounded database query;
-`/healthz` checks nginx. The external proxy should monitor public `/api/ready`.
-SMTP and Google are never liveness dependencies. Migration failure prevents API
-startup.
+`/health` is process liveness; `/ready` performs a bounded database query and,
+when `NOVAQ_ENV=production`, verifies that the database's Alembic heads still
+match this code's heads exactly. A mismatch or unreadable revision returns 503;
+the production startup guard refuses to serve on a mismatch. `/healthz` checks
+nginx. The external proxy should monitor public `/api/ready`. SMTP and Google
+are never liveness dependencies. Migration failure prevents API startup. The
+G8 Render cutover is separately gated by
+`docs/superpowers/plans/2026-10-04-g8-g-a-release-closure-plan.md`; the Compose
+startup sequence above does not establish Render's migration order.
 
 Production container logs use `json-file`, five 10 MiB files per service. Ship
 them off-host for longer retention. API logs include runtime timestamp/severity,

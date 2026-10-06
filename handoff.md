@@ -1,5 +1,63 @@
 ﻿# NovaQ Current Handoff
 
+## G8 G-A release (2026-10-06; current)
+
+G-A `2ccb86527a0f48928e4d5c26f3d9bd5f0e6abc35` is released. The full step
+record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md` §6; the
+runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
+
+- Production state, VERIFIED 2026-10-06:
+  - Supabase `cltvswcopkjvnonjutre` is at revision `0005`, applied 13:16 UTC
+    with one-shot `alembic upgrade 0005` from a clean `2ccb8652` tree.
+  - Row counts were unchanged by the migration.
+  - RLS is on for all 10 public tables, with 0 table or routine grants to
+    `anon`/`authenticated`.
+  - The Data API is off.
+- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `2ccb865`. Deploy
+  `dep-db2fjbc9v7es73c0cjg0` went live at 13:39 UTC with:
+  - `NOVAQ_ENV=production`, so the G7 exact-head guard and `/ready` revision
+    check are active;
+  - `FORWARDED_ALLOW_IPS=127.0.0.1`;
+  - 17 env keys, auto-deploy off and PR previews off.
+- The Start Command still begins with `alembic upgrade head`, a no-op at the
+  head. Removing it is a pending post-release step.
+- Frontend: Cloudflare Pages deployment `2f88918f` (`main` `2ccb865`) went live
+  at 14:09 UTC. Production automatic deployments are disabled again; the
+  rollback deployment is `a69cbebf` (`2d063c9`). The legacy Render static site
+  stays suspended.
+- Release backup: `20261006T125254Z`, gpg AES256, held in WSL `~/novaq-backups`
+  and OneDrive `NovaQ-backups`. An isolated restore verified `0004` and the
+  counts. The recovery target is the separate Supabase project
+  `kjtkkdatiapmzcmhmlbp` (novaq-RECOVERY).
+- Smoke test (Render logs): Google login, Analysis 6, calculations,
+  Comparison, PDF, Excel and logout all returned 200, with no 5xx.
+- Issue found in the window:
+  - Render injects a `FORWARDED_ALLOW_IPS` value outside the dashboard keys,
+    and the production validator refuses it. The first deploy therefore failed
+    at startup, with no data effect.
+  - The 2026-10-05 preflight had supplied the variable itself.
+- Open:
+  - Narrow `FORWARDED_ALLOW_IPS` to Render's proxy range. Observed peers are
+    `10.25.16.5`, `10.26.34.133` and `10.30.126.74`; `10.0.0.0/8` is INFERRED.
+  - Make the Start Command migration-free.
+  - Close or re-target PR #26.
+  - Run the SMTP test.
+  - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,
+    weekly manual backups, the direct `onrender.com` URL) by 2026-11-04.
+- `1fbe812c` (signed Pages ingress) is excluded from G-A.
+- Pushing `main` is a production release path: auto-deploys are off, but
+  confirm both Render and Pages settings before any push.
+
+Earlier G8 preparation (2026-10-04/05): the Option A policy is in
+`docs/superpowers/specs/2026-10-04-g8-release-policy.md`, and the closure plan
+is `docs/superpowers/plans/2026-10-04-g8-g-a-release-closure-plan.md`. Before
+the release, Supabase had RLS off and 126 `anon`/`authenticated` grant rows.
+The owner revoked those grants and enabled RLS on 2026-10-05, and turned the
+Data API off.
+
+Historical entries below describe their own dates and are not the current
+release instruction.
+
 ## Critical Semantic Regression Gate (2026-09-14)
 
 The mandatory pre-redesign semantic gate is complete and green:
