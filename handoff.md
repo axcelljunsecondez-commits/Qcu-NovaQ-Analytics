@@ -13,14 +13,18 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   - RLS is on for all 10 public tables, with 0 table or routine grants to
     `anon`/`authenticated`.
   - The Data API is off.
-- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `2ccb865`. Deploy
-  `dep-db2fjbc9v7es73c0cjg0` went live at 13:39 UTC with:
+- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `2ccb865`. The release
+  first went live at 13:39 UTC. The current deploy is
+  `dep-db2gu2ajnfac73cqr1p0` (~15:10 UTC), with:
   - `NOVAQ_ENV=production`, so the G7 exact-head guard and `/ready` revision
     check are active;
   - `FORWARDED_ALLOW_IPS=127.0.0.1`;
   - 17 env keys, auto-deploy off and PR previews off.
-- The Start Command still begins with `alembic upgrade head`, a no-op at the
-  head. Removing it is a pending post-release step.
+- The Start Command is migration-free:
+  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT`. Deploys never
+  migrate. A future migration is a deliberate one-shot `alembic upgrade
+  <rev>` from a clean checkout, as in GO packet W4. If the database is behind
+  the code, the G7 guard refuses to start the app.
 - Frontend: Cloudflare Pages deployment `2f88918f` (`main` `2ccb865`) went live
   at 14:09 UTC. Production automatic deployments are disabled again; the
   rollback deployment is `a69cbebf` (`2d063c9`). The legacy Render static site
@@ -42,7 +46,6 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
     packet §6, follow-up row). Render sits behind Cloudflare, so the tested
     values never yield the end user's IP.
-  - Make the Start Command migration-free.
   - Close or re-target PR #26.
   - Run the SMTP test.
   - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,

@@ -31,6 +31,10 @@ under owner GO. The record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md
   - These results were tested 2026-10-06.
 - Render backend auto-deploy and Pages production automatic deployments stay
   off; releases are deployed deliberately.
+- Render's Start Command is migration-free since 2026-10-06:
+  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT`. Migrations are a
+  separate one-shot `alembic upgrade <rev>` step, run before deploying code that
+  needs them. The G7 guard refuses to serve a database that is behind the code.
 - Supabase Free has no scheduled backups. Back up manually with the encrypted
   `pg_dump` procedure, and recover only into a separate project, never over
   live data.
