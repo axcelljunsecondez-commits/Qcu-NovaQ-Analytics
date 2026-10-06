@@ -49,8 +49,15 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
     packet §6, follow-up row). Render sits behind Cloudflare, so the tested
     values never yield the end user's IP.
-  - Find out why the app's `event=` security log lines do not appear in
-    Render's log view.
+  - Deploy the `event=` logging fix.
+    - The cause: the `novaq` loggers were never configured, so they inherited
+      root WARNING and dropped every INFO `event=` line.
+    - The fix (`configure_event_logging` in `backend/api/main.py`) is on
+      `main` but **not live** until a Render Manual Deploy of that commit.
+    - Plan and verification:
+      `docs/superpowers/plans/2026-10-06-api-event-logging.md`.
+  - Optional: uvicorn's own access line on Render logs query strings. Compose
+    uses `--no-access-log`.
   - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,
     weekly manual backups, the direct `onrender.com` URL) by 2026-11-04.
 - `1fbe812c` (signed Pages ingress) is excluded from G-A.
