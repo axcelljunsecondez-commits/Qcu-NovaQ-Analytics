@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -207,3 +208,27 @@ def test_production_artifacts_encode_required_isolation_and_sequence():
     ):
         assert directive in nginx
     assert "unsafe-eval" not in nginx
+
+
+def _nginx_header(conf: str, name: str) -> str:
+    match = re.search(rf'add_header {re.escape(name)} "([^"]*)"', conf)
+    assert match, name
+    return match.group(1)
+
+
+def test_pages_headers_mirror_production_nginx():
+    """Cloudflare Pages serves the public SPA without nginx; `_headers` must carry the same policy."""
+    root = Path(__file__).resolve().parents[1]
+    nginx = (root / "nginx/production.conf").read_text(encoding="utf-8")
+    rules = [
+        line.strip()
+        for line in (root / "frontend/public/_headers").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert rules[0] == "/*"
+    headers = dict(rule.split(": ", 1) for rule in rules[1:])
+    assert headers["X-Frame-Options"] == "DENY"
+    assert headers["Permissions-Policy"] == _nginx_header(nginx, "Permissions-Policy")
+    csp = headers.get("Content-Security-Policy") or headers["Content-Security-Policy-Report-Only"]
+    assert csp == _nginx_header(nginx, "Content-Security-Policy")
+    assert "frame-ancestors 'none'" in csp and "unsafe-eval" not in csp
