@@ -17,14 +17,17 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   `2ccb8652` plus the `event=` logging fix (the docs commits between them change
   no code).
   - The release first went live as `2ccb865` at 13:39 UTC.
-  - The current deploy is `dep-db2i3lom7kps73eupp50` (~16:30 UTC), with:
+  - The current deploy is `dep-db2i7bjtqb8s73dge05g` (~16:39 UTC), with:
   - `NOVAQ_ENV=production`, so the G7 exact-head guard and `/ready` revision
     check are active;
   - `FORWARDED_ALLOW_IPS=127.0.0.1`;
   - 17 env keys, auto-deploy off and PR previews off.
-- The Start Command is migration-free:
-  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT`. Deploys never
-  migrate. A future migration is a deliberate one-shot `alembic upgrade
+- The Start Command is migration-free and has no uvicorn access log:
+  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --no-access-log`.
+  - The flag was added ~16:39 UTC. Each request is now logged once, by the
+    app's `event=http_request` line, which carries the path without the query
+    string.
+  - Deploys never migrate. A future migration is a deliberate one-shot `alembic upgrade
   <rev>` from a clean checkout, as in GO packet W4. If the database is behind
   the code, the G7 guard refuses to start the app.
 - Frontend: Cloudflare Pages deployment `2f88918f` (`main` `2ccb865`) went live
@@ -59,8 +62,6 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
     packet §6, follow-up row). Render sits behind Cloudflare, so the tested
     values never yield the end user's IP.
-  - Optional: uvicorn's own access line on Render logs query strings. Compose
-    uses `--no-access-log`.
   - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,
     weekly manual backups, the direct `onrender.com` URL) by 2026-11-04.
 - `1fbe812c` (signed Pages ingress) is excluded from G-A.

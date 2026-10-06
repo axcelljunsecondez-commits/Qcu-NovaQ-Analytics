@@ -71,6 +71,13 @@ Unchanged:
   keeps uvicorn's access log on.
 - Changing that, for example with `--no-access-log` as Compose does, is a
   separate Render setting decision.
+  - Done 2026-10-06 ~16:39 UTC on owner instruction: the Render Start Command is
+    now `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT
+    --no-access-log`, redeployed as `dep-db2i7bjtqb8s73dge05g` (`0ddefa6`).
+  - VERIFIED 16:40 UTC with two tagged requests carrying
+    `?probe=shouldnotlog`, direct and through novaq.site:
+    - each produced only its `event=http_request` line (`path=/ready`);
+    - 0 uvicorn access lines, 0 query-string leaks, 0 errors.
 
 ## Release
 
