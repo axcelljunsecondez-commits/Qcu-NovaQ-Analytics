@@ -46,11 +46,14 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
     packet §6, follow-up row). Render sits behind Cloudflare, so the tested
     values never yield the end user's IP.
-  - Close or re-target PR #26.
   - Run the SMTP test.
   - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,
     weekly manual backups, the direct `onrender.com` URL) by 2026-11-04.
 - `1fbe812c` (signed Pages ingress) is excluded from G-A.
+  - Draft PR #26 (`ci/verify-fcbc8db1`) was closed unmerged on 2026-10-06.
+  - Its branch is kept at `1fbe812c` and holds the excluded commits
+    `81bc427a`, `6ef85712` and `1fbe812c` for any later, separately planned
+    use.
 - Pushing `main` is a production release path: auto-deploys are off, but
   confirm both Render and Pages settings before any push.
 
