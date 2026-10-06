@@ -23,6 +23,12 @@ under owner GO. The record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md
 - Render injects its own `FORWARDED_ALLOW_IPS` that the production validator
   refuses. Any production preflight must account for platform-injected
   variables, not only dashboard keys.
+- Keep `FORWARDED_ALLOW_IPS=127.0.0.1` on Render. The app's TCP peer there is a
+  local `127.0.0.1` proxy behind Render `10.x` hops and Cloudflare.
+  - `10.0.0.0/8` alone logs every client as `127.0.0.1`.
+  - `127.0.0.1,10.0.0.0/8` keys rate limits on rotating Cloudflare addresses,
+    which weakens the login limit.
+  - These results were tested 2026-10-06.
 - Render backend auto-deploy and Pages production automatic deployments stay
   off; releases are deployed deliberately.
 - Supabase Free has no scheduled backups. Back up manually with the encrypted

@@ -37,8 +37,11 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     at startup, with no data effect.
   - The 2026-10-05 preflight had supplied the variable itself.
 - Open:
-  - Narrow `FORWARDED_ALLOW_IPS` to Render's proxy range. Observed peers are
-    `10.25.16.5`, `10.26.34.133` and `10.30.126.74`; `10.0.0.0/8` is INFERRED.
+  - Optional, separately planned: per-user rate limits.
+    `FORWARDED_ALLOW_IPS` stays `127.0.0.1` by owner decision, because
+    `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
+    packet §6, follow-up row). Render sits behind Cloudflare, so the tested
+    values never yield the end user's IP.
   - Make the Start Command migration-free.
   - Close or re-target PR #26.
   - Run the SMTP test.
