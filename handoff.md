@@ -13,9 +13,11 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   - RLS is on for all 10 public tables, with 0 table or routine grants to
     `anon`/`authenticated`.
   - The Data API is off.
-- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `2ccb865`. The release
-  first went live at 13:39 UTC. The current deploy is
-  `dep-db2gu2ajnfac73cqr1p0` (~15:10 UTC), with:
+- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `0ddefa6`, which is G-A
+  `2ccb8652` plus the `event=` logging fix (the docs commits between them change
+  no code).
+  - The release first went live as `2ccb865` at 13:39 UTC.
+  - The current deploy is `dep-db2i3lom7kps73eupp50` (~16:30 UTC), with:
   - `NOVAQ_ENV=production`, so the G7 exact-head guard and `/ready` revision
     check are active;
   - `FORWARDED_ALLOW_IPS=127.0.0.1`;
@@ -38,6 +40,14 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
 - SMTP test passed on 2026-10-06 at 15:28 UTC. A password reset for the
   owner's own account was REPORTED delivered. The request returned 200 with no
   delivery error, and reset token `259` was issued (GO packet §6).
+- `event=` logging fixed and live (`0ddefa6`, `configure_event_logging` in
+  `backend/api/main.py`).
+  - Before it, the `novaq` loggers inherited root WARNING, so every INFO
+    `event=` line was dropped.
+  - CI #98 (37493271324) passed 11/11.
+  - Render's logs now show UTC `event=http_request` and
+    `event=password_reset_request` lines, verified 16:31 UTC.
+  - Details: `docs/superpowers/plans/2026-10-06-api-event-logging.md`.
 - Issue found in the window:
   - Render injects a `FORWARDED_ALLOW_IPS` value outside the dashboard keys,
     and the production validator refuses it. The first deploy therefore failed
@@ -49,13 +59,6 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
     packet §6, follow-up row). Render sits behind Cloudflare, so the tested
     values never yield the end user's IP.
-  - Deploy the `event=` logging fix.
-    - The cause: the `novaq` loggers were never configured, so they inherited
-      root WARNING and dropped every INFO `event=` line.
-    - The fix (`configure_event_logging` in `backend/api/main.py`) is on
-      `main` but **not live** until a Render Manual Deploy of that commit.
-    - Plan and verification:
-      `docs/superpowers/plans/2026-10-06-api-event-logging.md`.
   - Optional: uvicorn's own access line on Render logs query strings. Compose
     uses `--no-access-log`.
   - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,

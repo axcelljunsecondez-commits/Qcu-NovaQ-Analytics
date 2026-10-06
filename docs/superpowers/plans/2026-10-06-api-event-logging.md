@@ -74,6 +74,15 @@ Unchanged:
 
 ## Release
 
-- The fix is not live until it is merged to `main` and deployed to Render with
-  a Manual Deploy of the new commit.
-- Both steps need the owner's explicit authorization.
+Released on 2026-10-06, each step authorized by the owner:
+- Commit `0ddefa6d` was pushed to `main`.
+- GitHub CI #98 (run 37493271324) passed 11/11 jobs, including backend tests on
+  Python 3.10–3.13, postgres-integration, stack-integration and docker-build.
+- The owner Manual-Deployed `0ddefa6` on Render as `dep-db2i3lom7kps73eupp50`.
+  Startup completed and the service went live at ~16:30 UTC.
+- VERIFIED in Render's logs with tagged requests at 16:31 UTC, each line once:
+  - `2026-10-06T16:31:47Z INFO novaq.api event=http_request request_id=g8-logcheck-1 method=GET path=/ready status=200 …`
+  - the bridge request `g8-logcheck-2`;
+  - `event=password_reset_request request_id=g8-logcheck-3 outcome=accepted`
+    and its `event=http_request` line.
+  - The reset request used `nobody@example.com`, so no email was sent.
