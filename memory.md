@@ -1,5 +1,62 @@
 ﻿# NovaQ Project Memory
 
+## G8 G-A release policy (owner decision, 2026-10-04)
+
+The owner selected Option A for the G-A release: preserve the G7 exact-head
+production guard and plan maintenance around `0005`, with backup-first
+recovery. The historical requirement that an older backend keep working on a
+newer migrated schema is superseded for this release; do not promise
+zero-downtime deployment or a restartable old-code rollback. This policy is
+documented in `docs/superpowers/specs/2026-10-04-g8-release-policy.md`.
+
+Production migration, Render changes and deployment require a reviewed release
+packet and explicit owner authorization. The local policy decision does not
+turn G-A's generation enforcement on.
+
+G-A `2ccb86527a0f48928e4d5c26f3d9bd5f0e6abc35` was released on 2026-10-06
+under owner GO. The record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md`
+§6. Durable facts:
+- Production Supabase is at `0005`, with RLS on all public tables and no
+  `anon`/`authenticated` grants.
+- Render runs with `NOVAQ_ENV=production`, so the G7 guard is active, and,
+  since 2026-10-07, with `NOVAQ_PROXY_MODE=pages_signed`: the API serves only
+  requests signed by the novaq.site Pages bridge with the shared
+  `NOVAQ_PROXY_ASSERTION_SECRET` (set in both Pages and Render, never in Git
+  or chat). Direct `onrender.com` API calls get 403; `/health`, `/ready` and
+  OPTIONS are exempt. A secret change must be coordinated in both places
+  (rotation procedure in `docs/operations.md`). `NOVAQ_PROXY_MODE=direct` is
+  the rollback and keeps the pre-ingress behaviour.
+- Render injects its own `FORWARDED_ALLOW_IPS` that the production validator
+  refuses. Any production preflight must account for platform-injected
+  variables, not only dashboard keys.
+- `FORWARDED_ALLOW_IPS` was removed from Render on 2026-10-07: under
+  `--no-proxy-headers` it is unused. A rollback to `direct` mode must re-add
+  `FORWARDED_ALLOW_IPS=127.0.0.1`. The app's TCP peer there is a local
+  `127.0.0.1` proxy behind Render `10.x` hops and Cloudflare.
+  - `10.0.0.0/8` alone logs every client as `127.0.0.1`.
+  - `127.0.0.1,10.0.0.0/8` keys rate limits on rotating Cloudflare addresses,
+    which weakens the login limit.
+  - These results were tested 2026-10-06.
+- Render backend auto-deploy and Pages production automatic deployments stay
+  off; releases are deployed deliberately.
+- Render's Start Command is migration-free since 2026-10-06, and since
+  2026-10-07 it is
+  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-proxy-headers --no-access-log`
+  (one worker, because the nonce and rate-limit memory is per process).
+  Requests are logged only by the app's query-free `event=http_request` lines,
+  as in Compose. Migrations are a
+  separate one-shot `alembic upgrade <rev>` step, run before deploying code that
+  needs them. The G7 guard refuses to serve a database that is behind the code.
+- Supabase Free has no scheduled backups. Back up manually with the encrypted
+  `pg_dump` procedure, and recover only into a separate project, never over
+  live data.
+- Supabase enforces SSL on incoming connections (since 2026-10-06).
+- Cloudflare Pages serves `frontend/public/_headers`: an enforcing CSP that must
+  equal the `nginx/production.conf` CSP (pinned by
+  `test_pages_headers_mirror_production_nginx`), plus frame and permissions
+  headers. Any third-party script needs a CSP change in both files. Cloudflare
+  Web Analytics is off for that reason (Pages project and `novaq.site` site RUM).
+
 ## Product Direction
 
 NovaQ is currently a web-based, pilot-deployable capstone system, not a full commercial SaaS product.

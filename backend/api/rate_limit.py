@@ -80,13 +80,20 @@ class ResourceLimitMiddleware:
         if rule is None:
             return await self.app(scope, receive, send)
         bucket, limit = rule
-        cookies = _cookies(scope)
-        session = cookies.get(settings.session_cookie_name)
-        if session:
-            key = "session:" + hashlib.sha256(session.encode()).hexdigest()[:24]
+        if settings.proxy_mode == "pages_signed":
+            # The outer proxy middleware has authenticated this value. A raw cookie is never identity.
+            address = scope.get("state", {}).get("verified_client_ip")
+            if not address:
+                return await JSONResponse({"code": "proxy_assertion_required"}, status_code=403)(scope, receive, send)
+            key = "client:" + address
         else:
-            client = scope.get("client")
-            key = "client:" + (str(client[0]) if client else "unknown")
+            # Direct mode is also the rollback setting, so it keeps the pre-ingress keying unchanged.
+            session = _cookies(scope).get(settings.session_cookie_name)
+            if session:
+                key = "session:" + hashlib.sha256(session.encode()).hexdigest()[:24]
+            else:
+                client = scope.get("client")
+                key = "client:" + (str(client[0]) if client else "unknown")
         retry = scope["app"].state.rate_limiter.consume(bucket, key, limit, settings.rate_limit_window_seconds)
         if retry is not None:
             request_id = scope.get("state", {}).get("request_id", "unknown")

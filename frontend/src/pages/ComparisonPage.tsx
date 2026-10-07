@@ -642,8 +642,9 @@ export function ComparisonPage() {
         <h3 className="section-title">{t('compare.scenarios')}</h3>
         <div className="form-row">
           <div className="form-field" style={{ flex: 1 }}>
-            <label htmlFor="compare-multi" style={{ fontSize: '14px', fontWeight: 800 }}>{t('compare.select_scenarios')}</label>
-            <div id="compare-multi" className="checkbox-list" role="group" aria-label={t('compare.select_scenarios')} style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+            {/* A <label> can only target a form control, so the checkbox group is named by aria-labelledby. */}
+            <span id="compare-multi-label" style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-secondary)' }}>{t('compare.select_scenarios')}</span>
+            <div id="compare-multi" className="checkbox-list" role="group" aria-labelledby="compare-multi-label" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
               {scenarios.map((s) => (
                 <div key={normalizeScenarioId(s.id)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>

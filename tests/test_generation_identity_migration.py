@@ -204,6 +204,7 @@ def open_database(dialect: str, directory: Path, monkeypatch: Any) -> Iterator[D
         source = os.environ.get("NOVAQ_TEST_DATABASE_URL")
         if not source:
             pytest.skip("NOVAQ_TEST_DATABASE_URL is required for the PostgreSQL variant")
+        assert source is not None
         source_url = make_url(source)
         if source_url.get_backend_name() != "postgresql" or not (source_url.database or "").endswith("_test"):
             pytest.fail("The PostgreSQL variant requires a dedicated database ending in _test")

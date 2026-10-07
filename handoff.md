@@ -1,5 +1,110 @@
 ﻿# NovaQ Current Handoff
 
+## G8 G-A release (2026-10-06; current)
+
+G-A `2ccb86527a0f48928e4d5c26f3d9bd5f0e6abc35` is released. The full step
+record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md` §6; the
+runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
+
+- Production state, VERIFIED 2026-10-06:
+  - Supabase `cltvswcopkjvnonjutre` is at revision `0005`, applied 13:16 UTC
+    with one-shot `alembic upgrade 0005` from a clean `2ccb8652` tree.
+  - Row counts were unchanged by the migration.
+  - RLS is on for all 10 public tables, with 0 table or routine grants to
+    `anon`/`authenticated`.
+  - The Data API is off.
+- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `1c8e8de`: G-A `2ccb8652`
+  plus the `event=` logging fix (`0ddefa6`) and the signed Pages ingress
+  (`38fa998a`); the other commits in between are docs or frontend only.
+  - The release first went live as `2ccb865` at 13:39 UTC on 2026-10-06.
+  - The current deploy is `dep-db33kc2d0e5s73f0rf2g` (2026-10-07 12:27 UTC, same
+    `1c8e8de`, redeployed after removing `FORWARDED_ALLOW_IPS`), with:
+  - `NOVAQ_ENV=production`, so the G7 exact-head guard and `/ready` revision
+    check are active;
+  - `NOVAQ_PROXY_MODE=pages_signed` and `NOVAQ_PROXY_ASSERTION_SECRET` (also set
+    in Pages): only requests signed by the novaq.site bridge are served;
+    direct `onrender.com` API calls get 403 `proxy_assertion_required`
+    (`/health`, `/ready` and OPTIONS are exempt). Rate limits key on the
+    verified client IP;
+  - no `FORWARDED_ALLOW_IPS` key (removed 2026-10-07 at the owner's request;
+    unused under `--no-proxy-headers`);
+  - 18 env keys (read back 12:28 UTC; `RESULT_JSONB_MAX_BYTES=786432` among
+    them), auto-deploy off and PR previews off.
+- The Start Command is migration-free and has no uvicorn access log:
+  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-proxy-headers --no-access-log`.
+  - Each request is logged once, by the app's `event=http_request` line, which
+    carries the path without the query string (and no client IP).
+  - Ingress rollback: set `NOVAQ_PROXY_MODE=direct`, **re-add
+    `FORWARDED_ALLOW_IPS=127.0.0.1`** (otherwise `direct` mode refuses Render's
+    injected value at startup), drop `--workers 1 --no-proxy-headers`,
+    redeploy; `direct` keeps the pre-ingress rate-limit keys. Record:
+    `docs/superpowers/plans/2026-10-07-signed-pages-ingress-plan.md`.
+  - Deploys never migrate. A future migration is a deliberate one-shot `alembic upgrade
+  <rev>` from a clean checkout, as in GO packet W4. If the database is behind
+  the code, the G7 guard refuses to start the app.
+- Frontend: the G-A build went live on Cloudflare Pages as `2f88918f`
+  (`main` `2ccb865`) at 14:09 UTC. The current Pages deployment is `b7ac08c8`
+  (`main` `1c8e8de`, 2026-10-07 11:59 UTC, bundle `index-jBXJZ6bl.js`): the
+  G-A app, the Comparison `<label for>` accessibility fix, the signing `/api`
+  bridge (`frontend/functions/api/[[path]].ts`), and
+  `frontend/public/_headers` (since `64e47b29`/`4feb6f8`), which sends an enforcing
+  `Content-Security-Policy` equal to `nginx/production.conf`,
+  `X-Frame-Options: DENY` and `Permissions-Policy` (VERIFIED 02:17 UTC).
+  Production automatic deployments are disabled (read back 2026-10-07 after
+  12:08 UTC). The previous deployment is `a4f60c31` (`574e1a9`, unsigned
+  bridge); the pre-G-A rollback deployment is `a69cbebf` (`2d063c9`). The legacy Render
+  static site stays suspended.
+- Cloudflare Web Analytics is off, both on the Pages project and in the
+  `novaq.site` site's Real User Measurements, because the CSP does not allow
+  its beacon. Turning it back on would need a CSP change.
+- Supabase "Enforce SSL on incoming connections" is ON (2026-10-06 ~17:10 UTC);
+  a fresh-connection restart passed and `/ready` returned 200.
+- Release backup: `20261006T125254Z`, gpg AES256, held in WSL `~/novaq-backups`
+  and OneDrive `NovaQ-backups`. An isolated restore verified `0004` and the
+  counts. The recovery target is the separate Supabase project
+  `kjtkkdatiapmzcmhmlbp` (novaq-RECOVERY).
+- Smoke test (Render logs): Google login, Analysis 6, calculations,
+  Comparison, PDF, Excel and logout all returned 200, with no 5xx.
+- SMTP test passed on 2026-10-06 at 15:28 UTC. A password reset for the
+  owner's own account was REPORTED delivered. The request returned 200 with no
+  delivery error, and reset token `259` was issued (GO packet §6).
+- `event=` logging fixed and live (`0ddefa6`, `configure_event_logging` in
+  `backend/api/main.py`).
+  - Before it, the `novaq` loggers inherited root WARNING, so every INFO
+    `event=` line was dropped.
+  - CI #98 (37493271324) passed 11/11.
+  - Render's logs now show UTC `event=http_request` and
+    `event=password_reset_request` lines, verified 16:31 UTC.
+  - Details: `docs/superpowers/plans/2026-10-06-api-event-logging.md`.
+- Issue found in the window:
+  - Render injects a `FORWARDED_ALLOW_IPS` value outside the dashboard keys,
+    and the production validator refuses it. The first deploy therefore failed
+    at startup, with no data effect.
+  - The 2026-10-05 preflight had supplied the variable itself.
+- Open:
+  - §3 exception still open, by 2026-11-04: weekly manual backups (a local
+    scheduled task, `novaq-weekly-backup-reminder`, reminds the owner on
+    Mondays). CSP/frame headers, SSL enforcement and the direct
+    `onrender.com` URL are fixed (GO packet §6).
+- `1fbe812c` (signed Pages ingress) was excluded from G-A and released
+  separately on 2026-10-07 as the port `38fa998a`, without the client-version
+  fence (PR #27, merged).
+  - Draft PR #26 (`ci/verify-fcbc8db1`) was closed unmerged on 2026-10-06.
+  - Its branch is kept at `1fbe812c` and still holds the unreleased fence
+    commits `81bc427a` and `6ef85712`.
+- Pushing `main` is a production release path: auto-deploys are off, but
+  confirm both Render and Pages settings before any push.
+
+Earlier G8 preparation (2026-10-04/05): the Option A policy is in
+`docs/superpowers/specs/2026-10-04-g8-release-policy.md`, and the closure plan
+is `docs/superpowers/plans/2026-10-04-g8-g-a-release-closure-plan.md`. Before
+the release, Supabase had RLS off and 126 `anon`/`authenticated` grant rows.
+The owner revoked those grants and enabled RLS on 2026-10-05, and turned the
+Data API off.
+
+Historical entries below describe their own dates and are not the current
+release instruction.
+
 ## Critical Semantic Regression Gate (2026-09-14)
 
 The mandatory pre-redesign semantic gate is complete and green:

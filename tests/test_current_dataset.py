@@ -20,6 +20,7 @@ Data is labelled on every test:
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -279,6 +280,11 @@ def test_10_duplicated_rules_now_delegate_to_the_resolver():
 FIXTURE = Path(__file__).parent / "fixtures" / "evidence_status_local_reference_2026-09-25.json"
 
 
+def parse_time(text: str) -> datetime:
+    # PostgreSQL trims trailing zeros in fractions; Python 3.10 needs 3 or 6 digits. Padding only.
+    return datetime.fromisoformat(re.sub(r"\.(\d{1,6})", lambda m: "." + m.group(1).ljust(6, "0"), text))
+
+
 def test_recorded_local_datasets_resolve_as_recorded(db_engine, client, session_factory):
     # RECORDED: dataset ids, owners, Analysis links, creation times and validity (all ok) of
     # the local export. Analyses 7 and 13 have no dataset left (17 and 23 were deleted).
@@ -295,7 +301,7 @@ def test_recorded_local_datasets_resolve_as_recorded(db_engine, client, session_
         assert item["validation_ok"] is True
         insert_dataset(session_factory, dataset_id=item["id"], owner_id=item["user_id"],
                        analysis_id=item["analysis_id"], report={"ok": True},
-                       created_at=datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")))
+                       created_at=parse_time(item["created_at"].replace("Z", "+00:00")))
     owners = {item["id"]: item["user_id"] for item in data["analyses"]}
     expected = {2: 8, 21: 35, 7: None, 13: None}
     with session_factory() as db:

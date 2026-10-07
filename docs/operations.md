@@ -223,7 +223,11 @@ project, validate it, and cut over deliberately.
 
 The application returns `429` with `Retry-After` using a one-minute window:
 authentication 10, uploads 10, reports 10, analytical computation 30, and admin
-mutations 30 per session/client bucket. Production enforces one API worker and a
+mutations 30 per bucket. With `NOVAQ_PROXY_MODE=pages_signed` the bucket is the
+verified signed client address, and an unvalidated session cookie is never a
+rate-limit identity. In the default `direct` mode (also the rollback setting) the
+bucket is the session cookie when one is sent, otherwise the client address.
+Production enforces one API worker and a
 default concurrency limit of 32. Synchronous CPU-heavy work is bounded but these
 limits are not throughput guarantees.
 
@@ -242,10 +246,15 @@ invalid magic/members, `.xls`, and unsafe expansions return sanitized errors.
 
 ### Health, logs, alerts, and session maintenance
 
-`/health` is process liveness; `/ready` performs a bounded database query;
-`/healthz` checks nginx. The external proxy should monitor public `/api/ready`.
-SMTP and Google are never liveness dependencies. Migration failure prevents API
-startup.
+`/health` is process liveness; `/ready` performs a bounded database query and,
+when `NOVAQ_ENV=production`, verifies that the database's Alembic heads still
+match this code's heads exactly. A mismatch or unreadable revision returns 503;
+the production startup guard refuses to serve on a mismatch. `/healthz` checks
+nginx. The external proxy should monitor public `/api/ready`. SMTP and Google
+are never liveness dependencies. Migration failure prevents API startup. The
+G8 Render cutover is separately gated by
+`docs/superpowers/plans/2026-10-04-g8-g-a-release-closure-plan.md`; the Compose
+startup sequence above does not establish Render's migration order.
 
 Production container logs use `json-file`, five 10 MiB files per service. Ship
 them off-host for longer retention. API logs include runtime timestamp/severity,
@@ -259,6 +268,53 @@ repeated login failures/429s, SMTP failure, DB pool exhaustion, disk/volume
 pressure, backup age/failure, migration failure, and restart loops. Run `python
 -m backend.operations.cleanup_auth_records` to preview expired/revoked records;
 add `--apply --retention-days 7` only after reviewing the preview.
+
+### Native Render behind Cloudflare Pages: signed ingress contract
+
+This mode is distinct from the existing Compose `direct` mode. Set
+`NOVAQ_PROXY_MODE=pages_signed` only for the native Render backend behind NovaQ's
+Pages Function. Configure a dedicated, 32-random-byte base64url secret without
+padding as `NOVAQ_PROXY_ASSERTION_SECRET` in both Cloudflare Pages (encrypted
+secret) and Render (secret environment variable). Never put the value in Git,
+frontend JavaScript, request logs, or browser responses. The Pages Function reads
+the incoming Cloudflare `CF-Connecting-IP` before its Render subrequest; it never
+uses caller-supplied `X-Forwarded-For`. Missing or malformed IP fails closed.
+
+Version 1 signs UTF-8 bytes of six LF-separated fields, without a final LF:
+`v1`, Unix seconds, 32-lowercase-hex-character random nonce, canonical IP,
+HTTP method, and the upstream URL's raw path plus optional `?query`. The path
+is the `/api`-stripped path sent to Render. HMAC-SHA256 output is unpadded
+base64url. No body is read for the assertion. Backend verification rejects
+duplicate/malformed headers, signatures from unknown keys, requests over 60
+seconds old or more than 5 seconds in the future, and reused nonces. The
+in-memory cache holds at most 10,000 live nonces and fails closed at capacity.
+
+The replay guarantee and in-process rate limits require **one Render instance
+and one Uvicorn worker**. Before production cutover, verify the actual Render
+instance count is one; use a shared replay/rate-limit store if it can be greater
+than one. Render's zero-downtime replacement temporarily runs old and new
+processes; its traffic switch does not transfer nonce memory. An assertion
+replayed across that switch can pass both caches during its freshness window.
+Replay memory also resets on process restart, so the in-memory guarantee
+covers a single running process, not a restart boundary. The native
+start command must be exactly
+`uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-proxy-headers --no-access-log`
+(`--no-access-log` keeps query strings out of the logs, as today).
+A wildcard `FORWARDED_ALLOW_IPS` (Render injects its own value) is harmless only while proxy-header processing
+is disabled and application security uses the verified signed IP. `/health`,
+`/ready` (GET/HEAD), and OPTIONS do not require an assertion; all ordinary API
+routes, including logout, do.
+The Pages bridge rewrites redirects from the configured upstream host to a
+relative `/api` URL; redirects to any other host or invalid URL fail closed.
+
+For zero-gap rotation, generate a new independent 32-byte secret. First configure
+Render with the new active secret and the old active secret as
+`NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET`; verify both signatures during the
+controlled restart. Then update the Pages active secret and verify new requests.
+After every old Pages instance has stopped signing and the 60-second assertion
+window has elapsed, remove the previous secret from Render. Pages signs only
+with its active key. Do not perform rotation as an uncoordinated setting change:
+Render/Pages updates can restart or deploy their services.
 
 ### Backup, restore, and public GO evidence
 

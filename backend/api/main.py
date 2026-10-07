@@ -30,6 +30,7 @@ from backend.api.email_delivery import build_email_sender
 from backend.api.google_auth import OfficialGoogleTokenVerifier
 from backend.api.onboarding import router as onboarding_router
 from backend.api.optimization import router as optimization_router
+from backend.api.proxy_assertion import NonceReplayCache, ProxyAssertionMiddleware
 from backend.api.rate_limit import FixedWindowLimiter, ResourceLimitMiddleware
 from backend.api.reports import router as reports_router
 from backend.api.scenarios import router as scenarios_router
@@ -44,6 +45,7 @@ from backend.db.session import get_db as global_get_db
 from backend.operations.migration_status import code_config, required_heads, schema_head_problem
 
 logger = logging.getLogger("novaq.api")
+EVENT_LOG_FORMAT = "%(asctime)sZ %(levelname)s %(name)s %(message)s"
 SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # G7 (decision D4): the public readiness text for a schema that is not, or cannot be shown to be, at
@@ -106,6 +108,31 @@ class RequestIdMiddleware:
             await send(message)
 
         return await self.app(scope, receive, send_wrapper)
+
+
+class _EventLogHandler(logging.StreamHandler):
+    """The stream handler ``configure_event_logging`` adds; its type keeps the addition to one."""
+
+
+def configure_event_logging() -> None:
+    """Emit the ``novaq`` loggers' INFO and higher records, the ``event=`` lines.
+
+    Uvicorn's default logging configuration covers only uvicorn's own loggers. Without this, the
+    ``novaq`` loggers inherited the root WARNING level, so every INFO ``event=`` line was dropped.
+    A UTC-timestamped stream handler is added only when the root logger has no handler, so an
+    explicit logging configuration (or pytest's capture) still receives the records once, by
+    propagation.
+    """
+    novaq = logging.getLogger("novaq")
+    if novaq.level == logging.NOTSET:
+        novaq.setLevel(logging.INFO)
+    if logging.getLogger().handlers or any(isinstance(h, _EventLogHandler) for h in novaq.handlers):
+        return
+    formatter = logging.Formatter(EVENT_LOG_FORMAT, datefmt="%Y-%m-%dT%H:%M:%S")
+    formatter.converter = time.gmtime
+    handler = _EventLogHandler()
+    handler.setFormatter(formatter)
+    novaq.addHandler(handler)
 
 
 class RequestLogMiddleware:
@@ -226,6 +253,7 @@ def create_app(
 
     Pass an engine for tests (sqlite); otherwise the configured database is used.
     """
+    configure_event_logging()
     settings = settings or Settings()
     engine = engine or create_engine_for(settings.database_url, settings)
     from sqlalchemy.orm import sessionmaker
@@ -252,6 +280,7 @@ def create_app(
     app.state.google_token_verifier = google_token_verifier or OfficialGoogleTokenVerifier()
     app.state.logger = logger
     app.state.rate_limiter = FixedWindowLimiter()
+    app.state.proxy_replay_cache = NonceReplayCache()
     app.dependency_overrides[global_get_db] = get_db
 
     app.add_middleware(RequestLogMiddleware)
@@ -266,6 +295,7 @@ def create_app(
         allow_methods=settings.cors_methods,
         allow_headers=settings.cors_headers,
     )
+    app.add_middleware(ProxyAssertionMiddleware)
 
     @app.exception_handler(auth.AuthApiError)
     async def auth_api_error_handler(request: Request, exc: auth.AuthApiError) -> JSONResponse:

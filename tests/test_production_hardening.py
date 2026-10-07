@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import re
 from pathlib import Path
 
 import pytest
@@ -34,6 +36,30 @@ def test_production_preflight_accepts_secure_fixture(monkeypatch):
     assert settings.secure_cookies is True
     assert settings.cors_methods == ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     assert settings.cors_headers == ["Content-Type", "X-CSRF-Token", "X-Request-ID"]
+
+
+def test_pages_signed_requires_dedicated_secret_and_keeps_direct_wildcard_fence(monkeypatch):
+    production_environment(monkeypatch)
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
+    with pytest.raises(ValueError, match="FORWARDED_ALLOW_IPS"):
+        Settings()
+    monkeypatch.setenv("NOVAQ_PROXY_MODE", "pages_signed")
+    with pytest.raises(ValueError, match="NOVAQ_PROXY_ASSERTION_SECRET"):
+        Settings()
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_SECRET", "short-secret")
+    with pytest.raises(ValueError, match="NOVAQ_PROXY_ASSERTION_SECRET"):
+        Settings()
+    active = base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip("=")
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_SECRET", active)
+    settings = Settings()
+    assert settings.proxy_mode == "pages_signed"
+    assert settings.forwarded_allow_ips == "*"
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET", active)
+    with pytest.raises(ValueError, match="must differ"):
+        Settings()
+    previous = base64.urlsafe_b64encode(bytes(range(32, 64))).decode().rstrip("=")
+    monkeypatch.setenv("NOVAQ_PROXY_ASSERTION_PREVIOUS_SECRET", previous)
+    assert Settings().proxy_assertion_previous_secret == previous
 
 
 @pytest.mark.parametrize(
@@ -207,3 +233,28 @@ def test_production_artifacts_encode_required_isolation_and_sequence():
     ):
         assert directive in nginx
     assert "unsafe-eval" not in nginx
+
+
+def _nginx_header(conf: str, name: str) -> str:
+    match = re.search(rf'add_header {re.escape(name)} "([^"]*)"', conf)
+    assert match, name
+    return match.group(1)
+
+
+def test_pages_headers_mirror_production_nginx():
+    """Cloudflare Pages serves the public SPA without nginx; `_headers` must carry the same policy."""
+    root = Path(__file__).resolve().parents[1]
+    nginx = (root / "nginx/production.conf").read_text(encoding="utf-8")
+    rules = [
+        line.strip()
+        for line in (root / "frontend/public/_headers").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert rules[0] == "/*"
+    headers = dict(rule.split(": ", 1) for rule in rules[1:])
+    assert headers["X-Frame-Options"] == "DENY"
+    assert headers["Permissions-Policy"] == _nginx_header(nginx, "Permissions-Policy")
+    assert "Content-Security-Policy-Report-Only" not in headers
+    csp = headers["Content-Security-Policy"]
+    assert csp == _nginx_header(nginx, "Content-Security-Policy")
+    assert "frame-ancestors 'none'" in csp and "unsafe-eval" not in csp
