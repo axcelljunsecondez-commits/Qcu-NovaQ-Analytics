@@ -31,13 +31,15 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   <rev>` from a clean checkout, as in GO packet W4. If the database is behind
   the code, the G7 guard refuses to start the app.
 - Frontend: the G-A build went live on Cloudflare Pages as `2f88918f`
-  (`main` `2ccb865`) at 14:09 UTC. The current Pages deployment is `64e47b29`
-  (`main` `4feb6f8`, 2026-10-07): the same app bundle (`index-BxLZDBHF.js`)
-  plus `frontend/public/_headers`, which sends an enforcing
+  (`main` `2ccb865`) at 14:09 UTC. The current Pages deployment is `a4f60c31`
+  (`main` `574e1a9`, 2026-10-07 ~02:46 UTC, bundle `index-jBXJZ6bl.js`): the
+  G-A app plus the Comparison `<label for>` accessibility fix, and
+  `frontend/public/_headers` (since `64e47b29`/`4feb6f8`), which sends an enforcing
   `Content-Security-Policy` equal to `nginx/production.conf`,
   `X-Frame-Options: DENY` and `Permissions-Policy` (VERIFIED 02:17 UTC).
-  Production automatic deployments are disabled (read back 02:19 UTC); the
-  pre-G-A rollback deployment is `a69cbebf` (`2d063c9`). The legacy Render
+  Production automatic deployments are disabled (read back 02:48 UTC). The
+  previous deployment is `64e47b29` (`4feb6f8`); the pre-G-A rollback
+  deployment is `a69cbebf` (`2d063c9`). The legacy Render
   static site stays suspended.
 - Cloudflare Web Analytics is off, both on the Pages project and in the
   `novaq.site` site's Real User Measurements, because the CSP does not allow
@@ -78,8 +80,6 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `docs/superpowers/plans/2026-10-07-signed-pages-ingress-plan.md`,
     PROPOSED, not authorized). CSP/frame headers and SSL enforcement are
     fixed (GO packet §6).
-  - Accessibility follow-up: Chrome reports one "Incorrect use of
-    `<label for=FORM_ELEMENT>`" on the logged-in SPA (element not identified).
 - `1fbe812c` (signed Pages ingress) is excluded from G-A.
   - Draft PR #26 (`ci/verify-fcbc8db1`) was closed unmerged on 2026-10-06.
   - Its branch is kept at `1fbe812c` and holds the excluded commits
