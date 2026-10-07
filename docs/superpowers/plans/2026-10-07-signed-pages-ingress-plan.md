@@ -152,6 +152,18 @@ requirements, Node from the existing frontend install):
 6. Remove `FORWARDED_ALLOW_IPS=127.0.0.1` if it becomes irrelevant under
    `--no-proxy-headers`, and close this exception.
 
+## Release window (2026-10-07, in progress)
+
+Owner: "start the ingress window". All times UTC.
+
+| Step | Outcome | Evidence |
+| --- | --- | --- |
+| Baseline 11:28 | Recorded | Render live `0ddefa6`; Pages bundle `index-jBXJZ6bl.js` (`a4f60c31`); `/ready` and `/auth/config` 200 through novaq.site **and** directly on `onrender.com` |
+| CI | PASS | PR #27 (draft, CI only) run 37610684526 on `38fa998`: Success, 11/11 jobs including postgres-integration |
+| 1–2 secrets | DONE (owner) | Fresh 32-byte secret generated into the clipboard, set as `NOVAQ_PROXY_ASSERTION_SECRET` in Pages (secret) and Render (Save only); values never shown. 11:29: no Render deploy, site 200. Render lists 18 env keys; the 17 recorded on 2026-10-06 missed `RESULT_JSONB_MAX_BYTES` (absent from the 2026-10-01 audit list, added since; when is UNKNOWN). The owner REPORTED editing only the secret. Its value `786432` (owner-read) is within 1024–10485760 |
+| 3 merge | DONE | Render auto-deploy/PR previews Off and Pages Disabled re-read; `main` fast-forwarded to the CI-tested `38fa998a`; GitHub marks PR #27 Merged; Pages recorded `main · 38fa998` as "No deployment available" |
+| 4 Pages | IN PROGRESS | Retrying `main · 38fa998` built three **Preview** deployments of `feat/signed-pages-ingress` (`d6fd9c60`, `9c3c672b`, `26d52bfd`; INFERRED cause: Pages first saw that commit on the branch). Production stayed `574e1a9`, novaq.site `/api` 200. With automatic deployments on, this docs-only commit on `main` triggers the production build |
+
 ## Rollback
 
 - Backend: set `NOVAQ_PROXY_MODE=direct`, `1fbe812c`'s default (VERIFIED,
