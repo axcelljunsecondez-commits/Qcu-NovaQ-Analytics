@@ -69,7 +69,8 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   check" (Mondays) checks freshness, status and hash read-only. A WSL
   console window shows for about two minutes at each noon run (owner decision
   to keep it; a hidden start was tested and declined).
-- Release backup: `20261006T125254Z`, gpg AES256, held in WSL `~/novaq-backups`
+- Release backup: `20261006T125254Z`, gpg AES256 (passphrase of the manual
+  script; its plaintext dump was shredded 2026-10-07), held in WSL `~/novaq-backups`
   and OneDrive `NovaQ-backups`. An isolated restore verified `0004` and the
   counts. The recovery target is the separate Supabase project
   `kjtkkdatiapmzcmhmlbp` (novaq-RECOVERY).
