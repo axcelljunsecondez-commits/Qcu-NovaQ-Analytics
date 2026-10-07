@@ -13,33 +13,44 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   - RLS is on for all 10 public tables, with 0 table or routine grants to
     `anon`/`authenticated`.
   - The Data API is off.
-- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `0ddefa6`, which is G-A
-  `2ccb8652` plus the `event=` logging fix (the docs commits between them change
-  no code).
-  - The release first went live as `2ccb865` at 13:39 UTC.
-  - The current deploy is `dep-db2i7bjtqb8s73dge05g` (~16:39 UTC), with:
+- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `1c8e8de`: G-A `2ccb8652`
+  plus the `event=` logging fix (`0ddefa6`) and the signed Pages ingress
+  (`38fa998a`); the other commits in between are docs or frontend only.
+  - The release first went live as `2ccb865` at 13:39 UTC on 2026-10-06.
+  - The current deploy is `dep-db33ac0m7kps73csnpa0` (2026-10-07 12:05 UTC), with:
   - `NOVAQ_ENV=production`, so the G7 exact-head guard and `/ready` revision
     check are active;
-  - `FORWARDED_ALLOW_IPS=127.0.0.1`;
-  - 17 env keys, auto-deploy off and PR previews off.
+  - `NOVAQ_PROXY_MODE=pages_signed` and `NOVAQ_PROXY_ASSERTION_SECRET` (also set
+    in Pages): only requests signed by the novaq.site bridge are served;
+    direct `onrender.com` API calls get 403 `proxy_assertion_required`
+    (`/health`, `/ready` and OPTIONS are exempt). Rate limits key on the
+    verified client IP;
+  - `FORWARDED_ALLOW_IPS=127.0.0.1` (unused under `--no-proxy-headers`);
+  - 19 env keys (INFERRED: the 18 read at 11:30 plus `NOVAQ_PROXY_MODE`;
+    `RESULT_JSONB_MAX_BYTES=786432` among them), auto-deploy off and PR
+    previews off.
 - The Start Command is migration-free and has no uvicorn access log:
-  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --no-access-log`.
-  - The flag was added ~16:39 UTC. Each request is now logged once, by the
-    app's `event=http_request` line, which carries the path without the query
-    string.
+  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-proxy-headers --no-access-log`.
+  - Each request is logged once, by the app's `event=http_request` line, which
+    carries the path without the query string (and no client IP).
+  - Ingress rollback: set `NOVAQ_PROXY_MODE=direct`, drop
+    `--workers 1 --no-proxy-headers`, redeploy; `direct` keeps the
+    pre-ingress rate-limit keys. Record:
+    `docs/superpowers/plans/2026-10-07-signed-pages-ingress-plan.md`.
   - Deploys never migrate. A future migration is a deliberate one-shot `alembic upgrade
   <rev>` from a clean checkout, as in GO packet W4. If the database is behind
   the code, the G7 guard refuses to start the app.
 - Frontend: the G-A build went live on Cloudflare Pages as `2f88918f`
-  (`main` `2ccb865`) at 14:09 UTC. The current Pages deployment is `a4f60c31`
-  (`main` `574e1a9`, 2026-10-07 ~02:46 UTC, bundle `index-jBXJZ6bl.js`): the
-  G-A app plus the Comparison `<label for>` accessibility fix, and
+  (`main` `2ccb865`) at 14:09 UTC. The current Pages deployment is `b7ac08c8`
+  (`main` `1c8e8de`, 2026-10-07 11:59 UTC, bundle `index-jBXJZ6bl.js`): the
+  G-A app, the Comparison `<label for>` accessibility fix, the signing `/api`
+  bridge (`frontend/functions/api/[[path]].ts`), and
   `frontend/public/_headers` (since `64e47b29`/`4feb6f8`), which sends an enforcing
   `Content-Security-Policy` equal to `nginx/production.conf`,
   `X-Frame-Options: DENY` and `Permissions-Policy` (VERIFIED 02:17 UTC).
-  Production automatic deployments are disabled (read back 02:48 UTC). The
-  previous deployment is `64e47b29` (`4feb6f8`); the pre-G-A rollback
-  deployment is `a69cbebf` (`2d063c9`). The legacy Render
+  Production automatic deployments are disabled (read back 2026-10-07 after
+  12:08 UTC). The previous deployment is `a4f60c31` (`574e1a9`, unsigned
+  bridge); the pre-G-A rollback deployment is `a69cbebf` (`2d063c9`). The legacy Render
   static site stays suspended.
 - Cloudflare Web Analytics is off, both on the Pages project and in the
   `novaq.site` site's Real User Measurements, because the CSP does not allow
@@ -69,22 +80,18 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     at startup, with no data effect.
   - The 2026-10-05 preflight had supplied the variable itself.
 - Open:
-  - Optional, separately planned: per-user rate limits.
-    `FORWARDED_ALLOW_IPS` stays `127.0.0.1` by owner decision, because
-    `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
-    packet §6, follow-up row). Render sits behind Cloudflare, so the tested
-    values never yield the end user's IP.
-  - §3 exceptions still open, by 2026-11-04: weekly manual backups (a local
+  - §3 exception still open, by 2026-11-04: weekly manual backups (a local
     scheduled task, `novaq-weekly-backup-reminder`, reminds the owner on
-    Mondays) and the direct `onrender.com` URL (signed-ingress plan
-    `docs/superpowers/plans/2026-10-07-signed-pages-ingress-plan.md`,
-    PROPOSED, not authorized). CSP/frame headers and SSL enforcement are
-    fixed (GO packet §6).
-- `1fbe812c` (signed Pages ingress) is excluded from G-A.
+    Mondays). CSP/frame headers, SSL enforcement and the direct
+    `onrender.com` URL are fixed (GO packet §6).
+  - Optional: remove the now-unused `FORWARDED_ALLOW_IPS=127.0.0.1` from
+    Render (plan step 6).
+- `1fbe812c` (signed Pages ingress) was excluded from G-A and released
+  separately on 2026-10-07 as the port `38fa998a`, without the client-version
+  fence (PR #27, merged).
   - Draft PR #26 (`ci/verify-fcbc8db1`) was closed unmerged on 2026-10-06.
-  - Its branch is kept at `1fbe812c` and holds the excluded commits
-    `81bc427a`, `6ef85712` and `1fbe812c` for any later, separately planned
-    use.
+  - Its branch is kept at `1fbe812c` and still holds the unreleased fence
+    commits `81bc427a` and `6ef85712`.
 - Pushing `main` is a production release path: auto-deploys are off, but
   confirm both Render and Pages settings before any push.
 

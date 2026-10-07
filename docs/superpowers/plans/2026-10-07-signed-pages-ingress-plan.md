@@ -1,6 +1,6 @@
 # Signed Pages ingress: plan (2026-10-07)
 
-Status: **IN PROGRESS** — step 2 (port, local) authorized 2026-10-07; release not authorized. This
+Status: **RELEASED 2026-10-07 12:05 UTC** (owner: "start the ingress window"); see the release window record below. This
 replaces the GO packet §3 exception "Direct `onrender.com` URL bypasses
 Cloudflare" with planned work, as the owner decided on 2026-10-06.
 
@@ -152,7 +152,7 @@ requirements, Node from the existing frontend install):
 6. Remove `FORWARDED_ALLOW_IPS=127.0.0.1` if it becomes irrelevant under
    `--no-proxy-headers`, and close this exception.
 
-## Release window (2026-10-07, in progress)
+## Release window (2026-10-07)
 
 Owner: "start the ingress window". All times UTC.
 
@@ -162,7 +162,13 @@ Owner: "start the ingress window". All times UTC.
 | CI | PASS | PR #27 (draft, CI only) run 37610684526 on `38fa998`: Success, 11/11 jobs including postgres-integration |
 | 1–2 secrets | DONE (owner) | Fresh 32-byte secret generated into the clipboard, set as `NOVAQ_PROXY_ASSERTION_SECRET` in Pages (secret) and Render (Save only); values never shown. 11:29: no Render deploy, site 200. Render lists 18 env keys; the 17 recorded on 2026-10-06 missed `RESULT_JSONB_MAX_BYTES` (absent from the 2026-10-01 audit list, added since; when is UNKNOWN). The owner REPORTED editing only the secret. Its value `786432` (owner-read) is within 1024–10485760 |
 | 3 merge | DONE | Render auto-deploy/PR previews Off and Pages Disabled re-read; `main` fast-forwarded to the CI-tested `38fa998a`; GitHub marks PR #27 Merged; Pages recorded `main · 38fa998` as "No deployment available" |
-| 4 Pages | IN PROGRESS | Retrying `main · 38fa998` built three **Preview** deployments of `feat/signed-pages-ingress` (`d6fd9c60`, `9c3c672b`, `26d52bfd`; INFERRED cause: Pages first saw that commit on the branch). Production stayed `574e1a9`, novaq.site `/api` 200. With automatic deployments on, this docs-only commit on `main` triggers the production build |
+| 4 Pages | DONE 11:59 | Retrying `main · 38fa998` built three **Preview** deployments of `feat/signed-pages-ingress` (`d6fd9c60`, `9c3c672b`, `26d52bfd`; INFERRED cause: Pages first saw that commit on the branch). Production stayed `574e1a9`, novaq.site `/api` 200. Fix: with automatic deployments on (owner), the docs-only commit `1c8e8dee` was pushed to `main` (Render Off/Off re-read first); Pages built Production `b7ac08c8` (`main · 1c8e8de`). 11:59: `/api/ready` and `/api/auth/config` 200 (the new bridge found a valid secret; without one it returns 500), `/api/auth/me` 401, no `X-NovaQ-Proxy-*` header in responses, bundle unchanged `index-jBXJZ6bl.js`. Automatic deployments: owner REPORTED off; read back **Disabled** after step 6 |
+| 5 Render | DONE 12:05 | Owner added `NOVAQ_PROXY_MODE=pages_signed` (Save only; value not read back, behaviour below), set the Start Command and Manual-Deployed `1c8e8de` as `dep-db33ac0m7kps73csnpa0`. Deploy log: `==> Running 'uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-proxy-headers --no-access-log'`, `Application startup complete`, "Your service is live", no errors. An external poll every ~20 s saw direct `onrender.com/auth/config` switch from 200 to 403 at 12:05:58 while novaq.site `/api` stayed 200 throughout |
+| 6 Verify | PASS 12:06–12:08 | Direct `onrender.com`: `GET /auth/config`, `POST /auth/login`, `GET /auth/me` → 403 `proxy_assertion_required`, also with forged `X-NovaQ-Proxy-*` headers and a fake `X-Forwarded-For`; `/health`, `/ready` and the CORS preflight 200 (exempt); `HEAD /ready` 405 as before (GET-only route). Through novaq.site: `/api/ready` and `/api/auth/config` 200, a bad `POST /api/auth/login` → 401 `invalid_credentials` (signed POSTs reach the app). Owner session in Render logs (user 4): Analyses 6 and 11, optimize separate and breaks, selection, comparison, report preview and PDF, logout — all 200, no 5xx, no assertion refusals. NOT VERIFIED in production: per-client-IP rate-limit keys, because `event=http_request` lines carry no client IP (covered by `test_proxy_assertion.py` and CI) |
+
+Open after the window:
+- Step 6 of the plan (removing `FORWARDED_ALLOW_IPS=127.0.0.1`, unused under `--no-proxy-headers`) is optional and not done; the key is harmless.
+- The three stray Preview deployments can stay; they are not served on novaq.site.
 
 ## Rollback
 
