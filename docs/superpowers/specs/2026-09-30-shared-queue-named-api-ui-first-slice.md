@@ -1515,7 +1515,8 @@ reported its exact byte count in the 413 detail.
 - Cause (VERIFIED in source): every replication row keys its staffing values by segment id
   (`shared_named_des.py:616`, `shared_named_replications.py:274-281`), and the API accepts any segment id or
   break name of up to 64 characters (`shared_named.py:158`).
-- Stored size levels off with demand: the x10 and x30 worst cases differ by less than 0.3 %.
+- Stored size levels off with demand: the x10 and x30 worst cases differ by at most 0.33 % (corrected
+  2026-10-07 from "less than 0.3 %"; measured 0.002 %, 0.32 %, 0.29 %, and 0.23 % for the four styles).
 - Fewer replications at the multi-byte worst case, against 524,288 B: 4 gave 382,935 B (73.0 %, all 40
   combinations) and 5 gave 80.5 %. This alternative was not chosen.
 
@@ -1533,7 +1534,8 @@ reported its exact byte count in the 413 detail.
 ### 22.4 Other measurements (local only)
 
 - Request body at most 59,851 B. R3 response at most 550,424 B, and R5 at most 550,453 B (both at the new cap).
-- R3 at demand x30: 12.4 to 18.3 s. R6 at demand x30: up to 7,422,837 B and 9,483 events, in 4.0 to 10.0 s.
+- R3 at demand x30: 12.4 to 18.3 s. R6 at demand x30: up to 7,422,837 B and 9,483 events, in 3.7 to 10.0 s
+  (corrected 2026-10-07 from "4.0 to 10.0 s").
 - Python heap peak (`tracemalloc`): R3 8.7 MB, R6 30.5 MB. The production process baseline is UNKNOWN.
 
 ### 22.5 Platform facts
@@ -1599,9 +1601,12 @@ reported its exact byte count in the 413 detail.
 | 5 | 4,838 | 48.5-79.2 | 13.3-20.5 | no (2 of 3) |
 | 10 | 9,675 | 94.1-113.6 | 26.4-36.1 | no |
 
-- Actual arrivals were within about 5 % of the expected count. Every run returned 200, and every R6 was valid.
+- Actual arrivals were within -3.3 % to +6.3 % of the expected count (corrected 2026-10-07 from "within
+  about 5 %"; the +6.3 % is factor 0.5, 514 against 483.75). Every run returned 200, and every R6 was valid.
 - A linear fit gives R3 of about 13.4 s plus 9.4 ms per customer, with residuals from -11 to +21 s. The bound is
-  therefore set at the largest factor where every measured run passed, not at the fitted crossing.
+  therefore set at the largest factor where every measured run passed, not at the fitted crossing. That
+  factor (3) is 2,902.5 expected customers per run, so the approved 2,900 is slightly below it and that exact
+  measured configuration would itself be refused.
 - Memory: process peak (VmHWM) 293 MB; container peak 426 MB including reclaimable page cache; no OOM kill.
 - Earlier single runs in fresh containers (first request after start) were slower: R3 50 s at factor 1, 100 s
   at factor 5, 48 s at factor 10, and 218-252 s at factor 30; R6 60-73 s at factor 30. Startup to ready took
