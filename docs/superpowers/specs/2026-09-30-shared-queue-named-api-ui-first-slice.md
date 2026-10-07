@@ -20,6 +20,18 @@ Status: **PROPOSED. Nothing in this document is implemented.**
 - The API limits remain provisional and **NOT PRODUCTION-APPROVED**. Production facts are still UNKNOWN, so
   this is LOCAL IMPLEMENTATION COMPLETE, not production or deployment ready. Nothing is pushed or deployed.
 
+**Update 2026-10-07 (production-limit audit and owner decision; section 22):**
+
+- Against the 524,288 B default cap, 9 replications broke the OD-9 80 % ceiling once segment ids and break
+  names are long (the API accepts up to 64 characters): 87.0 % with ASCII ids, 110.2 % (refused) with
+  multi-byte ids.
+- The owner chose option A: production `RESULT_JSONB_MAX_BYTES = 786,432`, set on Render on 2026-10-07
+  (REPORTED by the owner). Every measured case is at or below 73.4 % of that cap. The constants in
+  `shared_named.py` are unchanged.
+- The API limits remain **NOT PRODUCTION-APPROVED**. Arrival rate is not bounded, so run time and R6 size
+  have no ceiling, and production run time, memory, the uvicorn worker count, and the Cloudflare plan are
+  UNKNOWN (section 22.7).
+
 - Date: 2026-09-30
 - Branch: `feat/shared-queue-segments` at `90fdf9e2` (re-verified before writing, section 1.1)
 - Approved inputs: decisions A1-A6 and the first-slice flow supplied by the product owner on
@@ -1464,3 +1476,91 @@ This dated record supersedes only the Stage 3 `NOT TESTED` statement in 21.6. Al
 - **VERIFIED — Scope.** No first-slice defect was reproduced; no application source, test, mathematical, API-contract, schema, or locale file was changed. The protected legacy surfaces were exercised, not extended with named-run cost or decision logic. Generation enforcement remained `False`.
 - **UNKNOWN / NOT TESTED.** Production behavior, result-size cap, Render and Cloudflare limits, production PostgreSQL version, and the Filipino wording quality remain unverified. Provisional limits (9 replications, 52 segments, 24 employees, 48 shifts) remain **NOT PRODUCTION-APPROVED**. The known app-wide NaN-to-500 behavior and NumPy pin conflict remain outside this stage.
 - **VERIFIED — Final-tree gates.** `python -m pytest tests/ -x --tb=short`: 2856 passed, 123 skipped (PostgreSQL variants), 1 xfailed (known `test_selected_mc_load`), 6 subtests passed. `NOVAQ_TEST_DATABASE_URL` on the local `postgres:16-alpine` `_test` database, `python -m pytest tests/test_api_shared_named.py -x --tb=short`: 141 passed, 1 skipped (the SQLite JSON-path case, as marked in that test). Frontend `npm test`: 61 files and 443 tests passed, with no timeout; `npm run typecheck`, `npm run lint`, and `npm run build` exited 0 (build reported the existing large-chunk advisory). Ruff via `.venv/Scripts/ruff.exe check .` passed; mypy via `.venv/Scripts/mypy.exe . --exclude '^outputs/'` found no issues in 200 source files. The initial bare `ruff` invocation was unavailable on PowerShell's PATH; the installed executable ran the gate. `git diff --check` passed.
+
+## 22. Production-limit audit and owner decision (2026-10-07)
+
+An audit-only stage after the G8 release (production schema `0005`). No application file was changed. The
+scripts and raw results stay in the session scratchpad and are not committed. Local timings are not
+production timings.
+
+### 22.1 Rule applied
+
+- OD-9 (section 19) and section 6.3: a stored run must stay at or below 80 % of the VERIFIED production result
+  cap, and runtime limits must derive from VERIFIED platform timeouts.
+- No percentage is defined for request size, response size, run time, or memory ("headroom" in section 6.2).
+  Those comparisons are therefore UNKNOWN, not PASS.
+
+### 22.2 Stored-size measurements
+
+Method: 160 runs through the real R3 route on SQLite, with `RESULT_JSONB_MAX_BYTES=1024` set in the benchmark
+process only. Each run therefore stopped at the adapter's own size check (`shared_named.py:587-594`) and
+reported its exact byte count in the 413 detail.
+
+- Every list was at its section 6.2 maximum: 9 replications, 52 quarter-hour segments, 24 employees, 48
+  split shifts, 3 availability windows per employee, 3 break rules with 2 breaks each, and 2 breaks per shift.
+- Demand was the `NOVAMART_AVERAGE_ROWS` rates times 1, 5, 10, and 30 (SYNTHETIC), with 5 seeds and both
+  closing policies for each.
+- Machine: Windows 11, Intel Core i3-8145U.
+
+| Identifier style | Worst stored bytes | % of 524,288 | % of 786,432 |
+|---|---|---|---|
+| Short (`S0000`), 13 hourly demand periods | 406,160 | 77.5 | 51.6 |
+| Short, 52 quarter-hour demand periods | 411,505 | 78.5 | 52.3 |
+| 64 ASCII characters | 456,314 | **87.0** | 58.0 |
+| 64 characters of 4 UTF-8 bytes (segment ids and break names; employee ids stay ASCII under the domain pattern) | 577,565 | **110.2** (413) | 73.4 |
+
+- Cause (VERIFIED in source): every replication row keys its staffing values by segment id
+  (`shared_named_des.py:616`, `shared_named_replications.py:274-281`), and the API accepts any segment id or
+  break name of up to 64 characters (`shared_named.py:158`).
+- Stored size levels off with demand: the x10 and x30 worst cases differ by less than 0.3 %.
+- Fewer replications at the multi-byte worst case, against 524,288 B: 4 gave 382,935 B (73.0 %, all 40
+  combinations) and 5 gave 80.5 %. This alternative was not chosen.
+
+### 22.3 PostgreSQL
+
+- Disposable PostgreSQL 16.15 (the pinned `Dockerfile.db` image) and 17.11 gave identical results. Every run
+  within the cap committed, B1 passed, and the input digest matched after read-back.
+  `octet_length(result_json::text)` equalled R3's byte count, and `pg_column_size` was 68,661 to 72,750 B.
+  All 9 R6 regenerations were valid with `runtime_matches_recorded: true`.
+- `tests/test_api_shared_named.py` on 17.11: 141 passed, 1 skipped (the SQLite-only case, by design).
+- With the cap at 786,432 on 17.11, the multi-byte worst case (577,565 B) committed in 3 of 3 runs and
+  regenerated. At 524,288 it was refused with 413 and no Job remained.
+- Production is PostgreSQL 17.6 on Supabase (REPORTED, G8 records).
+
+### 22.4 Other measurements (local only)
+
+- Request body at most 59,851 B. R3 response at most 550,424 B, and R5 at most 550,453 B (both at the new cap).
+- R3 at demand x30: 12.4 to 18.3 s. R6 at demand x30: up to 7,422,837 B and 9,483 events, in 4.0 to 10.0 s.
+- Python heap peak (`tracemalloc`): R3 8.7 MB, R6 30.5 MB. The production process baseline is UNKNOWN.
+
+### 22.5 Platform facts
+
+- Render: the Free plan is 0.1 CPU and 512 MB (Render compute-plans documentation), and HTTP requests to web
+  services may run up to 100 minutes (render.com article). The start command has no `--workers`. The uvicorn
+  worker count is UNKNOWN, because Render injects `WEB_CONCURRENCY` only for Python services created after
+  2025-12-08.
+- Cloudflare: the `/api` Pages Function runs on the Workers runtime (`frontend/functions/api/[[path]].ts`). It
+  buffers the request body (limit 100 MB on Free and Pro) and streams the response, for which Cloudflare sets
+  no size limit. Duration is not limited while the client stays connected. CPU time is 10 ms on Workers
+  Free and 30 s by default on Paid. The account plan is UNKNOWN.
+
+### 22.6 Owner decision (2026-10-07)
+
+- **Option A approved:** production `RESULT_JSONB_MAX_BYTES = 786,432` (768 KiB). The owner added it to the
+  Render backend with "Save and deploy" and REPORTED that the value was saved and `/api/ready` works.
+  `https://novaq.site/api/ready` returned 200 afterwards (VERIFIED). The dashboard value was not read by this
+  audit.
+- The same setting also caps Scenarios (`scenarios.py:80`) and workflow evidence (`workflow.py:686`). Results
+  of 524,289 to 786,432 B, previously refused with 413, are now stored.
+- Not chosen: 4 replications, or a byte limit on identifiers.
+- Stored size against the new cap: PASS for every measured case (worst 73.4 %). The constants in
+  `shared_named.py` are unchanged.
+
+### 22.7 Still open (the limits remain NOT PRODUCTION-APPROVED)
+
+- Arrival rate has no API or ingestion bound, so R3 run time and R6 size have no ceiling. This needs an owner
+  decision.
+- Production run time and memory are not measured, and the spec defines no percentage for them.
+- The uvicorn worker count and the Cloudflare plan are UNKNOWN.
+- The comment at `shared_named.py:117-120` still describes the local 524,288-byte cap (code unchanged).
+- The production cap value is REPORTED by the owner, not read from the dashboard by this audit.
