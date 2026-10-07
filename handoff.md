@@ -66,7 +66,9 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   `OneDrive/NovaQ-backups/scheduled` (30-day retention), status in
   `LAST_STATUS.txt`. Restore drill: `novaq_restore_check.sh` (passed
   2026-10-07, 10/10 table counts). The weekly Claude task "NovaQ weekly backup
-  check" (Mondays) checks freshness, status and hash read-only.
+  check" (Mondays) checks freshness, status and hash read-only. A WSL
+  console window shows for about two minutes at each noon run (owner decision
+  to keep it; a hidden start was tested and declined).
 - Release backup: `20261006T125254Z`, gpg AES256, held in WSL `~/novaq-backups`
   and OneDrive `NovaQ-backups`. An isolated restore verified `0004` and the
   counts. The recovery target is the separate Supabase project
@@ -96,7 +98,8 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     made; without it, losing the PC makes every backup undecryptable.
 - `1fbe812c` (signed Pages ingress) was excluded from G-A and released
   separately on 2026-10-07 as the port `38fa998a`, without the client-version
-  fence (PR #27, merged).
+  fence (PR #27, merged). Its branch `feat/signed-pages-ingress` and the
+  `ingress-probe` worktree were removed afterwards (2026-10-07).
   - Draft PR #26 (`ci/verify-fcbc8db1`) was closed unmerged on 2026-10-06.
   - Its branch is kept at `1fbe812c` and still holds the unreleased fence
     commits `81bc427a` and `6ef85712`.
