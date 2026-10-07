@@ -59,6 +59,14 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   its beacon. Turning it back on would need a CSP change.
 - Supabase "Enforce SSL on incoming connections" is ON (2026-10-06 ~17:10 UTC);
   a fresh-connection restart passed and `/ready` returned 200.
+- Scheduled backups (since 2026-10-07): the Windows task "NovaQ daily backup"
+  runs `output/g8-backup-tools/novaq_scheduled_backup.sh` in WSL daily at
+  12:00 local (catch-up after missed runs, allowed on battery). Encrypted to
+  the gpg public key `…F4DCFA84E2B2E617`, copied to
+  `OneDrive/NovaQ-backups/scheduled` (30-day retention), status in
+  `LAST_STATUS.txt`. Restore drill: `novaq_restore_check.sh` (passed
+  2026-10-07, 10/10 table counts). The weekly Claude task "NovaQ weekly backup
+  check" (Mondays) checks freshness, status and hash read-only.
 - Release backup: `20261006T125254Z`, gpg AES256, held in WSL `~/novaq-backups`
   and OneDrive `NovaQ-backups`. An isolated restore verified `0004` and the
   counts. The recovery target is the separate Supabase project
@@ -82,10 +90,10 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     at startup, with no data effect.
   - The 2026-10-05 preflight had supplied the variable itself.
 - Open:
-  - §3 exception still open, by 2026-11-04: weekly manual backups (a local
-    scheduled task, `novaq-weekly-backup-reminder`, reminds the owner on
-    Mondays). CSP/frame headers, SSL enforcement and the direct
-    `onrender.com` URL are fixed (GO packet §6).
+  - GO packet §3 is closed (all four items fixed; GO packet §6).
+  - Backups: a copy of the backup private key (fingerprint
+    `B86C89C88962872B2515A2CCF4DCFA84E2B2E617`) off the owner's PC is not yet
+    made; without it, losing the PC makes every backup undecryptable.
 - `1fbe812c` (signed Pages ingress) was excluded from G-A and released
   separately on 2026-10-07 as the port `38fa998a`, without the client-version
   fence (PR #27, merged).

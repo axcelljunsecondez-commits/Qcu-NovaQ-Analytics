@@ -47,8 +47,13 @@ under owner GO. The record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md
   as in Compose. Migrations are a
   separate one-shot `alembic upgrade <rev>` step, run before deploying code that
   needs them. The G7 guard refuses to serve a database that is behind the code.
-- Supabase Free has no scheduled backups. Back up manually with the encrypted
-  `pg_dump` procedure, and recover only into a separate project, never over
+- Supabase Free has no managed backups. Since 2026-10-07 a Windows scheduled
+  task on the owner's PC runs `novaq_scheduled_backup.sh` (WSL) daily: the DB
+  password is in WSL `~/.pgpass` (mode 600), dumps are encrypted to a gpg
+  public key and copied to OneDrive. Only the owner's passphrase-protected
+  private key can decrypt them, so keep a copy of it off the PC. Backups run
+  only while the PC is on and logged in. Take an extra manual backup before
+  any schema change, and recover only into a separate project, never over
   live data.
 - Supabase enforces SSL on incoming connections (since 2026-10-06).
 - Cloudflare Pages serves `frontend/public/_headers`: an enforcing CSP that must
