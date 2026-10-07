@@ -190,7 +190,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt "pytest~=9.0" "httpx~=0.28"
       - name: Postgres API regressions (isolated schemas)
-        run: python -m pytest tests/test_postgres_migration_chain.py tests/test_auth_api.py tests/test_datasets_api.py tests/test_scenarios_api.py tests/test_scenario_integrity.py tests/test_reports_api.py tests/test_readiness.py tests/test_generation_identity_migration.py tests/test_startup_schema_guard.py -x --tb=short
+        run: python -m pytest tests/test_postgres_migration_chain.py tests/test_auth_api.py tests/test_datasets_api.py tests/test_scenarios_api.py tests/test_scenario_integrity.py tests/test_reports_api.py tests/test_readiness.py tests/test_generation_identity_migration.py tests/test_startup_schema_guard.py tests/test_api_shared_named.py -x --tb=short
 
   stack-integration:
     runs-on: ubuntu-22.04
