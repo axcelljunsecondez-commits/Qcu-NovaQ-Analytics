@@ -129,6 +129,16 @@ describe('ComparisonPage', () => {
     expect(await screen.findByTestId('chart-utilization-compare')).toBeInTheDocument()
   })
 
+  it('names the scenario checkbox group without a label pointing at a non-control', async () => {
+    const { container } = renderWithProviders(<ComparisonPage />, { route: '/compare' })
+    const group = await screen.findByRole('group', { name: 'Select scenarios to compare' })
+    expect(within(group).getAllByRole('checkbox').length).toBeGreaterThan(0)
+    for (const label of container.querySelectorAll('label[for]')) {
+      const target = container.ownerDocument.getElementById(label.getAttribute('for') ?? '')
+      expect(target?.matches('input, select, textarea, button, meter, output, progress'), label.outerHTML).toBe(true)
+    }
+  })
+
   it('persists a verified, complete scenario as the simulation selection', async () => {
     const user = userEvent.setup()
     listScenariosMock.mockResolvedValue({
