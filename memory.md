@@ -40,6 +40,12 @@ under owner GO. The record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md
 - Supabase Free has no scheduled backups. Back up manually with the encrypted
   `pg_dump` procedure, and recover only into a separate project, never over
   live data.
+- Supabase enforces SSL on incoming connections (since 2026-10-06).
+- Cloudflare Pages serves `frontend/public/_headers`: an enforcing CSP that must
+  equal the `nginx/production.conf` CSP (pinned by
+  `test_pages_headers_mirror_production_nginx`), plus frame and permissions
+  headers. Any third-party script needs a CSP change in both files. Cloudflare
+  Web Analytics is off for that reason (Pages project and `novaq.site` site RUM).
 
 ## Product Direction
 

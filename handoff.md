@@ -30,10 +30,20 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   - Deploys never migrate. A future migration is a deliberate one-shot `alembic upgrade
   <rev>` from a clean checkout, as in GO packet W4. If the database is behind
   the code, the G7 guard refuses to start the app.
-- Frontend: Cloudflare Pages deployment `2f88918f` (`main` `2ccb865`) went live
-  at 14:09 UTC. Production automatic deployments are disabled again; the
-  rollback deployment is `a69cbebf` (`2d063c9`). The legacy Render static site
-  stays suspended.
+- Frontend: the G-A build went live on Cloudflare Pages as `2f88918f`
+  (`main` `2ccb865`) at 14:09 UTC. The current Pages deployment is `64e47b29`
+  (`main` `4feb6f8`, 2026-10-07): the same app bundle (`index-BxLZDBHF.js`)
+  plus `frontend/public/_headers`, which sends an enforcing
+  `Content-Security-Policy` equal to `nginx/production.conf`,
+  `X-Frame-Options: DENY` and `Permissions-Policy` (VERIFIED 02:17 UTC).
+  Production automatic deployments are disabled (read back 02:19 UTC); the
+  pre-G-A rollback deployment is `a69cbebf` (`2d063c9`). The legacy Render
+  static site stays suspended.
+- Cloudflare Web Analytics is off, both on the Pages project and in the
+  `novaq.site` site's Real User Measurements, because the CSP does not allow
+  its beacon. Turning it back on would need a CSP change.
+- Supabase "Enforce SSL on incoming connections" is ON (2026-10-06 ~17:10 UTC);
+  a fresh-connection restart passed and `/ready` returned 200.
 - Release backup: `20261006T125254Z`, gpg AES256, held in WSL `~/novaq-backups`
   and OneDrive `NovaQ-backups`. An isolated restore verified `0004` and the
   counts. The recovery target is the separate Supabase project
@@ -62,8 +72,14 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     `10.0.0.0/8` and `127.0.0.1,10.0.0.0/8` were tested and rejected (GO
     packet §6, follow-up row). Render sits behind Cloudflare, so the tested
     values never yield the end user's IP.
-  - Settle the §3 exceptions (CSP/frame headers, Supabase SSL enforcement,
-    weekly manual backups, the direct `onrender.com` URL) by 2026-11-04.
+  - §3 exceptions still open, by 2026-11-04: weekly manual backups (a local
+    scheduled task, `novaq-weekly-backup-reminder`, reminds the owner on
+    Mondays) and the direct `onrender.com` URL (signed-ingress plan
+    `docs/superpowers/plans/2026-10-07-signed-pages-ingress-plan.md`,
+    PROPOSED, not authorized). CSP/frame headers and SSL enforcement are
+    fixed (GO packet §6).
+  - Accessibility follow-up: Chrome reports one "Incorrect use of
+    `<label for=FORM_ELEMENT>`" on the logged-in SPA (element not identified).
 - `1fbe812c` (signed Pages ingress) is excluded from G-A.
   - Draft PR #26 (`ci/verify-fcbc8db1`) was closed unmerged on 2026-10-06.
   - Its branch is kept at `1fbe812c` and holds the excluded commits
