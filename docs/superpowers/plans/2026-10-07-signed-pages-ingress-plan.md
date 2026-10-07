@@ -168,7 +168,8 @@ Owner: "start the ingress window". All times UTC.
 
 Open after the window:
 - Step 6 DONE 12:25–12:28 UTC at the owner's request: `FORWARDED_ALLOW_IPS` removed on Render (Save only) and `1c8e8de` redeployed as `dep-db33kc2d0e5s73f0rf2g` (same Start Command, startup complete, live 12:27). Render lists 18 keys without it. A ~20 s external poll through the redeploy saw novaq.site `/api` 200 and direct `/auth/config` 403 throughout; at 12:29 a direct request with a fake `X-Forwarded-For` was still 403. A rollback to `direct` must re-add `FORWARDED_ALLOW_IPS=127.0.0.1`.
-- The three stray Preview deployments can stay; they are not served on novaq.site.
+- The three stray Preview deployments (`d6fd9c60`, `9c3c672b`, `26d52bfd`) were deleted by the owner on 2026-10-07; at 14:08 UTC their addresses returned 404 and they were gone from the deployments list, while Production `b7ac08c8`, novaq.site and `/api/ready` returned 200 and the rollback deployments `a4f60c31` and `64e47b29` were still listed.
+- Cleanup 2026-10-07: the `ingress-probe` worktree was removed (its `node_modules` junction first, so the target in `port-g-a-stage1` stayed intact) and the branch `feat/signed-pages-ingress` was deleted locally and on GitHub. It held no commits beyond `main` (`0480c06e`); PR #27 remains Merged.
 
 ## Rollback
 
@@ -177,6 +178,6 @@ Open after the window:
 
 - Backend: set `NOVAQ_PROXY_MODE=direct`, `1fbe812c`'s default (VERIFIED,
   `settings.py:128`), and restore the Start Command. Alternatively, redeploy
-  the previous backend commit; current `main` has no proxy mode.
+  the pre-ingress backend commit `0ddefa6` (it has no proxy mode).
 - Pages: roll back to the previous Pages deployment.
 - No database change is involved.
