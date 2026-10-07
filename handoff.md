@@ -17,7 +17,8 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
   plus the `event=` logging fix (`0ddefa6`) and the signed Pages ingress
   (`38fa998a`); the other commits in between are docs or frontend only.
   - The release first went live as `2ccb865` at 13:39 UTC on 2026-10-06.
-  - The current deploy is `dep-db33ac0m7kps73csnpa0` (2026-10-07 12:05 UTC), with:
+  - The current deploy is `dep-db33kc2d0e5s73f0rf2g` (2026-10-07 12:27 UTC, same
+    `1c8e8de`, redeployed after removing `FORWARDED_ALLOW_IPS`), with:
   - `NOVAQ_ENV=production`, so the G7 exact-head guard and `/ready` revision
     check are active;
   - `NOVAQ_PROXY_MODE=pages_signed` and `NOVAQ_PROXY_ASSERTION_SECRET` (also set
@@ -25,17 +26,18 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     direct `onrender.com` API calls get 403 `proxy_assertion_required`
     (`/health`, `/ready` and OPTIONS are exempt). Rate limits key on the
     verified client IP;
-  - `FORWARDED_ALLOW_IPS=127.0.0.1` (unused under `--no-proxy-headers`);
-  - 19 env keys (INFERRED: the 18 read at 11:30 plus `NOVAQ_PROXY_MODE`;
-    `RESULT_JSONB_MAX_BYTES=786432` among them), auto-deploy off and PR
-    previews off.
+  - no `FORWARDED_ALLOW_IPS` key (removed 2026-10-07 at the owner's request;
+    unused under `--no-proxy-headers`);
+  - 18 env keys (read back 12:28 UTC; `RESULT_JSONB_MAX_BYTES=786432` among
+    them), auto-deploy off and PR previews off.
 - The Start Command is migration-free and has no uvicorn access log:
   `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-proxy-headers --no-access-log`.
   - Each request is logged once, by the app's `event=http_request` line, which
     carries the path without the query string (and no client IP).
-  - Ingress rollback: set `NOVAQ_PROXY_MODE=direct`, drop
-    `--workers 1 --no-proxy-headers`, redeploy; `direct` keeps the
-    pre-ingress rate-limit keys. Record:
+  - Ingress rollback: set `NOVAQ_PROXY_MODE=direct`, **re-add
+    `FORWARDED_ALLOW_IPS=127.0.0.1`** (otherwise `direct` mode refuses Render's
+    injected value at startup), drop `--workers 1 --no-proxy-headers`,
+    redeploy; `direct` keeps the pre-ingress rate-limit keys. Record:
     `docs/superpowers/plans/2026-10-07-signed-pages-ingress-plan.md`.
   - Deploys never migrate. A future migration is a deliberate one-shot `alembic upgrade
   <rev>` from a clean checkout, as in GO packet W4. If the database is behind
@@ -84,8 +86,6 @@ runbook is `docs/superpowers/plans/2026-10-05-g8-production-cutover-runbook.md`.
     scheduled task, `novaq-weekly-backup-reminder`, reminds the owner on
     Mondays). CSP/frame headers, SSL enforcement and the direct
     `onrender.com` URL are fixed (GO packet §6).
-  - Optional: remove the now-unused `FORWARDED_ALLOW_IPS=127.0.0.1` from
-    Render (plan step 6).
 - `1fbe812c` (signed Pages ingress) was excluded from G-A and released
   separately on 2026-10-07 as the port `38fa998a`, without the client-version
   fence (PR #27, merged).

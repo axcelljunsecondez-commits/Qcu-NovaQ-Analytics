@@ -167,10 +167,13 @@ Owner: "start the ingress window". All times UTC.
 | 6 Verify | PASS 12:06–12:08 | Direct `onrender.com`: `GET /auth/config`, `POST /auth/login`, `GET /auth/me` → 403 `proxy_assertion_required`, also with forged `X-NovaQ-Proxy-*` headers and a fake `X-Forwarded-For`; `/health`, `/ready` and the CORS preflight 200 (exempt); `HEAD /ready` 405 as before (GET-only route). Through novaq.site: `/api/ready` and `/api/auth/config` 200, a bad `POST /api/auth/login` → 401 `invalid_credentials` (signed POSTs reach the app). Owner session in Render logs (user 4): Analyses 6 and 11, optimize separate and breaks, selection, comparison, report preview and PDF, logout — all 200, no 5xx, no assertion refusals. NOT VERIFIED in production: per-client-IP rate-limit keys, because `event=http_request` lines carry no client IP (covered by `test_proxy_assertion.py` and CI) |
 
 Open after the window:
-- Step 6 of the plan (removing `FORWARDED_ALLOW_IPS=127.0.0.1`, unused under `--no-proxy-headers`) is optional and not done; the key is harmless.
+- Step 6 DONE 12:25–12:28 UTC at the owner's request: `FORWARDED_ALLOW_IPS` removed on Render (Save only) and `1c8e8de` redeployed as `dep-db33kc2d0e5s73f0rf2g` (same Start Command, startup complete, live 12:27). Render lists 18 keys without it. A ~20 s external poll through the redeploy saw novaq.site `/api` 200 and direct `/auth/config` 403 throughout; at 12:29 a direct request with a fake `X-Forwarded-For` was still 403. A rollback to `direct` must re-add `FORWARDED_ALLOW_IPS=127.0.0.1`.
 - The three stray Preview deployments can stay; they are not served on novaq.site.
 
 ## Rollback
+
+- Since step 6, rolling back to `direct` also requires re-adding
+  `FORWARDED_ALLOW_IPS=127.0.0.1` on Render; `direct` refuses Render's injected value.
 
 - Backend: set `NOVAQ_PROXY_MODE=direct`, `1fbe812c`'s default (VERIFIED,
   `settings.py:128`), and restore the Start Command. Alternatively, redeploy

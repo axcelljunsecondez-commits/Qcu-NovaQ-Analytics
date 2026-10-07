@@ -29,9 +29,10 @@ under owner GO. The record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md
 - Render injects its own `FORWARDED_ALLOW_IPS` that the production validator
   refuses. Any production preflight must account for platform-injected
   variables, not only dashboard keys.
-- `FORWARDED_ALLOW_IPS=127.0.0.1` stays on Render; under `--no-proxy-headers`
-  it is unused, but it matters again in `direct` mode. The app's TCP peer there
-  is a local `127.0.0.1` proxy behind Render `10.x` hops and Cloudflare.
+- `FORWARDED_ALLOW_IPS` was removed from Render on 2026-10-07: under
+  `--no-proxy-headers` it is unused. A rollback to `direct` mode must re-add
+  `FORWARDED_ALLOW_IPS=127.0.0.1`. The app's TCP peer there is a local
+  `127.0.0.1` proxy behind Render `10.x` hops and Cloudflare.
   - `10.0.0.0/8` alone logs every client as `127.0.0.1`.
   - `127.0.0.1,10.0.0.0/8` keys rate limits on rotating Cloudflare addresses,
     which weakens the login limit.
