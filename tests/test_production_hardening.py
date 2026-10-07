@@ -229,6 +229,7 @@ def test_pages_headers_mirror_production_nginx():
     headers = dict(rule.split(": ", 1) for rule in rules[1:])
     assert headers["X-Frame-Options"] == "DENY"
     assert headers["Permissions-Policy"] == _nginx_header(nginx, "Permissions-Policy")
-    csp = headers.get("Content-Security-Policy") or headers["Content-Security-Policy-Report-Only"]
+    assert "Content-Security-Policy-Report-Only" not in headers
+    csp = headers["Content-Security-Policy"]
     assert csp == _nginx_header(nginx, "Content-Security-Policy")
     assert "frame-ancestors 'none'" in csp and "unsafe-eval" not in csp
