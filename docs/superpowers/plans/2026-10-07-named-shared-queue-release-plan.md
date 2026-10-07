@@ -5,8 +5,9 @@ Pushing `main` is a production release (`memory.md`, Deployment Topology). Every
 owner's explicit go-ahead at that step.
 
 - Date: 2026-10-07
-- Candidate: `release/named-shared-queue-prep` at `f150561e`, a local merge of `feat/shared-queue-segments`
-  (`c0d3db8b`) and `origin/main` (`f08b55ae`). Worktree: `.claude/worktrees/release-named-prep`.
+- Candidate: `release/named-shared-queue-prep` at `110a450b`: the merge `f150561e` of `feat/shared-queue-segments`
+  (`c0d3db8b`) and `origin/main` (`f08b55ae`), then P1 (`9bb79801`) and the W0 merge of `origin/main` `16e7ddbc`
+  (five docs-only commits). Worktree: `.claude/worktrees/release-named-prep`.
 - Spec: `docs/superpowers/specs/2026-09-30-shared-queue-named-api-ui-first-slice.md` (sections 21 and 22).
 
 ## 1. What the release changes (VERIFIED from `git diff origin/main f150561e`)
@@ -63,13 +64,13 @@ These are re-read at the start of the window (step W1); any difference stops the
 | Step | Action | Who | Stop if |
 |---|---|---|---|
 | W0 | Re-check `origin/main` is still `f08b55ae`. If it moved, re-merge into the candidate and re-run section 3. | Claude | merge conflict or any gate fails |
-| W1 | Re-read production: Render live commit, env key count and `RESULT_JSONB_MAX_BYTES`, Start Command, auto-deploy Off; Pages production deployment and auto-deploy Disabled; `/api/ready` 200. | Owner reads, Claude records | any difference from section 2 |
+| W1 | Production read-back. Done from records for W2 only (section 8): W2 does not touch production. A fresh read-back (Render live commit, env key count and `RESULT_JSONB_MAX_BYTES`, Start Command, Auto-Deploy and PR Previews Off; Pages production deployment and automatic deployments Disabled; `/api/ready` 200) is repeated immediately before W4. | Owner reads, Claude records | any difference from section 2 |
 | W2 (GO) | Push the candidate to a `ci/` branch and open a draft PR into `main` (CI runs on `pull_request` to `main`): lint, test matrix 3.10-3.13, docker-build with Trivy, frontend, secret-scan, production-preflight, postgres-integration (PostgreSQL 16), stack-integration. | Claude with owner GO | any CI job fails |
 | W3 | Take a manual encrypted backup (weekly-backup procedure). No migration runs, so this is a safety copy only. | Owner | backup or hash check fails |
 | W4 (GO) | Fast-forward `main` to the CI-green candidate and push. Auto-deploys are off, so nothing deploys yet. | Claude with owner GO | push is not a fast-forward |
 | W5 (GO) | Render: Manual Deploy of that commit. Render runs `pip install -r requirements.txt` (floors), so the build may pick up newer dependency versions than the last deploy. | Owner | build fails, startup fails (G7 guard), `/api/ready` not 200 |
 | W6 | Backend checks: `/api/ready` 200; Render log shows startup complete and no tracebacks; logged-in R1 `GET /api/analyses/{id}/shared-named/contract` returns `limits.result_max_bytes = 786432` (this VERIFIES the production cap through the app) and `max_expected_customers_per_run = 2900`. The old frontend never calls the new routes, so it stays working. | Owner logs in, Claude reads | any check fails -> rollback R1 |
-| W7 (GO) | Pages: production deploy of the same commit (enable automatic deployments, deploy, disable again, read back Disabled). | Owner | deploy fails |
+| W7 (GO) | Pages production deploy. Do **not** retry a deployment of the candidate commit: Pages first sees it on the `ci/` branch and builds Preview deployments of that branch instead (REPORTED: the 2026-10-07 ingress release, ingress plan step 4). Instead, with automatic deployments switched on by the owner and Render Auto-Deploy and PR Previews re-read Off, push one new docs-only commit to `main` (the release record), so Pages builds Production from `main`; then switch automatic deployments off and read back Disabled. | Owner (Pages switch), Claude (push, with GO) | a Preview instead of Production is built, or any deploy fails |
 | W8 | Frontend checks: the Simulate page of an existing analysis loads; a shared-queue analysis shows the mode switch; `?mode=named` loads the contract; no CSP violations in the console. | Owner in browser, Claude reads | any check fails -> rollback R2 |
 | W9 | Post-release timing (spec section 22.8 "Still open"): one real Named run on a shared-queue analysis, near but under 2,900 expected customers, timing R3 and one R6; then repeat after at least 15 minutes idle so Render has spun down (first request after wake-up). This writes one Job row; it is the owner's decision to run it on production. | Owner runs, Claude reads Render `event=http_request` durations | R3 or R6 over 60 s -> owner decides on a lower bound |
 | W10 | Record: handoff, memory, spec section 22 status (limits PRODUCTION-APPROVED only if W6 and W9 pass). | Claude | — |
@@ -93,3 +94,22 @@ These are re-read at the start of the window (step W1); any difference stops the
 - **Filipino wording** of the new strings is not reviewed by a native speaker.
 - **Render memory:** the Render-like container peaked at 293 MB process memory; production memory is
   not measured.
+
+## 8. Progress record (2026-10-07; local only, nothing pushed)
+
+- **P1 DONE:** `9bb79801` adds `tests/test_api_shared_named.py` to the `postgres-integration` job. Verified as CI
+  runs it (`python:3.11.16-slim`, `requirements.txt` plus `pytest~=9.0` and `httpx~=0.28`, PostgreSQL 16.15):
+  466 passed, 1 skipped (the SQLite-only case), 1 Starlette deprecation warning about `httpx`.
+- **P2 DONE:** the full suite in `python:3.14.8` on `3911e301` with `requirements.txt` (numpy 2.2.6, scipy 1.18.1,
+  SQLAlchemy 2.1.3, FastAPI 0.142.2) and CI's test dependencies: 2897 passed, 123 skipped, 1 xfailed.
+- **W0 DONE:** `origin/main` had moved to `16e7ddbc` (five docs-only commits: scheduled daily backups, GO packet
+  section 3 closed, ingress cleanup). Merged as `110a450b`. Each of the four files gained exactly `main`'s
+  changes, no code changed, and no test reads those files, so the gates on the code still apply.
+- **W1 (from records, REPORTED):** `main`'s handoff and ingress plan, written by the session that ran the
+  2026-10-07 ingress release, record Render live `1c8e8de` (`dep-db33kc2d0e5s73f0rf2g`, 12:27 UTC), 18 env keys
+  (12:28 UTC) including `RESULT_JSONB_MAX_BYTES=786432` (owner-read), the Start Command with `--workers 1
+  --no-proxy-headers --no-access-log`, Auto-Deploy and PR Previews Off, Pages production `b7ac08c8`, and Pages
+  automatic deployments read back Disabled after 12:08 UTC. These are hours old; W1 is repeated before W4.
+- **Still open:** daily scheduled backups now exist (REPORTED by `main`'s handoff), so W3 may use the latest
+  scheduled backup if the owner prefers. The backup private key has no off-PC copy yet (REPORTED), which is an
+  operational risk outside this release.
