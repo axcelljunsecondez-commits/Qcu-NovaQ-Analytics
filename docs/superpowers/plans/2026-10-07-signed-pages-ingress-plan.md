@@ -1,6 +1,6 @@
-# Signed Pages ingress: plan (PROPOSED, 2026-10-07)
+# Signed Pages ingress: plan (2026-10-07)
 
-Status: **PROPOSED**. Not authorized for implementation or release. This
+Status: **IN PROGRESS** — step 2 (port, local) authorized 2026-10-07; release not authorized. This
 replaces the GO packet §3 exception "Direct `onrender.com` URL bypasses
 Cloudflare" with planned work, as the owner decided on 2026-10-06.
 
@@ -55,6 +55,82 @@ Cloudflare" with planned work, as the owner decided on 2026-10-06.
    memory is per process, as the commit documents.
 4. Whether UptimeRobot (`/api/ready`) and Render's own health probes stay on
    exempt routes. Expected yes.
+
+## Findings from the probe port (2026-10-07, VERIFIED)
+
+Method: `1fbe812c` alone was cherry-picked onto `main` `07f73b6f` in a
+throwaway worktree (`.claude/worktrees/ingress-probe`, detached, nothing
+committed).
+
+- **Fact 1 settled: no code dependency on the fence.** All code files apply
+  cleanly. The only conflicts are in tests: the `import` line of
+  `tests/test_production_hardening.py`, and two fence-only tests in
+  `apiProxy.test.ts` (client-protocol header passthrough, fence 403 body). With
+  those two tests dropped:
+  - backend `test_proxy_assertion.py` 28, `test_production_hardening.py` 21 and
+    `test_api_event_logging.py` 5 pass (54);
+  - `apiProxy.test.ts` 14 pass;
+  - `npm run typecheck`, `npm run lint`, `ruff check backend tests` and mypy on
+    the four backend files are clean.
+  - `test_proxy_assertion.py` still sends the fence's `X-NovaQ-Client-Protocol`
+    header, which `main` ignores; a port should remove it.
+  - Full suites and CI were NOT run on the probe.
+- **The Pages Function fails closed.** Without a valid
+  `NOVAQ_PROXY_ASSERTION_SECRET` (43-char base64url, 32 bytes), every `/api`
+  call returns 500 `proxy_secret_unconfigured`; without `CF-Connecting-IP` it
+  returns 403. So the Pages secret must be set **before** the Pages deploy (step 4).
+- **Rate-limit keying changes in both modes.** Today logged-in requests are
+  keyed per session-cookie hash, others per TCP peer. `1fbe812c` drops the
+  cookie key everywhere ("a raw cookie is never identity": a forged cookie gets
+  a fresh bucket). In `pages_signed` mode the key is the verified client IP.
+  In `direct` mode, which is the rollback setting, every user would share the
+  TCP-peer key (Render `10.x` hops) for compute (30/min), report (10/min),
+  upload, admin and auth limits. Rollback would therefore not equal today's
+  behaviour unless the port keeps the session key in `direct` mode.
+- **Redirect handling is hardened too.** The bridge now returns 502
+  `api_redirect_rejected` for any API redirect off the API host (today it passes
+  external redirects through unchanged).
+- **The production validator relaxes `FORWARDED_ALLOW_IPS`** only in
+  `pages_signed` mode.
+- Facts 2–4, read from the dashboards 2026-10-07 (names only, no values):
+  - Pages `novaq-frontend` has two variables: `NOVAQ_API_ORIGIN` (text) and
+    `NOVAQ_PROXY_ASSERTION_SECRET` (encrypted secret). Render also has a
+    `NOVAQ_PROXY_ASSERTION_SECRET` key. Whether the two values match, or are
+    valid 32-byte base64url, is UNKNOWN; step 3 replaces both with a fresh secret.
+  - Render service: Free plan; no Scaling section is offered, so one instance
+    (INFERRED from the plan); Health Check Path is empty, so Render sends no
+    HTTP health checks; Start Command
+    `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --no-access-log`.
+  - UptimeRobot checks `https://novaq.site/api/ready` through the bridge, so it
+    is signed; `/ready` is exempt anyway.
+
+## Owner decisions (2026-10-07)
+
+1. Port `1fbe812c` **without** the client-version fence (`81bc427a`, `6ef85712`).
+2. `direct` mode keeps the pre-ingress rate-limit keys (session cookie when
+   sent, otherwise the client address), so rollback restores today's
+   behaviour exactly; `pages_signed` keys on the verified client IP as designed.
+3. Step 2 authorized: port on its own branch, full gates, local commit only.
+   Push, CI, secret creation and the release window each need a separate OK.
+
+## Port (step 2) on branch `feat/signed-pages-ingress`
+
+`1fbe812c` cherry-picked onto `main` `07f73b6f`, with these adaptations:
+- `backend/api/rate_limit.py`: the `direct` branch is the pre-ingress code
+  unchanged (decision 2).
+- `tests/test_proxy_assertion.py`: the fence header is removed; the
+  direct-mode test now pins the pre-ingress keys (a cookie-blind mutant fails it).
+- `frontend/src/cloudflare/apiProxy.test.ts`: the two fence-only tests are dropped.
+- `docs/operations.md`: rate limits described per mode; the fence sentence
+  removed; the Start Command keeps `--no-access-log`:
+  `uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-proxy-headers --no-access-log`.
+
+Gates on the port (2026-10-07, Windows, Python 3.13.13 with the release
+requirements, Node from the existing frontend install):
+- `python -m pytest tests/ -x`: 1615 passed, 118 skipped, 1 xfailed.
+- `ruff check .` clean; `mypy .` no issues in 169 files.
+- Frontend: vitest 53 files / 392 tests, `typecheck`, `lint`, `build` all pass.
+- Not run: PostgreSQL-backed tests (no `NOVAQ_TEST_DATABASE_URL`) and GitHub CI.
 
 ## Proposed steps (each needs owner authorization)
 
