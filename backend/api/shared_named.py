@@ -126,6 +126,10 @@ AV_MAX = 3  # availability windows per employee
 BR_MAX = 3  # break rules
 BQ_MAX = 2  # breaks per break rule
 BS_MAX = 2  # breaks per roster shift
+# Run-time bound (spec section 22.8, owner-approved 2026-10-07): expected customers per run, that is replications
+# x the sum of arrival rate x period hours over the horizon, measured to keep one request near 60 s on a
+# Render-Free-like container. Checked after the demand is known and before any simulation.
+C_MAX = 2900
 LIMITS_STATUS = "provisional_not_production_approved"
 
 MODEL_SCOPE = (
@@ -269,6 +273,7 @@ def _limits(settings: Settings) -> dict[str, Any]:
         "max_break_rules": BR_MAX,
         "max_breaks_per_break_rule": BQ_MAX,
         "max_breaks_per_roster_shift": BS_MAX,
+        "max_expected_customers_per_run": C_MAX,
         "result_max_bytes": settings.result_jsonb_max_bytes,
         "status": LIMITS_STATUS,
     }
@@ -326,6 +331,22 @@ def _require_within_limits(body: NamedWorkforceInput, replications: int | None =
     problem = _limit_problem(body, replications)
     if problem is not None:
         raise HTTPException(status_code=422, detail=problem)
+
+
+def _expected_customers_per_replication(body: NamedWorkforceInput, demand_periods: list[DemandPeriod]) -> float:
+    """Sum of arrival rate x hours of each demand period inside the operating horizon (spec section 22.8)."""
+    start, end = body.horizon.start_minute, body.horizon.end_minute
+    return math.fsum(
+        period.arrival_rate_per_hour * max(0, min(end, period.end_minute) - max(start, period.start_minute)) / 60
+        for period in demand_periods)
+
+
+def _require_within_customer_bound(per_replication: float, replications: int) -> None:
+    expected = per_replication * replications
+    if expected > C_MAX:
+        raise HTTPException(status_code=422, detail={
+            "code": "limit_exceeded", "limit": "expected_customers", "value": round(expected, 1), "max": C_MAX,
+            "replications": replications, "max_replications": math.floor(C_MAX / per_replication)})
 
 
 def _domain_inputs(body: NamedWorkforceInput, demand_periods: list[DemandPeriod]) -> dict[str, Any]:
@@ -541,12 +562,16 @@ def validate_named_inputs(
     _require_within_limits(body)
     outcome = _check_inputs(body, dataset)
     periods = outcome["demand_periods"]
+    per_replication = None if periods is None else _expected_customers_per_replication(body, periods)
+    if per_replication is not None:  # not even one replication fits the run-time bound (section 22.8)
+        _require_within_customer_bound(per_replication, 1)
     return {
         "runnable": outcome["stage_failed"] is None,
         "stage_failed": outcome["stage_failed"],
         "problems": outcome["problems"],
         "demand": None if periods is None else {
-            "dataset_id": dataset.id, "demand_periods": [asdict(period) for period in periods]},
+            "dataset_id": dataset.id, "demand_periods": [asdict(period) for period in periods],
+            "expected_customers_per_replication": per_replication},
         "roster_report": outcome["roster_report"],
         "limits": _limits(settings),
     }
@@ -573,6 +598,8 @@ def create_named_run(
     if outcome["stage_failed"] is not None:
         raise HTTPException(status_code=422, detail={
             "code": "named_input_invalid", "stage": outcome["stage_failed"], "problems": outcome["problems"]})
+    _require_within_customer_bound(
+        _expected_customers_per_replication(body, outcome["demand_periods"]), body.replications)
     inputs = outcome["inputs"]
     try:
         result = run_named_replications(

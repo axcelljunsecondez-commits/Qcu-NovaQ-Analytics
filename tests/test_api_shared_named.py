@@ -665,6 +665,77 @@ def test_the_limits_are_the_provisional_measured_values():
     assert shared_named.LIMITS_STATUS == "provisional_not_production_approved"
 
 
+# Spec section 22.8: expected customers per run = replications x sum(arrival rate x period hours) <= 2,900.
+def _per_replication_rows(per_replication: float) -> list[dict]:
+    """Two hourly periods over the light 08:00-10:00 horizon whose expected customers sum to per_replication."""
+    return [{**row, "lambda": per_replication / 2} for row in LIGHT_ROWS]
+
+
+@pytest.fixture
+def engine_calls(monkeypatch):
+    calls: list[int] = []
+
+    def reached(*args: Any, replications: int, **kwargs: Any):
+        calls.append(replications)
+        from backend.queueing_engine.services.shared_segments import SharedSegmentError
+        raise SharedSegmentError(["engine reached"])
+
+    monkeypatch.setattr(shared_named, "run_named_replications", reached)
+    return calls
+
+
+def test_the_customer_bound_is_the_approved_value(client, db_engine):
+    assert shared_named.C_MAX == 2900
+    ids = _signed_in(client, db_engine)
+    limits = client.get(f"/analyses/{ids['analysis_id']}/shared-named/contract").json()["limits"]
+    assert limits["max_expected_customers_per_run"] == 2900
+
+
+def test_validate_reports_expected_customers_per_replication(client, db_engine):
+    ids = _signed_in(client, db_engine, rows=_per_replication_rows(1450.0))
+    validated = _validate(client, ids["analysis_id"], _light(ids["dataset_id"]))
+    assert validated.status_code == 200
+    assert validated.json()["runnable"] is True
+    assert validated.json()["demand"]["expected_customers_per_replication"] == 1450.0
+
+
+def test_a_run_at_exactly_the_customer_bound_reaches_the_engine(client, db_engine, engine_calls):
+    ids = _signed_in(client, db_engine, rows=_per_replication_rows(1450.0))
+    response = _create(client, ids["analysis_id"], _run(ids["dataset_id"], replications=2))
+    assert (response.status_code, response.json()["detail"]["code"]) == (422, "named_input_invalid")
+    assert engine_calls == [2]
+
+
+def test_a_run_above_the_customer_bound_is_refused_before_the_engine(client, db_engine, engine_calls):
+    ids = _signed_in(client, db_engine, rows=_per_replication_rows(1450.0))
+    response = _create(client, ids["analysis_id"], _run(ids["dataset_id"], replications=3))
+    assert response.status_code == 422
+    assert response.json()["detail"] == {"code": "limit_exceeded", "limit": "expected_customers", "value": 4350.0,
+                                         "max": 2900, "replications": 3, "max_replications": 2}
+    assert engine_calls == []
+    assert _named_jobs(db_engine) == []
+
+
+def test_validate_refuses_demand_where_one_replication_exceeds_the_bound(client, db_engine, engine_calls):
+    ids = _signed_in(client, db_engine, rows=_per_replication_rows(2902.0))
+    validated = _validate(client, ids["analysis_id"], _light(ids["dataset_id"]))
+    assert validated.status_code == 422
+    assert validated.json()["detail"] == {"code": "limit_exceeded", "limit": "expected_customers", "value": 2902.0,
+                                          "max": 2900, "replications": 1, "max_replications": 0}
+    assert _create(client, ids["analysis_id"], _run(ids["dataset_id"], replications=1)).json()["detail"]["limit"] == (
+        "expected_customers")
+    assert engine_calls == []
+    assert _named_jobs(db_engine) == []
+
+
+def test_expected_customers_count_only_the_horizon():
+    from backend.queueing_engine.services.shared_segments import DemandPeriod
+    body = shared_named.NamedWorkforceInput.model_validate(_light(1))  # horizon 08:00-10:00
+    periods = [DemandPeriod("early", 420, 510, 60.0, 4.0),  # 30 of its 90 minutes inside the horizon
+               DemandPeriod("late", 510, 660, 12.0, 4.0)]  # 90 of its 150 minutes inside
+    assert shared_named._expected_customers_per_replication(body, periods) == 30.0 + 18.0
+
+
 # ── 7. Faithfulness to the domain ───────────────────────────────────────────
 
 
@@ -713,7 +784,8 @@ def test_validate_returns_the_domain_roster_report_unchanged(client, db_engine):
     assert validated["runnable"] is True and validated["stage_failed"] is None and validated["problems"] == []
     assert validated["roster_report"] == _json(direct)
     assert validated["demand"] == {"dataset_id": ids["dataset_id"], "demand_periods": [
-        asdict(period) for period in inputs["demand_periods"]]}
+        asdict(period) for period in inputs["demand_periods"]],
+        "expected_customers_per_replication": 4.0 * 1 + 4.0 * 1}  # section 22.8: rate x hours, summed
 
 
 # ── 8. X4 and X7 ────────────────────────────────────────────────────────────
@@ -1093,13 +1165,14 @@ def test_postgres_b1_normal_run_commits_and_a_representation_change_rolls_back(c
 
 
 @postgres_only
-@pytest.mark.parametrize(("name", "scale", "structured", "policy"), [
-    ("light", None, False, "DRAIN"),
-    ("maximum_structure", 1.0, True, "HARD_CUTOFF"),
-    ("busy", 5.0, True, "DRAIN"),
-    ("stress", 10.0, True, "HARD_CUTOFF"),
+@pytest.mark.parametrize(("name", "scale", "structured", "policy", "replications"), [
+    ("light", None, False, "DRAIN", 3),
+    ("maximum_structure", 1.0, True, "HARD_CUTOFF", 3),
+    ("busy", 5.0, True, "DRAIN", 3),
+    # x10 demand is 1,075 expected customers per replication; 3 would exceed the section 22.8 bound of 2,900.
+    ("stress", 10.0, True, "HARD_CUTOFF", 2),
 ])
-def test_postgres_round_trip(client, db_engine, name, scale, structured, policy):
+def test_postgres_round_trip(client, db_engine, name, scale, structured, policy, replications):
     _require_postgres(db_engine)
     rows = LIGHT_ROWS if scale is None else _scaled_rows(scale)
     ids = _signed_in(client, db_engine, rows=rows)
@@ -1108,7 +1181,6 @@ def test_postgres_round_trip(client, db_engine, name, scale, structured, policy)
         ids["dataset_id"], closing_policy=policy)
     validated = _validate(client, a, body).json()
     assert validated["runnable"] is True, validated["problems"]
-    replications = 3
     response = _create(client, a, {**body, "replications": replications, "seed": 20260930})
     assert response.status_code == 200, response.text
     run = response.json()["evidence"]

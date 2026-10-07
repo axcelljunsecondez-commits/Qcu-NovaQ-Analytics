@@ -159,6 +159,7 @@
    "max_break_rules": 3,
    "max_breaks_per_break_rule": 2,
    "max_breaks_per_roster_shift": 2,
+   "max_expected_customers_per_run": 2900,
    "result_max_bytes": 524288,
    "status": "provisional_not_production_approved"
   },
@@ -196,7 +197,8 @@
      "arrival_rate_per_hour": 8.0,
      "service_rate_per_hour": 4.0
     }
-   ]
+   ],
+   "expected_customers_per_replication": 14.0
   },
   "roster_report": {
    "status": "INCOMPLETE",
@@ -421,6 +423,7 @@
    "max_break_rules": 3,
    "max_breaks_per_break_rule": 2,
    "max_breaks_per_roster_shift": 2,
+   "max_expected_customers_per_run": 2900,
    "result_max_bytes": 524288,
    "status": "provisional_not_production_approved"
   }
@@ -445,7 +448,7 @@
     "arrival_engine_version": "novaq-shared-continuous-des-v2",
     "inputs_sha256": "bf7657e1cdc18f537763cc52e7ce38f3aa83cc740e679a25d7955fb468919fc5",
     "root_entropy": 20261001,
-    "dataset_generation": "42fac7a2ade6438ea1ffb6b3a3bc3540",
+    "dataset_generation": "84dbb17c1f5d483da93c7ea5ec7c797a",
     "setup_hash": "c853b0cd0ef1a412e9de275e0ba3ef51efd3ef06b67536f24f68d0bc4c4e9e00"
    },
    "result": {
@@ -2113,15 +2116,15 @@
      "inputs_digest_definition": "SHA-256 of the recorded simulation-defining inputs: the horizon, demand periods, required staffing, employees, workforce rules, roster (as provenance.inputs records them), closing policy, and employee policy. They are written as JSON with sorted keys: a dataclass as an object of its fields, a list or tuple as an array, a whole number as an integer, a string, boolean, or None as itself, and a float as {\"float\": float.hex()}; any other value is rejected. Equal digests mean equal recorded values (an int and a float of equal value differ); the digest makes no claim of semantic equivalence. It detects a later change to the recorded inputs or digest within the result; it is not a tamper-proof signature."
     }
    },
-   "created_at": "2026-10-01T06:44:02",
-   "finished_at": "2026-10-01T06:44:02.372943"
+   "created_at": "2026-10-07T12:20:04",
+   "finished_at": "2026-10-07T12:20:04.372441"
   }
  },
  "runs": {
   "runs": [
    {
     "id": 1,
-    "created_at": "2026-10-01T06:44:02",
+    "created_at": "2026-10-07T12:20:04",
     "dataset_id": 1,
     "replications": 3,
     "seed": 20261001,
@@ -2160,7 +2163,7 @@
     "arrival_engine_version": "novaq-shared-continuous-des-v2",
     "inputs_sha256": "bf7657e1cdc18f537763cc52e7ce38f3aa83cc740e679a25d7955fb468919fc5",
     "root_entropy": 20261001,
-    "dataset_generation": "42fac7a2ade6438ea1ffb6b3a3bc3540",
+    "dataset_generation": "84dbb17c1f5d483da93c7ea5ec7c797a",
     "setup_hash": "c853b0cd0ef1a412e9de275e0ba3ef51efd3ef06b67536f24f68d0bc4c4e9e00"
    },
    "result": {
@@ -3828,8 +3831,8 @@
      "inputs_digest_definition": "SHA-256 of the recorded simulation-defining inputs: the horizon, demand periods, required staffing, employees, workforce rules, roster (as provenance.inputs records them), closing policy, and employee policy. They are written as JSON with sorted keys: a dataclass as an object of its fields, a list or tuple as an array, a whole number as an integer, a string, boolean, or None as itself, and a float as {\"float\": float.hex()}; any other value is rejected. Equal digests mean equal recorded values (an int and a float of equal value differ); the digest makes no claim of semantic equivalence. It detects a later change to the recorded inputs or digest within the result; it is not a tamper-proof signature."
     }
    },
-   "created_at": "2026-10-01T06:44:02",
-   "finished_at": "2026-10-01T06:44:02.372943"
+   "created_at": "2026-10-07T12:20:04",
+   "finished_at": "2026-10-07T12:20:04.372441"
   },
   "setup_matches_current": true
  },

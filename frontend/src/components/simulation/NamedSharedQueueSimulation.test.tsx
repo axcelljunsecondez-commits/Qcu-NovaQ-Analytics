@@ -117,6 +117,38 @@ describe('NamedSharedQueueSimulation', () => {
     expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled()
   })
 
+  it('shows expected customers and disables Run above the customer bound (spec section 22.8)', async () => {
+    expect(fixture.contract.limits.max_expected_customers_per_run).toBe(2900)
+    validateMock.mockResolvedValue({ ...fixture.validate, demand: { ...fixture.validate.demand, expected_customers_per_replication: 1450 } })
+    await loadRunInputs()
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    await screen.findByTestId('named-validation')
+    expect(screen.getByTestId('named-expected-customers')).toHaveTextContent('at most 2900 expected customers')
+    await userEvent.type(screen.getByLabelText('Seed'), '5')
+    await userEvent.type(screen.getByLabelText('Replications'), '3')
+    const run = screen.getByRole('button', { name: 'Run' })
+    expect(screen.getByTestId('named-customer-bound')).toHaveTextContent('above the limit of 2900. At most 2 replications fit')
+    expect(run).toBeDisabled()
+    await userEvent.clear(screen.getByLabelText('Replications'))
+    await userEvent.type(screen.getByLabelText('Replications'), '2') // 2 x 1450 = 2900 is allowed
+    expect(screen.queryByTestId('named-customer-bound')).toBeNull()
+    expect(run).toBeEnabled()
+  })
+
+  it('shows the server refusal of a run above the customer bound', async () => {
+    createMock.mockRejectedValue(apiError(422, {
+      code: 'limit_exceeded', limit: 'expected_customers', value: 4350, max: 2900, replications: 3, max_replications: 2,
+    }))
+    await loadRunInputs()
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    await screen.findByTestId('named-validation')
+    await userEvent.type(screen.getByLabelText('Replications'), '2')
+    await userEvent.type(screen.getByLabelText('Seed'), '5')
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }))
+    expect(await screen.findByTestId('named-error-customer-bound')).toHaveTextContent(
+      'This run would have 4350 expected customers, above the limit of 2900. At most 2 replications fit this demand.')
+  })
+
   it('shows a 422 persistence_identity_mismatch as an unsaved run with its checks', async () => {
     createMock.mockRejectedValue(apiError(422, {
       code: 'persistence_identity_mismatch',

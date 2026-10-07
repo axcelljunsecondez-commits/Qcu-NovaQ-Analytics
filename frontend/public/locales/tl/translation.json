@@ -1199,6 +1199,8 @@
   "simulation.named_run": "Patakbuhin",
   "simulation.named_running": "Tumatakbo…",
   "simulation.named_run_needs_validation": "Magagamit lamang ang Patakbuhin pagkatapos ng maaaring patakbuhing validation ng eksaktong kasalukuyang form.",
+  "simulation.named_expected_customers": "Inaasahang customer: {{perReplication}} bawat replication mula sa na-validate na demand. Hanggang {{max}} inaasahang customer lamang ang isang run (replications × bilang na ito), para manatili itong mga 60 segundo sa production server.",
+  "simulation.named_customer_bound_exceeded": "Magkakaroon ang run na ito ng {{value}} inaasahang customer, lampas sa limitasyong {{max}}. Hanggang {{replications}} replication lamang ang kasya sa demand na ito.",
   "simulation.named_runs_title": "Mga named run",
   "simulation.named_runs_empty": "Wala pang named run.",
   "simulation.named_col_run": "Run",

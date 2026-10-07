@@ -86,6 +86,15 @@ function RequestError({ error }: { error: NamedApiError }) {
       </div>
     )
   }
+  if (error.code === 'limit_exceeded' && detail.limit === 'expected_customers') {
+    return (
+      <div role="alert" className="alert alert-error" data-testid="named-error-customer-bound">
+        {t('simulation.named_customer_bound_exceeded', {
+          value: String(detail.value ?? ''), max: String(detail.max ?? ''), replications: String(detail.max_replications ?? ''),
+        })}
+      </div>
+    )
+  }
   const known = ['limit_exceeded', 'ineligible_setup', 'analysis_archived', 'dataset_not_found', 'dataset_not_processed',
     'evidence_too_large', 'result_not_serializable', 'run_not_found', 'replication_not_found']
   const key = error.code && known.includes(error.code)
@@ -275,7 +284,14 @@ export function NamedSharedQueueSimulation({ analysisId, modeSwitch }: Props) {
   const replicationCount = wholeIn(replications, 1, terms.limits.max_replications)
   const seedValue = wholeIn(seed, terms.seed.min, terms.seed.max)
   const validatedNow = validated !== null && validated.fingerprint === fingerprint
-  const canRun = validatedNow && validated.result.runnable && replicationCount !== null && seedValue !== null && !run.isPending
+  // Spec section 22.8: expected customers per run (replications x the validated demand) may not exceed the bound.
+  // The server refuses it too; this only explains the refusal before a request is sent.
+  const perReplication = validatedNow && validated ? validated.result.demand?.expected_customers_per_replication ?? null : null
+  const customerBound = terms.limits.max_expected_customers_per_run
+  const expectedPerRun = perReplication !== null && replicationCount !== null ? perReplication * replicationCount : null
+  const overCustomerBound = expectedPerRun !== null && expectedPerRun > customerBound
+  const canRun = validatedNow && validated.result.runnable && replicationCount !== null && seedValue !== null
+    && !overCustomerBound && !run.isPending
 
   function submitValidate() {
     setValidated(null)
@@ -358,6 +374,19 @@ export function NamedSharedQueueSimulation({ analysisId, modeSwitch }: Props) {
             {run.isPending ? t('simulation.named_running') : t('simulation.named_run')}
           </button>
         </div>
+        {perReplication !== null && (
+          <p className="form-hint" data-testid="named-expected-customers">
+            {t('simulation.named_expected_customers', { perReplication: fmtDecimal(perReplication), max: customerBound })}
+          </p>
+        )}
+        {overCustomerBound && expectedPerRun !== null && perReplication !== null && (
+          <div role="alert" className="alert alert-error" data-testid="named-customer-bound">
+            {t('simulation.named_customer_bound_exceeded', {
+              value: fmtDecimal(expectedPerRun), max: customerBound,
+              replications: Math.floor(customerBound / perReplication),
+            })}
+          </div>
+        )}
         {!validatedNow && <p className="form-hint">{t('simulation.named_run_needs_validation')}</p>}
         {run.isError && <RequestError error={namedApiError(run.error)} />}
       </section>

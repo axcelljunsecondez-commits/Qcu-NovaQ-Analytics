@@ -1199,6 +1199,8 @@
   "simulation.named_run": "Run",
   "simulation.named_running": "Running…",
   "simulation.named_run_needs_validation": "Run becomes available only after a runnable validation of exactly the current form.",
+  "simulation.named_expected_customers": "Expected customers: {{perReplication}} per replication from the validated demand. A run may have at most {{max}} expected customers (replications × this number), so it stays near 60 seconds on the production server.",
+  "simulation.named_customer_bound_exceeded": "This run would have {{value}} expected customers, above the limit of {{max}}. At most {{replications}} replications fit this demand.",
   "simulation.named_runs_title": "Named runs",
   "simulation.named_runs_empty": "No named runs yet.",
   "simulation.named_col_run": "Run",

@@ -92,6 +92,7 @@ export interface NamedLimits {
   max_break_rules: number
   max_breaks_per_break_rule: number
   max_breaks_per_roster_shift: number
+  max_expected_customers_per_run: number
   result_max_bytes: number
   status: string
 }
@@ -164,7 +165,7 @@ export interface NamedValidateOut {
   runnable: boolean
   stage_failed: NamedStage | null
   problems: string[]
-  demand: { dataset_id: number; demand_periods: DemandPeriodOut[] } | null
+  demand: { dataset_id: number; demand_periods: DemandPeriodOut[]; expected_customers_per_replication: number } | null
   roster_report: RosterReport | null
   limits: NamedLimits
 }
