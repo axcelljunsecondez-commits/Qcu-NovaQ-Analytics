@@ -31,6 +31,8 @@ Status: **PROPOSED. Nothing in this document is implemented.**
 - The API limits remain **NOT PRODUCTION-APPROVED**. Arrival rate is not bounded, so run time and R6 size
   have no ceiling, and production run time, memory, the uvicorn worker count, and the Cloudflare plan are
   UNKNOWN (section 22.7).
+- The owner set a 60 s ceiling for one named request and APPROVED a bound of **2,900 expected customers per
+  run**, measured on a Render-Free-like container (section 22.8). The bound is NOT IMPLEMENTED.
 
 - Date: 2026-09-30
 - Branch: `feat/shared-queue-segments` at `90fdf9e2` (re-verified before writing, section 1.1)
@@ -1558,9 +1560,54 @@ reported its exact byte count in the 413 detail.
 
 ### 22.7 Still open (the limits remain NOT PRODUCTION-APPROVED)
 
-- Arrival rate has no API or ingestion bound, so R3 run time and R6 size have no ceiling. This needs an owner
-  decision.
+- Arrival rate has no API or ingestion bound, so R3 run time and R6 size have no ceiling. The owner approved
+  a bound on 2026-10-07 (section 22.8); it is NOT IMPLEMENTED.
 - Production run time and memory are not measured, and the spec defines no percentage for them.
 - The uvicorn worker count and the Cloudflare plan are UNKNOWN.
 - The comment at `shared_named.py:117-120` still describes the local 524,288-byte cap (code unchanged).
 - The production cap value is REPORTED by the owner, not read from the dashboard by this audit.
+
+### 22.8 Run-time ceiling and customer bound (owner decision, 2026-10-07)
+
+**Decision (APPROVED SPECIFICATION, NOT IMPLEMENTED):**
+
+- One named request should finish within **60 s** on the production backend.
+- R2 and R3 must refuse a run whose **expected customers per run** exceed **2,900**. Expected customers per run
+  = `replications` x the sum over the selected dataset's demand periods of (arrival rate per hour x period
+  length in hours) over the operating horizon. The exact refusal code and the R1 contract field are left to the
+  implementation stage, which needs separate authorization.
+- The other limits in section 6.2 and the result cap of section 22.6 are unchanged.
+
+**Measurement basis (ESTIMATES, not production measurements):**
+
+- Container limited to `--cpus 0.1 --memory 512m` with no swap (the Render Free plan is 0.1 CPU and 512 MB),
+  `python:3.14` (3.14.8), dependencies from `pip install -r requirements.txt` as Render builds them (numpy 2.2.6,
+  SQLAlchemy 2.1.3, FastAPI 0.142.2, uvicorn 0.54.0), the production Start Command (one uvicorn process,
+  `--no-access-log`), `RESULT_JSONB_MAX_BYTES=786432`, and a disposable PostgreSQL 17.11 migrated to `0005`.
+  Host: Windows 11, Intel Core i3-8145U. The code was `git archive` of `5d5c685d`.
+- Maximum structure (9 replications, 52 segments, 24 employees, 48 split shifts with breaks), DRAIN, demand =
+  `NOVAMART_AVERAGE_ROWS` (107.5 expected customers per day) times the factor below. 18 runs in one
+  warm container, 3 interleaved repeats per factor:
+
+| Demand factor | Expected customers per run | R3 seconds | R6 seconds (replication 3) | Within 60 s |
+|---|---|---|---|---|
+| 0.5 | 484 | 13.8-21.7 | 4.8-5.1 | yes |
+| 1 | 968 | 20.2-30.9 | 3.0-7.8 | yes |
+| 2 | 1,935 | 25.9-28.9 | 5.1-9.8 | yes |
+| **3** | **2,903** | **36.4-43.5** | **13.1-14.5** | **yes (worst 72.5 % of 60 s)** |
+| 5 | 4,838 | 48.5-79.2 | 13.3-20.5 | no (2 of 3) |
+| 10 | 9,675 | 94.1-113.6 | 26.4-36.1 | no |
+
+- Actual arrivals were within about 5 % of the expected count. Every run returned 200, and every R6 was valid.
+- A linear fit gives R3 of about 13.4 s plus 9.4 ms per customer, with residuals from -11 to +21 s. The bound is
+  therefore set at the largest factor where every measured run passed, not at the fitted crossing.
+- Memory: process peak (VmHWM) 293 MB; container peak 426 MB including reclaimable page cache; no OOM kill.
+- Earlier single runs in fresh containers (first request after start) were slower: R3 50 s at factor 1, 100 s
+  at factor 5, 48 s at factor 10, and 218-252 s at factor 30; R6 60-73 s at factor 30. Startup to ready took
+  64-168 s.
+
+**Still open:**
+
+- A first request after a Render Free spin-up at about 2,900 customers was not measured cold and may exceed
+  60 s.
+- Render hardware speed is UNKNOWN; the bound must be checked against a real production run after release.
