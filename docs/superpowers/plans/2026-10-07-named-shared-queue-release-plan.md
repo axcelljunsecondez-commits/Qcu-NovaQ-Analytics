@@ -113,3 +113,31 @@ These are re-read at the start of the window (step W1); any difference stops the
 - **Still open:** daily scheduled backups now exist (REPORTED by `main`'s handoff), so W3 may use the latest
   scheduled backup if the owner prefers. The backup private key has no off-PC copy yet (REPORTED), which is an
   operational risk outside this release.
+
+## 9. Release record (2026-10-08, UTC)
+
+- **W2 DONE:** `491a9d31` pushed to `ci/verify-491a9d31`; draft PR #28 into `main` (never merged). CI run
+  37704686284 (`pull_request`): all 11 jobs succeeded, finished 00:13:39. Pages listed the branch as a Preview
+  with "No deployment available" (nothing built).
+- **W3 DONE (owner choice):** no new backup; the release backup is the scheduled `novaq-sched-20261007T141913Z`
+  (status OK, revision `0005`, 2026-10-07 14:19:32, encrypted SHA-256 `45b70e9b…a337`), read from
+  `LAST_STATUS.txt` in the OneDrive copy.
+- **W1 repeated, all match (read in the dashboards, finished 03:56):** Render live `1c8e8de` (no later events),
+  18 env keys, `RESULT_JSONB_MAX_BYTES=786432`, Start Command `uvicorn backend.api.main:app --host 0.0.0.0
+  --port $PORT --workers 1 --no-proxy-headers --no-access-log`, Pre-Deploy Command empty, branch `main`,
+  Auto-Deploy Off, PR Previews Off; Pages production `b7ac08c8` (from `1c8e8de`), Branch control
+  "Automatic deployments: Disabled"; `/api/ready` 200.
+- **W4 DONE (owner GO):** `main` fast-forwarded `16e7ddbc..491a9d31` (41 commits) between 03:56:19 and 03:57:55 (the push CI run's creation). No deploy
+  started: Render's last event stayed `1c8e8de`, Pages listed `main 491a9d3` with "No deployment available".
+  Push CI run 37725205872: all 11 jobs succeeded, finished 04:19:17.
+- **W5 DONE:** owner Manual Deploy (specific commit) of `491a9d3`: started 04:02, "Deploy live for 491a9d3"
+  04:04. Log: the Start Command above, about 57 s until "Started server process" (with Render's "No open ports
+  detected" notice), "Application startup complete" 04:04:23, then the old instance shut down cleanly.
+- **W6 DONE:** no tracebacks in the log; `/api/ready` 200 at 04:05:21; unauthenticated R1 returns 401 while an
+  unknown route returns 404; the owner's logged-in R1 for analysis 6 returned 200 at 04:16:16 (Render log,
+  `user_id=4`) with `limits.result_max_bytes = 786432`, `max_expected_customers_per_run = 2900` and
+  `status = provisional_not_production_approved` (owner-pasted response). This VERIFIES the production cap
+  through the app.
+- **Owner actions in the same session (not part of the release):** analyses 6 and 11 archived (04:16:26,
+  04:16:32; owner confirmed intentional) and analysis 17 created (04:16:46).
+- **W7:** this docs-only commit is the one pushed to `main` with Pages automatic deployments on.
