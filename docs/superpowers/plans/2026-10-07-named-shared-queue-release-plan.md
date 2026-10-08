@@ -116,7 +116,8 @@ These are re-read at the start of the window (step W1); any difference stops the
 
 ## 9. Release record (2026-10-08, UTC)
 
-- **W2 DONE:** `491a9d31` pushed to `ci/verify-491a9d31`; draft PR #28 into `main` (never merged). CI run
+- **W2 DONE:** `491a9d31` pushed to `ci/verify-491a9d31`; draft PR #28 into `main`, for CI only. GitHub marked it merged at
+  03:57:52, when W4 pushed its head commit to `main` (no merge commit); the branch was deleted afterwards. CI run
   37704686284 (`pull_request`): all 11 jobs succeeded, finished 00:13:39. Pages listed the branch as a Preview
   with "No deployment available" (nothing built).
 - **W3 DONE (owner choice):** no new backup; the release backup is the scheduled `novaq-sched-20261007T141913Z`

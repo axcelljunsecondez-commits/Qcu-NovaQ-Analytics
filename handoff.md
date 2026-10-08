@@ -27,7 +27,10 @@ The Named Shared Queue API/UI first slice is released. The step record is
     the owner skipped the production timing run (W9), so production R3/R6
     time near 2,900 customers and the first request after a spin-down are
     NOT TESTED. Startup after the deploy took about 57 s.
-  - Draft PR #28 (`ci/verify-491a9d31`) exists for CI only; never merge it.
+  - PR #28 (`ci/verify-491a9d31`, opened for CI only) was marked merged by
+    GitHub at 03:57:52 UTC, when W4 pushed its head `491a9d31` to `main`; no
+    merge commit was created. The `ci/verify-491a9d31` branch was deleted
+    afterwards.
   - Analyses 6 and 11 were archived by the owner on 2026-10-08 (intentional).
 - Everything below in the G8 section still holds except its "current"
   backend and Pages deployment lines, which this section supersedes.
