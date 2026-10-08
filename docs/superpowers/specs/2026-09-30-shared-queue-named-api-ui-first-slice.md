@@ -1656,3 +1656,17 @@ reported its exact byte count in the 413 detail.
     `backend`.
 - No change under `backend/queueing_engine/`, `migrations/`, or `requirements*`. Generation enforcement
   stays `False`.
+
+### 22.10 Production release (2026-10-08)
+
+- Released: backend `491a9d3` on Render (live 04:04 UTC) and Pages `16a21277` from `main` `285b35e`. Step
+  record: `docs/superpowers/plans/2026-10-07-named-shared-queue-release-plan.md` section 9. Section 22.9's
+  "LOCAL, not pushed or deployed" describes 2026-10-07 only.
+- VERIFIED through the app: the logged-in R1 contract returns `limits.result_max_bytes = 786432`,
+  `max_expected_customers_per_run = 2900`, and `status = provisional_not_production_approved`. This closes the
+  section 22.7 item "the production cap value is REPORTED"; the value was also read in Render's Environment page
+  on 2026-10-08.
+- VERIFIED: one uvicorn process (`--workers 1` in the Start Command; Render logged `WEB_CONCURRENCY=1`).
+- NOT TESTED: the production timing run (release plan W9) was skipped by the owner. Production R3 and R6 time
+  near 2,900 expected customers, the first request after a Render spin-down, and production memory remain
+  unmeasured. The limits therefore remain **NOT PRODUCTION-APPROVED**.

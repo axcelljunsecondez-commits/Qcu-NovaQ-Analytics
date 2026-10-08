@@ -1,6 +1,38 @@
 ﻿# NovaQ Current Handoff
 
-## G8 G-A release (2026-10-06; current)
+## Named Shared Queue release (2026-10-08; current)
+
+The Named Shared Queue API/UI first slice is released. The step record is
+`docs/superpowers/plans/2026-10-07-named-shared-queue-release-plan.md` §9.
+
+- Backend: Render `srv-daiikrbm8hqs73d15rtg` runs `491a9d3` (owner Manual
+  Deploy, live 2026-10-08 04:04 UTC). Same settings as below: 18 env keys,
+  `RESULT_JSONB_MAX_BYTES=786432`, the same Start Command, Auto-Deploy and PR
+  Previews Off. No migration ran; the database stays at `0005`.
+- Frontend: Pages production `16a21277` (`main` `285b35e`, serving by 2026-10-08
+  04:24:30 UTC, bundle `index-DxMbj5_C.js`). Automatic deployments were switched
+  on for that one build and read back Disabled afterwards.
+- `main` is `285b35ef` (`491a9d31` plus the docs-only release record).
+- VERIFIED after release: `/api/ready` 200; R1 contract through the app
+  returns `limits.result_max_bytes = 786432` and
+  `max_expected_customers_per_run = 2900` (owner's logged-in read of
+  analysis 6, 04:16 UTC); the Named view loads on analysis 17 and the legacy
+  pages still return 200; no 5xx or traceback in the Render log. CI green on
+  `491a9d31` (PR #28 run 37704686284; push run 37725205872, 11/11 each).
+- Release backup: the scheduled `novaq-sched-20261007T141913Z` (owner choice).
+- Rollback: Render `1c8e8de` (no database change needed), Pages `b7ac08c8`.
+- Open:
+  - The limits (9 replications, 52 segments, 24 employees, 48 shifts, 2,900
+    expected customers per run) stay provisional and NOT PRODUCTION-APPROVED:
+    the owner skipped the production timing run (W9), so production R3/R6
+    time near 2,900 customers and the first request after a spin-down are
+    NOT TESTED. Startup after the deploy took about 57 s.
+  - Draft PR #28 (`ci/verify-491a9d31`) exists for CI only; never merge it.
+  - Analyses 6 and 11 were archived by the owner on 2026-10-08 (intentional).
+- Everything below in the G8 section still holds except its "current"
+  backend and Pages deployment lines, which this section supersedes.
+
+## G8 G-A release (2026-10-06)
 
 G-A `2ccb86527a0f48928e4d5c26f3d9bd5f0e6abc35` is released. The full step
 record is `docs/superpowers/plans/2026-10-05-g8-go-packet.md` §6; the

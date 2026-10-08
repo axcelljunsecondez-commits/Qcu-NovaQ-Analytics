@@ -432,3 +432,11 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - VERIFIED: no first-slice application defect was reproduced, and no application code or test file changed. Generation enforcement remains `False`. This dated note supersedes the earlier first-slice Stage 3 `NOT TESTED` line only; detailed observations are in spec section 21.7 and the current handoff.
 - UNKNOWN: production result-size cap, Render and Cloudflare limits, production PostgreSQL version, and Filipino wording quality. Replication, segment, employee, and shift limits remain provisional and NOT PRODUCTION-APPROVED. No production access, push, merge, or deployment occurred.
 - VERIFIED Stage 3 final-tree gates: backend 2856 passed, 123 skipped, 1 xfailed, 6 subtests; named API on local PostgreSQL 16.15 141 passed, 1 SQLite-only skip; frontend 61 files and 443 tests, typecheck, lint, build passed; Ruff passed; mypy found no issues in 200 source files; git diff --check passed. Bare Ruff was unavailable on PATH, so the repository virtual-environment executable was used. No frontend timeout occurred.
+
+## Shared-Queue Named Release (2026-10-08)
+
+- The first slice is in production: backend `491a9d3` on Render, Pages `16a21277` from `main` `285b35e` (record: `docs/superpowers/plans/2026-10-07-named-shared-queue-release-plan.md` §9).
+- Production result cap: `RESULT_JSONB_MAX_BYTES=786432` (owner decision 2026-10-07, spec §22.6), VERIFIED through the app's R1 contract after the release.
+- R2 and R3 refuse a run above 2,900 expected customers (spec §22.8 and §22.9).
+- The limits stay provisional and NOT PRODUCTION-APPROVED: no production timing run was made (owner skipped W9).
+- Pages releases from `main`: do not retry a deploy of a commit Pages first saw on a `ci/` branch (it builds a Preview). Push a new docs-only commit to `main` with automatic deployments switched on, then switch them off.

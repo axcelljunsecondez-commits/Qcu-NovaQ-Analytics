@@ -140,4 +140,27 @@ These are re-read at the start of the window (step W1); any difference stops the
   through the app.
 - **Owner actions in the same session (not part of the release):** analyses 6 and 11 archived (04:16:26,
   04:16:32; owner confirmed intentional) and analysis 17 created (04:16:46).
-- **W7:** this docs-only commit is the one pushed to `main` with Pages automatic deployments on.
+- **W7 DONE (owner GO):** the owner switched Pages automatic deployments on (read back Enabled for production
+  branch `main`); Render Auto-Deploy and PR Previews were re-read Off. The docs-only `285b35ef` (parent
+  `491a9d31`) was pushed to `main`. Pages built **Production** `main 285b35e` as deployment `16a21277`, which
+  succeeded; no Preview was built. `novaq.site` then served exactly the asset files of `16a21277` (main bundle
+  `index-DxMbj5_C.js`; `b7ac08c8` had `index-jBXJZ6bl.js`), and `/api/ready` returned 200 at 04:24:30. The owner
+  switched automatic deployments off, read back "Disabled". Render was not redeployed: `285b35ef` changes only
+  this file, so the backend stays `491a9d3`.
+- **W8 DONE:** the owner opened `/analyses/17/simulate` (a shared-queue analysis) and chose "Named Shared
+  Queue simulation". The owner's screenshot shows the Named view with the provisional-limits notice and "This
+  analysis cannot run a Named Shared Queue simulation: The Setup capacity is not unlimited" (correct: the
+  analysis's capacity is not Unlimited). The Render log shows `GET /analyses/17/shared-named/contract` and
+  `/shared-named/runs` 200 at 04:34:08 and 04:34:54 (`user_id=4`), and the legacy Simulate, workflow, current
+  and `/optimize/batch` requests 200. A log search for `status=5` over the hour found no line, and no traceback.
+  No CSP errors in the console: REPORTED by the owner (the console was not in the screenshot). The owner's
+  first "W8 done" report had no matching request in the log; the repeat above is the one recorded.
+- **W9 SKIPPED (owner decision):** no production timing run. Analysis 17's dataset (NovaMart's 13 hourly
+  periods) gives 107.5 expected customers per replication, so at most 967.5 per run, far below 2,900; a
+  heavier test dataset would have to be uploaded to production. Production R3/R6 run time near the bound, and
+  the first request after a Render spin-down, remain NOT TESTED.
+- **W10:** this record, `handoff.md`, `memory.md` and the spec's section 22.10. The limits stay provisional and
+  NOT PRODUCTION-APPROVED, because W9 did not run.
+- **Release result:** the Named Shared Queue first slice is live: backend `491a9d3` (Render, since 04:04),
+  frontend `16a21277` (Pages, from `285b35e`). Rollback targets are unchanged: Render `1c8e8de`, Pages
+  `b7ac08c8`.
