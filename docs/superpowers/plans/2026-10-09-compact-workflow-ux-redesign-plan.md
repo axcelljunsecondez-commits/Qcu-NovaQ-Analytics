@@ -72,6 +72,8 @@ Tests: `safeNext` rejects `//x`, absolute URLs and auth routes; Start → login 
 
 ## Phase U3 — My analyses, New analysis
 
+Status (2026-10-09): implemented and committed on local branch `feat/ux-u1-shell` after the owner approved the phase report (not pushed). Cards show the operating window only from saved time segments; when none are saved the card says nothing about the window (not "Window not set yet", which would be wrong for analyses whose uploaded data defines the periods). Period counts are not shown because they would need a dataset request per card.
+
 Search (URL `?q=`), structure filter with Home wording, cards with window/period count only when derivable, archive confirmation, empty state; New analysis picture cards (shared SVG component), inline recommender.
 
 Tests: search restore from URL; recommender answers equal `GuidedSetupPage.recommend`; archive asks first.
