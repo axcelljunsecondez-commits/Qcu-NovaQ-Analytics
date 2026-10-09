@@ -1,69 +1,43 @@
-import { useEffect, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
+import { listAnalyses } from '../../api/analyses'
 import { useAuth } from '../../auth/useAuth'
-import { LanguageSelector } from './LanguageSelector'
-import { ThemeToggle } from './ThemeToggle'
+import { resolveLastAnalysis, storedLastAnalysis, subscribeLastAnalysis } from '../../lib/lastAnalysis'
+import { Tooltip } from '../ui/Tooltip'
+import { AccountMenu } from './AccountMenu'
+import { navGroups, type NavIconName } from './navigation'
 
-type IconName = 'dashboard' | 'analyses' | 'datasets' | 'calculator' | 'help' | 'account' | 'admin'
-
-interface NavItem {
-  key: string
-  to: string
-  icon: IconName
-  adminOnly?: boolean
-  end?: boolean
-}
-
-interface NavSection {
-  title: string
-  items: NavItem[]
-}
-
-const navSections: NavSection[] = [
-  { title: 'nav.section_overview', items: [{ key: 'dashboard', to: '/dashboard', icon: 'dashboard' }] },
-  {
-    title: 'nav.section_operation',
-    items: [
-      { key: 'analyses', to: '/analyses', icon: 'analyses', end: true },
-      { key: 'datasets', to: '/datasets', icon: 'datasets' },
-    ],
-  },
-  { title: 'nav.section_decision', items: [{ key: 'advanced_analysis', to: '/analysis', icon: 'calculator' }] },
-  {
-    title: 'nav.section_account',
-    items: [
-      { key: 'help', to: '/help', icon: 'help' },
-      { key: 'account', to: '/account', icon: 'account' },
-      { key: 'admin', to: '/admin', icon: 'admin', adminOnly: true },
-    ],
-  },
-]
-
-const iconPaths: Record<IconName, string> = {
-  dashboard: 'M3 13h8V3H3v10Zm10 8h8V11h-8v10ZM3 21h8v-6H3v6Zm10-12h8V3h-8v6Z',
+const iconPaths: Record<NavIconName, string> = {
   analyses: 'M6 2h9l5 5v15H6V2Zm8 1.5V8h4.5M9 12h8M9 16h8M9 20h5',
-  datasets: 'M4 6c0-2 3.6-3 8-3s8 1 8 3-3.6 3-8 3-8-1-8-3Zm0 0v6c0 2 3.6 3 8 3s8-1 8-3V6m-16 6v6c0 2 3.6 3 8 3s8-1 8-3v-6',
+  results: 'M4 20V10m6 10V4m6 16v-8m6 8H2',
+  reports: 'M7 3h7l5 5v13H7V3Zm7 0v5h5M10 13h6m-6 4h6',
+  simulation: 'M3 4h7v7H3V4Zm11 9h7v7h-7v-7ZM10 7h4v6',
   calculator: 'M5 2h14v20H5V2Zm3 4h8v4H8V6Zm0 8h2m3 0h3m-8 4h2m3 0h3',
-  help: 'M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.9.4-1.4 1-1.4 2.2M12 18h.01M22 12A10 10 0 1 1 2 12a10 10 0 0 1 20 0Z',
-  account: 'M20 21a8 8 0 0 0-16 0m8-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
-  admin: 'M12 3 4 6v6c0 5 3.4 8 8 9 4.6-1 8-4 8-9V6l-8-3Zm0 5v8m-4-4h8',
 }
 
-function NavIcon({ name }: { name: IconName }) {
+function NavIcon({ name }: { name: NavIconName }) {
   return (
     <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d={iconPaths[name]} fill={name === 'dashboard' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={iconPaths[name]} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  collapsed?: boolean
+  onToggleCollapsed?: () => void
+}
+
+export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { t } = useTranslation()
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses, enabled: Boolean(user) })
+  const storedId = useSyncExternalStore(subscribeLastAnalysis, storedLastAnalysis)
+  const lastAnalysisId = resolveLastAnalysis(analyses.data?.analyses, storedId)
 
   useEffect(() => setOpen(false), [location.pathname])
   useEffect(() => {
@@ -74,15 +48,26 @@ export function Sidebar() {
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [])
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
+  const hideLabel = collapsed ? t('nav.show_sidebar') : t('nav.hide_sidebar')
 
   return (
-    <aside className={`sidebar${open ? ' is-open' : ''}`}>
+    <aside className={`sidebar${open ? ' is-open' : ''}${collapsed ? ' is-collapsed' : ''}`}>
       <div className="sidebar-header">
         <div className="sidebar-brand">Nova<b>Q</b></div>
+        {onToggleCollapsed && (
+          <Tooltip label={hideLabel}>
+            <button
+              type="button"
+              className="sidebar-hide-toggle"
+              aria-label={hideLabel}
+              aria-expanded={!collapsed}
+              aria-controls="global-navigation"
+              onClick={onToggleCollapsed}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
+            </button>
+          </Tooltip>
+        )}
         <button
           type="button"
           className="sidebar-menu-toggle"
@@ -96,30 +81,34 @@ export function Sidebar() {
       </div>
       <div className="sidebar-drawer" id="global-navigation">
         <nav className="sidebar-nav" aria-label={t('nav.global_navigation')}>
-          {navSections.map((section) => (
-            <div key={section.title} className="nav-section">
-              <div className="nav-section-title">{t(section.title)}</div>
-              {section.items.map((item) => {
-                if (item.adminOnly && user?.role !== 'admin') return null
+          {navGroups.map((group) => (
+            <div key={group.key} className="nav-section">
+              <div className="nav-section-title">{t(`nav.group_${group.key}`)}</div>
+              {group.items.map((item) => {
+                const active = item.matches(location.pathname)
+                const label = t(`nav.${item.key}`)
                 return (
-                  <NavLink key={item.key} to={item.to} end={item.end} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-                    <NavIcon name={item.icon} />
-                    <span>{t(`nav.${item.key}`)}</span>
-                  </NavLink>
+                  <Tooltip key={item.key} label={label} enabled={collapsed}>
+                    <Link
+                      to={item.target(lastAnalysisId)}
+                      className={active ? 'active' : undefined}
+                      aria-current={active ? 'page' : undefined}
+                    >
+                      <NavIcon name={item.icon} />
+                      <span className="nav-label">{label}</span>
+                    </Link>
+                  </Tooltip>
                 )
               })}
             </div>
           ))}
         </nav>
         <div className="sidebar-footer">
-          <LanguageSelector />
-          <ThemeToggle />
           <div className="sidebar-product-note">
             <span>NovaQ v1.0 · {t('nav.capstone')}</span>
             <span>{t('nav.motto')}</span>
           </div>
-          {user && <div className="sidebar-user">{user.email}</div>}
-          <button type="button" className="btn-ghost sidebar-logout" onClick={handleLogout}>{t('nav.logout')}</button>
+          <AccountMenu compact={collapsed} />
         </div>
       </div>
     </aside>

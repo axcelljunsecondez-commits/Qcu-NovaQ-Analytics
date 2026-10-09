@@ -4,6 +4,7 @@ import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
 import { RequireOnboarding } from './auth/RequireOnboarding'
 import { RequireRole } from './auth/RequireRole'
+import { useAuth } from './auth/useAuth'
 import { AppLayout } from './components/layout/AppLayout'
 import { AnalysisWorkspace } from './components/analysis/AnalysisWorkspace'
 import { ApiState } from './components/ui/ApiState'
@@ -16,12 +17,6 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })))
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })))
 const GuidedSetupPage = lazy(() => import('./pages/GuidedSetupPage').then((m) => ({ default: m.GuidedSetupPage })))
-const DashboardPage = lazy(() =>
-  import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
-)
-const DatasetsPage = lazy(() =>
-  import('./pages/DatasetsPage').then((m) => ({ default: m.DatasetsPage })),
-)
 const AnalysisPage = lazy(() =>
   import('./pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })),
 )
@@ -37,11 +32,8 @@ const ComparisonPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
-const AccountPage = lazy(() =>
-  import('./pages/AccountPage').then((m) => ({ default: m.AccountPage })),
-)
 const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })))
-const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const AnalysesPage = lazy(() => import('./pages/AnalysesPage').then((m) => ({ default: m.AnalysesPage })))
 const NewAnalysisPage = lazy(() => import('./pages/NewAnalysisPage').then((m) => ({ default: m.NewAnalysisPage })))
 const AnalysisSetupPage = lazy(() => import('./pages/AnalysisSetupPage').then((m) => ({ default: m.AnalysisSetupPage })))
@@ -57,6 +49,15 @@ function RootLayout() {
       </Suspense>
     </AuthProvider>
   )
+}
+
+// Unknown paths: signed-in users go to My analyses, everyone else to sign in.
+// (The public Home page that will receive signed-out users arrives in plan phase U2.)
+// oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
+function UnknownRoute() {
+  const { user, isLoading } = useAuth()
+  if (isLoading) return <ApiState.Loading />
+  return <Navigate to={user ? '/analyses' : '/login'} replace />
 }
 
 export function createAppRouter() {
@@ -102,16 +103,21 @@ export function createAppRouter() {
                         { path: 'reports', element: <ReportsPage /> },
                       ],
                     },
-                    { path: '/dashboard', element: <DashboardPage /> },
-                    { path: '/datasets', element: <DatasetsPage /> },
-                    { path: '/analysis', element: <AnalysisPage /> },
+                    { path: '/tools/calculator', element: <AnalysisPage /> },
                     { path: '/help', element: <HelpPage /> },
-                    { path: '/account', element: <AccountPage /> },
+                    { path: '/settings', element: <Navigate to="/settings/account" replace /> },
+                    { path: '/settings/:section', element: <SettingsPage /> },
                     {
-                      path: '/admin',
+                      path: '/settings/users',
                       element: <RequireRole role="admin" />,
-                      children: [{ index: true, element: <AdminPage /> }],
+                      children: [{ index: true, element: <SettingsPage section="users" /> }],
                     },
+                    // Compatibility redirects (spec §5). /settings/users keeps the admin-only check.
+                    { path: '/dashboard', element: <Navigate to="/analyses" replace /> },
+                    { path: '/datasets', element: <Navigate to="/settings/files" replace /> },
+                    { path: '/analysis', element: <Navigate to="/tools/calculator" replace /> },
+                    { path: '/account', element: <Navigate to="/settings/account" replace /> },
+                    { path: '/admin', element: <Navigate to="/settings/users" replace /> },
                   ],
                 },
               ],
@@ -120,7 +126,7 @@ export function createAppRouter() {
         },
         {
           path: '*',
-          element: <Navigate to="/login" replace />,
+          element: <UnknownRoute />,
         },
       ],
     },

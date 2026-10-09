@@ -48,6 +48,10 @@ describe('canonical route contract', () => {
       '/analysis',
       '/account',
       '/admin',
+      '/tools/calculator',
+      '/settings',
+      '/settings/:section',
+      '/settings/users',
       '*',
     ]))
     expect(paths).not.toEqual(expect.arrayContaining(['/optimize', '/simulate', '/compare']))

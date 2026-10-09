@@ -52,6 +52,8 @@ Acceptance: docs-only diff; MASTER renders as Markdown; decisions traceable from
 
 ## Phase U1 — Shell, account menu, Settings, redirects
 
+Status (2026-10-09): implemented and committed on local branch `feat/ux-u1-shell` after the owner approved the phase report (not pushed). Redirects implemented in U1 are only those whose destination exists (`/dashboard`, `/datasets`, `/analysis`, `/account`, `/admin`); `/onboarding` moves with U2 and the analysis-route redirects with U3–U7. Preferences join Settings in U2 (B1).
+
 Files: `router.tsx`, `components/layout/Sidebar.tsx`, `AppLayout.tsx`, `LanguageSelector.tsx`, `ThemeToggle.tsx`, new `components/layout/AccountMenu.tsx`, `AppHeader.tsx`, `components/ui/Tooltip.tsx`, new `pages/SettingsPage.tsx` (composes existing Account, Datasets, Admin content), `styles/global.css`, locales, tests.
 
 Tasks: sidebar groups (spec §7.3); hide-sidebar icon button with accessible name and tooltip; account menu (email, Settings, Language, Get help, Log out) with menu keyboard semantics; icon rail with focus tooltips; `/settings/:section`; compatibility redirects (spec §5); last-used analysis helper.

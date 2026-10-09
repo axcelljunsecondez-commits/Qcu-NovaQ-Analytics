@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -5,6 +6,7 @@ import { getAnalysis, listAnalyses } from '../../api/analyses'
 import { ApiState } from '../ui/ApiState'
 import { WorkflowNavigator } from './WorkflowNavigator'
 import { analysisWorkflow } from '../../lib/workflow'
+import { rememberLastAnalysis } from '../../lib/lastAnalysis'
 
 export function AnalysisWorkspace() {
   const { t } = useTranslation()
@@ -14,6 +16,10 @@ export function AnalysisWorkspace() {
   const id = Number(analysisId)
   const analysis = useQuery({ queryKey: ['analysis', id], queryFn: () => getAnalysis(id), enabled: Number.isInteger(id) })
   const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses })
+  const loadedId = analysis.data?.analysis.id
+  useEffect(() => {
+    if (loadedId !== undefined) rememberLastAnalysis(loadedId)
+  }, [loadedId])
   if (!Number.isInteger(id)) return <Navigate to="/analyses" replace />
   if (analysis.isLoading) return <ApiState.Loading />
   if (analysis.isError || !analysis.data) return <ApiState.ErrorState />
