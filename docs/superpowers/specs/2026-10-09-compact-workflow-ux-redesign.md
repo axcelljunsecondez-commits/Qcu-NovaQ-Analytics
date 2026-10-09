@@ -585,12 +585,12 @@ OD-UX-1..7 are answered (§0 D1–D7). Remaining items that need an owner decisi
 
 | ID | Question | When |
 |---|---|---|
-| OD-UX-8 | B6 trace limits for full-day replays | In the B4a spec |
-| OD-UX-9 | B4b representation of recorded service times and its reference cases | In the B4b spec |
-| OD-UX-10 | B10 storage and migration approach for the planning flag | In the B10 spec |
+| OD-UX-8 | B6 trace limits for full-day replays | ANSWERED 2026-10-09: reuse the named run's provisional limits; replays regenerated from seeds (`2026-10-09-b4a-continuous-shared-run-preview.md`) |
+| OD-UX-9 | B4b representation of recorded service times and its reference cases | ANSWERED 2026-10-09: resample recorded durations per period, nearest-period fallback, §5 checks approved (`2026-10-09-b4b-recorded-service-times.md`) |
+| OD-UX-10 | B10 storage and migration approach for the planning flag | ANSWERED 2026-10-09: new `datasets.purpose` column (migration 0006), fixed at upload, planning screens refuse review files (`2026-10-09-b10-planning-vs-review-file.md`) |
 | OD-UX-11 | Decision reason sentences, after mapping the backend rule | Before Phase U7 |
-| OD-UX-12 | B8 Excel formula coverage per model | In the B8 spec |
-| OD-UX-14 | Excel compatibility of the Formula check sheet: `SEQUENCE()` needs Excel 2021 / Microsoft 365; provide a helper-table fallback for older Excel and LibreOffice? | In the B8 spec |
+| OD-UX-12 | B8 Excel formula coverage per model | ANSWERED 2026-10-09: live formulas for M/M/1, M/G/1, M/M/c, M/G/c (`2026-10-09-b8-reports-pdf-excel.md`) |
+| OD-UX-14 | Excel compatibility of the Formula check sheet | ANSWERED 2026-10-09: helper columns, no `SEQUENCE()` (`2026-10-09-b8-reports-pdf-excel.md`) |
 | OD-UX-13 | Pass/fail rule (and therefore Decision) for the continuous shared run; until approved, Repeat the day shows ranges only and step 3 says a decision is not available | Before Phase 10 ships its Decision step |
 
 ---

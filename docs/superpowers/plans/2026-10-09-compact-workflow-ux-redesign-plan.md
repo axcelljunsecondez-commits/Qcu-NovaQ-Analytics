@@ -98,6 +98,8 @@ Tests: request payload equality with today; selection call sequence and cache in
 
 ## Phase 6 — Own specs (docs only, each approved separately)
 
+Status (2026-10-09): all five written and approved by the owner in chat (answers recorded in each spec): `docs/superpowers/specs/2026-10-09-b10-planning-vs-review-file.md`, `2026-10-09-b4a-continuous-shared-run-preview.md`, `2026-10-09-b4b-recorded-service-times.md`, `2026-10-09-b4c-shared-line-breaks.md`, `2026-10-09-b8-reports-pdf-excel.md`. Docs only; each implementation step still needs its own GO.
+
 - **B10** planning file vs review-only upload: storage (column or `validation_report_json` field), migration need, new `resolve_current_dataset` rule, effects on evidence currentness, generation guards, D7 tests, upload API shape, legacy datasets default (= planning).
 - **B4a** continuous shared run preview: route, inputs mapping from analysis segments and staffing, closing-rule storage in `queue_setup` (no default), compatibility refusals, replay via `shared_playback`, result size and trace limits (OD-UX-8 / B6), seeds and replications, pin test untouched.
 - **B4b** recorded service times: representation of service-time variation (e.g. per-period empirical resampling), continuity of customers in service and waiting across periods, reference cases and acceptance tests, engine version.
