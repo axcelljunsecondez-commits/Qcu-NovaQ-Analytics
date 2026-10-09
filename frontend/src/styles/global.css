@@ -4779,3 +4779,61 @@ a.btn-primary.home-start {
   width: min(460px, 100%);
   box-shadow: var(--shadow-md);
 }
+
+/* ===== Data and setup steps (spec 2026-10-09 §7.6) ===== */
+.setup-steps {
+  display: grid;
+  gap: var(--space-lg);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: setup-step;
+}
+
+.setup-step {
+  counter-increment: setup-step;
+}
+
+.setup-step-title {
+  margin: 0 0 var(--space-sm);
+  font-size: 1.25rem;
+}
+
+h2.setup-step-title::before,
+summary.setup-step-title::before {
+  content: counter(setup-step) '. ';
+  color: var(--primary);
+}
+
+.setup-advanced > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.setup-manual {
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.setup-manual > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.setup-manual input[type='number'] {
+  width: 100%;
+  min-width: 90px;
+}
+
+.setup-make-periods {
+  margin: var(--space-md) 0;
+}

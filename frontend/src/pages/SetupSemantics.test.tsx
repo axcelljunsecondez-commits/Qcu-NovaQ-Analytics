@@ -87,7 +87,7 @@ describe('setup semantic contracts', () => {
     renderWithProviders(
       <Routes>
         <Route path="/analyses/:analysisId/guided-setup" element={<GuidedSetupPage />} />
-        <Route path="/analyses/:analysisId/setup" element={<div>Canonical setup</div>} />
+        <Route path="/analyses/:analysisId/data" element={<div>Canonical setup</div>} />
       </Routes>,
       { route: '/analyses/7/guided-setup' },
     )
@@ -114,7 +114,7 @@ describe('setup semantic contracts', () => {
     renderWithProviders(
       <Routes>
         <Route path="/analyses/:analysisId/guided-setup" element={<GuidedSetupPage />} />
-        <Route path="/analyses/:analysisId/setup" element={<div>Canonical setup</div>} />
+        <Route path="/analyses/:analysisId/data" element={<div>Canonical setup</div>} />
       </Routes>,
       { route: '/analyses/7/guided-setup' },
     )

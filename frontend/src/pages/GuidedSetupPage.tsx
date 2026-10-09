@@ -41,7 +41,7 @@ export function GuidedSetupPage() {
       await queryClient.invalidateQueries({ queryKey: ['analysis', id] })
       // A Setup change can make saved scenarios stale: drop their cached evidence status (4d).
       void queryClient.resetQueries({ queryKey: ['scenarios', id] })
-      navigate(`/analyses/${id}/setup`, { replace: true })
+      navigate(`/analyses/${id}/data`, { replace: true })
     },
     onError: () => setError(t('errors.server')),
   })
@@ -63,7 +63,7 @@ export function GuidedSetupPage() {
         <div className="card">
           <p role="status">{t('guided.already_set')}</p>
           <p className="form-hint">
-            <Link to={`/analyses/${id}/setup`}>{t('guided.back_to_setup')}</Link>
+            <Link to={`/analyses/${id}/data`}>{t('guided.back_to_setup')}</Link>
           </p>
         </div>
       </div>
@@ -190,7 +190,7 @@ export function GuidedSetupPage() {
         )}
         {error && <div role="alert" className="alert alert-error">{error}</div>}
         <p className="form-hint">
-          <Link to={`/analyses/${id}/setup`}>{t('guided.back_to_setup')}</Link>
+          <Link to={`/analyses/${id}/data`}>{t('guided.back_to_setup')}</Link>
         </p>
       </div>
     </div>

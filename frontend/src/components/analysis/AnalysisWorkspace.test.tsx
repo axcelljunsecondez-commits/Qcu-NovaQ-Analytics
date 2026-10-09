@@ -68,9 +68,9 @@ describe('AnalysisWorkspace', () => {
     )
     expect(await screen.findByRole('heading', { name: 'Analysis 1' })).toBeInTheDocument()
     expect(screen.getByText('Step 2 of 7')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back: Setup' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Back: Data and setup' })).toHaveAttribute(
       'href',
-      '/analyses/1/setup',
+      '/analyses/1/data',
     )
     expect(screen.getByRole('link', { name: 'Next: Optimize' })).toHaveAttribute(
       'href',

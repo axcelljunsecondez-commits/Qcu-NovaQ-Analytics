@@ -9,6 +9,8 @@ import { BreakEditor } from '../components/analysis/BreakEditor'
 import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { SetupDataTemplates } from '../components/analysis/SetupDataTemplates'
 import { messageOf } from '../lib/format'
+import { MakePeriodsHelper } from '../components/setup/MakePeriodsHelper'
+import { ManualEntry } from '../components/setup/ManualEntry'
 
 const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null, segments: [], separate_queue_closure_policy: 'drain_existing',     queue_ids: [], breaks: [] }
 
@@ -179,13 +181,17 @@ export function AnalysisSetupPage() {
     try { await downloadSetupWorkbook(id) } catch (error) { setNoticeIsError(true); setNotice(messageOf(error, t('errors.server'))) }
   }
   const savedIsSeparate = analysis.data.analysis.queue_setup.queue_structure === 'separate_queues'
+  const savedIsShared = analysis.data.analysis.queue_setup.queue_structure === 'shared_queue'
   const read = preview?.derived_setup ?? null
+  // Data and setup (spec 2026-10-09 §7.6): numbered steps around the unchanged Setup
+  // form, upload flow and cache resets. Advanced settings open by default only while
+  // the queue structure is still unknown, because choosing it is needed first.
   return (
-    <div>
+    <div className="setup-page">
       <header className="page-header">
         <p className="topbar-eyebrow">{t('setup.canonical_eyebrow')}</p>
-        <h1 className="page-title">{t('analyses.setup')}</h1>
-        <p className="page-caption">{t('setup.canonical_description')}</p>
+        <h1 className="page-title">{t('setup.data_title')}</h1>
+        <p className="page-caption">{t('setup.data_description')}</p>
       </header>
       {setup.queue_structure === 'unknown' && (
         <div className="alert alert-warn" style={{ marginBottom: '12px' }}>
@@ -193,74 +199,98 @@ export function AnalysisSetupPage() {
           <Link to="../guided-setup">{t('analyses.choose_structure')}</Link>
         </div>
       )}
-      <form className="card" onSubmit={submit}>
-        <h2 className="card-title">{t('analyses.queue_setup')}</h2>
-        {setup.queue_structure === 'unknown' ? (
-          <div className="form-field"><label htmlFor="queue-structure">{t('analyses.queue_structure')}</label><select id="queue-structure" aria-describedby="queue-structure-help" value={setup.queue_structure} onChange={(e) => changeQueueStructure(e.target.value as QueueSetup['queue_structure'])}><option value="unknown">{t('analyses.unknown')}</option><option value="shared_queue">{t('analyses.shared')}</option><option value="single_server">{t('analyses.single')}</option><option value="separate_queues">{t('analyses.separate')}</option></select><span id="queue-structure-help" className="form-hint">{t('setup.queue_structure_help')}</span></div>
-        ) : (
-          <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
-        )}
-        {setup.queue_structure === 'separate_queues' && <QueueIdEditor ids={setup.queue_ids} onChange={changeQueueIds} />}
-        {setup.queue_structure === 'separate_queues' && <div className="form-field"><label htmlFor="period-basis">{t('analyses.period_basis')}</label><select id="period-basis" aria-describedby="period-basis-help" value={setup.event_period_basis ?? 'per_date'} onChange={(e) => set('event_period_basis', e.target.value as EventPeriodBasis)}><option value="per_date">{t('analyses.period_basis_per_date')}</option><option value="representative_day">{t('analyses.period_basis_representative_day')}</option></select><span id="period-basis-help" className="form-hint">{t('analyses.period_basis_help')}</span></div>}
-        {setup.queue_structure === 'separate_queues' && <BreakEditor queueIds={setup.queue_ids} breaks={setup.breaks ?? []} onChange={(breaks) => set('breaks', breaks)} />}
-        <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
-        <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>
-        {setup.queue_structure === 'separate_queues' && <div className="card"><h3 className="card-title">{t('analyses.segments')}</h3>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
-        <div className="form-field"><label htmlFor="capacity-mode">{t('analyses.capacity')}</label><select id="capacity-mode" value={setup.capacity_mode} onChange={(e) => { const value = e.target.value as QueueSetup['capacity_mode']; setSetup((old) => ({ ...old, capacity_mode: value, ...(value !== 'finite' ? { total_system_capacity: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="unlimited">{t('analyses.unlimited')}</option><option value="finite">{t('analyses.finite')}</option></select></div>
-        {setup.capacity_mode === 'finite' && <div className="form-field"><label htmlFor="capacity-total">{t('analyses.total_capacity')}</label><input id="capacity-total" type="number" min="1" value={setup.total_system_capacity ?? ''} onChange={(e) => set('total_system_capacity', e.target.value ? Number(e.target.value) : null)} /></div>}
-        <div className="form-field"><label htmlFor="abandonment-mode">{t('analyses.abandonment')}</label><select id="abandonment-mode" value={setup.abandonment_mode} onChange={(e) => { const value = e.target.value as QueueSetup['abandonment_mode']; setSetup((old) => ({ ...old, abandonment_mode: value, ...(value !== 'modeled' ? { patience_rate_per_hour: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="not_modeled">{t('analyses.not_modeled')}</option><option value="modeled">{t('analyses.modeled')}</option></select></div>
-        {setup.abandonment_mode === 'modeled' && <div className="form-field"><label htmlFor="patience-rate">{t('analyses.theta')}</label><input id="patience-rate" type="number" step="any" required aria-invalid={Boolean(formError)} aria-describedby="patience-rate-help" value={setup.patience_rate_per_hour ?? ''} onChange={(e) => { setFormError(null); set('patience_rate_per_hour', e.target.value ? Number(e.target.value) : null) }} /><span id="patience-rate-help" className="form-hint">{t('analyses.theta_required')}</span></div>}
-        {formError && <div className="alert alert-error" role="alert">{formError}</div>}
-        {save.isError && <div className="alert alert-error">{messageOf(save.error, t('errors.server'))}</div>}
-        <button type="submit" disabled={save.isPending}>{t('common.save')}</button>
-      </form>
-      <div className="card">
-        <h2 className="card-title">{t('analyses.upload')}</h2>
-        <p className="page-caption">{t('analyses.upload_help')}</p>
-        <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" onChange={pick} />
-        <button type="button" disabled={!file || upload.isPending || checking} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
-        {notice && <div className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}</div>}
-        {readErrors.length > 0 && (
-          <div className="alert alert-error" role="alert">
-            <strong>{t('analyses.upload_read_errors')}</strong>
-            <ul>{readErrors.map((message) => <li key={message}>{message}</li>)}</ul>
+      <ol className="setup-steps">
+        <li className="setup-step">
+          <h2 className="setup-step-title">{t('setup.step_template')}</h2>
+          <p className="page-caption">{t('setup.step_template_help')}</p>
+          {setup.queue_structure === 'shared_queue' || setup.queue_structure === 'separate_queues'
+            ? <SetupDataTemplates queueStructure={setup.queue_structure} />
+            : <p className="form-hint">{t('setup.step_template_needs_structure')}</p>}
+        </li>
+        <li className="setup-step">
+          <h2 className="setup-step-title">{t('setup.step_add_data')}</h2>
+          <div className="card">
+            <h3 className="card-title">{t('analyses.upload')}</h3>
+            <p className="page-caption">{t('analyses.upload_help')}</p>
+            <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" onChange={pick} />
+            <button type="button" disabled={!file || upload.isPending || checking} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
+            {notice && <div className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}</div>}
+            {readErrors.length > 0 && (
+              <div className="alert alert-error" role="alert">
+                <strong>{t('analyses.upload_read_errors')}</strong>
+                <ul>{readErrors.map((message) => <li key={message}>{message}</li>)}</ul>
+              </div>
+            )}
+            {pendingConfirm && preview && (
+              <div className="alert alert-warn">
+                <strong>{t('analyses.upload_confirm_title')}</strong>
+                <p>{t('analyses.upload_confirm_help')}</p>
+                <ul>{preview.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}</li>)}</ul>
+                <button type="button" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) upload.mutate({ selected: file, applySetup: true }) }}>{t('analyses.upload_confirm')}</button>
+                <button type="button" className="btn-ghost" onClick={() => { setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
+              </div>
+            )}
+            <p className="form-hint">{t('setup.upload_becomes_plan_data')}</p>
           </div>
-        )}
-        {pendingConfirm && preview && (
-          <div className="alert alert-warn">
-            <strong>{t('analyses.upload_confirm_title')}</strong>
-            <p>{t('analyses.upload_confirm_help')}</p>
-            <ul>{preview.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}</li>)}</ul>
-            <button type="button" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) upload.mutate({ selected: file, applySetup: true }) }}>{t('analyses.upload_confirm')}</button>
-            <button type="button" className="btn-ghost" onClick={() => { setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
-          </div>
-        )}
-        {preview && read && (
-          <section className="card" aria-label={t('analyses.upload_read_title')}>
-            <h3 className="card-title">{t('analyses.upload_read_title')}</h3>
-            <dl>
-              <dt>{t('analyses.upload_read_queues')}</dt>
-              <dd>{read.queue_ids.join(', ')}</dd>
-              <dt>{t('analyses.upload_read_shifts')}</dt>
-              <dd>{preview.staff.length > 0 ? <ul>{preview.staff.map((row) => <li key={row.queue_id}>{`${row.queue_id}: ${row.shift_start}–${row.shift_end}`}</li>)}</ul> : t('analyses.upload_read_no_staff')}</dd>
-              <dt>{t('analyses.upload_read_segments', { count: read.segments.length })}</dt>
-              <dd><ul>{read.segments.map((segment) => <li key={segment.id ?? segment.start_time}>{`${segment.id}: ${(segment.active_queue_ids ?? read.queue_ids).join(', ')}`}</li>)}</ul></dd>
-              <dt>{t('analyses.upload_read_breaks')}</dt>
-              <dd>{preview.breaks.length > 0 ? <ul>{preview.breaks.map((row) => <li key={row.row}>{`${row.queue_id} · ${row.break_name || t('analyses.break_label', { number: (row.label ?? '').replace(/^Break /, '') })} · ${row.start} · ${t('analyses.break_minutes', { minutes: row.minutes })}`}</li>)}</ul> : t('analyses.upload_read_no_breaks')}</dd>
-              <dt>{t('analyses.period_basis')}</dt>
-              <dd>{t(read.event_period_basis === 'representative_day' ? 'analyses.period_basis_representative_day' : 'analyses.period_basis_per_date')}</dd>
-            </dl>
-          </section>
-        )}
+          {savedIsShared && <ManualEntry disabled={upload.isPending || checking} onUpload={(selected) => { setFile(selected); void processFile(selected) }} />}
+        </li>
+        <li className="setup-step">
+          <h2 className="setup-step-title">{t('setup.step_review')}</h2>
+          {preview && read && (
+            <section className="card" aria-label={t('analyses.upload_read_title')}>
+              <h3 className="card-title">{t('analyses.upload_read_title')}</h3>
+              <dl>
+                <dt>{t('analyses.upload_read_queues')}</dt>
+                <dd>{read.queue_ids.join(', ')}</dd>
+                <dt>{t('analyses.upload_read_shifts')}</dt>
+                <dd>{preview.staff.length > 0 ? <ul>{preview.staff.map((row) => <li key={row.queue_id}>{`${row.queue_id}: ${row.shift_start}–${row.shift_end}`}</li>)}</ul> : t('analyses.upload_read_no_staff')}</dd>
+                <dt>{t('analyses.upload_read_segments', { count: read.segments.length })}</dt>
+                <dd><ul>{read.segments.map((segment) => <li key={segment.id ?? segment.start_time}>{`${segment.id}: ${(segment.active_queue_ids ?? read.queue_ids).join(', ')}`}</li>)}</ul></dd>
+                <dt>{t('analyses.upload_read_breaks')}</dt>
+                <dd>{preview.breaks.length > 0 ? <ul>{preview.breaks.map((row) => <li key={row.row}>{`${row.queue_id} · ${row.break_name || t('analyses.break_label', { number: (row.label ?? '').replace(/^Break /, '') })} · ${row.start} · ${t('analyses.break_minutes', { minutes: row.minutes })}`}</li>)}</ul> : t('analyses.upload_read_no_breaks')}</dd>
+                <dt>{t('analyses.period_basis')}</dt>
+                <dd>{t(read.event_period_basis === 'representative_day' ? 'analyses.period_basis_representative_day' : 'analyses.period_basis_per_date')}</dd>
+              </dl>
+            </section>
+          )}
+          {current.data && <div className="card"><h3 className="card-title">{t('analyses.why_model')}</h3><p><strong>{current.data.selected_model}</strong></p><details className="collapsible-inline"><summary>{t('filters.show_per_period', { count: current.data.explanations.length })}</summary>{current.data.explanations.map((item, index) => <details key={`${item.time}-${item.queue_id ?? ''}-${index}`}><summary>{item.time}{item.queue_id ? ` · ${item.queue_id}` : ''}: {item.selected_model}</summary><p>{item.selection_reason}</p><h4>{t('analyses.operational_facts')}</h4><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4>{t('analyses.measured')}</h4><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4>{t('analyses.assumptions')}</h4><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}</details><Link className="button-link" to="../current">{t('analyses.view_current')}</Link></div>}
+          {!current.data && !(preview && read) && <p className="form-hint">{t('setup.step_review_empty')}</p>}
+        </li>
+        <li className="setup-step">
+          <details className="setup-advanced" open={setup.queue_structure === 'unknown' || undefined}>
+            <summary className="setup-step-title">{t('setup.step_advanced')}</summary>
+            <p className="page-caption">{t('setup.step_advanced_help')}</p>
+            <form className="card" onSubmit={submit}>
+              <h3 className="card-title">{t('analyses.queue_setup')}</h3>
+              {setup.queue_structure === 'unknown' ? (
+                <div className="form-field"><label htmlFor="queue-structure">{t('analyses.queue_structure')}</label><select id="queue-structure" aria-describedby="queue-structure-help" value={setup.queue_structure} onChange={(e) => changeQueueStructure(e.target.value as QueueSetup['queue_structure'])}><option value="unknown">{t('analyses.unknown')}</option><option value="shared_queue">{t('analyses.shared')}</option><option value="single_server">{t('analyses.single')}</option><option value="separate_queues">{t('analyses.separate')}</option></select><span id="queue-structure-help" className="form-hint">{t('setup.queue_structure_help')}</span></div>
+              ) : (
+                <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
+              )}
+              {setup.queue_structure === 'separate_queues' && <QueueIdEditor ids={setup.queue_ids} onChange={changeQueueIds} />}
+              {setup.queue_structure === 'separate_queues' && <div className="form-field"><label htmlFor="period-basis">{t('analyses.period_basis')}</label><select id="period-basis" aria-describedby="period-basis-help" value={setup.event_period_basis ?? 'per_date'} onChange={(e) => set('event_period_basis', e.target.value as EventPeriodBasis)}><option value="per_date">{t('analyses.period_basis_per_date')}</option><option value="representative_day">{t('analyses.period_basis_representative_day')}</option></select><span id="period-basis-help" className="form-hint">{t('analyses.period_basis_help')}</span></div>}
+              {setup.queue_structure === 'separate_queues' && <BreakEditor queueIds={setup.queue_ids} breaks={setup.breaks ?? []} onChange={(breaks) => set('breaks', breaks)} />}
+              <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
+              <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>
+              {setup.queue_structure === 'separate_queues' && <div className="card"><h4 className="card-title">{t('analyses.segments')}</h4>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<MakePeriodsHelper hasSegments={setup.segments.length > 0} onMake={(periods) => set('segments', periods.map((period, index) => ({ id: `segment_${index + 1}`, start_time: period.start, end_time: period.end, active_queue_ids: setup.staffing_varies_by_period ? [...setup.queue_ids] : null })))} /><button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
+              <div className="form-field"><label htmlFor="capacity-mode">{t('analyses.capacity')}</label><select id="capacity-mode" value={setup.capacity_mode} onChange={(e) => { const value = e.target.value as QueueSetup['capacity_mode']; setSetup((old) => ({ ...old, capacity_mode: value, ...(value !== 'finite' ? { total_system_capacity: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="unlimited">{t('analyses.unlimited')}</option><option value="finite">{t('analyses.finite')}</option></select></div>
+              {setup.capacity_mode === 'finite' && <div className="form-field"><label htmlFor="capacity-total">{t('analyses.total_capacity')}</label><input id="capacity-total" type="number" min="1" value={setup.total_system_capacity ?? ''} onChange={(e) => set('total_system_capacity', e.target.value ? Number(e.target.value) : null)} /></div>}
+              <div className="form-field"><label htmlFor="abandonment-mode">{t('analyses.abandonment')}</label><select id="abandonment-mode" value={setup.abandonment_mode} onChange={(e) => { const value = e.target.value as QueueSetup['abandonment_mode']; setSetup((old) => ({ ...old, abandonment_mode: value, ...(value !== 'modeled' ? { patience_rate_per_hour: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="not_modeled">{t('analyses.not_modeled')}</option><option value="modeled">{t('analyses.modeled')}</option></select></div>
+              {setup.abandonment_mode === 'modeled' && <div className="form-field"><label htmlFor="patience-rate">{t('analyses.theta')}</label><input id="patience-rate" type="number" step="any" required aria-invalid={Boolean(formError)} aria-describedby="patience-rate-help" value={setup.patience_rate_per_hour ?? ''} onChange={(e) => { setFormError(null); set('patience_rate_per_hour', e.target.value ? Number(e.target.value) : null) }} /><span id="patience-rate-help" className="form-hint">{t('analyses.theta_required')}</span></div>}
+              {formError && <div className="alert alert-error" role="alert">{formError}</div>}
+              {save.isError && <div className="alert alert-error">{messageOf(save.error, t('errors.server'))}</div>}
+              <button type="submit" disabled={save.isPending}>{t('common.save')}</button>
+            </form>
+          </details>
+        </li>
         {savedIsSeparate && (
-          <div style={{ marginTop: '12px' }}>
+          <li className="setup-step">
+            <h2 className="setup-step-title">{t('setup.step_download_setup')}</h2>
             <button type="button" className="btn-secondary" onClick={() => void exportWorkbook()}>{t('analyses.setup_workbook_download')}</button>
             <p className="form-hint">{t('analyses.setup_workbook_help')}</p>
-          </div>
+          </li>
         )}
-      </div>
-      <SetupDataTemplates queueStructure={setup.queue_structure} />
-      {current.data && <div className="card"><h2 className="card-title">{t('analyses.why_model')}</h2><p><strong>{current.data.selected_model}</strong></p><details className="collapsible-inline"><summary>{t('filters.show_per_period', { count: current.data.explanations.length })}</summary>{current.data.explanations.map((item, index) => <details key={`${item.time}-${item.queue_id ?? ''}-${index}`}><summary>{item.time}{item.queue_id ? ` · ${item.queue_id}` : ''}: {item.selected_model}</summary><p>{item.selection_reason}</p><h3>{t('analyses.operational_facts')}</h3><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h3>{t('analyses.measured')}</h3><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h3>{t('analyses.assumptions')}</h3><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}</details><Link className="button-link" to="../current">{t('analyses.view_current')}</Link></div>}
+      </ol>
     </div>
   )
 }

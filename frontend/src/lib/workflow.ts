@@ -1,5 +1,5 @@
 export const analysisWorkflow = [
-  ['setup', 'nav.setup'],
+  ['data', 'nav.data_setup'],
   ['current', 'nav.current'],
   ['optimize', 'nav.optimize'],
   ['compare', 'nav.compare'],

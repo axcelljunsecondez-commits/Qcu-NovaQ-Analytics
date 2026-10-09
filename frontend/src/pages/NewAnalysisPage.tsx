@@ -52,7 +52,7 @@ export function NewAnalysisPage() {
     mutationFn: createAnalysis,
     onSuccess: ({ analysis }) => {
       void queryClient.invalidateQueries({ queryKey: ['analyses'] })
-      navigate(`/analyses/${analysis.id}/setup`, { replace: true })
+      navigate(`/analyses/${analysis.id}/data`, { replace: true })
     },
   })
   function setupFor(structure: QueueStructure): QueueSetup {

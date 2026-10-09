@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
 import { RequireRole } from './auth/RequireRole'
@@ -58,6 +58,13 @@ function UnknownRoute() {
   return <Navigate to={user ? '/analyses' : '/'} replace />
 }
 
+// Redirects within the app and keeps the query and hash (deep links survive renames).
+// oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
+function KeepQueryRedirect({ to }: { to: string }) {
+  const location = useLocation()
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />
+}
+
 export function createAppRouter() {
   return createBrowserRouter([
     {
@@ -86,8 +93,10 @@ export function createAppRouter() {
                   path: '/analyses/:analysisId',
                   element: <AnalysisWorkspace />,
                   children: [
-                    { index: true, element: <Navigate to="setup" replace /> },
-                    { path: 'setup', element: <AnalysisSetupPage /> },
+                    { index: true, element: <Navigate to="data" replace /> },
+                    { path: 'data', element: <AnalysisSetupPage /> },
+                    // Compatibility: the Setup page is now Data and setup (spec §5).
+                    { path: 'setup', element: <KeepQueryRedirect to="../data" /> },
                     { path: 'guided-setup', element: <GuidedSetupPage /> },
                     { path: 'current', element: <AnalysisCurrentPage /> },
                     { path: 'optimize', element: <OptimizePage /> },

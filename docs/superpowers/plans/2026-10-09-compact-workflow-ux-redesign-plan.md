@@ -86,6 +86,8 @@ Placeholders until their B items land: upload purpose question shows the B10 lim
 
 Task 4.6 (investigation): are shared aggregate uploads with unequal period lengths weighted correctly downstream? Record VERIFIED or a defect.
 
+Status (2026-10-09): implemented and committed on local branch `feat/ux-u1-shell` after the owner approved the phase report (not pushed). Task 4.6 result (VERIFIED from code, spec §8): unequal aggregate periods are not weighted; totals assume one-hour rows. Not fixed here (protected cost math); B9 therefore offers one-hour rows only. Step 5 "At closing time" is not shown until the B4a spec defines its storage. The page lives at `/analyses/:id/data`; `/setup` redirects there keeping query and hash.
+
 ## Phase U5 — Suggested plans
 
 Extract `OptimizePage` panels unchanged in logic; accessible `ConfirmDialog` replacing `window.confirm`; defaults shown as defaults; "Use this plan" = `POST /scenarios` then `POST /workflow/selection` with partial-failure message; "Save without using"; disclaimers (lowest modeled cost among options meeting limits; breaks = local improvement).

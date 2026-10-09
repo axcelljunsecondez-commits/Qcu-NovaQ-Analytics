@@ -4,8 +4,8 @@ import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../../test/test-utils'
 import { WorkflowNavigator } from './WorkflowNavigator'
 
-const steps = ['setup', 'current', 'optimize', 'compare', 'simulate', 'decision', 'reports'] as const
-const labels = ['Setup', 'Current', 'Optimize', 'Compare', 'Simulate', 'Decision', 'Reports'] as const
+const steps = ['data', 'current', 'optimize', 'compare', 'simulate', 'decision', 'reports'] as const
+const labels = ['Data and setup', 'Current', 'Optimize', 'Compare', 'Simulate', 'Decision', 'Reports'] as const
 
 describe('WorkflowNavigator canonical targets', () => {
   it.each(steps.map((step, index) => [step, index] as const))(

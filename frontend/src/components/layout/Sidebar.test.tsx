@@ -116,6 +116,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
 
   it.each([
     ['/analyses/7/setup', 'My analyses'],
+    ['/analyses/7/data', 'My analyses'],
     ['/analyses/7/current', 'Analysis results'],
     ['/analyses/7/compare', 'Analysis results'],
     ['/analyses/7/reports', 'Reports'],

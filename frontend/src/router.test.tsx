@@ -38,6 +38,7 @@ describe('canonical route contract', () => {
       '/analyses',
       '/analyses/new',
       '/analyses/:analysisId/setup',
+      '/analyses/:analysisId/data',
       '/analyses/:analysisId/guided-setup',
       '/analyses/:analysisId/current',
       '/analyses/:analysisId/optimize',

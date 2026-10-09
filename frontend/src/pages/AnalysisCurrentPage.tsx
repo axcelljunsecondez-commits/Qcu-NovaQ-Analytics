@@ -104,7 +104,7 @@ export function AnalysisCurrentPage() {
           <p className="page-caption">{t('analyses.current_basis')}</p>
         </header>
         <ApiState.Empty message={t('analyses.no_dataset')} />
-        <Link className="button-link" to="../setup">{t('analyses.go_setup')}</Link>
+        <Link className="button-link" to="../data">{t('analyses.go_setup')}</Link>
       </div>
     )
   }

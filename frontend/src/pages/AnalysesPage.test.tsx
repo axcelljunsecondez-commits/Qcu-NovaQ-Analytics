@@ -63,7 +63,7 @@ describe('AnalysesPage', () => {
     expect(await screen.findByText('North checkout')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute(
       'href',
-      '/analyses/7/setup',
+      '/analyses/7/data',
     )
     await user.click(screen.getByRole('button', { name: 'Archive' }))
     expect(archiveMock).not.toHaveBeenCalled()

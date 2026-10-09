@@ -138,7 +138,7 @@ export function AnalysesPage() {
                   <span className="badge">{t(`analyses.status.${analysis.setup_status}`)}</span>
                   {window && <p className="form-hint">{t('analyses.operating_window', { window })}</p>}
                   <div className="form-row">
-                    <Link className="button-link" to={`/analyses/${analysis.id}/setup`}>{t('analyses.open')}</Link>
+                    <Link className="button-link" to={`/analyses/${analysis.id}/data`}>{t('analyses.open')}</Link>
                     {analysis.queue_setup?.queue_structure === 'unknown' && (
                       <Link className="button-link" to={`/analyses/${analysis.id}/guided-setup`}>{t('analyses.choose_structure')}</Link>
                     )}

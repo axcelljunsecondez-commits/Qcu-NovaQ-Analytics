@@ -16,7 +16,7 @@ function renderPage() {
   return renderWithProviders(
     <Routes>
       <Route path="/analyses/new" element={<NewAnalysisPage />} />
-      <Route path="/analyses/:analysisId/setup" element={<div>Canonical setup</div>} />
+      <Route path="/analyses/:analysisId/data" element={<div>Canonical setup</div>} />
       <Route path="/analyses/:analysisId/guided-setup" element={<div>Guided chooser</div>} />
     </Routes>,
     { route: '/analyses/new' },

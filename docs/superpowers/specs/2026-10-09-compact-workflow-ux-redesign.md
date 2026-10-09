@@ -474,7 +474,7 @@ Guest (`/calculator`, B2) and signed in (`/tools/calculator`) share one layout.
 |---|---|---|
 | Segments of any length within one day, `start < end`, no overlap | VERIFIED (schema) | `analysis_schemas.py:59-70`; `AnalysisSetupPage.tsx:144-145` |
 | 1–24 periods of mixed 15/30/60 minutes for **event uploads** with segments | VERIFIED representable (segments assign events and compute `duration_hours`) ; end-to-end results NOT TESTED | `analysis_ingestion.py:69-112` |
-| Mixed durations for **aggregate** uploads | UNKNOWN (no duration column; weighting by duration not verified) | `ingestion.py:15-16` |
+| Mixed durations for **aggregate** uploads | NOT SUPPORTED for totals (VERIFIED 2026-10-09, plan task 4.6): rows carry no duration; per-row cost is an hourly rate (`costing.py:82`, `hours_per_interval` left at `DEFAULT_HOURS_PER_INTERVAL = 1.0`, `config.py:26`; the optimizer uses `c × cost_per_server` per row, `optimization.py:299, 324, 395`) and day totals are plain sums over rows (`optimization.py:458`; `workflow.py:1523-1531`). A 30-minute row therefore counts as a full hour in totals. Per-row queue metrics (ρ, Wq) are rates and are unaffected. B9 manual entry offers one-hour rows only. | `ingestion.py:15-16`; as cited |
 | A segment crossing midnight (e.g. 22:00–02:00) | NOT SUPPORTED | `analysis_schemas.py:69` |
 | Separate representative day crossing midnight | NOT SUPPORTED ("no midnight wrap is defined") | `separate_optimization.py:673` |
 | Period ending exactly at 24:00 | NOT SUPPORTED in setup (`time` max 23:59:59) | INFERRED from `datetime.time` type |
