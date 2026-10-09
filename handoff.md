@@ -1,5 +1,14 @@
 ﻿# NovaQ Current Handoff
 
+## Compact workflow UX redesign (2026-10-09; design only, production unchanged)
+
+- Status: design approved by the product owner (decisions D1–D33); not implemented. Production, Render, Pages and Supabase are unchanged; nothing was pushed or deployed.
+- Documents: `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` (audit, decisions log, screens, metric dictionary, backend items B1–B12), `docs/superpowers/plans/2026-10-09-compact-workflow-ux-redesign-plan.md` (16-step order), mockups in `docs/superpowers/specs/assets/`.
+- Git: local branch `docs/ux-workflow-audit` (worktree `.claude/worktrees/ux-workflow-audit`, based on `origin/main` `6093d78a`): commit `477ce274` (spec, plan, mockups); Phase 0 documentation (MASTER 1.1 amendments, newline repair of MASTER and the 2026-09-13 product-decisions spec, these `memory.md`/`handoff.md` entries) follows on the same branch. Not pushed.
+- The main checkout's local `main` was 78 commits behind `origin/main` on 2026-10-09; branch any implementation from a fresh `origin/main`.
+- Verification: documentation and mockups only. No test suite, build or lint was run for this work. The Quick-calculator and Excel Formula-check example values were computed with NovaQ's `mmc` (λ 40, μ 15, c 3: Wq 9.5701 min); the Excel formulas were checked in Python, not in Excel. The mockups were checked in the built-in browser.
+- Next authorized step: none. Implementation (Phase U1 onward) and the own specs for B4a, B4b, B4c, B8 and B10 need the owner's GO. Open owner decisions: replay base rate, OD-UX-13, OD-UX-14.
+
 ## Named Shared Queue release (2026-10-08; current)
 
 The Named Shared Queue API/UI first slice is released. The step record is

@@ -1,11 +1,24 @@
 # NovaQ Design System — Master
 
 **Status:** Approved design-system source of truth
-**Version:** 1.0
-**Date:** 2026-09-13
+**Version:** 1.1 (amended 2026-10-09)
+**Date:** 2026-09-13; amended 2026-10-09
 **Platform:** Responsive web application
 **Stack:** React 19, React Router, global CSS, Plotly, i18next
-**Implementation state:** Contract defined; migration occurs through the approved refinement plan
+**Implementation state:** Contract defined; migration occurs through the approved refinement plan. The 2026-10-09 amendments (Section 0) describe the owner-approved redesign target; they are not implemented yet, and the current application still follows version 1.0 until each redesign phase ships.
+
+## 0. Amendment log
+
+| Date | Section | Change | Source |
+|---|---|---|---|
+| 2026-10-09 | 7 Motion | Replay speed and smooth customer-marker movement | `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` D29 |
+| 2026-10-09 | 8.1 Breakpoints | Sidebar can be hidden to an icon rail at 1024 px and above | D10 |
+| 2026-10-09 | 9.1 Hierarchy | New global navigation and analysis-level destinations | D3, D10, D28, D32 |
+| 2026-10-09 | 9.2 Order | Standalone Compare page removed; plan selection moved; prerequisite kept | D4 |
+| 2026-10-09 | 9.4 Predicates | Plan-selection row renamed; Reports row split into plan report and full report | D4, D31 |
+| 2026-10-09 | 10.4 Evidence sources | Report availability follows the two report levels | D31 |
+
+Every amendment was approved by the product owner on 2026-10-09 and is recorded with its reason in `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` Section 0. None of them changes the protected behavior boundary in Section 13.
 
 ## 1. Retrieval and precedence
 
@@ -176,6 +189,7 @@ Motion is restrained and never required to understand state:
 - Use transform/opacity only; never animate layout dimensions for decoration.
 - Spinners may rotate only while an operation is actually pending.
 - Playback time remains controlled by its existing user controls and reducer.
+- Amended 2026-10-09 (D29): replay speeds are 0.25×, 0.5×, 1×, 2×, 5× and 10×, measured against simulated time rather than the length of the trace. Customer markers glide between arriving, their place in line, their counter and finished, using transform and opacity only, with each move lasting about 0.2–0.9 s so markers never teleport or streak. Counts, clock and states stay exact from the reducer; the glide only animates how a marker reaches its exact position. Under reduced motion, markers move without gliding. The base rate (proposed: 1× = 1 simulated minute per real second) awaits owner confirmation.
 - Under `prefers-reduced-motion: reduce`, nonessential animation and smooth scrolling are disabled; loading and playback status remain understandable without motion.
 - Do not add GSAP or route entrance animation.
 
@@ -191,6 +205,8 @@ The existing AppLayout and Sidebar are retained and refined.
 | 768–1023 px | Compact header plus explicit menu disclosure | 20px |
 | 1024–1439 px | Persistent 200 px Sidebar | 24px |
 | 1440 px and above | Persistent 200 px Sidebar; content max 1500 px | 32px |
+
+Amended 2026-10-09 (D10): at 1024 px and above, an icon-only button hides the Sidebar to an icon rail and shows it again. The button has an accessible name and `aria-expanded`; each rail icon keeps its accessible name and shows a tooltip on hover and keyboard focus that Escape dismisses. The choice is remembered on the device. Help, Settings, the user's email, Language and Log out are grouped in one account menu at the bottom of the Sidebar.
 
 At widths below 1024 px, the existing Sidebar becomes an in-flow compact application header with a labelled menu button and collapsible navigation region. It is not a separate modal navigation architecture. The button exposes `aria-expanded` and `aria-controls`; Escape and route changes close the region; focus is not trapped because the region remains in document flow.
 
@@ -209,14 +225,23 @@ Rules:
 
 There are exactly two navigation levels:
 
-1. **Global navigation:** Dashboard, Analyses, Datasets, Advanced Analysis, Account, Admin when authorized, Help, language, theme, and Logout.
-2. **Analysis workflow:** Setup, Current, Optimize, Compare, Simulate, Decision, Reports.
+1. **Global navigation** (amended 2026-10-09, D3, D10, D32): Workspace → My analyses; Insights → Analysis results, Reports; Simulation → Queue simulation; Tools → Quick calculator; an account menu with the user's email, Settings, Language, Get help and Log out. Settings holds Account and sign-in, Preferences, Appearance, Uploaded files, and Users (admin only).
+2. **Analysis level** (amended 2026-10-09, D28): the analysis workspace tabs Data and setup | Suggested plans; Analysis results; the Queue simulation pages Key results | Replay | Checks and decision; Reports.
+
+Version 1.0 listed: global navigation Dashboard, Analyses, Datasets, Advanced Analysis, Account, Admin when authorized, Help, language, theme, and Logout; analysis workflow Setup, Current, Optimize, Compare, Simulate, Decision, Reports. Old routes redirect to their new destinations (`docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` Section 5).
 
 The Sidebar owns global navigation only. `WorkflowNavigator`, rendered by `AnalysisWorkspace`, owns the workflow stepper and Previous/Next actions. The Sidebar’s current duplicate workflow list is removed only after import, route, usage, and test tracing.
 
 A single shared workflow-step definition supplies path, translation key, order, and prerequisite metadata. Sidebar, pages, and tests must not declare independent copies.
 
-### 9.2 Canonical executable order and conflict
+### 9.2 Canonical executable order
+
+Amended 2026-10-09 (D4): the standalone Compare page is removed. The persisted plan selection that simulation requires is made with "Use this plan" in Suggested plans or with the saved-plan switcher in Analysis results. It remains a simulation prerequisite. The executable order is:
+
+Data and setup → Suggested plans → Analysis results → Queue simulation → Decision → Reports.
+
+Version 1.0 text, kept for history:
+
 
 The requested Simulate-before-Compare order is not executable in the current repository because simulation requires a scenario selection persisted by Compare. Until a separate workflow specification relocates that selection, the canonical order is:
 
@@ -245,10 +270,10 @@ No localStorage/sessionStorage “visited” flag may drive these labels.
 | Setup | `analysis.setup_status` is `ready` or `ready_for_aggregate` |
 | Current | `getAnalysisCurrent` succeeds with a valid dataset and nonempty analytical rows |
 | Optimize | A saved verified-snapshot scenario has a complete operational comparison; an unsaved mutation result is “Candidate available,” not complete |
-| Compare | `WorkflowEvidence.selection` and its verified `WorkflowEvidence.scenario` exist |
+| Plan selected (formerly Compare; amended 2026-10-09, D4) | `WorkflowEvidence.selection` and its verified `WorkflowEvidence.scenario` exist |
 | Simulate | A current, non-stale, non-insufficient Decision references the current DES and validation evidence IDs; before that, existing jobs are labelled “Evidence saved” |
 | Decision | A persisted, non-stale Decision has status `adopt`, `revise`, or `conditional`; `insufficient_evidence` is not complete |
-| Reports | No persisted export-completion event exists, so a visit/download must not mark this complete; show “Available” only when the current Decision gate permits export |
+| Reports | No persisted export-completion event exists, so a visit/download must not mark this complete. Amended 2026-10-09 (D31): the plan report is “Available” once a current, verified plan is selected; the full report is “Available” only when the current Decision gate permits export. Each report states its level on its cover. |
 
 The UI may show more detail, but may not weaken these predicates or duplicate backend Decision derivation.
 
@@ -340,7 +365,7 @@ An `EvidenceBanner` must receive an explicit source-backed variant and content. 
 - persisted `WorkflowJob` identity, kind, status, parameters, and result;
 - `WorkflowEvidence.decision_stale`;
 - persisted Decision status, missing evidence, evidence IDs, and provenance warning; and
-- report availability from the current Decision gate.
+- report availability: the plan report from a current, verified selected plan, and the full report from the current Decision gate (amended 2026-10-09, D31).
 
 Rules:
 

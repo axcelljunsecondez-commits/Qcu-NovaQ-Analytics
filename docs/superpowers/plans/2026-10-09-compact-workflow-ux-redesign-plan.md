@@ -43,10 +43,10 @@ Steps 3, 6 and 14 can run in parallel with others once their dependencies are me
 
 ## Phase 0 — Documentation (docs only)
 
-1. Spec revision 2 and this plan (done 2026-10-09, uncommitted until the owner approves).
-2. Record the decisions in `memory.md` and the status in `handoff.md`: onboarding supersession (spec §12), new navigation, D1–D27 summary, and the G8 correction (separate-lines DES already records break events) to the 2026-09-20 "Store Floor Playback View" note.
-3. Amend MASTER §9.1 (navigation), §16 (onboarding reference) and §9.4 Reports row (plan report after a plan is selected; full report after a current Decision; D31).
-4. Rewrite `design-system/novaq/MASTER.md` and `docs/superpowers/specs/2026-09-13-ui-ux-refinement-product-decisions.md` with real newlines; prove with a script that the only change is `\n` escapes → newlines.
+1. Spec revision 2 and this plan (done 2026-10-09; committed `477ce274` on local branch `docs/ux-workflow-audit`).
+2. (Done 2026-10-09.) Record the decisions in `memory.md` and the status in `handoff.md`: onboarding supersession (spec §12), new navigation, D1–D27 summary, and the G8 correction (separate-lines DES already records break events) to the 2026-09-20 "Store Floor Playback View" note.
+3. Amend MASTER (version 1.1): amendment log, §7 replay motion (D29), §8.1 hide-sidebar rail (D10), §9.1 navigation, §9.2 order (D4), §9.4 plan-selection and Reports rows (D31), §10.4 report availability. MASTER does not mention onboarding, so no onboarding amendment is needed there. (Done 2026-10-09.)
+4. (Done 2026-10-09; script-verified lossless.) Rewrite `design-system/novaq/MASTER.md` and `docs/superpowers/specs/2026-09-13-ui-ux-refinement-product-decisions.md` with real newlines; prove with a script that the only change is `\n` escapes → newlines.
 
 Acceptance: docs-only diff; MASTER renders as Markdown; decisions traceable from `memory.md` to the spec.
 

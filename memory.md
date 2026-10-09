@@ -124,9 +124,11 @@ Avoid duplicate setup inputs across pages.
 
 Technical queueing terminology should be translated into understandable operational language where possible.
 
+(Superseded as the target flow on 2026-10-09 by the approved compact workflow redesign, below: no mandatory onboarding, and Data and setup → Suggested plans → Analysis results → Queue simulation → Decision → Reports. The flow above remains the implemented flow until the redesign ships.)
+
 ## UI/UX Refinement Product Decisions (2026-09-13)
 
-- Onboarding is required once for first-time authenticated users, is not forced again after completion, and is replayable from Help. It must collect real preferences rather than silently saving placeholders.
+- Onboarding is required once for first-time authenticated users, is not forced again after completion, and is replayable from Help. It must collect real preferences rather than silently saving placeholders. (Superseded on 2026-10-09 by decision D2 of the compact workflow redesign: no mandatory onboarding; optional preferences move to Settings and are never saved as placeholders. Still the implemented behavior until the redesign ships.)
 - The intended product behavior is separate FIFO cashier queues. Priority-class queueing is outside the capstone scope and must not be represented as supported.
 - The current repository still marks separate queues unsupported and executes shared-FIFO DES/playback. Treat this as a documented product/implementation conflict: do not claim separate-queue support or silently substitute shared FIFO. A separate analytical feature specification is required before changing that protected behavior.
 - The current optimization objective remains configured cost minimization subject to enabled constraints. A short-wait preset changes constraints; it is not an independent minimum-wait objective.
@@ -157,7 +159,7 @@ Implementation completed on 2026-09-14. Current unified DES aggregate/playback e
 
 - `design-system/novaq/MASTER.md` is the mandatory UI source of truth before page-by-page refinement.
 - The system formally adopts the current React, React Router, global CSS, Plotly, i18next, Inter/system-font, and NovaQ navy/gold foundation. No replacement framework, component library, chart library, font, or motion dependency is authorized.
-- The requested Simulate-before-Compare navigation conflicts with current scenario-selection behavior: simulation requires a verified scenario selected in Compare. Until a separate workflow specification relocates that prerequisite, the executable order remains Setup → Current → Optimize → Compare → Simulate → Decision → Reports.
+- The requested Simulate-before-Compare navigation conflicts with current scenario-selection behavior: simulation requires a verified scenario selected in Compare. Until a separate workflow specification relocates that prerequisite, the executable order remains Setup → Current → Optimize → Compare → Simulate → Decision → Reports. (2026-10-09, D4: the redesign removes the standalone Compare page and moves the persisted plan selection to "Use this plan" in Suggested plans and the saved-plan switcher in Analysis results; selection remains a simulation prerequisite. MASTER §9.2 is amended accordingly.)
 - Workflow completion is evidence-backed, never visit-backed. Saved evidence is not automatically passed, valid, or complete.
 
 ## Critical Semantic Regression Gate (2026-09-14)
@@ -234,6 +236,11 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - `inactive_queue_ids` means **closed / not staffed in this plan**. It must not be
   presented as a break. The trace schema emits no break transition, so an ON_BREAK window
   cannot be shown on the playback clock even though the DES models one internally.
+  (2026-10-09, source re-read at `6093d78a`: the separate routing DES records `draining_start`, `break_start` and
+  `break_end` events (`backend/queueing_engine/services/separate_optimization.py:959, 976, 982`; continuous-day
+  run `:1156, 1163, 1167`), but the playback reducer handles only `arrival`, `service_start`, `service_end` and
+  `abandon` (`frontend/src/lib/simulationPlayback.ts:80-102`). Whether the events reach stored selected-plan traces
+  end to end is NOT TESTED. The legacy shared DES records no break events.)
 - Locale catalogues must declare each key exactly once. Duplicate keys silently killed the
   earlier value until 2026-09-20; `frontend/src/lib/translationKeys.test.ts` now guards
   both uniqueness and en/tl symmetry.
@@ -440,3 +447,18 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
 - R2 and R3 refuse a run above 2,900 expected customers (spec §22.8 and §22.9).
 - The limits stay provisional and NOT PRODUCTION-APPROVED: no production timing run was made (owner skipped W9).
 - Pages releases from `main`: do not retry a deploy of a commit Pages first saw on a `ci/` branch (it builds a Preview). Push a new docs-only commit to `main` with automatic deployments switched on, then switch them off.
+
+## Compact Workflow UX Redesign (2026-10-09; design approved, not implemented)
+
+- The product owner approved the redesign decisions D1–D33 on 2026-10-09. Spec: `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md`; plan: `docs/superpowers/plans/2026-10-09-compact-workflow-ux-redesign-plan.md`; review mockups in `docs/superpowers/specs/assets/` (overview board, Queue simulation page, Reports page). Recorded in local commit `477ce274` on branch `docs/ux-workflow-audit` (not pushed). No application code changed. The implemented app still follows the earlier flow until each phase ships after the owner's GO.
+- Navigation (D3, D10, D32): Workspace → My analyses; Insights → Analysis results, Reports; Simulation → Queue simulation; Tools → Quick calculator; an account menu (email, Settings, Language, Get help, Log out); icon-only hide-sidebar button. MASTER §9.1 is amended (version 1.1).
+- No mandatory onboarding (D2). Optional preferences move to Settings through a new endpoint that never sets `onboarding_completed` (B1), because `POST /onboarding/complete` always sets it (`backend/api/onboarding.py:47`).
+- Guest Quick calculator (D1, B2): a new unauthenticated endpoint reusing `analysis._run_model`, with its own client-keyed limit and no persistence.
+- Analysis results (D14–D21): for managers and supervisors; review any successfully processed file read-only (B3); upload asks "Use for planning" or "Review only" (B10, a change to the protected current-dataset rule in `backend/api/current_dataset.py`, own spec); data dates saved at upload (B11); older files are recalculated today and labelled so; money only after a plan is chosen.
+- Two levels (D31): after a plan is chosen, a "Calculated result · not yet checked by simulation" card and a plan report; after the simulation checks, the existing Decision and the full report. Level 1 never uses Decision words, per product-decisions §3.
+- Queue simulation (D22–D30): three pages, Key results · Replay · Checks and decision, with one run bar. The continuous shared run (B4) is prioritized: B4a preview for analyses the engine supports, B4b recorded service times as the standard version (a mathematical change, own spec), B4c shared-line break modeling (own spec). The continuous engine supports only Poisson arrivals, exponential service, FCFS and unlimited waiting room; `variance`, `K` and `theta` are out of scope (`backend/queueing_engine/services/shared_segments.py:39, 53`). The closing rule is saved per analysis with no preselected choice. Counter states come only from simulation events.
+- Replay motion (D29): speeds 0.25×–10× measured against simulated time; smooth marker movement. Root cause of today's too-fast shared playback: speed is relative to the whole trace (`frontend/src/components/simulation/LiveSimulationPlayback.tsx:14`, `PLAYBACK_SECONDS_AT_1X = 60`) and the legacy shared trace stacks 24 h per period (`backend/queueing_engine/simulation/simulation.py:889-934`). The base rate 1× = 1 simulated minute per second is proposed, not confirmed.
+- Monte Carlo ("Many variations") recalculates each period with λ varied ±20% and μ ±10% and counts trials with utilization above the threshold; it does not simulate whole days (`simulation.py:1117-1242`). For separate lines the Results check refuses to run without saved selected-plan Monte Carlo for the latest replay (`backend/api/workflow.py:2776-2830`) and the busy limit defaults to the plan's target (`workflow.py:146-149`). On the legacy shared path the Results check runs its own simulation and variations, so a standalone Monte Carlo run is optional there.
+- Decision rule (re-read 2026-10-09): legacy shared — any failing period gives revise, all passing with modeled savings ≥ 0 gives adopt, all passing with savings < 0 gives conditional (`workflow.py:1534-1666`). Separate lines — a passing check gives conditional because no comparable current cost exists; separate lines cannot reach adopt (`_derive_selected_decision`, `workflow.py:2851-2990`). The continuous shared run's replications return no verdict (`backend/queueing_engine/simulation/shared_replications.py:323-324`), so its Decision needs a new owner rule (OD-UX-13).
+- Reports (D31–D33): PDF for managers and supervisors, Excel "check the math" workbook with live formulas where Excel can reproduce the model; one layout for both line types; data-only report kept; preview generated from the same rules as the file. All of it is a protected export change (B8, own spec). Today's shared report has no simulation content and already generates without a Decision (`backend/api/reports.py:591-605`); the separate report needs the full chain (`reports.py:156-233`); all Excel cells are typed values.
+- Open owner decisions: replay base rate; OD-UX-13 (continuous-run pass/fail rule); OD-UX-14 (Excel `SEQUENCE()` needs Excel 2021 or Microsoft 365).

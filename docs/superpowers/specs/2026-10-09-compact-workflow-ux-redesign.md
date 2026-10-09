@@ -571,7 +571,7 @@ Status after the 2026-10-09 decisions. "Own spec" = needs its own specification,
 
 ## 12. Supersession of the mandatory-onboarding decision (APPROVED by the owner on 2026-10-09, D2)
 
-Superseded: product-decisions §1 "Onboarding is required once for a first-time authenticated user…", the matching `memory.md` and `handoff.md` lines, and MASTER §16 references to required onboarding.
+Superseded: product-decisions §1 "Onboarding is required once for a first-time authenticated user…" and the matching `memory.md` and `handoff.md` lines. (Revision 1 also listed "MASTER §16 references to required onboarding"; that was wrong: MASTER does not mention onboarding.)
 
 Replacement decision: *NovaQ has no mandatory onboarding. First-time users go straight to My analyses or, when they chose "Start an analysis", to New analysis. Orientation is provided by plain wording, inline hints, examples, and contextual Help. Operation type and terminology are optional preferences in Settings, saved only when the user saves them. Existing saved values are kept and shown. `onboarding_completed` is retained in the database, is no longer read by the frontend gate, and is never set by any new flow.*
 
