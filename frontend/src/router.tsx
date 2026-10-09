@@ -99,7 +99,9 @@ export function createAppRouter() {
                     { path: 'setup', element: <KeepQueryRedirect to="../data" /> },
                     { path: 'guided-setup', element: <GuidedSetupPage /> },
                     { path: 'current', element: <AnalysisCurrentPage /> },
-                    { path: 'optimize', element: <OptimizePage /> },
+                    { path: 'plans', element: <OptimizePage /> },
+                    // Compatibility: Optimize is now Suggested plans (spec §5).
+                    { path: 'optimize', element: <KeepQueryRedirect to="../plans" /> },
                     { path: 'compare', element: <ComparisonPage /> },
                     { path: 'simulate', element: <SimulationPage /> },
                     { path: 'decision', element: <DecisionEndpointPage /> },

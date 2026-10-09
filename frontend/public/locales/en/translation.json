@@ -1454,5 +1454,16 @@
   "setup.manual_upload": "Upload these numbers",
   "setup.manual_error_arrivals": "Row {{row}}: customers arriving per hour must be 0 or more.",
   "setup.manual_error_served": "Row {{row}}: customers one counter serves per hour must be more than 0.",
-  "setup.manual_error_counters": "Row {{row}}: counters open must be a whole number from 1 to 100000."
+  "setup.manual_error_counters": "Row {{row}}: counters open must be a whole number from 1 to 100000.",
+  "nav.suggested_plans": "Suggested plans",
+  "workspace.tabs_label": "Analysis sections",
+  "plans.use_this_plan": "Use this plan",
+  "plans.save_without_using": "Save without using",
+  "plans.used": "Plan saved and selected. Queue simulation will use this plan.",
+  "plans.saved_not_used": "The plan was saved but not selected: {{reason}} You can select it on the Compare page.",
+  "plans.shared_estimate_note": "This plan has the lowest modeled cost among the options that meet your limits. It is an estimate, not a guarantee.",
+  "plans.separate_estimate_note": "This plan has the lowest average cost found by simulation among the options that meet your limits. It is an estimate, not a guarantee.",
+  "plans.breaks_local_note": "This is a local improvement found by moving breaks one at a time. A better arrangement may exist.",
+  "plans.defaults_note": "Assumptions you can change. NovaQ starts from these defaults: busy-share target {{target}}, counter cost {{serverCost}} per hour, waiting cost {{waitingCost}} per customer-hour of waiting.",
+  "optimize.advanced_settings": "Assumptions and limits"
 }

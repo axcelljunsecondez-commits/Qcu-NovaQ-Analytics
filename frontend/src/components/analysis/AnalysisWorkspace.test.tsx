@@ -72,9 +72,9 @@ describe('AnalysisWorkspace', () => {
       'href',
       '/analyses/1/data',
     )
-    expect(screen.getByRole('link', { name: 'Next: Optimize' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Next: Suggested plans' })).toHaveAttribute(
       'href',
-      '/analyses/1/optimize',
+      '/analyses/1/plans',
     )
     fireEvent.click(screen.getByRole('button', { name: 'Transient 0' }))
     expect(screen.getByRole('button', { name: 'Transient 1' })).toBeInTheDocument()

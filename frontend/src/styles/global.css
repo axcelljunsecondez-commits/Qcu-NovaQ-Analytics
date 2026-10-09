@@ -4837,3 +4837,28 @@ summary.setup-step-title::before {
 .setup-make-periods {
   margin: var(--space-md) 0;
 }
+
+/* ===== Workspace tabs (spec 2026-10-09 §7.6) ===== */
+.workspace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: var(--space-sm) 0 var(--space-md);
+  border-bottom: 2px solid var(--border);
+}
+
+.workspace-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  margin-bottom: -2px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.workspace-tabs a.active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}

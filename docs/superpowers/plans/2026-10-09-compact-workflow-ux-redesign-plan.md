@@ -90,6 +90,8 @@ Status (2026-10-09): implemented and committed on local branch `feat/ux-u1-shell
 
 ## Phase U5 — Suggested plans
 
+Status (2026-10-09): implemented and committed on local branch `feat/ux-u1-shell` after the owner approved the phase report (not pushed). Page at `/analyses/:id/plans`; `/optimize` redirects. The partial-failure message points to Compare until U6 adds the saved-plan switcher to Analysis results.
+
 Extract `OptimizePage` panels unchanged in logic; accessible `ConfirmDialog` replacing `window.confirm`; defaults shown as defaults; "Use this plan" = `POST /scenarios` then `POST /workflow/selection` with partial-failure message; "Save without using"; disclaimers (lowest modeled cost among options meeting limits; breaks = local improvement).
 
 Tests: request payload equality with today; selection call sequence and cache invalidation; stale snapshot disables actions; break apply only on the latest dataset; dialog keyboard operable.

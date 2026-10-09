@@ -1,7 +1,7 @@
 export const analysisWorkflow = [
   ['data', 'nav.data_setup'],
   ['current', 'nav.current'],
-  ['optimize', 'nav.optimize'],
+  ['plans', 'nav.suggested_plans'],
   ['compare', 'nav.compare'],
   ['simulate', 'nav.simulate'],
   ['decision', 'nav.decision'],

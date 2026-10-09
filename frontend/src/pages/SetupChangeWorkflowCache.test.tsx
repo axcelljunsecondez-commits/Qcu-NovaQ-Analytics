@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Link, Route, Routes } from 'react-router-dom'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient } from '@tanstack/react-query'
 import { renderWithProviders } from '../test/test-utils'
@@ -329,6 +329,7 @@ async function applyBreaksOnOptimize(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('link', { name: 'Open Optimize' }))
   await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
   await user.click(await screen.findByRole('button', { name: 'Apply to Setup' }))
+  await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Apply to Setup' }))
   expect(await screen.findByText('Setup updated with the proposed breaks. Rerun the workflow from Current.')).toBeInTheDocument()
   expect(server.setupVersion).toBe(versionBefore + 1)
 }

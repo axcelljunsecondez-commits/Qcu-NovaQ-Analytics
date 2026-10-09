@@ -1454,5 +1454,16 @@
   "setup.manual_upload": "I-upload ang mga numerong ito",
   "setup.manual_error_arrivals": "Hilera {{row}}: dapat 0 o higit pa ang mga customer na dumarating bawat oras.",
   "setup.manual_error_served": "Hilera {{row}}: dapat higit sa 0 ang mga customer na napagsisilbihan ng isang counter bawat oras.",
-  "setup.manual_error_counters": "Hilera {{row}}: dapat buong bilang mula 1 hanggang 100000 ang mga bukas na counter."
+  "setup.manual_error_counters": "Hilera {{row}}: dapat buong bilang mula 1 hanggang 100000 ang mga bukas na counter.",
+  "nav.suggested_plans": "Mga mungkahing plano",
+  "workspace.tabs_label": "Mga bahagi ng pagsusuri",
+  "plans.use_this_plan": "Gamitin ang planong ito",
+  "plans.save_without_using": "I-save nang hindi ginagamit",
+  "plans.used": "Na-save at napili ang plano. Ito ang gagamitin ng simulasyon ng pila.",
+  "plans.saved_not_used": "Na-save ang plano pero hindi napili: {{reason}} Maaari mo itong piliin sa pahina ng Ihambing.",
+  "plans.shared_estimate_note": "Ang planong ito ang may pinakamababang kalkuladong gastos sa mga opsyong pasok sa iyong mga limitasyon. Ito ay tantiya, hindi garantiya.",
+  "plans.separate_estimate_note": "Ang planong ito ang may pinakamababang karaniwang gastos na nakita ng simulasyon sa mga opsyong pasok sa iyong mga limitasyon. Ito ay tantiya, hindi garantiya.",
+  "plans.breaks_local_note": "Ito ay lokal na pagbuti na nakita sa paglipat ng mga break nang isa-isa. Maaaring may mas mahusay pang ayos.",
+  "plans.defaults_note": "Mga palagay na maaari mong baguhin. Nagsisimula ang NovaQ sa mga default na ito: target na abalang bahagi {{target}}, gastos ng counter {{serverCost}} bawat oras, gastos ng paghihintay {{waitingCost}} bawat oras ng paghihintay ng customer.",
+  "optimize.advanced_settings": "Mga palagay at limitasyon"
 }

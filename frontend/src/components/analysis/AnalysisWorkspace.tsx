@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { NavLink, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getAnalysis, listAnalyses } from '../../api/analyses'
 import { ApiState } from '../ui/ApiState'
 import { WorkflowNavigator } from './WorkflowNavigator'
@@ -35,6 +35,13 @@ export function AnalysisWorkspace() {
           </select>
         </div>
       </div>
+      <nav className="workspace-tabs" aria-label={t('workspace.tabs_label')}>
+        {(['data', 'plans'] as const).map((tab) => (
+          <NavLink key={tab} to={`/analyses/${id}/${tab}`} className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            {t(tab === 'data' ? 'nav.data_setup' : 'nav.suggested_plans')}
+          </NavLink>
+        ))}
+      </nav>
       <div key={analysisId}><Outlet /></div>
       <WorkflowNavigator />
     </div>
