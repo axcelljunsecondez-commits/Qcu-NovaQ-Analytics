@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
-import { RequireOnboarding } from './auth/RequireOnboarding'
 import { RequireRole } from './auth/RequireRole'
 import { useAuth } from './auth/useAuth'
 import { AppLayout } from './components/layout/AppLayout'
@@ -15,7 +14,7 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage').then((m) => ({ de
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })))
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })))
-const OnboardingPage = lazy(() => import('./pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })))
+const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })))
 const GuidedSetupPage = lazy(() => import('./pages/GuidedSetupPage').then((m) => ({ default: m.GuidedSetupPage })))
 const AnalysisPage = lazy(() =>
   import('./pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })),
@@ -51,13 +50,12 @@ function RootLayout() {
   )
 }
 
-// Unknown paths: signed-in users go to My analyses, everyone else to sign in.
-// (The public Home page that will receive signed-out users arrives in plan phase U2.)
+// Unknown paths: signed-in users go to My analyses, everyone else to the public Home page.
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
 function UnknownRoute() {
   const { user, isLoading } = useAuth()
   if (isLoading) return <ApiState.Loading />
-  return <Navigate to={user ? '/analyses' : '/login'} replace />
+  return <Navigate to={user ? '/analyses' : '/'} replace />
 }
 
 export function createAppRouter() {
@@ -65,6 +63,7 @@ export function createAppRouter() {
     {
       element: <RootLayout />,
       children: [
+        { path: '/', element: <HomePage /> },
         {
           path: '/login',
           element: <LoginPage />,
@@ -76,50 +75,43 @@ export function createAppRouter() {
         {
           element: <RequireAuth />,
           children: [
+            // No mandatory onboarding (spec §12, D2); preferences live in Settings.
+            { path: '/onboarding', element: <Navigate to="/settings/preferences" replace /> },
             {
-              path: '/onboarding',
-              element: <OnboardingPage />,
-            },
-            {
-              element: <RequireOnboarding />,
+              element: <AppLayout />,
               children: [
+                { path: '/analyses', element: <AnalysesPage /> },
+                { path: '/analyses/new', element: <NewAnalysisPage /> },
                 {
-                  element: <AppLayout />,
+                  path: '/analyses/:analysisId',
+                  element: <AnalysisWorkspace />,
                   children: [
-                    { path: '/analyses', element: <AnalysesPage /> },
-                    { path: '/analyses/new', element: <NewAnalysisPage /> },
-                    {
-                      path: '/analyses/:analysisId',
-                      element: <AnalysisWorkspace />,
-                      children: [
-                        { index: true, element: <Navigate to="setup" replace /> },
-                        { path: 'setup', element: <AnalysisSetupPage /> },
-                        { path: 'guided-setup', element: <GuidedSetupPage /> },
-                        { path: 'current', element: <AnalysisCurrentPage /> },
-                        { path: 'optimize', element: <OptimizePage /> },
-                        { path: 'compare', element: <ComparisonPage /> },
-                        { path: 'simulate', element: <SimulationPage /> },
-                        { path: 'decision', element: <DecisionEndpointPage /> },
-                        { path: 'reports', element: <ReportsPage /> },
-                      ],
-                    },
-                    { path: '/tools/calculator', element: <AnalysisPage /> },
-                    { path: '/help', element: <HelpPage /> },
-                    { path: '/settings', element: <Navigate to="/settings/account" replace /> },
-                    { path: '/settings/:section', element: <SettingsPage /> },
-                    {
-                      path: '/settings/users',
-                      element: <RequireRole role="admin" />,
-                      children: [{ index: true, element: <SettingsPage section="users" /> }],
-                    },
-                    // Compatibility redirects (spec §5). /settings/users keeps the admin-only check.
-                    { path: '/dashboard', element: <Navigate to="/analyses" replace /> },
-                    { path: '/datasets', element: <Navigate to="/settings/files" replace /> },
-                    { path: '/analysis', element: <Navigate to="/tools/calculator" replace /> },
-                    { path: '/account', element: <Navigate to="/settings/account" replace /> },
-                    { path: '/admin', element: <Navigate to="/settings/users" replace /> },
+                    { index: true, element: <Navigate to="setup" replace /> },
+                    { path: 'setup', element: <AnalysisSetupPage /> },
+                    { path: 'guided-setup', element: <GuidedSetupPage /> },
+                    { path: 'current', element: <AnalysisCurrentPage /> },
+                    { path: 'optimize', element: <OptimizePage /> },
+                    { path: 'compare', element: <ComparisonPage /> },
+                    { path: 'simulate', element: <SimulationPage /> },
+                    { path: 'decision', element: <DecisionEndpointPage /> },
+                    { path: 'reports', element: <ReportsPage /> },
                   ],
                 },
+                { path: '/tools/calculator', element: <AnalysisPage /> },
+                { path: '/help', element: <HelpPage /> },
+                { path: '/settings', element: <Navigate to="/settings/account" replace /> },
+                { path: '/settings/:section', element: <SettingsPage /> },
+                {
+                  path: '/settings/users',
+                  element: <RequireRole role="admin" />,
+                  children: [{ index: true, element: <SettingsPage section="users" /> }],
+                },
+                // Compatibility redirects (spec §5). /settings/users keeps the admin-only check.
+                { path: '/dashboard', element: <Navigate to="/analyses" replace /> },
+                { path: '/datasets', element: <Navigate to="/settings/files" replace /> },
+                { path: '/analysis', element: <Navigate to="/tools/calculator" replace /> },
+                { path: '/account', element: <Navigate to="/settings/account" replace /> },
+                { path: '/admin', element: <Navigate to="/settings/users" replace /> },
               ],
             },
           ],

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { forgotPassword } from '../api/auth'
+import { LanguageSelect } from '../components/layout/LanguageSelect'
 
 export function ForgotPasswordPage() {
   const { t } = useTranslation()
@@ -23,6 +24,7 @@ export function ForgotPasswordPage() {
     }
   }
   return <div className="login-page"><div className="card login-card">
+    <LanguageSelect />
     <h1 className="login-title">{t('auth.forgot_title')}</h1>
     {sent ? <div className="alert alert-ok">{t('auth.reset_sent')}</div> : <form onSubmit={submit}>
       <div className="form-field"><label htmlFor="forgot-email">{t('login.email')}</label><input id="forgot-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></div>

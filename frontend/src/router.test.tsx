@@ -26,6 +26,7 @@ describe('canonical route contract', () => {
   it('defines every current global and analysis deep link', () => {
     const paths = routePaths(createAppRouter().routes as RouteLike[])
     expect(paths).toEqual(expect.arrayContaining([
+      '/',
       '/login',
       '/register',
       '/verify-email',

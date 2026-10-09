@@ -12,11 +12,11 @@ export function HelpPage() {
         <p className="page-caption">{t('help.subtitle')}</p>
       </header>
 
-      <section className="card" aria-labelledby="help-onboarding-title">
-        <h2 id="help-onboarding-title" className="card-title">{t('help.onboarding_title')}</h2>
-        <p>{t('help.onboarding_desc')}</p>
-        <Link className="button-link" to="/onboarding?replay=1" state={{ replay: true, from: '/help' }}>
-          {t('help.replay_onboarding')}
+      <section className="card" aria-labelledby="help-preferences-title">
+        <h2 id="help-preferences-title" className="card-title">{t('help.preferences_title')}</h2>
+        <p>{t('help.preferences_desc')}</p>
+        <Link className="button-link" to="/settings/preferences">
+          {t('help.open_preferences')}
         </Link>
       </section>
 

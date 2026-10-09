@@ -19,10 +19,6 @@ vi.mock('../api/auth', () => ({
   googleNonce: vi.fn(),
 }))
 
-vi.mock('../api/onboarding', () => ({
-  getOnboardingStatus: vi.fn(async () => ({ completed: true, operation_type: 'retail', preferred_terminology: {} })),
-}))
-
 const adminUser = {
   id: 1,
   email: 'a@b.c',

@@ -60,7 +60,7 @@ export const navGroups: NavGroup[] = [
   { key: 'tools', items: [quickCalculator] },
 ]
 
-export const settingsSections = ['account', 'appearance', 'files', 'users'] as const
+export const settingsSections = ['account', 'preferences', 'appearance', 'files', 'users'] as const
 export type SettingsSection = (typeof settingsSections)[number]
 
 export function isSettingsSection(value: string | undefined): value is SettingsSection {

@@ -62,6 +62,8 @@ Tests: sidebar items/order; hide/show persistence and storage-failure fallback; 
 
 ## Phase U2 + B1 — Home, sign-in intent, onboarding gate removal
 
+Status (2026-10-09): implemented and committed on local branch `feat/ux-u1-shell` after the owner approved the phase report (not pushed). Home's header leaves out Quick calculator and Help until they are public (U9/B2, U8), so Home never links signed-out visitors to a sign-in wall labelled as a free tool.
+
 B1: `GET/PUT /account/preferences` (CSRF-protected, not under `/onboarding`, never writes `onboarding_completed`). Tests: 401 without session, 403 without CSRF header, exact save, length/type validation, user isolation; `test_production_hardening` exempt list unchanged.
 
 Frontend: `pages/HomePage.tsx` with the two static line pictures (shared SVG component reused by New analysis), single hero "Start an analysis"; `auth/intent.ts` (`safeNext`, `continueAfterSignIn`); `RequireAuth` keeps search/hash; Login/Google/verification continue to intent; route tree without `RequireOnboarding`; `/onboarding` → `/settings/preferences`; public language selector.

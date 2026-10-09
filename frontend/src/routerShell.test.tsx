@@ -19,9 +19,6 @@ vi.mock('./api/auth', () => ({
   changePassword: vi.fn(),
   forgotPassword: vi.fn(),
 }))
-vi.mock('./api/onboarding', () => ({
-  getOnboardingStatus: vi.fn(async () => ({ completed: true, operation_type: null, preferred_terminology: {} })),
-}))
 vi.mock('./api/analyses', () => ({
   listAnalyses: vi.fn(async () => ({ analyses: [] })),
   archiveAnalysis: vi.fn(),
@@ -99,9 +96,10 @@ describe('unknown paths', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/analyses'))
   })
 
-  it('send a signed-out visitor to sign in', async () => {
+  it('send a signed-out visitor to the public Home page', async () => {
     meMock.mockResolvedValue({ user: null })
     const router = renderAt('/no-such-page')
-    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(await screen.findByRole('heading', { level: 1, name: /See how long your customers wait/ })).toBeInTheDocument()
   })
 })

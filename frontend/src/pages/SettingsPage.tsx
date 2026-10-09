@@ -7,6 +7,7 @@ import { isSettingsSection, settingsSections, type SettingsSection } from '../co
 import { AccountPage } from './AccountPage'
 import { AdminPage } from './AdminPage'
 import { DatasetsPage } from './DatasetsPage'
+import { PreferencesSettings } from '../components/settings/PreferencesSettings'
 
 function AppearanceSettings() {
   const { t } = useTranslation()
@@ -28,6 +29,8 @@ function SectionContent({ section }: { section: SettingsSection }) {
   switch (section) {
     case 'account':
       return <AccountPage />
+    case 'preferences':
+      return <PreferencesSettings />
     case 'appearance':
       return <AppearanceSettings />
     case 'files':
@@ -38,7 +41,7 @@ function SectionContent({ section }: { section: SettingsSection }) {
 }
 
 // Settings composes the existing Account, Datasets and Admin pages unchanged
-// (spec §7.10). Preferences join in plan phase U2 together with B1.
+// (spec §7.10). Preferences are saved through B1 (/account/preferences).
 // The router wraps /settings/users in RequireRole, as it wrapped /admin before.
 export function SettingsPage({ section: fixedSection }: { section?: SettingsSection }) {
   const { t } = useTranslation()
