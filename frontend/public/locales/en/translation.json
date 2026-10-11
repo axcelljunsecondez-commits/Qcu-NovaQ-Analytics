@@ -1418,7 +1418,6 @@
   "setup.step_template_help": "Download the template that matches how your customers line up, then fill it in.",
   "setup.step_template_needs_structure": "Choose how customers line up first; the template depends on it.",
   "setup.step_add_data": "Add your data",
-  "setup.upload_becomes_plan_data": "This file will become the data for your plans and simulations.",
   "setup.step_review": "Review what NovaQ read",
   "setup.step_review_empty": "Nothing to review yet. Add your data first.",
   "setup.step_advanced": "Advanced settings",
@@ -1465,5 +1464,17 @@
   "plans.separate_estimate_note": "This plan has the lowest average cost found by simulation among the options that meet your limits. It is an estimate, not a guarantee.",
   "plans.breaks_local_note": "This is a local improvement found by moving breaks one at a time. A better arrangement may exist.",
   "plans.defaults_note": "Assumptions you can change. NovaQ starts from these defaults: busy-share target {{target}}, counter cost {{serverCost}} per hour, waiting cost {{waitingCost}} per customer-hour of waiting.",
-  "optimize.advanced_settings": "Assumptions and limits"
+  "optimize.advanced_settings": "Assumptions and limits",
+  "setup.purpose_question": "This file is for:",
+  "setup.purpose_planning": "Use for planning",
+  "setup.purpose_planning_help": "It becomes the data for your plans, simulations and checks. Results made from the previous planning file will need to be rerun.",
+  "setup.purpose_review": "Review only",
+  "setup.purpose_review_help": "It is saved with your uploaded files and never becomes the data for plans, simulations or checks.",
+  "setup.purpose_required": "Choose what this file is for before uploading.",
+  "setup.review_uploaded": "Saved as a review-only file. Your plans, simulations and checks are unchanged.",
+  "setup.only_review_files": "You have only review-only files. Upload a file for planning to make plans.",
+  "datasets.purpose": "Used for",
+  "datasets.purpose_planning": "Planning",
+  "datasets.purpose_planning_current": "Planning (current)",
+  "datasets.purpose_review": "Review only"
 }

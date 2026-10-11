@@ -308,6 +308,7 @@ function renderApp(route: string) {
 async function uploadOnSetup(user: ReturnType<typeof userEvent.setup>, expectedId: number) {
   await user.click(screen.getByRole('link', { name: 'Open Setup' }))
   await user.upload(await screen.findByLabelText('Upload Data'), new File(['a,b\n1,2\n'], 'week.csv', { type: 'text/csv' }))
+  await user.click(screen.getByRole('radio', { name: /Use for planning/ }))
   await user.click(screen.getByRole('button', { name: 'Upload and process' }))
   expect(await screen.findByText(`Dataset ${expectedId} processed.`)).toBeInTheDocument()
 }

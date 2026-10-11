@@ -14,6 +14,7 @@ import { applySeparateBreaks, optimizeSeparate, optimizeSeparateBreaks, type Bre
 import { createScenario } from '../api/scenarios'
 import { selectWorkflowScenario } from '../api/workflow'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { isForPlanning } from '../lib/datasets'
 import type { DatasetOut, OptimizationOut, SegmentRow, SeparateSchedule } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
 import { generateOptimizationInsights } from '../lib/insights'
@@ -541,7 +542,7 @@ export function OptimizePage() {
   })
   // The server applies break proposals only when made on this dataset (latest successfully processed).
   const latestValidDatasetId = (datasets.data?.datasets ?? [])
-    .filter((d: DatasetOut) => d.validation?.ok)
+    .filter((d: DatasetOut) => d.validation?.ok && isForPlanning(d))
     .reduce<number | null>((latest, d) => (latest === null || d.id > latest ? d.id : latest), null)
   const analysis = useQuery({
     queryKey: ['analysis', analysisId],
@@ -853,7 +854,7 @@ export function OptimizePage() {
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 >
                   <option value="">—</option>
-                  {datasets.data?.datasets.map((d: DatasetOut) => (
+                  {datasets.data?.datasets.filter(isForPlanning).map((d: DatasetOut) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
                     </option>

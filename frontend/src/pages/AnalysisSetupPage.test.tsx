@@ -102,6 +102,7 @@ async function uploadFile(name: string) {
   const input = await screen.findByLabelText('Upload Data')
   const file = new File(['x'], name)
   await user.upload(input, file)
+  await user.click(screen.getByRole('radio', { name: /Use for planning/ }))
   await user.click(screen.getByRole('button', { name: 'Upload and process' }))
   return { user, file }
 }
@@ -186,6 +187,7 @@ describe('three-sheet upload', () => {
     )
     const file = new File(['x'], 'events.csv')
     await user.upload(await screen.findByLabelText('Upload Data'), file)
+    await user.click(screen.getByRole('radio', { name: /Use for planning/ }))
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file))
     await waitFor(() => expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined())
@@ -297,6 +299,7 @@ describe('scenario evidence cache (4d)', () => {
     const user = userEvent.setup()
     const file = new File(['x'], 'events.csv')
     await user.upload(await screen.findByLabelText('Upload Data'), file)
+    await user.click(screen.getByRole('radio', { name: /Use for planning/ }))
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file))
     await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())

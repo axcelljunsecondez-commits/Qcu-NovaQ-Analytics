@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from backend.api.analyses import _to_out as analysis_out
 from backend.api.analyses import own_analysis
 from backend.api.analysis_schemas import QueueSetup, setup_status
-from backend.api.current_dataset import resolve_current_dataset
+from backend.api.current_dataset import is_for_planning, resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.evidence_status import (
     GENERATION_KINDS,
@@ -1705,6 +1705,8 @@ def run_separate_optimize(
         dataset = db.get(Dataset, payload.dataset_id)
         if dataset is None or dataset.user_id != user.id or dataset.analysis_id != analysis.id:
             raise HTTPException(status_code=404, detail="Dataset not found in this Analysis.")
+        if not is_for_planning(dataset):
+            raise HTTPException(status_code=422, detail={"code": "dataset_not_for_planning"})
     else:
         dataset = _current_dataset(db, user, analysis)
     records = dataset.normalized_json or []
@@ -1758,6 +1760,8 @@ def run_separate_break_optimize(
         dataset = db.get(Dataset, payload.dataset_id)
         if dataset is None or dataset.user_id != user.id or dataset.analysis_id != analysis.id:
             raise HTTPException(status_code=404, detail="Dataset not found in this Analysis.")
+        if not is_for_planning(dataset):
+            raise HTTPException(status_code=422, detail={"code": "dataset_not_for_planning"})
     else:
         dataset = _current_dataset(db, user, analysis)
     records = dataset.normalized_json or []

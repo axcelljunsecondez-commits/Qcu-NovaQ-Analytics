@@ -3,12 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 import { downloadSetupWorkbook, getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, previewAnalysisDataset, uploadAnalysisDataset } from '../api/analyses'
-import type { DatasetPreviewOut, EventPeriodBasis, QueueSetup } from '../api/types'
+import type { DatasetPreviewOut, DatasetPurpose, EventPeriodBasis, QueueSetup } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { BreakEditor } from '../components/analysis/BreakEditor'
 import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { SetupDataTemplates } from '../components/analysis/SetupDataTemplates'
 import { messageOf } from '../lib/format'
+import { currentDatasetId } from '../lib/datasets'
 import { MakePeriodsHelper } from '../components/setup/MakePeriodsHelper'
 import { ManualEntry } from '../components/setup/ManualEntry'
 
@@ -60,7 +61,9 @@ export function AnalysisSetupPage() {
   const client = useQueryClient()
   const analysis = useQuery({ queryKey: ['analysis', id], queryFn: () => getAnalysis(id) })
   const datasets = useQuery({ queryKey: ['datasets', id], queryFn: () => listAnalysisDatasets(id) })
-  const current = useQuery({ queryKey: ['current', id, datasets.data?.datasets[0]?.id], queryFn: () => getAnalysisCurrent(id), enabled: Boolean(datasets.data?.datasets.length), retry: false })
+  // B10: results follow the current planning dataset, not the newest upload.
+  const currentId = currentDatasetId(datasets.data?.datasets)
+  const current = useQuery({ queryKey: ['current', id, currentId], queryFn: () => getAnalysisCurrent(id), enabled: currentId !== null, retry: false })
   const [setup, setSetup] = useState<QueueSetup>(emptySetup)
   const [file, setFile] = useState<File | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -82,10 +85,21 @@ export function AnalysisSetupPage() {
   const [readErrors, setReadErrors] = useState<string[]>([])
   const [checking, setChecking] = useState(false)
   const [noticeIsError, setNoticeIsError] = useState(false)
+  // B10 (D16): every upload says what it is for; nothing is preselected.
+  const [purpose, setPurpose] = useState<DatasetPurpose | null>(null)
   const upload = useMutation({
-    mutationFn: ({ selected, applySetup }: { selected: File; applySetup: boolean }) =>
-      applySetup ? uploadAnalysisDataset(id, selected, { applySetup: true }) : uploadAnalysisDataset(id, selected),
+    mutationFn: ({ selected, applySetup, purpose: filePurpose }: { selected: File; applySetup: boolean; purpose?: DatasetPurpose }) =>
+      filePurpose === 'review'
+        ? uploadAnalysisDataset(id, selected, { purpose: 'review' })
+        : applySetup ? uploadAnalysisDataset(id, selected, { applySetup: true }) : uploadAnalysisDataset(id, selected),
     onSuccess: (data, variables) => {
+      setPurpose(null)
+      if (variables.purpose === 'review') {
+        // A review-only file never becomes current: plans, simulations and checks stay as they are.
+        setNotice(t('setup.review_uploaded'))
+        void client.invalidateQueries({ queryKey: ['datasets', id] })
+        return
+      }
       setNotice(data.dataset.validation.message)
       void client.invalidateQueries({ queryKey: ['datasets', id] })
       void client.invalidateQueries({ queryKey: ['current', id] })
@@ -161,6 +175,9 @@ export function AnalysisSetupPage() {
   function pick(event: ChangeEvent<HTMLInputElement>) { setFile(event.target.files?.[0] ?? null); setNotice(null); setPreview(null); setPendingConfirm(false); setReadErrors([]) }
   async function processFile(selected: File) {
     setNotice(null); setNoticeIsError(false); setPreview(null); setPendingConfirm(false); setReadErrors([])
+    if (purpose === null) return
+    // A review-only file is uploaded as it is: it is never previewed for, and never changes, the Setup.
+    if (purpose === 'review') { upload.mutate({ selected, applySetup: false, purpose: 'review' }); return }
     if (!selected.name.toLowerCase().endsWith('.xlsx')) { upload.mutate({ selected, applySetup: false }); return }
     setChecking(true)
     try {
@@ -212,8 +229,18 @@ export function AnalysisSetupPage() {
           <div className="card">
             <h3 className="card-title">{t('analyses.upload')}</h3>
             <p className="page-caption">{t('analyses.upload_help')}</p>
+            <fieldset className="form-field setup-purpose">
+              <legend>{t('setup.purpose_question')}</legend>
+              {(['planning', 'review'] as const).map((value) => (
+                <label key={value} className="setup-purpose-option">
+                  <input type="radio" name="dataset-purpose" value={value} checked={purpose === value} onChange={() => setPurpose(value)} />
+                  <span><strong>{t(`setup.purpose_${value}`)}</strong><span className="page-caption">{t(`setup.purpose_${value}_help`)}</span></span>
+                </label>
+              ))}
+            </fieldset>
             <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" onChange={pick} />
-            <button type="button" disabled={!file || upload.isPending || checking} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
+            <button type="button" disabled={!file || purpose === null || upload.isPending || checking} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
+            {purpose === null && <p className="form-hint">{t('setup.purpose_required')}</p>}
             {notice && <div className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}</div>}
             {readErrors.length > 0 && (
               <div className="alert alert-error" role="alert">
@@ -230,9 +257,8 @@ export function AnalysisSetupPage() {
                 <button type="button" className="btn-ghost" onClick={() => { setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
               </div>
             )}
-            <p className="form-hint">{t('setup.upload_becomes_plan_data')}</p>
           </div>
-          {savedIsShared && <ManualEntry disabled={upload.isPending || checking} onUpload={(selected) => { setFile(selected); void processFile(selected) }} />}
+          {savedIsShared && <ManualEntry disabled={purpose === null || upload.isPending || checking} onUpload={(selected) => { setFile(selected); void processFile(selected) }} />}
         </li>
         <li className="setup-step">
           <h2 className="setup-step-title">{t('setup.step_review')}</h2>
@@ -254,7 +280,9 @@ export function AnalysisSetupPage() {
             </section>
           )}
           {current.data && <div className="card"><h3 className="card-title">{t('analyses.why_model')}</h3><p><strong>{current.data.selected_model}</strong></p><details className="collapsible-inline"><summary>{t('filters.show_per_period', { count: current.data.explanations.length })}</summary>{current.data.explanations.map((item, index) => <details key={`${item.time}-${item.queue_id ?? ''}-${index}`}><summary>{item.time}{item.queue_id ? ` · ${item.queue_id}` : ''}: {item.selected_model}</summary><p>{item.selection_reason}</p><h4>{t('analyses.operational_facts')}</h4><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4>{t('analyses.measured')}</h4><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4>{t('analyses.assumptions')}</h4><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}</details><Link className="button-link" to="../current">{t('analyses.view_current')}</Link></div>}
-          {!current.data && !(preview && read) && <p className="form-hint">{t('setup.step_review_empty')}</p>}
+          {!current.data && !(preview && read) && (
+            <p className="form-hint">{t(currentId === null && (datasets.data?.datasets.length ?? 0) > 0 ? 'setup.only_review_files' : 'setup.step_review_empty')}</p>
+          )}
         </li>
         <li className="setup-step">
           <details className="setup-advanced" open={setup.queue_structure === 'unknown' || undefined}>

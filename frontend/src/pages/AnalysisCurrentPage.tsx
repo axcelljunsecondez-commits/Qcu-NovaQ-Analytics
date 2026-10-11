@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 import { getAnalysisCurrent, listAnalysisDatasets } from '../api/analyses'
+import { currentDatasetId } from '../lib/datasets'
 import { getObservedWait } from '../api/workflow'
 import type { ObservedWaitSummary } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
@@ -78,7 +79,7 @@ export function AnalysisCurrentPage() {
   const { t } = useTranslation()
   const id = Number(useParams().analysisId)
   const datasets = useQuery({ queryKey: ['datasets', id], queryFn: () => listAnalysisDatasets(id) })
-  const datasetId = datasets.data?.datasets[0]?.id
+  const datasetId = currentDatasetId(datasets.data?.datasets) ?? undefined
   const query = useQuery({ queryKey: ['current', id, datasetId], queryFn: () => getAnalysisCurrent(id), enabled: Boolean(datasetId), retry: false })
   // Only event uploads persist observed waits; aggregate uploads show nothing (never zero).
   const derivedStatistics = query.data?.dataset?.validation?.derived_statistics

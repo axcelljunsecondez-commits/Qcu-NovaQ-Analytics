@@ -108,6 +108,8 @@ Status (2026-10-09): all five written and approved by the owner in chat (answers
 
 ## Phase 7 — B10, B11, B3, B12 (backend)
 
+Status (2026-10-09): B10 implemented on local branch `feat/ux-u1-shell` (migration 0006, resolver, upload purpose, refusals, frontend question), awaiting the owner's approval before commit. PostgreSQL not tested in this session. B11, B3, B12 not started.
+
 - B10 per its spec.
 - B11: first/last arrival date stored at ingestion for customer-record uploads; server-side derivation for per-date labels; null otherwise. Tests: event file → dates; aggregate → null; representative day → recovered only if stored.
 - B3: optional `dataset_id` on `GET /current` and `GET /workflow/observed-wait` (owner check, `validation.ok` required, response names the dataset); evidence/selection/Decision endpoints unchanged. Tests: other user's dataset → 404; invalid dataset → 409/404 as specified; default unchanged when omitted.

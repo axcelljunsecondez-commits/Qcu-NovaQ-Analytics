@@ -5,7 +5,18 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -143,7 +154,10 @@ class Dataset(Base):
     """Uploaded-and-normalized workload dataset owned by a user."""
 
     __tablename__ = "datasets"
-    __table_args__ = (UniqueConstraint("generation", name="uq_datasets_generation"),)
+    __table_args__ = (
+        UniqueConstraint("generation", name="uq_datasets_generation"),
+        CheckConstraint("purpose IN ('planning', 'review')", name="ck_datasets_purpose"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -163,6 +177,9 @@ class Dataset(Base):
     # Set once at insert. Migration 0005 also installs a database default, and the database refuses
     # any change to the token and any reissue of it (generation_registry, below).
     generation: Mapped[str] = mapped_column(String(32), default=new_generation)
+    # B10 (migration 0006): what the upload is for, fixed at upload. Only planning files can become
+    # the analysis's current dataset; every dataset that existed before B10 is planning.
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False, default="planning", server_default="planning")
 
     user: Mapped[User] = relationship(back_populates="datasets")
     analysis: Mapped[AnalysisProject | None] = relationship(back_populates="datasets")

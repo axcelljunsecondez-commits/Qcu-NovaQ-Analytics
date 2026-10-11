@@ -1069,3 +1069,40 @@ describe('Use this plan (spec §7.6, D4)', () => {
     expect(screen.getByText('This plan has the lowest average cost found by simulation among the options that meet your limits. It is an estimate, not a guarantee.')).toBeInTheDocument()
   })
 })
+
+describe('Suggested plans use planning files only (B10, OD-B10-3)', () => {
+  it('lists planning files and leaves review-only files out', async () => {
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 3, name: 'review copy', purpose: 'review', is_current: false },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: true },
+    ] })
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    expect(await screen.findByRole('option', { name: 'sample' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'review copy' })).not.toBeInTheDocument()
+  })
+
+  it('offers break apply on the planning file even when a newer review file exists', async () => {
+    const user = userEvent.setup()
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 5, name: 'review copy', purpose: 'review', is_current: false },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: true },
+    ] })
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['c1', 'c2'] } },
+    })
+    optimizeSeparateBreaksMock.mockResolvedValue({
+      status: 'improved', target_rho: 0.85, max_shift_minutes: 120, all_below_target: true,
+      current_breaks: [], proposed_breaks: [], moves: [{ queue_id: 'c2', label: 'Break 1', from: '10:00', to: '11:00', duration_minutes: 30 }],
+      slots: [], peak_rho: { before: 0.9, after: 0.8 }, slots_above_target: { before: 1, after: 0 }, staffing_gaps: [],
+      des: { seeds: [], current: { summary: {}, replications: [], periods: [] }, proposed: { summary: {}, replications: [], periods: [] },
+        comparison: { mean_wait_change_minutes: 0, proposed_better_runs: 0, runs: 0 } },
+      notes: [], setup_hash: 'h', dataset_id: 1,
+    })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/plans" element={<OptimizePage />} /></Routes>,
+      { route: '/analyses/7/plans' },
+    )
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    expect(await screen.findByRole('button', { name: 'Apply to Setup' })).toBeEnabled()
+  })
+})

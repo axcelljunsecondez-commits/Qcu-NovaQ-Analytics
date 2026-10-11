@@ -34,7 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api.analyses import own_analysis
-from backend.api.current_dataset import is_successfully_processed
+from backend.api.current_dataset import is_for_planning, is_successfully_processed
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.scenarios import setup_fingerprint
 from backend.api.settings import Settings
@@ -305,6 +305,9 @@ def _selected_dataset(db: Session, user: User, analysis: AnalysisProject, datase
         raise HTTPException(status_code=404, detail={"code": "dataset_not_found"})
     if not is_successfully_processed(dataset):
         raise HTTPException(status_code=422, detail={"code": "dataset_not_processed"})
+    if not is_for_planning(dataset):
+        # B10 (OD-B10-3): named runs are planning work; review-only files are for reading.
+        raise HTTPException(status_code=422, detail={"code": "dataset_not_for_planning"})
     return dataset
 
 

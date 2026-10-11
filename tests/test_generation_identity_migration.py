@@ -30,6 +30,7 @@ from alembic.config import Config
 from alembic.ddl.impl import DefaultImpl
 from alembic.operations import BatchOperations, Operations
 from alembic.runtime.migration import HeadMaintainer, MigrationContext
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from sqlalchemy import Column, MetaData, String, Table, create_engine, event, insert, inspect, select, text
 from sqlalchemy.dialects import postgresql, sqlite
@@ -49,6 +50,9 @@ from backend.operations import migration_status
 from tests.helpers import create_user, csrf_header, login, make_sessionmaker
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The code's migration head. Later migrations (0006, B10) leave every 0005 post-condition in place,
+# so the 0005 checks below hold at whatever the head is.
+CODE_HEAD = ScriptDirectory.from_config(Config(str(REPO_ROOT / "alembic.ini"))).get_current_head()
 MIGRATION_FILE = REPO_ROOT / "migrations" / "versions" / "0005_generation_identity.py"
 TOKEN = re.compile(r"^[0-9a-f]{32}$")
 IDENTITY_TABLES = ("datasets", "scenarios")
@@ -484,8 +488,8 @@ def assert_no_hardening(db: Database) -> None:
 
 
 def assert_complete(db: Database) -> None:
-    """The 0005 post-conditions, checked from outside the migration."""
-    assert db.version() == "0005"
+    """The 0005 post-conditions, checked from outside the migration (at 0005 or any later head)."""
+    assert db.version() in ("0005", CODE_HEAD)
     for table in IDENTITY_TABLES:
         column = db.columns(table)["generation"]
         assert column["nullable"] is False
@@ -591,7 +595,7 @@ def test_rebuild_preserves_columns_keys_indexes_and_foreign_keys(database):
     database.upgrade("0004")
     seed(database)
     before = {table: database.schema(table) for table in IDENTITY_TABLES}
-    database.upgrade("head")
+    database.upgrade("0005")  # this test is about 0005; later heads add columns
     for table in IDENTITY_TABLES:
         after = database.schema(table)
         constraint = f"uq_{table}_generation"
@@ -668,7 +672,7 @@ def test_current_models_fail_on_0004_and_status_check_reports_it(database, monke
             session.get(Scenario, 30)
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setenv("DATABASE_URL", database.url)
-    with pytest.raises(SystemExit, match=r"expected \['0005'\], got \['0004'\]"):
+    with pytest.raises(SystemExit, match=rf"expected \['{re.escape(CODE_HEAD)}'\], got \['0004'\]"):
         migration_status.main()
     database.upgrade("head")
     monkeypatch.setenv("DATABASE_URL", database.url)
@@ -1013,7 +1017,7 @@ def test_upgrade_completes_any_partial_state_and_keeps_assigned_tokens(database,
         return batch_alter_table(self, table_name, *args, **kwargs)
 
     monkeypatch.setattr(Operations, "batch_alter_table", counting_batch)
-    database.upgrade("head")
+    database.upgrade("0005")  # this test is about 0005; later heads add columns
     assert_complete(database)
     for table, tokens in assigned.items():
         now = database.tokens(table)
@@ -1619,7 +1623,7 @@ def test_restoring_a_post_0005_backup_keeps_its_tokens(database):
     original = {table: database.tokens(table) for table in IDENTITY_TABLES}
     registry = registry_rows(database.engine)
     backup = database.copy("post_0005")
-    assert backup.version() == "0005"
+    assert backup.version() == CODE_HEAD
     assert {table: backup.tokens(table) for table in IDENTITY_TABLES} == original
     assert registry_rows(backup.engine) == registry
     assert guard_catalog(backup.engine) == expected_catalog(backup.dialect)

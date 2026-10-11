@@ -1418,7 +1418,6 @@
   "setup.step_template_help": "I-download ang template na tugma sa paraan ng pagpila ng iyong mga customer, saka ito punan.",
   "setup.step_template_needs_structure": "Piliin muna kung paano pumipila ang mga customer; nakadepende rito ang template.",
   "setup.step_add_data": "Idagdag ang iyong data",
-  "setup.upload_becomes_plan_data": "Ang file na ito ang magiging data ng iyong mga plano at simulasyon.",
   "setup.step_review": "Suriin ang nabasa ng NovaQ",
   "setup.step_review_empty": "Wala pang masusuri. Idagdag muna ang iyong data.",
   "setup.step_advanced": "Mga advanced na setting",
@@ -1465,5 +1464,17 @@
   "plans.separate_estimate_note": "Ang planong ito ang may pinakamababang karaniwang gastos na nakita ng simulasyon sa mga opsyong pasok sa iyong mga limitasyon. Ito ay tantiya, hindi garantiya.",
   "plans.breaks_local_note": "Ito ay lokal na pagbuti na nakita sa paglipat ng mga break nang isa-isa. Maaaring may mas mahusay pang ayos.",
   "plans.defaults_note": "Mga palagay na maaari mong baguhin. Nagsisimula ang NovaQ sa mga default na ito: target na abalang bahagi {{target}}, gastos ng counter {{serverCost}} bawat oras, gastos ng paghihintay {{waitingCost}} bawat oras ng paghihintay ng customer.",
-  "optimize.advanced_settings": "Mga palagay at limitasyon"
+  "optimize.advanced_settings": "Mga palagay at limitasyon",
+  "setup.purpose_question": "Ang file na ito ay para sa:",
+  "setup.purpose_planning": "Gamitin sa pagpaplano",
+  "setup.purpose_planning_help": "Ito ang magiging data ng iyong mga plano, simulasyon at pagsusuri. Kailangang ulitin ang mga resultang ginawa mula sa dating file sa pagpaplano.",
+  "setup.purpose_review": "Pagsusuri lamang",
+  "setup.purpose_review_help": "Ise-save ito kasama ng iyong mga na-upload na file at hindi kailanman magiging data ng mga plano, simulasyon o pagsusuri.",
+  "setup.purpose_required": "Piliin muna kung para saan ang file bago mag-upload.",
+  "setup.review_uploaded": "Na-save bilang file na pang-pagsusuri lamang. Walang nagbago sa iyong mga plano, simulasyon at pagsusuri.",
+  "setup.only_review_files": "Mga file na pang-pagsusuri lamang ang mayroon ka. Mag-upload ng file para sa pagpaplano upang makagawa ng mga plano.",
+  "datasets.purpose": "Gamit",
+  "datasets.purpose_planning": "Pagpaplano",
+  "datasets.purpose_planning_current": "Pagpaplano (kasalukuyan)",
+  "datasets.purpose_review": "Pagsusuri lamang"
 }

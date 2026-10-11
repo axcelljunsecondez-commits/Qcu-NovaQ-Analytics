@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
@@ -12,8 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api.analysis_schemas import STORED_SETUP, QueueSetup, setup_status, unknown_queue_setup
-from backend.api.current_dataset import resolve_current_dataset
+from backend.api.current_dataset import PLANNING, REVIEW, resolve_current_dataset
 from backend.api.datasets import _to_out as dataset_out
+from backend.api.datasets import current_dataset_ids
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.scenarios import scenario_out
 from backend.api.settings import Settings
@@ -171,8 +173,9 @@ def list_analysis_datasets(
         select(Dataset)
         .where(Dataset.user_id == user.id, Dataset.analysis_id == analysis_id)
         .order_by(Dataset.id.desc())
-    ).scalars()
-    return {"datasets": [dataset_out(item) for item in items]}
+    ).scalars().all()
+    current = current_dataset_ids(db, user.id, [analysis_id])
+    return {"datasets": [dataset_out(item, is_current=item.id in current) for item in items]}
 
 
 @router.post("/{analysis_id}/datasets", status_code=201)
@@ -181,6 +184,7 @@ def upload_analysis_dataset(
     file: UploadFile = File(...),
     name: str | None = None,
     apply_setup: bool = False,
+    purpose: Literal["planning", "review"] = "planning",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
@@ -189,6 +193,9 @@ def upload_analysis_dataset(
     analysis = own_analysis(db, user, analysis_id)
     if analysis.archived_at is not None:
         raise HTTPException(status_code=409, detail="Archived analyses cannot accept uploads.")
+    if purpose == REVIEW and apply_setup:
+        # B10: a review-only file is for reading; it must never change the Setup.
+        raise HTTPException(status_code=422, detail={"code": "review_cannot_change_setup"})
     data = file.file.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(status_code=413, detail="File too large.")
@@ -224,12 +231,14 @@ def upload_analysis_dataset(
         row_count=len(records),
         normalized_json=records,
         validation_report_json={"ok": True, "message": "Input data is valid.", **provenance},
+        purpose=purpose,
     )
     analysis.updated_at = datetime.now(timezone.utc)
     db.add(dataset)
     db.commit()
     db.refresh(dataset)
-    return {"dataset": dataset_out(dataset, include_normalized=True)}
+    current = current_dataset_ids(db, user.id, [analysis.id])
+    return {"dataset": dataset_out(dataset, include_normalized=True, is_current=dataset.id in current)}
 
 
 def _upload_limits(settings: Settings) -> dict:
@@ -284,7 +293,8 @@ def _apply_setup_upload(db: Session, analysis: AnalysisProject, user: User, file
     db.add(dataset)
     db.commit()
     db.refresh(dataset)
-    return {"dataset": dataset_out(dataset, include_normalized=True)}
+    current = current_dataset_ids(db, user.id, [analysis.id])
+    return {"dataset": dataset_out(dataset, include_normalized=True, is_current=dataset.id in current)}
 
 
 @router.post("/{analysis_id}/datasets/preview")
@@ -358,7 +368,7 @@ def current_analysis(
     rows = frame.astype(object).where(pd.notna(frame), None).to_dict("records")
     return {
         "analysis": _to_out(analysis),
-        "dataset": dataset_out(dataset, include_normalized=True),
+        "dataset": dataset_out(dataset, include_normalized=True, is_current=True),
         "selected_model": selected_model,
         "rows": rows,
         "kpis": compute_kpis(frame),

@@ -64,7 +64,9 @@ describe('Data and setup steps (spec §7.6)', () => {
     const titles = Array.from(container.querySelectorAll('.setup-step-title')).map((node) => node.textContent)
     expect(titles).toEqual(['Get the template', 'Add your data', 'Review what NovaQ read', 'Advanced settings'])
     expect(container.querySelector('details.setup-advanced')).not.toHaveAttribute('open')
-    expect(screen.getByText('This file will become the data for your plans and simulations.')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'This file is for:' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Use for planning/ })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: /Review only/ })).not.toBeChecked()
     expect(screen.getByText('Nothing to review yet. Add your data first.')).toBeInTheDocument()
   })
 
@@ -86,6 +88,7 @@ describe('Data and setup steps (spec §7.6)', () => {
 describe('Enter numbers without a file (B9)', () => {
   async function fillTwoHours() {
     const user = userEvent.setup()
+    await user.click(await screen.findByRole('radio', { name: /Use for planning/ }))
     await user.click(await screen.findByText('No file? Enter the numbers yourself'))
     await user.clear(screen.getByLabelText('Number of hours'))
     await user.type(screen.getByLabelText('Number of hours'), '2')

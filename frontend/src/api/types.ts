@@ -118,7 +118,12 @@ export interface DatasetOut {
   validation: DatasetValidation
   created_at: string
   normalized: Record<string, unknown>[] | null
+  // B10: what the upload is for, and whether it is the analysis's current planning dataset.
+  purpose?: DatasetPurpose
+  is_current?: boolean | null
 }
+
+export type DatasetPurpose = 'planning' | 'review'
 
 export type QueueStructure = 'shared_queue' | 'single_server' | 'separate_queues' | 'unknown'
 export type CapacityMode = 'unlimited' | 'finite' | 'unknown'

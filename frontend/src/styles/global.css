@@ -4862,3 +4862,26 @@ summary.setup-step-title::before {
   border-color: var(--accent);
   color: var(--text-primary);
 }
+
+/* ===== Upload purpose (B10) ===== */
+.setup-purpose {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.setup-purpose-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.setup-purpose-option input {
+  min-height: 0;
+  margin-top: 4px;
+}
+
+.setup-purpose-option > span {
+  display: grid;
+  gap: 2px;
+}

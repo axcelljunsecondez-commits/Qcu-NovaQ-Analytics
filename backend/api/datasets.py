@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api.analysis_schemas import unknown_queue_setup
+from backend.api.current_dataset import resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.settings import Settings
 from backend.data import uploads
@@ -32,11 +33,24 @@ class DatasetOut(BaseModel):
     created_at: datetime
     generation: str | None = None
     normalized: list | None = None
+    # B10: what the upload is for, and whether it is the analysis's current planning dataset.
+    purpose: str = "planning"
+    is_current: bool | None = None
 
     model_config = {"from_attributes": True}
 
 
-def _to_out(dataset: Dataset, include_normalized: bool = False) -> dict:
+def current_dataset_ids(db: Session, owner_id: int, analysis_ids) -> set[int]:
+    """The current planning dataset of each given analysis (B10 rule, ``resolve_current_dataset``)."""
+    found: set[int] = set()
+    for analysis_id in {value for value in analysis_ids if value is not None}:
+        dataset_id = resolve_current_dataset(db, owner_id=owner_id, analysis_id=analysis_id).dataset_id
+        if dataset_id is not None:
+            found.add(dataset_id)
+    return found
+
+
+def _to_out(dataset: Dataset, include_normalized: bool = False, is_current: bool | None = None) -> dict:
     payload = {
         "id": dataset.id,
         "analysis_id": dataset.analysis_id,
@@ -48,6 +62,8 @@ def _to_out(dataset: Dataset, include_normalized: bool = False) -> dict:
         "created_at": dataset.created_at,
         "generation": dataset.generation,
         "normalized": dataset.normalized_json if include_normalized else None,
+        "purpose": dataset.purpose or "planning",
+        "is_current": is_current,
     }
     return DatasetOut.model_validate(payload).model_dump()
 
@@ -124,7 +140,8 @@ def create_dataset(
     db.add(dataset)
     db.commit()
     db.refresh(dataset)
-    return {"dataset": _to_out(dataset)}
+    current = current_dataset_ids(db, user.id, [dataset.analysis_id])
+    return {"dataset": _to_out(dataset, is_current=dataset.id in current)}
 
 
 @router.get("")
@@ -140,7 +157,8 @@ def list_datasets(
             raise HTTPException(status_code=404, detail="Analysis not found.")
         query = query.where(Dataset.analysis_id == analysis_id)
     datasets = db.execute(query.order_by(Dataset.id.desc())).scalars().all()
-    return {"datasets": [_to_out(dataset) for dataset in datasets]}
+    current = current_dataset_ids(db, user.id, [dataset.analysis_id for dataset in datasets])
+    return {"datasets": [_to_out(dataset, is_current=dataset.id in current) for dataset in datasets]}
 
 
 @router.get("/{dataset_id}")
@@ -150,7 +168,8 @@ def get_dataset(
     user: User = Depends(get_current_user),
 ) -> dict:
     dataset = _own_dataset(db, user, dataset_id)
-    return {"dataset": _to_out(dataset, include_normalized=True)}
+    current = current_dataset_ids(db, user.id, [dataset.analysis_id])
+    return {"dataset": _to_out(dataset, include_normalized=True, is_current=dataset.id in current)}
 
 
 @router.delete("/{dataset_id}")
