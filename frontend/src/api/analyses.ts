@@ -68,8 +68,12 @@ export async function downloadSetupWorkbook(id: number): Promise<void> {
   downloadReport(res.data as Blob, `novaq_setup_${id}.xlsx`)
 }
 
-export async function getAnalysisCurrent(id: number): Promise<AnalysisCurrentOut> {
-  const { data } = await http.get<AnalysisCurrentOut>(`/analyses/${id}/current`)
+// B3: datasetId reads any processed file of the analysis (read-only); omitted, the planning file.
+export async function getAnalysisCurrent(id: number, datasetId?: number): Promise<AnalysisCurrentOut> {
+  const url = `/analyses/${id}/current`
+  const { data } = datasetId === undefined
+    ? await http.get<AnalysisCurrentOut>(url)
+    : await http.get<AnalysisCurrentOut>(url, { params: { dataset_id: datasetId } })
   return data
 }
 

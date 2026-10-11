@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -13,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api.analysis_schemas import STORED_SETUP, QueueSetup, setup_status, unknown_queue_setup
-from backend.api.current_dataset import PLANNING, REVIEW, resolve_current_dataset
+from backend.api.current_dataset import PLANNING, REVIEW, is_successfully_processed, resolve_current_dataset
 from backend.api.datasets import _to_out as dataset_out
 from backend.api.datasets import current_dataset_ids
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
@@ -350,14 +351,67 @@ def export_setup_workbook(
     )
 
 
+def arrivals_by_period(records: list) -> list[dict]:
+    """B12: customers arriving per hour in each period, every line summed, in period order.
+
+    The browser must not add these up itself. A period whose rows carry no finite arrival
+    rate reports None rather than a partial sum.
+    """
+    order: list[str] = []
+    sums: dict[str, float | None] = {}
+    for row in records or []:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get("time", row.get("segment_id", "")))
+        if label not in sums:
+            order.append(label)
+            sums[label] = 0.0
+        raw = row.get("lambda")
+        try:
+            value = float(raw) if raw is not None else math.nan
+        except (TypeError, ValueError):
+            value = math.nan
+        total = sums[label]
+        sums[label] = None if total is None or not math.isfinite(value) or value < 0 else total + value
+    return [{"time": label, "arrivals_per_hour": sums[label]} for label in order]
+
+
+def busiest_period(periods: list[dict]) -> dict | None:
+    """B12: the period with the most arrivals per hour (first one on a tie), or None."""
+    known = [period for period in periods if period["arrivals_per_hour"] is not None]
+    if not known:
+        return None
+    return max(known, key=lambda period: period["arrivals_per_hour"])
+
+
+def reviewable_dataset(db: Session, user: User, analysis: AnalysisProject, dataset_id: int) -> Dataset:
+    """B3: any successfully processed file of this analysis, for read-only results.
+
+    A review-only file is allowed here; plans, selection and Decision stay on the planning file.
+    """
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None or dataset.user_id != user.id or dataset.analysis_id != analysis.id:
+        raise HTTPException(status_code=404, detail="Dataset not found in this Analysis.")
+    if not is_successfully_processed(dataset):
+        raise HTTPException(status_code=409, detail={"code": "dataset_not_processed"})
+    return dataset
+
+
 @router.get("/{analysis_id}/current")
 def current_analysis(
     analysis_id: int,
+    dataset_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
     analysis = own_analysis(db, user, analysis_id)
-    dataset = resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis_id).dataset
+    dataset: Dataset | None
+    if dataset_id is not None:
+        dataset = reviewable_dataset(db, user, analysis, dataset_id)
+        is_current = dataset.id in current_dataset_ids(db, user.id, [analysis.id])
+    else:
+        dataset = resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis_id).dataset
+        is_current = True
     if dataset is None:
         raise HTTPException(status_code=404, detail="This Analysis has no successfully processed dataset.")
     frame, explanations, selected_model = analyze_segments(
@@ -366,13 +420,16 @@ def current_analysis(
         dataset.validation_report_json or {},
     )
     rows = frame.astype(object).where(pd.notna(frame), None).to_dict("records")
+    periods = arrivals_by_period(dataset.normalized_json or [])
     return {
         "analysis": _to_out(analysis),
-        "dataset": dataset_out(dataset, include_normalized=True, is_current=True),
+        "dataset": dataset_out(dataset, include_normalized=True, is_current=is_current),
         "selected_model": selected_model,
         "rows": rows,
         "kpis": compute_kpis(frame),
         "explanations": explanations,
+        "arrivals_by_period": periods,
+        "busiest_period": busiest_period(periods),
     }
 
 

@@ -15,6 +15,7 @@ from backend.api.current_dataset import resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.settings import Settings
 from backend.data import uploads
+from backend.data.data_dates import data_dates
 from backend.data.ingestion import to_segment_records, validate_and_normalize
 from backend.db.models import AnalysisProject, Dataset, User
 from backend.db.session import get_db
@@ -36,6 +37,8 @@ class DatasetOut(BaseModel):
     # B10: what the upload is for, and whether it is the analysis's current planning dataset.
     purpose: str = "planning"
     is_current: bool | None = None
+    # B11: first and last date the data covers, or None ("Data period unavailable").
+    data_dates: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -64,6 +67,7 @@ def _to_out(dataset: Dataset, include_normalized: bool = False, is_current: bool
         "normalized": dataset.normalized_json if include_normalized else None,
         "purpose": dataset.purpose or "planning",
         "is_current": is_current,
+        "data_dates": data_dates(dataset.validation_report_json, dataset.normalized_json),
     }
     return DatasetOut.model_validate(payload).model_dump()
 

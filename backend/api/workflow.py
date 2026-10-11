@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api.analyses import _to_out as analysis_out
-from backend.api.analyses import own_analysis
+from backend.api.analyses import own_analysis, reviewable_dataset
 from backend.api.analysis_schemas import QueueSetup, setup_status
 from backend.api.current_dataset import is_for_planning, resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
@@ -1947,12 +1947,19 @@ def _observed_wait_summary(
 @router.get("/{analysis_id}/workflow/observed-wait")
 def observed_wait(
     analysis_id: int,
+    dataset_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Modeled vs observed Current wait per period (read-only presentation)."""
+    """Modeled vs observed wait per period (read-only presentation).
+
+    B3: ``dataset_id`` reads any processed file of the analysis; omitted, the current planning file.
+    """
     analysis = own_analysis(db, user, analysis_id)
-    dataset = _current_dataset(db, user, analysis)
+    if dataset_id is not None:
+        dataset = reviewable_dataset(db, user, analysis, dataset_id)
+    else:
+        dataset = _current_dataset(db, user, analysis)
     validation = dataset.validation_report_json or {}
     frame, _, _ = analyze_segments(
         dataset.normalized_json or [], analysis.queue_setup_json or {}, validation)

@@ -108,7 +108,7 @@ Status (2026-10-09): all five written and approved by the owner in chat (answers
 
 ## Phase 7 — B10, B11, B3, B12 (backend)
 
-Status (2026-10-09): B10 implemented on local branch `feat/ux-u1-shell` (migration 0006, resolver, upload purpose, refusals, frontend question), awaiting the owner's approval before commit. PostgreSQL not tested in this session. B11, B3, B12 not started.
+Status (2026-10-12): B10 committed `598658e6` (local, not pushed; PostgreSQL not tested). B11, B3 and B12 implemented on `feat/ux-u1-shell`, uncommitted pending the owner's approval (no migration: B11 dates live in `validation_report_json`). B12 covers the Analysis results totals (arrivals per period with every line summed, busiest period); served/unserved simulation totals move to the simulation phases (B5/U7), where those numbers are shown.
 
 - B10 per its spec.
 - B11: first/last arrival date stored at ingestion for customer-record uploads; server-side derivation for per-date labels; null otherwise. Tests: event file → dates; aggregate → null; representative day → recovered only if stored.

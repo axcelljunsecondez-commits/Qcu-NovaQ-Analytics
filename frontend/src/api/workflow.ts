@@ -213,10 +213,12 @@ export async function getSeparateComparison(
   return data
 }
 
-export async function getObservedWait(analysisId: number): Promise<ObservedWaitSummary> {
-  const { data } = await http.get<ObservedWaitSummary>(
-    `/analyses/${analysisId}/workflow/observed-wait`,
-  )
+// B3: datasetId reads any processed file of the analysis (read-only); omitted, the planning file.
+export async function getObservedWait(analysisId: number, datasetId?: number): Promise<ObservedWaitSummary> {
+  const url = `/analyses/${analysisId}/workflow/observed-wait`
+  const { data } = datasetId === undefined
+    ? await http.get<ObservedWaitSummary>(url)
+    : await http.get<ObservedWaitSummary>(url, { params: { dataset_id: datasetId } })
   return data
 }
 

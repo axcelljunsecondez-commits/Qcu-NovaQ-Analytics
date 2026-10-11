@@ -121,6 +121,14 @@ export interface DatasetOut {
   // B10: what the upload is for, and whether it is the analysis's current planning dataset.
   purpose?: DatasetPurpose
   is_current?: boolean | null
+  // B11: first and last date the data covers (UTC dates); null = "Data period unavailable".
+  data_dates?: DataDates | null
+}
+
+export interface DataDates {
+  first: string
+  last: string
+  source: 'stored_at_upload' | 'period_labels'
 }
 
 export type DatasetPurpose = 'planning' | 'review'
@@ -226,6 +234,14 @@ export interface AnalysisCurrentOut {
   rows: Record<string, unknown>[]
   kpis: Record<string, number | string | null>
   explanations: ModelExplanation[]
+  // B12: customers per hour in each period with every line summed on the server.
+  arrivals_by_period?: PeriodArrivals[]
+  busiest_period?: PeriodArrivals | null
+}
+
+export interface PeriodArrivals {
+  time: string
+  arrivals_per_hour: number | null
 }
 
 export interface AdminUserOut {
