@@ -25,6 +25,22 @@ export interface SeparateLaneSnapshot {
   serviceStartByServer: Record<string, number>
   servedCustomerIds: number[]
   abandonedCustomerIds: number[]
+  /** From the run's own break events only (D26): finishing customers before a break, or on break. */
+  breakState: 'finishing' | 'on_break' | null
+}
+
+export type CounterState = 'available' | 'serving' | 'finishing' | 'on_break' | 'closed'
+
+/**
+ * What a separate-line counter is doing, from the trace alone (spec D26, B5). Break states come
+ * only from draining_start / break_start / break_end; an idle or closed counter is never a break.
+ * A closed lane still finishing its own customers shows as serving.
+ */
+export function counterState(lane: SeparateLaneSnapshot, closed: boolean): CounterState {
+  if (lane.breakState === 'on_break') return 'on_break'
+  if (lane.breakState === 'finishing') return 'finishing'
+  if (Object.keys(lane.servingByServer).length > 0) return 'serving'
+  return closed ? 'closed' : 'available'
 }
 
 function laneKeyFor(queueId: string | number | null | undefined, serverId: string | number | null): string {
@@ -75,8 +91,21 @@ export function deriveSeparateLaneSnapshots(
     const serviceStartByServer: Record<string, number> = {}
     const servedCustomerIds: number[] = []
     const abandonedCustomerIds: number[] = []
+    let breakState: SeparateLaneSnapshot['breakState'] = null
 
     laneEvents.forEach((event) => {
+      if (event.type === 'draining_start') {
+        breakState = 'finishing'
+        return
+      }
+      if (event.type === 'break_start') {
+        breakState = 'on_break'
+        return
+      }
+      if (event.type === 'break_end') {
+        breakState = null
+        return
+      }
       if (event.type === 'arrival') {
         arrivedIds.add(event.customer_id)
         waitingCustomerIds.push(event.customer_id)
@@ -115,6 +144,7 @@ export function deriveSeparateLaneSnapshots(
       serviceStartByServer,
       servedCustomerIds,
       abandonedCustomerIds,
+      breakState,
     }
   })
 }

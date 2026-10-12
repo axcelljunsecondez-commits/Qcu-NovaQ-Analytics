@@ -1280,7 +1280,7 @@ export function OptimizePage() {
       {warnings.some((w) => w.feasibility_status === 'INVALID_INPUT') && (
         <div className="alert alert-warn" style={{ marginTop: '12px' }}>
           {t('optimize.blocked_continue_simulate')}{' '}
-          <Link to={`/analyses/${analysisId}/simulate`}>{t('nav.simulate')}</Link>
+          <Link to={`/simulation/results?analysis=${analysisId}&plan=suggested`}>{t('nav.queue_simulation')}</Link>
         </div>
       )}
 

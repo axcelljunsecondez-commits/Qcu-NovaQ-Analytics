@@ -1301,6 +1301,7 @@ def run_des(
         carryover=payload.carryover,
         queue_setup=analysis.queue_setup_json,
     )
+    result["summary"] = _run_summary(result)
     job = _save_job(
         db, user, "workflow_des", analysis, scenario,
         payload.model_dump(), result, settings, dataset,
@@ -1332,6 +1333,7 @@ def run_des_current(
         queue_setup=analysis.queue_setup_json,
     )
     result["provenance"] = "CURRENT"
+    result["summary"] = _run_summary(result)
     job = _save_job(
         db, user, "workflow_des_current", analysis, None,
         payload.model_dump(), result, settings, dataset,
@@ -1851,6 +1853,73 @@ def _json_number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _wait_and_line(rows: list[dict[str, Any]]) -> tuple[float | None, int | None]:
+    """Served-weighted mean wait (hours) and the longest line over simulation rows.
+
+    The wait is unknown (None) when any row that served customers has no finite wait; rows that
+    served nobody carry no wait and are left out. Never zero-filled.
+    """
+    weighted: list[float] = []
+    served_total = 0.0
+    unknown = False
+    longest: int | None = None
+    for row in rows:
+        line = row.get("max_queue")
+        if isinstance(line, (int, float)) and not isinstance(line, bool) and math.isfinite(line):
+            longest = int(line) if longest is None else max(longest, int(line))
+        served = row.get("served")
+        if not isinstance(served, (int, float)) or isinstance(served, bool) or served <= 0:
+            continue
+        wait = _json_number(row.get("Wq_sim"))
+        if wait is None:
+            unknown = True
+            continue
+        weighted.append(wait * served)
+        served_total += served
+    wait_hours = None if unknown or served_total == 0 else math.fsum(weighted) / served_total
+    return wait_hours, longest
+
+
+def _run_summary(result: dict[str, Any]) -> dict[str, Any]:
+    """Day and per-period totals for a stored DES run, added up on the server (B12 pattern).
+
+    A continuous day (one execution over the operating hours) reports customers; a run that
+    simulates each period on its own for ``sim_hours`` reports only the served-weighted wait and
+    the longest line, because adding its customer counts would not describe one day.
+    """
+    continuous = "admitted" in result and "in_system_at_close" in result
+    if isinstance(result.get("periods"), list):
+        groups = [(str(p.get("time")), [r for r in p.get("results") or [] if isinstance(r, dict)])
+                  for p in result["periods"] if isinstance(p, dict)]
+    else:
+        groups = []
+        for row in result.get("results") or []:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("time"))
+            if not groups or groups[-1][0] != label:
+                groups.append((label, []))
+            groups[-1][1].append(row)
+    periods = []
+    for label, rows in groups:
+        wait_hours, longest = _wait_and_line(rows)
+        periods.append({
+            "time": label, "average_wait_hours": wait_hours, "longest_line": longest,
+            "arrivals": _sum_all(r.get("arrivals") for r in rows) if continuous else None,
+            "served": _sum_all(r.get("served") for r in rows) if continuous else None,
+        })
+    wait_hours, longest = _wait_and_line([r for _, rows in groups for r in rows])
+    return {
+        "basis": "continuous_day" if continuous else "per_period",
+        "average_wait_hours": wait_hours,
+        "longest_line": longest,
+        "arrivals": result.get("admitted") if continuous else None,
+        "served": result.get("served") if continuous else None,
+        "in_system_at_close": result.get("in_system_at_close") if continuous else None,
+        "periods": periods,
+    }
 
 
 def _sum_all(values: Any) -> float | None:
@@ -2419,6 +2488,7 @@ def run_selected_des(
         plan = _require_selected_separate_plan(db, user, analysis)
         result = _run_selected_plan_des(plan, payload.seed)
         _attach_mean_routed_loads(plan, payload.seed, payload.load_replications, result)
+        result["summary"] = _run_summary(result)
     except SelectedPlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     scenario = plan["scenario"]
@@ -2537,6 +2607,7 @@ def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[s
             "inactive_queue_ids": [q for q in tie_order if q not in window["active_queue_ids"]],
             "evaluation_status": "FEASIBLE" if conserved else "ERROR",
             "conservation": conserved,
+            "start_hours": period["start_hours"],
             "duration_hours": period["duration_hours"],
             "total_lambda": _json_number(sum(float(r["lambda"] or 0.0) for r in lane_rows)),
             "total_cost": None, "server_cost": None, "waiting_cost": None,
@@ -2572,6 +2643,7 @@ def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[s
         "periods": periods_out,
         "admitted": day["admitted"],
         "served": day["served"],
+        "in_system_at_close": day.get("in_system_at_close"),
         "overall_conservation": conserved,
         "overall_status": "COMPLETED" if conserved else "ERROR",
     }

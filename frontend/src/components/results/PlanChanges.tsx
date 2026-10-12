@@ -100,7 +100,7 @@ function CalculatedResult({ analysisId, changes, waitNow, waitPlan, costNow, cos
       {separate && <p className="form-hint">{t('results.separate_plan_basis')}</p>}
       <div className="button-row">
         <Link className="button-link" to={`/analyses/${analysisId}/reports`}>{t('results.open_reports')}</Link>
-        <Link className="button-link" to={`/analyses/${analysisId}/simulate`}>{t('results.check_in_simulation')}</Link>
+        <Link className="button-link" to={`/simulation/results?analysis=${analysisId}&plan=suggested`}>{t('results.check_in_simulation')}</Link>
       </div>
     </section>
   )

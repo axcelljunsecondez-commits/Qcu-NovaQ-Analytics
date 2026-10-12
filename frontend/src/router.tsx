@@ -22,9 +22,7 @@ const AnalysisPage = lazy(() =>
 const OptimizePage = lazy(() =>
   import('./pages/OptimizePage').then((m) => ({ default: m.OptimizePage })),
 )
-const SimulationPage = lazy(() =>
-  import('./pages/SimulationPage').then((m) => ({ default: m.SimulationPage })),
-)
+const QueueSimulationPage = lazy(() => import('./pages/QueueSimulationPage').then((m) => ({ default: m.QueueSimulationPage })))
 const ResultsPage = lazy(() => import('./pages/ResultsPage').then((m) => ({ default: m.ResultsPage })))
 const ReportsPage = lazy(() =>
   import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
@@ -69,6 +67,15 @@ function ResultsRedirect() {
   return <Navigate to={`/results?analysis=${analysisId ?? ''}`} replace />
 }
 
+// The workspace Simulate page became Queue simulation (spec §5, D28); named mode is kept.
+// oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
+function SimulateRedirect() {
+  const { analysisId } = useParams()
+  const location = useLocation()
+  const named = new URLSearchParams(location.search).get('mode') === 'named'
+  return <Navigate to={`/simulation/results?analysis=${analysisId ?? ''}${named ? '&mode=named' : ''}`} replace />
+}
+
 export function createAppRouter() {
   return createBrowserRouter([
     {
@@ -108,12 +115,16 @@ export function createAppRouter() {
                     // Compatibility: Optimize is now Suggested plans (spec §5).
                     { path: 'optimize', element: <KeepQueryRedirect to="../plans" /> },
                     { path: 'compare', element: <ResultsRedirect /> },
-                    { path: 'simulate', element: <SimulationPage /> },
+                    { path: 'simulate', element: <SimulateRedirect /> },
                     { path: 'decision', element: <DecisionEndpointPage /> },
                     { path: 'reports', element: <ReportsPage /> },
                   ],
                 },
                 { path: '/results', element: <ResultsPage /> },
+                { path: '/simulation', element: <KeepQueryRedirect to="/simulation/results" /> },
+                { path: '/simulation/results', element: <QueueSimulationPage page="results" /> },
+                { path: '/simulation/replay', element: <QueueSimulationPage page="replay" /> },
+                { path: '/simulation/checks', element: <QueueSimulationPage page="checks" /> },
                 { path: '/tools/calculator', element: <AnalysisPage /> },
                 { path: '/help', element: <HelpPage /> },
                 { path: '/settings', element: <Navigate to="/settings/account" replace /> },

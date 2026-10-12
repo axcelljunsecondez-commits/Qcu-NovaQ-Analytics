@@ -108,7 +108,7 @@ Status (2026-10-09): all five written and approved by the owner in chat (answers
 
 ## Phase 7 — B10, B11, B3, B12 (backend)
 
-Status (2026-10-12): B10 committed `598658e6` (local, not pushed; PostgreSQL not tested). B11, B3 and B12 implemented on `feat/ux-u1-shell`, uncommitted pending the owner's approval (no migration: B11 dates live in `validation_report_json`). B12 covers the Analysis results totals (arrivals per period with every line summed, busiest period); served/unserved simulation totals move to the simulation phases (B5/U7), where those numbers are shown.
+Status (2026-10-12): B10 committed `598658e6` (local, not pushed; PostgreSQL not tested). B11, B3 and B12 committed `864dff87` (local, not pushed; no migration: B11 dates live in `validation_report_json`). B12 covers the Analysis results totals (arrivals per period with every line summed, busiest period); served/unserved simulation totals move to the simulation phases (B5/U7), where those numbers are shown.
 
 - B10 per its spec.
 - B11: first/last arrival date stored at ingestion for customer-record uploads; server-side derivation for per-date labels; null otherwise. Tests: event file → dates; aggregate → null; representative day → recovered only if stored.
@@ -117,13 +117,15 @@ Status (2026-10-12): B10 committed `598658e6` (local, not pushed; PostgreSQL not
 
 ## Phase U6 — Analysis results
 
-Status (2026-10-12): implemented on `feat/ux-u1-shell` after `864dff87` (B11/B3/B12 committed), uncommitted pending the owner's approval. Route `/results` (spec §5); Current and Compare pages removed, their routes redirect. Deviations recorded in `handoff.md` (cost line, report link, older-file Setup, multi-plan chart).
+Status (2026-10-12): committed `c09ce3cc` on `feat/ux-u1-shell` (local, not pushed). Route `/results` (spec §5); Current and Compare pages removed, their routes redirect. Deviations recorded in `handoff.md` (cost line, report link, older-file Setup, multi-plan chart).
 
 `pages/ResultsPage.tsx` composing extracted Current and Comparison pieces; "View results from" selector (B3/B11), older-file banner and recalculation label, key results table (spec §7.7), busy-level strip with legend, charts, "What the plan changes" section with saved-plan switcher and staff cost (plan only).
 
 Tests: all values come from the selected file's response (fixtures for two files, no leakage on switch); review-only selection never calls selection/scenario/simulation endpoints; recorded wait unavailable message for aggregate uploads; "can't keep up" periods listed before highest-wait period; plan target flag only with a selected plan; missing values show "Unavailable".
 
 ## Phase 9 — B5 + U7a Queue simulation (separate lines and legacy paths)
+
+Status (2026-10-12): implemented on `feat/ux-u1-shell` after `c09ce3cc`, uncommitted pending the owner's approval. No engine change to simulated numbers; additive `in_system_at_close`, `start_hours` and run `summary`. Routes `/simulation/results`, `/simulation/replay`, `/simulation/checks`; the old Simulate page is removed and its route redirects. Deviations and the pre-existing per-date break issue (dilution in 24 h period runs) are recorded in `handoff.md`; PROPOSED B13, each date as one continuous day in the optimizer and the check, needs its own spec and the owner's GO and is not part of Phase 10.
 
 B5: confirm stored selected-plan traces contain `draining_start`, `break_start`, `break_end`; add a test that aggregates are identical with and without trace consumption changes (no engine change expected). Frontend: reducer handles the three events → Finishing customers before break / On break / Available; Closed / not staffed from `inactive_queue_ids`; scheduled breaks from setup on a separate timeline row; "Break state unavailable" when events are absent.
 

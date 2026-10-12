@@ -7,7 +7,7 @@ import { renderWithProviders } from '../test/test-utils'
 import { queryClient as appQueryClient } from '../lib/queryClient'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
 import { DatasetsPage } from './DatasetsPage'
-import { SimulationPage } from './SimulationPage'
+import { QueueSimulationPage } from './QueueSimulationPage'
 import { DecisionEndpointPage } from '../components/analysis/DecisionEndpointPage'
 import { ResultsPage } from './ResultsPage'
 
@@ -267,19 +267,19 @@ function watchForText(texts: string[]) {
   }
 }
 
-// Text that only a stored Current run can put on the Simulate page.
+// Text that only a stored Current run can put on Queue simulation's Checks page.
 const CURRENT_EVIDENCE_TEXT = [
   'CURRENT configuration',
-  'Discrete-event simulation results by interval',
   'Monte Carlo simulation results by interval',
   'Simulation validation passed.',
 ]
+const SIMULATION_CHECKS = '/simulation/checks?analysis=7&plan=current'
 
 function Nav() {
   return (
     <nav>
       <Link to="/analyses/7/setup">Open Setup</Link>
-      <Link to="/analyses/7/simulate">Open Simulate</Link>
+      <Link to={SIMULATION_CHECKS}>Open Simulate</Link>
       <Link to="/analyses/7/decision">Open Decision</Link>
       <Link to="/datasets">Open Datasets</Link>
       <Link to="/results?analysis=7">Open Results</Link>
@@ -296,7 +296,7 @@ function renderApp(route: string) {
       <Nav />
       <Routes>
         <Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} />
-        <Route path="/analyses/:analysisId/simulate" element={<SimulationPage />} />
+        <Route path="/simulation/checks" element={<QueueSimulationPage page="checks" />} />
         <Route path="/analyses/:analysisId/decision" element={<DecisionEndpointPage />} />
         <Route path="/datasets" element={<DatasetsPage />} />
         <Route path="/results" element={<ResultsPage />} />
@@ -371,7 +371,7 @@ afterEach(() => {
 describe('Current dataset changes and cached workflow evidence', () => {
   it('never shows the replaced dataset\'s Current runs on Simulate after a Setup upload', async () => {
     const user = userEvent.setup()
-    renderApp('/analyses/7/simulate')
+    renderApp(SIMULATION_CHECKS)
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
     expect(screen.getByText('Simulation validation passed.')).toBeInTheDocument()
 
@@ -414,7 +414,7 @@ describe('Current dataset changes and cached workflow evidence', () => {
     server.datasets = [12, 11]
     server.evidenceFor = 12
     const user = userEvent.setup()
-    renderApp('/analyses/7/simulate')
+    renderApp(SIMULATION_CHECKS)
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
 
     await deleteOnDatasets(user, 12)
@@ -435,7 +435,7 @@ describe('Current dataset changes and cached workflow evidence', () => {
     server.datasets = [12]
     server.evidenceFor = 12
     const user = userEvent.setup()
-    renderApp('/analyses/7/simulate')
+    renderApp(SIMULATION_CHECKS)
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
 
     await deleteOnDatasets(user, 12)
@@ -448,10 +448,10 @@ describe('Current dataset changes and cached workflow evidence', () => {
     await waitFor(() => expect(getWorkflowMock.mock.calls.length).toBeGreaterThan(requestsBefore))
 
     release()
-    expect(await screen.findByRole('heading', { name: 'Simulate Current' })).toBeInTheDocument()
+    expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
     await waitFor(() => expect(getAnalysisCurrentMock.mock.calls.length).toBeGreaterThan(lookupsBefore))
     await waitFor(() => expect(getAnalysisCurrentMock.mock.results.at(-1)?.type).toBe('return'))
-    expect(screen.getByRole('button', { name: 'Run Current DES' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run full operation' })).toBeInTheDocument()
     expect(watch.stop()).toEqual([])
   })
 
@@ -459,7 +459,7 @@ describe('Current dataset changes and cached workflow evidence', () => {
     server.datasets = [12, 11]
     server.evidenceFor = 12
     const user = userEvent.setup()
-    const { queryClient } = renderApp('/analyses/7/simulate')
+    const { queryClient } = renderApp(SIMULATION_CHECKS)
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
 
     await deleteOnDatasets(user, 11)
@@ -471,7 +471,8 @@ describe('Current dataset changes and cached workflow evidence', () => {
     const workflow = queryClient.getQueryData<{ des_current: { params: { dataset_id: unknown } } | null }>(['workflow', 7])
     const current = queryClient.getQueryData<{ dataset: { id: number } }>(['current', 7])
     expect(workflow?.des_current?.params.dataset_id).toBe(12)
-    expect(current?.dataset.id).toBe(12)
+    // With a stored Current run on screen, the run bar never looks the current dataset up.
+    expect(current).toBeUndefined()
     expect(workflow).toEqual(serverWorkflow())
     expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
   })

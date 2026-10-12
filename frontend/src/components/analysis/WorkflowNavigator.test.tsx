@@ -5,12 +5,13 @@ import { renderWithProviders } from '../../test/test-utils'
 import { WorkflowNavigator } from './WorkflowNavigator'
 
 const steps = ['data', 'plans', 'results', 'simulate', 'decision', 'reports'] as const
-const labels = ['Data and setup', 'Suggested plans', 'Analysis results', 'Simulate', 'Decision', 'Reports'] as const
-// Analysis results lives outside the workspace (spec §5); every other step is a workspace page.
-const href = (step: string) => (step === 'results' ? '/results?analysis=7' : `/analyses/7/${step}`)
+const labels = ['Data and setup', 'Suggested plans', 'Analysis results', 'Queue simulation', 'Decision', 'Reports'] as const
+// Analysis results and Queue simulation live outside the workspace (spec §5); the rest are workspace pages.
+const href = (step: string) => (step === 'results' ? '/results?analysis=7'
+  : step === 'simulate' ? '/simulation/results?analysis=7' : `/analyses/7/${step}`)
 
 describe('WorkflowNavigator canonical targets', () => {
-  it.each(steps.map((step, index) => [step, index] as const).filter(([step]) => step !== 'results'))(
+  it.each(steps.map((step, index) => [step, index] as const).filter(([step]) => step !== 'results' && step !== 'simulate'))(
     'resolves Previous/Next controls for %s',
     (step, index) => {
       renderWithProviders(

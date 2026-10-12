@@ -297,7 +297,10 @@ export interface SimDesOut {
   final_Lq?: number
 }
 
+// Separate lines also record a counter's break: draining_start (finishing customers before the
+// break), break_start and break_end (spec D26, B5). Customer events never use them.
 export type SimulationTraceEventType = 'arrival' | 'service_start' | 'service_end' | 'abandon'
+  | 'draining_start' | 'break_start' | 'break_end'
 
 export interface SimulationTraceEvent {
   t: number
@@ -335,6 +338,28 @@ export interface SimulationTrace {
   truncated: boolean
   abandonment_supported: boolean
   segments: SimulationTraceSegment[]
+  /** Totals added up on the server (stored runs made before it show none). */
+  summary?: RunSummary
+}
+
+export interface RunSummaryPeriod {
+  time: string
+  average_wait_hours: number | null
+  longest_line: number | null
+  arrivals: number | null
+  served: number | null
+}
+
+/** Server-side totals of one simulation run (B12 pattern; spec §7.8 D30). */
+export interface RunSummary {
+  /** continuous_day: one execution over the operating hours; per_period: each period on its own. */
+  basis: 'continuous_day' | 'per_period'
+  average_wait_hours: number | null
+  longest_line: number | null
+  arrivals: number | null
+  served: number | null
+  in_system_at_close: number | null
+  periods: RunSummaryPeriod[]
 }
 
 export interface SelectedDesLaneRow {
@@ -372,6 +397,9 @@ export interface SelectedDesPeriod {
   waiting_cost: number | null
   results: SelectedDesLaneRow[]
   trace: SimulationTrace
+  /** Continuous day only: the period's start on the day clock (hours). */
+  start_hours?: number
+  duration_hours?: number
 }
 
 export interface SelectedDesResult {
@@ -391,6 +419,7 @@ export interface SelectedDesResult {
   periods: SelectedDesPeriod[]
   overall_conservation: boolean | null
   overall_status: string | null
+  summary?: RunSummary
 }
 
 export interface SelectedMcResult {

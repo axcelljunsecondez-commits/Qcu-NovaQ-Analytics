@@ -77,6 +77,21 @@ describe('Data and setup address (spec §5)', () => {
     expect(router.state.location.hash).toBe('#costs')
   })
 
+  it.each([
+    ['/analyses/7/simulate', '?analysis=7'],
+    ['/analyses/7/simulate?mode=named', '?analysis=7&mode=named'],
+  ])('redirects the old Simulate address %s to Queue simulation', async (from, search) => {
+    const router = renderAt(from)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/simulation/results'))
+    expect(router.state.location.search).toBe(search)
+  })
+
+  it('opens Key results for the bare Queue simulation address and keeps the query', async () => {
+    const router = renderAt('/simulation?analysis=7&plan=current')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/simulation/results'))
+    expect(router.state.location.search).toBe('?analysis=7&plan=current')
+  })
+
   it.each(['current', 'compare'])('redirects the old %s address to Analysis results', async (step) => {
     const router = renderAt(`/analyses/7/${step}`)
     await waitFor(() => expect(router.state.location.pathname).toBe('/results'))

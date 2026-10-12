@@ -1,0 +1,602 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Route, Routes, useLocation } from 'react-router-dom'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { renderWithProviders } from '../test/test-utils'
+import { QueueSimulationPage } from './QueueSimulationPage'
+import en from '../../public/locales/en/translation.json'
+import tl from '../../public/locales/tl/translation.json'
+
+// Queue simulation (spec 2026-10-09 §7.8, D28/D30; plan phase U7a), ported from the former
+// SimulationPage tests: the same requests, bindings and refusals, on three pages.
+
+const getWorkflowMock = vi.fn()
+const runDesMock = vi.fn()
+const runDesCurrentMock = vi.fn()
+const runMcMock = vi.fn()
+const runMcCurrentMock = vi.fn()
+const runValidationMock = vi.fn()
+const runValidationCurrentMock = vi.fn()
+const createDecisionMock = vi.fn()
+const runSelectedDesMock = vi.fn()
+const runSelectedMcMock = vi.fn()
+const runSelectedValidationMock = vi.fn()
+const runSelectedDecisionMock = vi.fn()
+const optimizeSpy = vi.fn()
+const getAnalysisMock = vi.fn()
+const getAnalysisCurrentMock = vi.fn()
+
+vi.mock('../api/workflow', () => ({
+  getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
+  runWorkflowDes: (...args: unknown[]) => runDesMock(...args),
+  runWorkflowDesCurrent: (...args: unknown[]) => runDesCurrentMock(...args),
+  runWorkflowMc: (...args: unknown[]) => runMcMock(...args),
+  runWorkflowMcCurrent: (...args: unknown[]) => runMcCurrentMock(...args),
+  runWorkflowValidation: (...args: unknown[]) => runValidationMock(...args),
+  runWorkflowValidationCurrent: (...args: unknown[]) => runValidationCurrentMock(...args),
+  createWorkflowDecision: (...args: unknown[]) => createDecisionMock(...args),
+  runSelectedDes: (...args: unknown[]) => runSelectedDesMock(...args),
+  runSelectedMc: (...args: unknown[]) => runSelectedMcMock(...args),
+  runSelectedValidation: (...args: unknown[]) => runSelectedValidationMock(...args),
+  runSelectedDecision: (...args: unknown[]) => runSelectedDecisionMock(...args),
+}))
+vi.mock('../api/optimization', () => ({
+  optimize: (...args: unknown[]) => optimizeSpy(...args),
+  optimizeBatch: (...args: unknown[]) => optimizeSpy(...args),
+  optimizeSeparate: (...args: unknown[]) => optimizeSpy(...args),
+}))
+vi.mock('../api/analyses', () => ({
+  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+  getAnalysisCurrent: (...args: unknown[]) => getAnalysisCurrentMock(...args),
+  listAnalyses: vi.fn(async () => ({ analyses: [{ id: 7, name: 'Checkout', archived_at: null }] })),
+}))
+vi.mock('../components/simulation/NamedSharedQueueSimulation', () => ({
+  NamedSharedQueueSimulation: ({ modeSwitch }: { modeSwitch: unknown }) => <div data-testid="named-view">{modeSwitch as never}</div>,
+}))
+vi.mock('../api/auth', () => ({
+  me: vi.fn(async () => ({ user: { id: 1, email: 'a@b.c', role: 'admin', active: true, created_at: '2026-01-01T00:00:00Z' } })),
+  login: vi.fn(async () => ({})),
+  logout: vi.fn(async () => ({})),
+}))
+
+const desRow = {
+  time: '08:00-09:00', lambda: 30, mu: 12, c: 4, rho_sim: 0.63, Lq_sim: 0.7, Wq_sim: 0.02, max_queue: 7, served: 600, dropped: 0,
+  status: 'Normal', error: null, simulation_supported: true,
+}
+const perPeriodSummary = {
+  basis: 'per_period', average_wait_hours: 0.02, longest_line: 7, arrivals: null, served: null, in_system_at_close: null,
+  periods: [{ time: '08:00-09:00', average_wait_hours: 0.02, longest_line: 7, arrivals: null, served: null }],
+}
+const trace = {
+  results: [desRow],
+  trace: [
+    { t: 0.1, type: 'arrival', segment_id: 0, customer_id: 1, server_id: null, queue_len_after: 1 },
+    { t: 0.2, type: 'service_start', segment_id: 0, customer_id: 1, server_id: 0, queue_len_after: 0 },
+    { t: 0.4, type: 'service_end', segment_id: 0, customer_id: 1, server_id: 0, queue_len_after: 0 },
+  ],
+  trace_hours: 24, total_hours: 24, event_count: 3, truncated: false, abandonment_supported: false,
+  segments: [{ segment_id: 0, time: '08:00-09:00', lambda: 30, mu: 12, c: 4, selected_model: 'M/M/c', simulation_supported: true, error: null,
+    queue_structure: 'shared', initial_queue_depth: 0, final_queue_depth: 0 }],
+  summary: perPeriodSummary,
+}
+const mcRow = {
+  time: '08:00-09:00', lambda: 30, mu: 12, c: 4, rho_mean: 0.63, rho_std: 0.04, rho_p95: 0.7, Lq_mean: 0.8, Wq_mean: 0.02, failure_rate: 0.01,
+  failure_count: 20, status: 'PASS', error: null, ci_Wq_hw: 0.01, ci_Lq_hw: 0.02, adequate_samples: true, failure_rate_ci_lower: 0.007,
+  failure_rate_ci_upper: 0.015, failure_rate_precision: 'high', failure_rate_adequate: true,
+}
+const validationRow = {
+  time: '08:00-09:00', lambda: 30, mu: 12, c: 3, c_optimal: 4, rho_current: 0.83, rho_optimal: 0.625, Lq_current: 3.5, Lq_optimal: 0.5,
+  Wq_current: 0.12, Wq_optimal: 0.02, sim_rho: 0.63, sim_Wq: 0.014, sim_max_queue: 7, sim_status: 'Normal', simulation_supported: true,
+  validation_reason: null, mc_failure_rate: 0.01, mc_adequate: true, mc_rho_mean: 0.62, mc_rho_p95: 0.75, mc_Wq_ci: '1.2 ± 0.1 min',
+  mc_failure_rate_precision: 'high', mc_failure_rate_adequate: true,
+}
+
+function job(kind: string, result: unknown, params: Record<string, unknown> = {}) {
+  return { id: 10, kind, status: 'completed', params: { analysis_id: 7, scenario_id: 3, ...params }, result,
+    created_at: '2026-09-13T00:00:00Z', finished_at: '2026-09-13T00:01:00Z' }
+}
+
+function workflow(overrides: Record<string, unknown> = {}) {
+  return {
+    analysis_id: 7, selection: job('workflow_selection', { scenario_id: 3 }),
+    scenario: { id: 3, name: 'Plan A', dataset_id: 2, provenance: 'verified_snapshot' },
+    des: null, mc: null, validation: null, des_current: null, mc_current: null, validation_current: null,
+    decision: null, decision_stale: false, ...overrides,
+  }
+}
+
+function setupOf(structure: 'shared_queue' | 'separate_queues', extra: Record<string, unknown> = {}) {
+  return { analysis: { id: 7, name: 'Checkout', queue_setup: { queue_structure: structure, segments: [], breaks: [], ...extra } } }
+}
+
+function Where() {
+  const location = useLocation()
+  return <output data-testid="where">{location.pathname}{location.search}</output>
+}
+
+function renderPage(path = '/simulation/results?analysis=7', lang: 'en' | 'tl' = 'en') {
+  return renderWithProviders(
+    <>
+      <Routes>
+        <Route path="/simulation/results" element={<QueueSimulationPage page="results" />} />
+        <Route path="/simulation/replay" element={<QueueSimulationPage page="replay" />} />
+        <Route path="/simulation/checks" element={<QueueSimulationPage page="checks" />} />
+      </Routes>
+      <Where />
+    </>,
+    { route: path, lang },
+  )
+}
+
+function currentDatasetResponse(datasetId: number) {
+  return { dataset: { id: datasetId, analysis_id: 7, name: 'Checkout week' }, rows: [], kpis: {}, explanations: [] }
+}
+
+beforeEach(() => {
+  getWorkflowMock.mockReset().mockResolvedValue(workflow())
+  getAnalysisMock.mockReset().mockResolvedValue(setupOf('shared_queue'))
+  getAnalysisCurrentMock.mockReset().mockResolvedValue(currentDatasetResponse(9))
+  runDesMock.mockReset().mockResolvedValue({ evidence: job('workflow_des', trace) })
+  runMcMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc', { results: [mcRow] }) })
+  runValidationMock.mockReset().mockResolvedValue({
+    evidence: job('workflow_validation', { results: [validationRow] }, { des_sim_hours: 24, mc_trials: 10000, mc_failure_threshold: 0.75, mc_failure_rate_cap: 0.05, seed: null }),
+  })
+  createDecisionMock.mockReset().mockResolvedValue({ decision: { status: 'conditional', headline: 'Consider Plan A conditionally.', recommendation: '', rationale: [],
+    missing_evidence: [], scenario_id: 3, scenario_name: 'Plan A', dataset_id: 2, evidence_ids: {}, provenance_warning: '' }, persisted: true })
+  runDesCurrentMock.mockReset().mockResolvedValue({ evidence: job('workflow_des_current', trace, { scenario_id: null }) })
+  runMcCurrentMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc_current', { results: [mcRow] }, { scenario_id: null }) })
+  runValidationCurrentMock.mockReset().mockResolvedValue({
+    evidence: job('workflow_validation_current', {
+      results: [{ time: '08:00', queue_id: 'cashier-east', mc_failure_rate: 0.01, mc_failure_rate_adequate: true, failure_rate_cap: 0.05, validation_verdict: 'pass' }],
+      verdict: { status: 'pass', failed: [], inadequate: [], total: 1 },
+    }, { scenario_id: null }),
+  })
+  for (const mock of [runSelectedDesMock, runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock, optimizeSpy]) mock.mockReset()
+})
+
+describe('Queue simulation shell (D28)', () => {
+  it('opens Key results with the run switch and page links that keep the address', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Queue simulation' })).toBeInTheDocument()
+    const pages = await screen.findByRole('navigation', { name: 'Queue simulation pages' })
+    expect(within(pages).getAllByRole('link').map((link) => link.textContent)).toEqual(['Key results', 'Replay', 'Checks and decision'])
+    expect(within(pages).getByRole('link', { name: 'Key results' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Suggested plan' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Current' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/simulation/results?analysis=7&plan=current')
+    expect(within(pages).getByRole('link', { name: 'Replay' })).toHaveAttribute('href', '/simulation/replay?analysis=7&plan=current')
+  })
+
+  it('renders the named view for ?mode=named without a plan or workflow request', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
+    renderPage('/simulation/results?analysis=7&mode=named')
+    expect(await screen.findByTestId('named-view')).toBeInTheDocument()
+    expect(getWorkflowMock).not.toHaveBeenCalled()
+  })
+
+  it('switches between the legacy and named modes through the address', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('radio', { name: /named/i }))
+    expect(screen.getByTestId('where')).toHaveTextContent('mode=named')
+    expect(await screen.findByTestId('named-view')).toBeInTheDocument()
+  })
+})
+
+describe('the legacy shared path', () => {
+  it('asks for a plan from Suggested plans before a plan run', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
+    renderPage('/simulation/results?analysis=7&plan=suggested')
+    expect(await screen.findByText(/Choose a plan in Suggested plans \(Use this plan\)/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
+    expect(screen.queryByRole('button', { name: 'Run full operation' })).not.toBeInTheDocument()
+  })
+
+  it('runs the plan once with the labelled defaults and never optimizes in the browser', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
+    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    await waitFor(() => expect(runDesMock).toHaveBeenCalledWith(7, { sim_hours: 24, queue_overload_threshold: 20, max_events: 3000, seed: null, carryover: true }))
+    expect(screen.getByText('One period at a time', { exact: false })).toBeInTheDocument()
+    expect(optimizeSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows the capability errors of a run that could not simulate any period', async () => {
+    const user = userEvent.setup()
+    const unsupported = { ...desRow, simulation_supported: false, status: 'ERROR', error: 'Unsupported simulation model: M/G/c.' }
+    runDesMock.mockResolvedValue({ evidence: job('workflow_des', { ...trace, results: [unsupported, { ...unsupported, time: '09:00-10:00' }] }) })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    const errors = await screen.findByTestId('run-capability-errors')
+    expect(errors).toHaveTextContent('This run could not simulate any period, so it was not saved:')
+    expect(errors).toHaveTextContent('08:00-09:00: Unsupported simulation model: M/G/c.')
+    expect(errors).toHaveTextContent('09:00-10:00: Unsupported simulation model: M/G/c.')
+    expect(screen.queryByText('NaN')).not.toBeInTheDocument()
+  })
+
+  it('blocks invalid run settings before any request', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const hours = await screen.findByLabelText('Hours per segment')
+    await user.clear(hours)
+    await user.type(hours, '0')
+    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(runDesMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the server totals of both runs and never sums customers of a period-by-period run', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({
+      des: job('workflow_des', { ...trace, summary: { ...perPeriodSummary, average_wait_hours: 0.05, longest_line: 3 } }),
+      des_current: job('workflow_des_current', { ...trace, summary: { ...perPeriodSummary, average_wait_hours: 0.1, longest_line: 9 } }, { scenario_id: null }),
+    }))
+    renderPage()
+    const wait = await screen.findByRole('region', { name: 'Average wait' })
+    expect(wait).toHaveTextContent('Current: 6 min')
+    expect(wait).toHaveTextContent('Suggested plan: 3 min')
+    expect(screen.getByRole('region', { name: 'Longest single line' })).toHaveTextContent('Current: 9')
+    const served = screen.getByRole('region', { name: 'Customers served' })
+    expect(served).toHaveTextContent('Current: Unavailable')
+    expect(served).toHaveTextContent('Customer totals need one continuous run of the day')
+  })
+
+  it('asks to run again when a stored run has no saved totals', async () => {
+    const { summary: _drop, ...old } = trace
+    getWorkflowMock.mockResolvedValue(workflow({ des: job('workflow_des', old) }))
+    renderPage()
+    expect(await screen.findByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: Run again to see this')
+  })
+
+  it('replays the legacy run one period at a time', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ des: job('workflow_des', trace) }))
+    renderPage('/simulation/replay?analysis=7')
+    expect(await screen.findByText('This run simulates one period at a time; it is not one continuous day.')).toBeInTheDocument()
+    expect(screen.getByText('Shared queue view')).toBeInTheDocument()
+  })
+
+  it('checks the plan: Results check, then the Decision', async () => {
+    const user = userEvent.setup()
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(createDecisionMock).toHaveBeenCalledTimes(1))
+    expect(runValidationMock).toHaveBeenCalledWith(7, { des_sim_hours: 24, mc_trials: 10000, mc_failure_threshold: 0.75, mc_failure_rate_cap: 0.05, seed: null })
+    expect(runValidationMock.mock.invocationCallOrder[0]).toBeLessThan(createDecisionMock.mock.invocationCallOrder[0])
+    expect(runMcMock).not.toHaveBeenCalled()
+    expect(await screen.findByText(/Consider Plan A conditionally/)).toBeInTheDocument()
+  })
+
+  it('keeps a stored validation verdict bound to its saved cap when next-run settings change', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow({
+      validation: job('workflow_validation', { results: [validationRow] }, { des_sim_hours: 24, mc_trials: 10000, mc_failure_threshold: 0.75, mc_failure_rate_cap: 0.05, seed: null }),
+    }))
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByText(/Saved validation failure-rate cap: 5/)).toBeInTheDocument()
+    expect(screen.getByText('Simulation validation passed.')).toBeInTheDocument()
+    const cap = screen.getByLabelText('Failure rate cap')
+    await user.clear(cap)
+    await user.type(cap, '0.001')
+    expect(screen.getByText('Simulation validation passed.')).toBeInTheDocument()
+    expect(screen.getByText(/Run settings changed/)).toBeInTheDocument()
+  })
+
+  it('blocks invalid failure-rate settings before execution', async () => {
+    const user = userEvent.setup()
+    renderPage('/simulation/checks?analysis=7')
+    const cap = await screen.findByLabelText('Failure rate cap')
+    await user.clear(cap)
+    await user.type(cap, '2')
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Failure rate cap must be between 0 and 1.')
+    expect(runMcMock).not.toHaveBeenCalled()
+  })
+
+  it('names an unavailable selected plan and why instead of the generic guidance', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection_evidence: { scenario_id: 3, evidence_status: 'STALE_DATASET', evidence_reasons: [{ code: 'X', subject: 's', detail: 'Made with an older file.' }] } }))
+    renderPage('/simulation/results?analysis=7&plan=suggested')
+    expect(await screen.findByTestId('selection-unavailable')).toHaveTextContent('Made with an older file.')
+    expect(screen.queryByText(/Choose a plan in Suggested plans \(Use this plan\)/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the generic guidance when the reported status has no label', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection_evidence: { scenario_id: 3, evidence_status: 'SOMETHING_NEW', evidence_reasons: [] } }))
+    renderPage('/simulation/results?analysis=7&plan=suggested')
+    expect(await screen.findByText(/Choose a plan in Suggested plans \(Use this plan\)/)).toBeInTheDocument()
+    expect(screen.queryByTestId('selection-unavailable')).not.toBeInTheDocument()
+  })
+
+  it('renders the approved Tagalog text', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
+    renderPage('/simulation/results?analysis=7&plan=suggested', 'tl')
+    expect(await screen.findByText(tl['simulation.select_scenario_first'], { exact: false })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: tl['nav.queue_simulation'] })).toBeInTheDocument()
+    expect(en['simulation.run_full_operation']).toBe('Run full operation')
+  })
+})
+
+describe('Current runs', () => {
+  beforeEach(() => {
+    getAnalysisMock.mockResolvedValue(setupOf('separate_queues'))
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
+  })
+
+  it('opens on Current when no plan is selected and runs the Current DES without claiming a plan', async () => {
+    const user = userEvent.setup()
+    runDesCurrentMock.mockImplementation(async () => {
+      // The server now has the run; the page reads it back from the workflow evidence.
+      getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null, des_current: job('workflow_des_current', trace, { scenario_id: null }) }))
+      return { evidence: job('workflow_des_current', trace, { scenario_id: null }) }
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Current' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    await waitFor(() => expect(runDesCurrentMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
+    expect(runDesMock).not.toHaveBeenCalled()
+    expect(runSelectedDesMock).not.toHaveBeenCalled()
+  })
+
+  it('names the dataset Current would run on when no Current run exists', async () => {
+    renderPage()
+    expect(await screen.findByText('No current run for dataset #9.')).toBeInTheDocument()
+  })
+
+  it('shows no dataset number when the analysis has no valid current dataset', async () => {
+    getAnalysisCurrentMock.mockRejectedValue(Object.assign(new Error('404'), { response: { status: 404 } }))
+    renderPage()
+    expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
+    await waitFor(() => expect(getAnalysisCurrentMock).toHaveBeenCalled())
+    expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
+  })
+
+  it('does not look up the current dataset for a plan run', async () => {
+    getAnalysisMock.mockResolvedValue(setupOf('shared_queue'))
+    getWorkflowMock.mockResolvedValue(workflow())
+    renderPage()
+    await screen.findByTestId('run-status')
+    expect(getAnalysisCurrentMock).not.toHaveBeenCalled()
+  })
+
+  it('replays a separate Current run in the separate layout, one period at a time', async () => {
+    const separateTrace = {
+      ...trace,
+      trace: [{ t: 0.1, type: 'arrival', segment_id: 's1', customer_id: 1, server_id: null, queue_id: 'queue_1', queue_len_after: 1 }],
+      segments: [{ ...trace.segments[0], segment_id: 's1', queue_id: 'queue_1', c: 1, queue_structure: 'separate' }],
+    }
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null, des_current: job('workflow_des_current', separateTrace, { scenario_id: null }) }))
+    renderPage('/simulation/replay?analysis=7')
+    expect(await screen.findByTestId('lane-queue_1')).toBeInTheDocument()
+    expect(screen.getByText('This run simulates one period at a time; it is not one continuous day.')).toBeInTheDocument()
+  })
+
+  it('gates the Results check on Many variations and shows the per-queue verdict', async () => {
+    const user = userEvent.setup()
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByText('Current validation needs Current Monte Carlo evidence first.', { exact: false })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await waitFor(() => expect(runMcCurrentMock).toHaveBeenCalledTimes(1))
+    await user.click(await screen.findByRole('button', { name: 'Validate plan' }))
+    await waitFor(() => expect(runValidationCurrentMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('cashier-east')).toBeInTheDocument()
+    expect(runMcMock).not.toHaveBeenCalled()
+  })
+
+  it('says the Current Results check is for separate lines only', async () => {
+    getAnalysisMock.mockResolvedValue(setupOf('shared_queue'))
+    renderPage('/simulation/checks?analysis=7&plan=current')
+    expect(await screen.findByText('The results check of today\'s staffing is available for separate lines only.')).toBeInTheDocument()
+    expect(runValidationCurrentMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('a selected separate-lines plan', () => {
+  const v2scenario = {
+    id: 9, name: 'Optimal @ 70%', dataset_id: 2, provenance: 'verified_snapshot',
+    settings: { calculation: { schema_version: 2, engine_version: 'novaq-2026-09-separate-des-v2', options: { target_utilization: 0.85 } } },
+  }
+  const lane = {
+    time: '08:00', queue_id: 'east-07', server_id: 'server:east-07', lambda: 4, lambda_routed: 5.8, mu: 11.4, c: 1, arrivals: 46, served: 45,
+    waiting: 1, in_service: 0, abandoned: null, Wq_sim: 0.09, rho_sim: 0.55, max_queue: 4, active: true, simulation_supported: true, error: null,
+    metric_provenance: 'simulated', customer_conservation: true,
+  }
+  const idle = { ...lane, queue_id: 'lane-A', server_id: 'server:lane-A', arrivals: 0, served: 0, Wq_sim: null, rho_sim: 0, max_queue: 0, active: false }
+  function periodTrace(time: string, events: unknown[]) {
+    return {
+      results: [lane, idle], trace: events, trace_hours: 1, total_hours: 2, event_count: events.length, truncated: false, abandonment_supported: false,
+      segments: [{ segment_id: `${time}:east-07`, time, queue_id: 'east-07', lambda: 4, mu: 11.4, c: 1, selected_model: 'Parallel M/G/1 (routing)',
+        simulation_supported: true, error: null, queue_structure: 'separate', initial_queue_depth: 0, final_queue_depth: 0 }],
+    }
+  }
+  const morning = [
+    { t: 0.12, type: 'arrival', segment_id: '08:00', customer_id: 1, server_id: null, queue_id: 'east-07', queue_len_after: 1 },
+    { t: 0.2, type: 'service_start', segment_id: '08:00', customer_id: 1, server_id: 'server:east-07', queue_id: 'east-07', queue_len_after: 0 },
+    { t: 1.3, type: 'service_end', segment_id: '08:00', customer_id: 1, server_id: 'server:east-07', queue_id: 'east-07', queue_len_after: 0 },
+  ]
+  const later = [
+    { t: 1.1, type: 'arrival', segment_id: '09:00', customer_id: 2, server_id: null, queue_id: 'east-07', queue_len_after: 1 },
+    { t: 1.2, type: 'arrival', segment_id: '09:00', customer_id: 3, server_id: null, queue_id: 'lane-A', queue_len_after: 1 },
+  ]
+  const dayResult = {
+    provenance: 'SELECTED', scenario_id: 9, analysis_id: 7, dataset_id: 2, seed: 42, duration_hours: 2,
+    periods: [
+      { time: '08:00', start_hours: 0, duration_hours: 1, active_queue_ids: ['east-07'], inactive_queue_ids: ['lane-A'], evaluation_status: 'FEASIBLE',
+        conservation: true, total_lambda: 6, results: [lane, idle], trace: periodTrace('08:00', morning) },
+      { time: '09:00', start_hours: 1, duration_hours: 1, active_queue_ids: ['east-07', 'lane-A'], inactive_queue_ids: [], evaluation_status: 'FEASIBLE',
+        conservation: true, total_lambda: 6, results: [lane, idle], trace: periodTrace('09:00', later) },
+    ],
+    overall_conservation: true, overall_status: 'COMPLETED',
+    summary: { basis: 'continuous_day', average_wait_hours: 0.09, longest_line: 4, arrivals: 92, served: 90, in_system_at_close: 2,
+      periods: [{ time: '08:00', average_wait_hours: 0.09, longest_line: 4, arrivals: 46, served: 45 }, { time: '09:00', average_wait_hours: 0.09, longest_line: 4, arrivals: 46, served: 45 }] },
+  }
+  const daySetup = {
+    event_period_basis: 'representative_day',
+    segments: [{ id: '08:00', start_time: '08:00', end_time: '09:00', active_queue_ids: null }, { id: '09:00', start_time: '09:00', end_time: '10:00', active_queue_ids: null }],
+    breaks: [{ queue_id: 'east-07', scheduled_start_time: '09:30', duration_minutes: 15 }],
+  }
+  const mcResult = { provenance: 'SELECTED', scenario_id: 9, des_job_id: 10, results: [{ ...mcRow, time: '08:00', queue_id: 'east-07', lambda: 5.75 }] }
+  const validationResult = {
+    provenance: 'SELECTED', scenario_id: 9, analysis_id: 7, dataset_id: 2, des_job_id: 10, mc_job_id: 11, failure_rate_cap: 0.05,
+    periods: [{ time: '08:00', active_queue_ids: ['east-07'], status: 'pass', des_ok: true, des_reason: null,
+      queues: [{ time: '08:00', queue_id: 'east-07', selected_model: 'Parallel M/G/1', mc_failure_rate: 0, mc_failure_rate_adequate: true,
+        failure_rate_cap: 0.05, validation_verdict: 'pass', rho_sim: 0.55, Wq_sim: 0.09, served: 45 }] }],
+    verdict: { status: 'pass', failed: [], inadequate: [], total: 1 },
+  }
+  const decision = {
+    provenance: 'SELECTED', status: 'conditional', headline: 'Consider Scenario "Optimal @ 70%" conditionally.', recommendation: 'All checks passed.',
+    rationale: ['Net lane change across periods: -1.'], missing_evidence: [], scenario_id: 9, scenario_name: 'Optimal @ 70%', dataset_id: 2,
+    facts: { selected_target: 0.85, validation_checks: 1, failed_checks: 0, lane_delta: -1 }, failed_periods: [], inadequate_periods: [], evidence_ids: {},
+  }
+
+  function selected(overrides: Record<string, unknown> = {}, setup: Record<string, unknown> = daySetup) {
+    getAnalysisMock.mockResolvedValue(setupOf('separate_queues', setup))
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: v2scenario, selection: job('workflow_selection', { scenario_id: 9 }), ...overrides }))
+  }
+
+  it('names the plan and runs it once with the default seed', async () => {
+    const user = userEvent.setup()
+    selected()
+    runSelectedDesMock.mockResolvedValue({ evidence: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    renderPage()
+    expect(await screen.findByText('Selected Plan: Optimal @ 70% (id 9)')).toBeInTheDocument()
+    expect(screen.getByText('One continuous run of the day', { exact: false })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    await waitFor(() => expect(runSelectedDesMock).toHaveBeenCalledWith(7, { seed: 42 }))
+    expect(runDesMock).not.toHaveBeenCalled()
+    expect(optimizeSpy).not.toHaveBeenCalled()
+  })
+
+  it('points to Suggested plans when the selection went stale', async () => {
+    getAnalysisMock.mockResolvedValue(setupOf('separate_queues'))
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: job('workflow_selection', { scenario_id: 9 }) }))
+    renderPage('/simulation/results?analysis=7&plan=suggested')
+    expect(await screen.findByText(/no longer matches the current analysis data/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run full operation' })).not.toBeInTheDocument()
+  })
+
+  it('shows the day totals from the server and the conservation check', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    renderPage()
+    expect(await screen.findByRole('region', { name: 'Customers served' })).toHaveTextContent('Suggested plan: 90')
+    expect(screen.getByRole('region', { name: 'Still in line or being served at closing' })).toHaveTextContent('Suggested plan: 2')
+    expect(screen.getByText('Customer conservation holds for every period.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'People waiting, all lines together' })).toBeInTheDocument()
+    expect(screen.getByText(/checked every 5 minutes/)).toBeInTheDocument()
+    // The closing rule has one allowed value (drain_existing), so nothing offers to change it.
+    expect(screen.getByText('At closing time: counters finish the customers already in their line.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Change' })).not.toBeInTheDocument()
+    // One continuous day places the breaks in time: no break notice.
+    expect(screen.queryByTestId('break-notice')).not.toBeInTheDocument()
+  })
+
+  it('says a date-by-date plan run understates breaks', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
+    renderPage()
+    expect(await screen.findByTestId('break-notice')).toHaveTextContent('Breaks are understated in date-by-date runs')
+  })
+
+  it('says the Current run leaves the breaks out', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    renderPage('/simulation/results?analysis=7&plan=current')
+    expect(await screen.findByTestId('break-notice')).toHaveTextContent('This run does not include the scheduled breaks in your setup')
+  })
+
+  it('shows no break notice when the setup has no breaks', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date', breaks: [] })
+    renderPage('/simulation/results?analysis=7&plan=current')
+    expect(await screen.findByTestId('run-status')).toBeInTheDocument()
+    expect(screen.queryByTestId('break-notice')).not.toBeInTheDocument()
+  })
+
+  it('replays the whole day from the one execution on the store clock and keeps the time in the address', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    renderPage('/simulation/replay?analysis=7&t=08:15')
+    expect(await screen.findByTestId('replay-clock')).toHaveTextContent('08:15')
+    // The merged day is labelled with the day's hours, not the first period's.
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^08:00–10:00 · /)
+    // lane-A is opened only for 09:00, so at 08:15 it is not staffed; never shown as a break.
+    expect(screen.getByTestId('state-lane-A')).toHaveTextContent('Closed / not staffed')
+    expect(screen.getByRole('group', { name: 'Scheduled break (from your setup)' })).toHaveTextContent('east-07: 09:30–09:45')
+    expect(screen.getByText('Break state unavailable for this run.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Go to time'), { target: { value: '08:30' } })
+    await user.click(screen.getByRole('button', { name: 'Go' }))
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('t=08%3A30'))
+  })
+
+  it('replays a one-result-per-date plan one period at a time', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
+    renderPage('/simulation/replay?analysis=7')
+    expect(await screen.findByText('This run simulates one period at a time; it is not one continuous day.')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Period' })).toBeInTheDocument()
+  })
+
+  it('checks the plan: Many variations, Results check, then the Decision, in that order', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    runSelectedMcMock.mockResolvedValue({ evidence: job('workflow_mc', mcResult, { scenario_id: 9 }) })
+    runSelectedValidationMock.mockResolvedValue({ evidence: job('workflow_validation', validationResult, { scenario_id: 9 }) })
+    runSelectedDecisionMock.mockResolvedValue({ decision, persisted: true, evidence: job('workflow_decision', decision, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(runSelectedDecisionMock).toHaveBeenCalledTimes(1))
+    const order = [runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock].map((mock) => mock.mock.invocationCallOrder[0])
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(runSelectedMcMock.mock.calls[0][1]).not.toHaveProperty('failure_threshold')
+    expect(await screen.findByText('Decision: CONDITIONAL')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Continue to Reports' })).toHaveAttribute('href', '/analyses/7/reports')
+    // Each period's lane table scrolls in its own box, so a phone never scrolls the page sideways.
+    expect(screen.getByRole('region', { name: 'Period evidence · 08:00' })).toContainElement(screen.getByRole('rowheader', { name: 'east-07' }))
+  })
+
+  it('stops the sequence at the first refusal and shows the server reason', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    runSelectedMcMock.mockRejectedValue(Object.assign(new Error('409'), { response: { status: 409, data: { detail: 'The plan changed.' } } }))
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The plan changed.')
+    expect(runSelectedValidationMock).not.toHaveBeenCalled()
+    expect(runSelectedDecisionMock).not.toHaveBeenCalled()
+  })
+
+  it('needs a run before the checks, and validation before the decision', async () => {
+    selected()
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByRole('button', { name: 'Check the plan' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Run validation' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Run decision' })).toBeDisabled()
+  })
+
+  it('warns and sends the threshold when it is set below the plan target', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    runSelectedMcMock.mockResolvedValue({ evidence: job('workflow_mc', mcResult, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    const input = await screen.findByLabelText('Failure threshold (plan target: 0.85)')
+    await user.clear(input)
+    await user.type(input, '0.75')
+    expect(screen.getByText(/below the plan target/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run selected MC' }))
+    await waitFor(() => expect(runSelectedMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.75 }))
+  })
+
+  it('restores a stored decision without rerunning anything', async () => {
+    selected({
+      des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', mcResult, { scenario_id: 9 }),
+      validation: job('workflow_validation', validationResult, { scenario_id: 9 }), decision: job('workflow_decision', { ...decision, status: 'revise', failed_periods: ['10:00'] }, { scenario_id: 9 }),
+    })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByText('Decision: REVISE')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Return to Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
+    expect(runSelectedDecisionMock).not.toHaveBeenCalled()
+  })
+
+  it('never shows another plan\'s stored run', async () => {
+    selected({ des: job('workflow_des', { ...dayResult, scenario_id: 99 }, { scenario_id: 99 }) })
+    renderPage()
+    expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
+    expect(screen.getByRole('region', { name: 'Customers served' })).toHaveTextContent('Suggested plan: Not run')
+  })
+})

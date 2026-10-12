@@ -71,7 +71,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     await navLinks()
     expect(await screen.findByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
     expect(screen.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/analyses/7/reports')
-    expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/analyses/7/simulate')
+    expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/simulation/results?analysis=7')
     expect(screen.getByRole('link', { name: 'Quick calculator' })).toHaveAttribute('href', '/tools/calculator')
   })
 
@@ -108,7 +108,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
 
   it('marks exactly one destination as the current page', async () => {
     localStorage.setItem(LAST_ANALYSIS_KEY, '7')
-    renderWithProviders(<Sidebar />, { route: '/analyses/7/simulate' })
+    renderWithProviders(<Sidebar />, { route: '/simulation/replay?analysis=7' })
     const nav = await navLinks()
     const current = within(nav).getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')
     expect(current.map((link) => link.textContent)).toEqual(['Queue simulation'])
@@ -121,6 +121,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     ['/results?analysis=7&file=12&period=08%3A00', 'Analysis results'],
     ['/analyses/7/reports', 'Reports'],
     ['/analyses/7/decision', 'Queue simulation'],
+    ['/simulation/checks?analysis=7&plan=current', 'Queue simulation'],
     ['/tools/calculator', 'Quick calculator'],
   ])('highlights the right destination on %s', async (route, name) => {
     renderWithProviders(<Sidebar />, { route })

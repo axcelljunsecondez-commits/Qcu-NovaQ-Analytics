@@ -1,8 +1,11 @@
 import { useTranslation } from 'react-i18next'
-import type { SeparateLaneSnapshot } from '../../lib/simulationPlayback'
+import { counterState, type CounterState, type SeparateLaneSnapshot } from '../../lib/simulationPlayback'
 
 const MAX_VISIBLE_IN_LANE = 6
 const DENSE_LANE_THRESHOLD = 10
+const STATE_BADGE: Record<CounterState, string> = {
+  available: 'badge-neutral', serving: 'badge-ok', finishing: 'badge-warn', on_break: 'badge-warn', closed: 'badge-warn',
+}
 
 export interface StoreFloorViewProps {
   lanes: SeparateLaneSnapshot[]
@@ -52,12 +55,14 @@ export function StoreFloorView({
         {lanes.map((lane) => {
           const servingEntries = Object.entries(lane.servingByServer)
           const isClosed = closed.has(lane.queueId)
+          const state = counterState(lane, isClosed)
+          const stateBadge = <span className={`badge ${STATE_BADGE[state]}`} data-testid={`state-${lane.queueId}`}>{t(`simulation.state_${state}`)}</span>
           const waiting = lane.waitingCustomerIds
           const visible = waiting.slice(0, MAX_VISIBLE_IN_LANE)
           const hidden = Math.max(0, waiting.length - visible.length)
           return (
             <section
-              className={`store-lane ${isClosed ? 'is-closed' : ''}`}
+              className={`store-lane ${state === 'closed' ? 'is-closed' : ''} ${state === 'on_break' ? 'is-on-break' : ''}`}
               key={lane.queueId}
               data-testid={`lane-${lane.queueId}`}
               aria-label={`Queue ${lane.queueId}`}
@@ -83,12 +88,8 @@ export function StoreFloorView({
                   title={String(lane.serverId ?? lane.queueId)}
                 >
                   <strong className="store-counter-name">{lane.queueId}</strong>
-                  <span className={`badge ${isClosed ? 'badge-warn' : 'badge-neutral'}`}>
-                    {isClosed ? t('simulation.store_closed') : t('simulation.live_idle')}
-                  </span>
-                  <span className="store-counter-meta">
-                    {isClosed ? t('simulation.store_closed_hint') : t('simulation.live_server_available')}
-                  </span>
+                  {stateBadge}
+                  {state === 'closed' && <span className="store-counter-meta">{t('simulation.store_closed_hint')}</span>}
                 </article>
               ) : (
                 servingEntries.map(([serverKey, customerId]) => {
@@ -104,7 +105,7 @@ export function StoreFloorView({
                       title={serverKey}
                     >
                       <strong className="store-counter-name">{lane.queueId}</strong>
-                      <span className="badge badge-ok">{t('simulation.live_serving')}</span>
+                      {stateBadge}
                       <span className="store-counter-customer" data-testid={`customer-${customerId}`}>
                         <span className="store-dot-id">{customerId}</span>
                       </span>

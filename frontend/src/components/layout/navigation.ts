@@ -1,7 +1,7 @@
 // Global navigation model (spec 2026-10-09 §7.3, MASTER §9.1 version 1.1).
-// Insights and Simulation items open the last-used analysis. Analysis results
-// is /results (U6); until Queue simulation ships (U7) it points at the
-// existing Simulate and Reports workspace pages.
+// Insights and Simulation items open the last-used analysis: Analysis results
+// at /results (U6), Queue simulation at /simulation/results (U7a), Reports in
+// the analysis workspace.
 
 export type NavIconName = 'analyses' | 'results' | 'reports' | 'simulation' | 'calculator'
 
@@ -36,8 +36,8 @@ const reports: NavItem = { key: 'reports', icon: 'reports', target: analysisPage
 const queueSimulation: NavItem = {
   key: 'queue_simulation',
   icon: 'simulation',
-  target: analysisPage('simulate'),
-  matches: analysisStep('simulate', 'decision'),
+  target: (lastAnalysisId) => (lastAnalysisId ? `/simulation/results?analysis=${lastAnalysisId}` : '/analyses'),
+  matches: (pathname) => pathname.startsWith('/simulation') || analysisStep('decision')(pathname),
 }
 const quickCalculator: NavItem = {
   key: 'quick_calculator',

@@ -1202,11 +1202,19 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
                 lifecycles[chosen].enqueue(str(counters["customer"]))
                 env.process(customer_process(chosen, counters["customer"], arrival, label, quantile))
 
+    at_close: dict[str, int] = {}
+
+    def closing_count():
+        # Read-only: customers admitted but not yet finished when the day's last period ends.
+        yield env.timeout(day_end - env.now)
+        at_close["in_system"] = counters["admitted"] - counters["served"]
+
     env.process(schedule_controller())
     for queue_id in lanes:
         if queue_id in by_queue_breaks:
             env.process(break_controller(queue_id))
     env.process(arrival_process())
+    env.process(closing_count())
     env.run(until=day_end + 24.0)
     conserved = counters["served"] == counters["admitted"]
     period_out = []
@@ -1231,6 +1239,7 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
                            "duration_hours": duration, "lanes": lane_rows})
     return {"periods": period_out, "trace_events": trace, "trace_truncated": truncated,
             "admitted": counters["admitted"], "served": counters["served"],
+            "in_system_at_close": at_close.get("in_system"),
             "customer_conservation": conserved, "day_hours": day_end - float(windows[0]["start_hours"])}
 
 
