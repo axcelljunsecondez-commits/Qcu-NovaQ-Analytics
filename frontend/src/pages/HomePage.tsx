@@ -8,7 +8,7 @@ import { ThemeToggle } from '../components/layout/ThemeToggle'
 const START_PATH = '/analyses/new'
 
 // Public Home (spec §7.1, D5, D8). The only "Start an analysis" button is in the hero.
-// Help is public (plan U8); Quick calculator joins the header when it becomes public (plan U9/B2).
+// Help (plan U8) and the Quick calculator (plan U9/B2) are public and linked from the header.
 export function HomePage() {
   const { t } = useTranslation()
   const { user } = useAuth()
@@ -21,6 +21,7 @@ export function HomePage() {
         <div className="home-logo">Nova<b>Q</b></div>
         <nav className="home-header-actions" aria-label={t('home.header_navigation')}>
           <a href="#how-it-works">{t('home.how_it_works')}</a>
+          <Link to="/calculator">{t('nav.quick_calculator')}</Link>
           <Link to="/help">{t('nav.help')}</Link>
           <LanguageSelect />
           <ThemeToggle />

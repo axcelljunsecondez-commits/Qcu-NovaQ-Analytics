@@ -160,6 +160,7 @@ services:
       RATE_LIMIT_REPORT: ${RATE_LIMIT_REPORT:-10}
       RATE_LIMIT_COMPUTE: ${RATE_LIMIT_COMPUTE:-30}
       RATE_LIMIT_ADMIN: ${RATE_LIMIT_ADMIN:-30}
+      RATE_LIMIT_GUEST_COMPUTE: ${RATE_LIMIT_GUEST_COMPUTE:-30}
     secrets:
       - db_password
       - smtp_password

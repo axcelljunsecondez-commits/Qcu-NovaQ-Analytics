@@ -5,7 +5,7 @@ import { RequireAuth } from './auth/RequireAuth'
 import { RequireRole } from './auth/RequireRole'
 import { useAuth } from './auth/useAuth'
 import { AppLayout } from './components/layout/AppLayout'
-import { HelpShell } from './components/layout/HelpShell'
+import { PublicShell } from './components/layout/PublicShell'
 import { AnalysisWorkspace } from './components/analysis/AnalysisWorkspace'
 import { ApiState } from './components/ui/ApiState'
 
@@ -17,9 +17,7 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })))
 const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })))
 const GuidedSetupPage = lazy(() => import('./pages/GuidedSetupPage').then((m) => ({ default: m.GuidedSetupPage })))
-const AnalysisPage = lazy(() =>
-  import('./pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })),
-)
+const QuickCalculatorPage = lazy(() => import('./pages/QuickCalculatorPage').then((m) => ({ default: m.QuickCalculatorPage })))
 const OptimizePage = lazy(() =>
   import('./pages/OptimizePage').then((m) => ({ default: m.OptimizePage })),
 )
@@ -91,12 +89,13 @@ export function createAppRouter() {
         { path: '/verify-email', element: <VerifyEmailPage /> },
         { path: '/forgot-password', element: <ForgotPasswordPage /> },
         { path: '/reset-password', element: <ResetPasswordPage /> },
-        // Help is public (spec §5, plan U8); HelpShell picks the app or the public frame.
+        // Public pages (spec §5): Help (U8) and the guest Quick calculator (U9 + B2); PublicShell picks the frame.
         {
-          element: <HelpShell />,
+          element: <PublicShell />,
           children: [
             { path: '/help', element: <HelpPage /> },
             { path: '/help/:topic', element: <HelpPage /> },
+            { path: '/calculator', element: <QuickCalculatorPage /> },
           ],
         },
         {
@@ -134,7 +133,7 @@ export function createAppRouter() {
                 { path: '/simulation/results', element: <QueueSimulationPage page="results" /> },
                 { path: '/simulation/replay', element: <QueueSimulationPage page="replay" /> },
                 { path: '/simulation/checks', element: <QueueSimulationPage page="checks" /> },
-                { path: '/tools/calculator', element: <AnalysisPage /> },
+                { path: '/tools/calculator', element: <QuickCalculatorPage /> },
                 { path: '/settings', element: <Navigate to="/settings/account" replace /> },
                 { path: '/settings/:section', element: <SettingsPage /> },
                 {

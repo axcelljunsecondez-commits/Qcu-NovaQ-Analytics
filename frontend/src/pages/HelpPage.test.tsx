@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { Outlet, Route, Routes } from 'react-router-dom'
 import en from '../../public/locales/en/translation.json'
 import tl from '../../public/locales/tl/translation.json'
-import { HelpShell } from '../components/layout/HelpShell'
+import { PublicShell } from '../components/layout/PublicShell'
 import { HELP_GUIDES } from '../lib/helpGuides'
 import { renderWithProviders } from '../test/test-utils'
 import { HelpPage } from './HelpPage'
@@ -30,7 +30,7 @@ beforeEach(() => {
 function renderHelp(route: string) {
   return renderWithProviders(
     <Routes>
-      <Route element={<HelpShell />}>
+      <Route element={<PublicShell />}>
         <Route path="/help" element={<HelpPage />} />
         <Route path="/help/:topic" element={<HelpPage />} />
       </Route>

@@ -162,11 +162,13 @@ Per its spec; then enable D26 states for the standard shared line.
 
 ## Phase U8 — Help center
 
-Status (2026-10-12): implemented on `feat/ux-u1-shell` after `b2a667a8`, uncommitted. Help is public; eight guides with search and contextual "?" links; the Downloads guide describes today's Reports and must change with B8.
+Status (2026-10-12): committed `4a4fc58b` (local, not pushed). Help is public; eight guides with search and contextual "?" links; the Downloads guide describes today's Reports and must change with B8.
 
 Search, guides (spec §7.11) including "Reviewing older files", "Planning vs review-only files", "Closing time", "Reading the simulation"; contextual "?" links. Screenshots deferred to U10.
 
 ## Phase U9 + B2 — Quick calculator
+
+Status (2026-10-12): implemented on `feat/ux-u1-shell` after `4a4fc58b`, uncommitted. Guest limit 30 calls per minute per client (10 Calculates). The explicit-model calculator page is replaced; Limited waiting space with the optional spread keeps M/G/c/K reachable.
 
 B2 per spec §11 with a limit sized for three calls per click. Frontend guest and signed-in pages: situation tabs, ⓘ tooltips, results, "What this means" with c−1 / c / c+1 from three real calls; unstable case wording.
 

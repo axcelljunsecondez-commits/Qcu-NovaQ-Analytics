@@ -212,6 +212,8 @@ class Settings:
         self.rate_limit_report = _int("RATE_LIMIT_REPORT", 10, 1, 1000)
         self.rate_limit_compute = _int("RATE_LIMIT_COMPUTE", 30, 1, 1000)
         self.rate_limit_admin = _int("RATE_LIMIT_ADMIN", 30, 1, 1000)
+        # B2 guest calculator: one Calculate makes up to three calls (c - 1, c, c + 1), so 30 = 10 clicks.
+        self.rate_limit_guest_compute = _int("RATE_LIMIT_GUEST_COMPUTE", 30, 3, 1000)
 
         self.database_url = database_url_from_environment()
         self.forwarded_allow_ips = os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1").strip()

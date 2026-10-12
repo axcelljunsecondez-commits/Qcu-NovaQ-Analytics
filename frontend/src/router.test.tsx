@@ -35,6 +35,7 @@ describe('canonical route contract', () => {
       '/onboarding',
       '/help',
       '/help/:topic',
+      '/calculator',
       '/dashboard',
       '/analyses',
       '/analyses/new',
