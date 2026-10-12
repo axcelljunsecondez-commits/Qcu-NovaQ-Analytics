@@ -349,6 +349,7 @@ describe('separate server break schedule', () => {
     renderSeparateSetup()
     const basis = await screen.findByLabelText('Customer data periods')
     expect(basis).toHaveValue('per_date')
+    expect(screen.getByRole('link', { name: 'Help: Advanced settings' })).toHaveAttribute('href', '/help/data#advanced')
     await user.selectOptions(basis, 'representative_day')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {

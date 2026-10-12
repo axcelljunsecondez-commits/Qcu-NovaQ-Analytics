@@ -21,6 +21,7 @@ import { fmtDecimal } from '../../lib/format'
 import { clockAt, clockOfMinutes, hoursAt, latestRunIds, rangeText, stateAt, waitingSteps } from '../../lib/continuous'
 import { requestError } from '../../lib/simulationEvidence'
 import type { SimulationPageName } from './simulationContext'
+import { HelpLink } from '../ui/HelpLink'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10]
 const SECONDS_AT_1X = 60 // replay speed semantics unchanged (D29 base rate still open): 1× plays the day in 60 s
@@ -80,7 +81,7 @@ function ClosingRule({ analysisId, rule }: { analysisId: number; rule: ClosingPo
   }
   return (
     <fieldset className="closing-choice" data-testid="closing-choice">
-      <legend>{rule === null ? t('continuous.closing_none') : t('continuous.closing_title')}</legend>
+      <legend>{rule === null ? t('continuous.closing_none') : t('continuous.closing_title')}</legend><HelpLink topic="simulation" section="closing" />
       {(['DRAIN', 'HARD_CUTOFF'] as const).map((value) => (
         <label key={value} className="radio-row">
           <input type="radio" name={`closing-${analysisId}`} value={value} checked={choice === value} onChange={() => setChoice(value)} />
@@ -142,7 +143,7 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
   const blocking = view.reasons.filter((reason) => reason.code !== 'no_closing_policy')
   return (
     <section className="card run-bar" aria-label={t('continuous.title')}>
-      <h2 className="section-title">{t('continuous.title')} <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2>
+      <div className="title-row"><h2 className="section-title">{t('continuous.title')} <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2><HelpLink topic="simulation" section="methods" /></div>
       <div className="run-bar-row">
         <span>{hours ? t('simulation.operating_hours', { hours }) : t('simulation.operating_hours_unknown')}</span>
         <ClosingRule analysisId={analysisId} rule={rule} />

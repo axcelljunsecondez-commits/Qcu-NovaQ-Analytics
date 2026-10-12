@@ -1,33 +1,62 @@
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { HELP_GUIDES, isHelpTopic, searchHelp } from '../lib/helpGuides'
 
+// Help center (spec 2026-10-09 §7.11, plan U8): search over the guides in the current language,
+// one page per guide at /help/:topic, and #section anchors for the "?" links on other screens.
 export function HelpPage() {
-  const { t } = useTranslation()
+  const { topic } = useParams()
+  if (topic === undefined) return <HelpIndex />
+  if (!isHelpTopic(topic)) return <Navigate to="/help" replace />
+  return <HelpGuide topic={topic} />
+}
 
+function HelpIndex() {
+  const { t } = useTranslation()
+  const [query, setQuery] = useState('')
+  const matches = searchHelp(query, t)
   return (
-    <div className="page-stack">
+    <div className="page-stack help-page">
       <header className="page-header">
         <p className="topbar-eyebrow">{t('help.eyebrow')}</p>
         <h1 className="page-title">{t('help.title')}</h1>
         <p className="page-caption">{t('help.subtitle')}</p>
       </header>
 
+      <section className="card" role="search">
+        <label htmlFor="help-search" className="card-title">{t('help.search_label')}</label>
+        <input id="help-search" type="search" value={query} placeholder={t('help.search_placeholder')}
+          onChange={(event) => setQuery(event.target.value)} />
+        {query.trim() && (
+          matches.length > 0 ? (
+            <ul className="help-results" aria-label={t('help.search_results')}>
+              {matches.map((match) => (
+                <li key={`${match.topic}-${match.section ?? ''}`}>
+                  <Link to={`/help/${match.topic}${match.section ? `#${match.section}` : ''}`}>{match.title}</Link>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="form-hint" role="status">{t('help.search_none')}</p>
+        )}
+      </section>
+
+      <section aria-label={t('help.guides_title')}>
+        <h2 className="section-title">{t('help.guides_title')}</h2>
+        <ul className="help-guide-list">
+          {HELP_GUIDES.map((guide) => (
+            <li key={guide.topic} className="card">
+              <h3 className="card-title"><Link to={`/help/${guide.topic}`}>{t(`help.guide.${guide.topic}.title`)}</Link></h3>
+              <p>{t(`help.guide.${guide.topic}.purpose`)}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="card" aria-labelledby="help-preferences-title">
         <h2 id="help-preferences-title" className="card-title">{t('help.preferences_title')}</h2>
         <p>{t('help.preferences_desc')}</p>
-        <Link className="button-link" to="/settings/preferences">
-          {t('help.open_preferences')}
-        </Link>
-      </section>
-
-      <section className="card" aria-labelledby="help-workflow-title">
-        <h2 id="help-workflow-title" className="card-title">{t('help.workflow_title')}</h2>
-        <p>{t('help.workflow_desc')}</p>
-        <ol className="help-workflow-list">
-          {['setup', 'current', 'optimize', 'compare', 'simulate', 'decision', 'reports'].map((step) => (
-            <li key={step}>{t(`nav.${step}`)}</li>
-          ))}
-        </ol>
+        <Link className="button-link" to="/settings/preferences">{t('help.open_preferences')}</Link>
       </section>
 
       <section className="card" aria-labelledby="help-limits-title">
@@ -35,5 +64,41 @@ export function HelpPage() {
         <p>{t('help.limits_desc')}</p>
       </section>
     </div>
+  )
+}
+
+function HelpGuide({ topic }: { topic: (typeof HELP_GUIDES)[number]['topic'] }) {
+  const { t } = useTranslation()
+  const location = useLocation()
+  const guide = HELP_GUIDES.find((item) => item.topic === topic)!
+  const base = `help.guide.${topic}`
+
+  useEffect(() => {
+    // Deep links such as /help/simulation#closing open at that section.
+    const id = decodeURIComponent(location.hash.slice(1))
+    if (id) document.getElementById(id)?.scrollIntoView({ block: 'start' })
+  }, [location.hash, topic])
+
+  return (
+    <article className="page-stack help-page" aria-labelledby="help-guide-title">
+      <nav aria-label={t('nav.breadcrumb')}><Link to="/help">{t('help.all_guides')}</Link></nav>
+      <header className="page-header">
+        <p className="topbar-eyebrow">{t('help.eyebrow')}</p>
+        <h1 id="help-guide-title" className="page-title">{t(`${base}.title`)}</h1>
+      </header>
+      <section className="card help-summary">
+        <dl>
+          <dt>{t('help.action')}</dt><dd>{t(`${base}.action`)}</dd>
+          <dt>{t('help.purpose')}</dt><dd>{t(`${base}.purpose`)}</dd>
+          <dt>{t('help.next_step')}</dt><dd>{t(`${base}.next`)}</dd>
+        </dl>
+      </section>
+      {guide.sections.map((section) => (
+        <section key={section} id={section} className="card" aria-labelledby={`help-${section}-title`}>
+          <h2 id={`help-${section}-title`} className="card-title">{t(`${base}.${section}.title`)}</h2>
+          <p>{t(`${base}.${section}.body`)}</p>
+        </section>
+      ))}
+    </article>
   )
 }

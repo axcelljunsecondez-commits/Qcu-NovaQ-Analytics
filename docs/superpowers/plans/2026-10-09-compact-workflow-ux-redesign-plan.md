@@ -156,11 +156,13 @@ Per its spec. Becomes the standard shared simulation for customer-record uploads
 
 ## Phase 12 — B4c Shared-line break modeling
 
-Status (2026-10-12): implemented with the approved addendum `2026-10-12-b4c-addendum-anonymous-counter-breaks.md` (breaks taken by the first free counter, because counter numbers are not stable in the engine) on `feat/ux-u1-shell` after `e26d82e3`, uncommitted. D26 "Finishing customers before break" is shown as "Breaks waiting for a free counter" (addendum section 5).
+Status (2026-10-12): committed `b2a667a8` (local, not pushed), with the approved addendum `2026-10-12-b4c-addendum-anonymous-counter-breaks.md` (breaks taken by the first free counter, because counter numbers are not stable in the engine). D26 "Finishing customers before break" is shown as "Breaks waiting for a free counter" (addendum section 5).
 
 Per its spec; then enable D26 states for the standard shared line.
 
 ## Phase U8 — Help center
+
+Status (2026-10-12): implemented on `feat/ux-u1-shell` after `b2a667a8`, uncommitted. Help is public; eight guides with search and contextual "?" links; the Downloads guide describes today's Reports and must change with B8.
 
 Search, guides (spec §7.11) including "Reviewing older files", "Planning vs review-only files", "Closing time", "Reading the simulation"; contextual "?" links. Screenshots deferred to U10.
 

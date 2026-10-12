@@ -14,6 +14,7 @@ import { messageOf } from '../lib/format'
 import { currentDatasetId } from '../lib/datasets'
 import { MakePeriodsHelper } from '../components/setup/MakePeriodsHelper'
 import { ManualEntry } from '../components/setup/ManualEntry'
+import { HelpLink } from '../components/ui/HelpLink'
 
 const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null, segments: [], separate_queue_closure_policy: 'drain_existing',     queue_ids: [], breaks: [] }
 
@@ -214,7 +215,7 @@ export function AnalysisSetupPage() {
     <div className="setup-page">
       <header className="page-header">
         <p className="topbar-eyebrow">{t('setup.canonical_eyebrow')}</p>
-        <h1 className="page-title">{t('setup.data_title')}</h1>
+        <div className="title-row"><h1 className="page-title">{t('setup.data_title')}</h1><HelpLink topic="data" /></div>
         <p className="page-caption">{t('setup.data_description')}</p>
       </header>
       {setup.queue_structure === 'unknown' && (
@@ -237,7 +238,7 @@ export function AnalysisSetupPage() {
             <h3 className="card-title">{t('analyses.upload')}</h3>
             <p className="page-caption">{t('analyses.upload_help')}</p>
             <fieldset className="form-field setup-purpose">
-              <legend>{t('setup.purpose_question')}</legend>
+              <legend>{t('setup.purpose_question')}</legend><HelpLink topic="data" section="purpose" />
               {(['planning', 'review'] as const).map((value) => (
                 <label key={value} className="setup-purpose-option">
                   <input type="radio" name="dataset-purpose" value={value} checked={purpose === value} onChange={() => setPurpose(value)} />
@@ -303,7 +304,7 @@ export function AnalysisSetupPage() {
                 <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
               )}
               {setup.queue_structure === 'separate_queues' && <QueueIdEditor ids={setup.queue_ids} onChange={changeQueueIds} />}
-              {periodLayout && <div className="form-field"><label htmlFor="period-basis">{t('analyses.period_basis')}</label><select id="period-basis" aria-describedby="period-basis-help" value={setup.event_period_basis ?? 'per_date'} onChange={(e) => set('event_period_basis', e.target.value as EventPeriodBasis)}><option value="per_date">{t('analyses.period_basis_per_date')}</option><option value="representative_day">{t('analyses.period_basis_representative_day')}</option></select><span id="period-basis-help" className="form-hint">{t('analyses.period_basis_help')}</span></div>}
+              {periodLayout && <div className="form-field"><label htmlFor="period-basis">{t('analyses.period_basis')}</label> <HelpLink topic="data" section="advanced" /><select id="period-basis" aria-describedby="period-basis-help" value={setup.event_period_basis ?? 'per_date'} onChange={(e) => set('event_period_basis', e.target.value as EventPeriodBasis)}><option value="per_date">{t('analyses.period_basis_per_date')}</option><option value="representative_day">{t('analyses.period_basis_representative_day')}</option></select><span id="period-basis-help" className="form-hint">{t('analyses.period_basis_help')}</span></div>}
               {setup.queue_structure === 'separate_queues' && <BreakEditor queueIds={setup.queue_ids} breaks={setup.breaks ?? []} onChange={(breaks) => set('breaks', breaks)} />}
               {setup.queue_structure === 'shared_queue' && <CounterBreakEditor breaks={setup.counter_breaks ?? []} onChange={(breaks) => set('counter_breaks', breaks)} />}
               <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>

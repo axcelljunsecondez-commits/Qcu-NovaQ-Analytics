@@ -21,6 +21,7 @@ import {
 import { ApiState } from '../components/ui/ApiState'
 import { getWorkflow } from '../api/workflow'
 import { fmtPctDecimal } from '../lib/format'
+import { HelpLink } from '../components/ui/HelpLink'
 
 interface ReportPreviewEntry {
   id: string
@@ -279,7 +280,7 @@ export function ReportsPage() {
         <div className="topbar">
           <div>
             <div className="topbar-eyebrow">{t('reports.eyebrow')}</div>
-            <h1 className="page-title">{t('reports.title')}</h1>
+            <div className="title-row"><h1 className="page-title">{t('reports.title')}</h1><HelpLink topic="downloads" /></div>
             <p className="page-caption">{t('reports.description')}</p>
           </div>
         </div>
@@ -314,7 +315,7 @@ export function ReportsPage() {
       <div className="topbar">
         <div>
           <div className="topbar-eyebrow">{t('reports.eyebrow')}</div>
-          <h1 className="page-title">{t('reports.title')}</h1>
+          <div className="title-row"><h1 className="page-title">{t('reports.title')}</h1><HelpLink topic="downloads" /></div>
           <p className="page-caption">{t('reports.description')}</p>
         </div>
       </div>

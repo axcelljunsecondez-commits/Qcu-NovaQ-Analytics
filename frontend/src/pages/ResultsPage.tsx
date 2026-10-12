@@ -16,6 +16,7 @@ import { currentDatasetId } from '../lib/datasets'
 import { rememberLastAnalysis, resolveLastAnalysis, storedLastAnalysis, subscribeLastAnalysis } from '../lib/lastAnalysis'
 import { ALL } from '../lib/periodFilter'
 import { hasCustomerRecords, isProcessed, lineOf } from '../lib/results'
+import { HelpLink } from '../components/ui/HelpLink'
 
 /**
  * Analysis results (spec 2026-10-09 §7.7, D14–D21, D31): the results of any successfully
@@ -83,7 +84,7 @@ export function ResultsPage() {
     <header className="page-header results-header">
       <div>
         <p className="topbar-eyebrow">{t('nav.group_insights')}</p>
-        <h1 className="page-title">{t('nav.analysis_results')}</h1>
+        <div className="title-row"><h1 className="page-title">{t('nav.analysis_results')}</h1><HelpLink topic="results" /></div>
       </div>
       <div className="form-field">
         <label htmlFor="results-analysis">{t('results.analysis_label')}</label>

@@ -14,6 +14,7 @@ import { ReplayView } from '../components/queueSimulation/ReplayView'
 import { RunBar } from '../components/queueSimulation/RunBar'
 import { buildContext, defaultRun, simulationHref, type RunChoice, type SimulationPageName } from '../components/queueSimulation/simulationContext'
 import { rememberLastAnalysis, resolveLastAnalysis, storedLastAnalysis, subscribeLastAnalysis } from '../lib/lastAnalysis'
+import { HelpLink } from '../components/ui/HelpLink'
 
 const PAGES: Array<{ page: SimulationPageName; labelKey: string }> = [
   { page: 'results', labelKey: 'simulation.page_results' },
@@ -60,7 +61,7 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     <header className="page-header simulation-header">
       <div>
         <p className="topbar-eyebrow">{t('nav.group_simulation')}</p>
-        <h1 className="page-title">{t('nav.queue_simulation')}</h1>
+        <div className="title-row"><h1 className="page-title">{t('nav.queue_simulation')}</h1>{page === 'checks' ? <HelpLink topic="checks" /> : <HelpLink topic="simulation" section={page === 'replay' ? 'reading' : undefined} />}</div>
       </div>
       <div className="form-field">
         <label htmlFor="simulation-analysis">{t('results.analysis_label')}</label>

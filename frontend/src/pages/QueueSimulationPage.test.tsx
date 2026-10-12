@@ -743,6 +743,9 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect(bar).toHaveTextContent('Operating hours: 08:00–10:00')
     expect(bar).toHaveTextContent('Simulated · preview')
     expect(bar).toHaveTextContent('About 13 customers per day.')
+    // Contextual help (plan U8).
+    expect(within(bar).getByRole('link', { name: 'Help: Full-day run and period-by-period run' })).toHaveAttribute('href', '/help/simulation#methods')
+    expect(screen.getByRole('link', { name: 'Help: Queue simulation' })).toHaveAttribute('href', '/help/simulation')
   })
 
   it('names why a shared line cannot run the full day and keeps the older run', async () => {

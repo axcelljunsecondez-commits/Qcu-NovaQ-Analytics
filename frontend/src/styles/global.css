@@ -3689,8 +3689,59 @@ th {
   background: var(--bg-secondary);
 }
 
-.help-workflow-list {
+/* Help center (plan U8) */
+.title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-left: var(--space-xs);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.help-link:hover,
+.help-link:focus-visible {
+  border-color: var(--accent);
+}
+
+.help-guide-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-md);
+  padding: 0;
+  list-style: none;
+}
+
+.help-results {
   padding-left: 1.25rem;
+}
+
+.help-summary dt {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.help-summary dd {
+  margin: 0 0 var(--space-sm);
+}
+
+.help-page section[id] {
+  scroll-margin-top: var(--space-md);
 }
 
 .login-checks {

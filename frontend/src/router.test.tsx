@@ -34,6 +34,7 @@ describe('canonical route contract', () => {
       '/reset-password',
       '/onboarding',
       '/help',
+      '/help/:topic',
       '/dashboard',
       '/analyses',
       '/analyses/new',

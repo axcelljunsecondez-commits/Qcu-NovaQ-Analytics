@@ -5,6 +5,7 @@ import { RequireAuth } from './auth/RequireAuth'
 import { RequireRole } from './auth/RequireRole'
 import { useAuth } from './auth/useAuth'
 import { AppLayout } from './components/layout/AppLayout'
+import { HelpShell } from './components/layout/HelpShell'
 import { AnalysisWorkspace } from './components/analysis/AnalysisWorkspace'
 import { ApiState } from './components/ui/ApiState'
 
@@ -90,6 +91,14 @@ export function createAppRouter() {
         { path: '/verify-email', element: <VerifyEmailPage /> },
         { path: '/forgot-password', element: <ForgotPasswordPage /> },
         { path: '/reset-password', element: <ResetPasswordPage /> },
+        // Help is public (spec §5, plan U8); HelpShell picks the app or the public frame.
+        {
+          element: <HelpShell />,
+          children: [
+            { path: '/help', element: <HelpPage /> },
+            { path: '/help/:topic', element: <HelpPage /> },
+          ],
+        },
         {
           element: <RequireAuth />,
           children: [
@@ -126,7 +135,6 @@ export function createAppRouter() {
                 { path: '/simulation/replay', element: <QueueSimulationPage page="replay" /> },
                 { path: '/simulation/checks', element: <QueueSimulationPage page="checks" /> },
                 { path: '/tools/calculator', element: <AnalysisPage /> },
-                { path: '/help', element: <HelpPage /> },
                 { path: '/settings', element: <Navigate to="/settings/account" replace /> },
                 { path: '/settings/:section', element: <SettingsPage /> },
                 {

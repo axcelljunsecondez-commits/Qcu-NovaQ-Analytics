@@ -29,6 +29,7 @@ import { utilizationBand } from '../lib/utilization'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
+import { HelpLink } from '../components/ui/HelpLink'
 
 interface GoalPreset {
   id: string
@@ -753,7 +754,7 @@ export function OptimizePage() {
       <div className="topbar">
         <div>
           <div className="topbar-eyebrow">{t(isSeparateStaffing ? 'optimize.staffing_eyebrow' : 'optimize.eyebrow')}</div>
-          <h1 className="page-title">{t(isSeparateStaffing ? 'optimize.staffing_title' : 'optimize.title')}</h1>
+          <div className="title-row"><h1 className="page-title">{t(isSeparateStaffing ? 'optimize.staffing_title' : 'optimize.title')}</h1><HelpLink topic="plans" /></div>
           <p className="page-caption">{t(isSeparateStaffing ? 'optimize.staffing_description' : 'optimize.description')}</p>
         </div>
       </div>
