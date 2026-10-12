@@ -8,6 +8,7 @@ import { ApiState } from '../components/ui/ApiState'
 import { NamedSharedQueueSimulation } from '../components/simulation/NamedSharedQueueSimulation'
 import { SimulationModeSwitch } from '../components/simulation/SimulationModeSwitch'
 import { ChecksView } from '../components/queueSimulation/ChecksView'
+import { ContinuousSection } from '../components/queueSimulation/ContinuousRun'
 import { KeyResultsView } from '../components/queueSimulation/KeyResultsView'
 import { ReplayView } from '../components/queueSimulation/ReplayView'
 import { RunBar } from '../components/queueSimulation/RunBar'
@@ -124,16 +125,32 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     )
   }
 
+  const periodRun = (
+    <>
+      <RunBar key={`run-${id}-${run}`} context={context} run={run} runLabelKey={context.separate ? undefined : 'simulation.run_period_by_period'} />
+      {page === 'results' && <KeyResultsView context={context} run={run} />}
+      {page === 'replay' && <ReplayView context={context} run={run} />}
+      {page === 'checks' && <ChecksView key={`checks-${id}-${run}`} context={context} run={run} />}
+    </>
+  )
+
   return (
     <div className="page-stack">
       {top}
       {run === 'suggested' && context.scenario && (
         <p className="form-hint">{t('simulation.sep_selected_plan')}: {context.scenario.name} (id {context.scenario.id})</p>
       )}
-      <RunBar key={`run-${id}-${run}`} context={context} run={run} />
-      {page === 'results' && <KeyResultsView context={context} run={run} />}
-      {page === 'replay' && <ReplayView context={context} run={run} />}
-      {page === 'checks' && <ChecksView key={`checks-${id}-${run}`} context={context} run={run} />}
+      {context.separate ? periodRun : (
+        <>
+          {/* B4a: one shared line runs the whole day continuously; the older per-period run stays, labelled. */}
+          <ContinuousSection key={`continuous-${id}`} analysisId={id} run={run} page={page} />
+          <section className="page-stack older-run" aria-labelledby="older-run-title">
+            <h2 id="older-run-title" className="section-title">{t('continuous.older_title')}</h2>
+            <p className="form-hint">{t('continuous.older_hint')}</p>
+            {periodRun}
+          </section>
+        </>
+      )}
     </div>
   )
 }

@@ -161,7 +161,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
         <Card label={t('simulation.served_customers')} now={value(nowSummary, current !== null, count('served'))} plan={value(planSummary, suggested !== null, count('served'))} note={perPeriodNote} />
         <Card label={t('simulation.not_served_at_close')} now={value(nowSummary, current !== null, count('in_system_at_close'))} plan={value(planSummary, suggested !== null, count('in_system_at_close'))} note={perPeriodNote} />
       </div>
-      {!shown && <p className="empty-state">{t('simulation.run_first')}</p>}
+      {!shown && <p className="empty-state">{t(context.separate ? 'simulation.run_first' : 'simulation.run_first_period')}</p>}
       {shown?.kind === 'separate' && (
         <div role="status" className={`alert ${shown.result.overall_conservation ? 'alert-ok' : 'alert-error'}`}>
           {shown.result.overall_conservation ? t('simulation.sep_conservation_ok') : t('simulation.sep_conservation_bad')}

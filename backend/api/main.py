@@ -35,6 +35,7 @@ from backend.api.rate_limit import FixedWindowLimiter, ResourceLimitMiddleware
 from backend.api.reports import router as reports_router
 from backend.api.scenarios import router as scenarios_router
 from backend.api.settings import Settings
+from backend.api.shared_continuous import router as continuous_shared_router
 from backend.api.shared_named import router as named_shared_router
 from backend.api.simulation import router as simulation_router
 from backend.api.templates import router as templates_router
@@ -340,6 +341,7 @@ def create_app(
     app.include_router(templates_router)
     app.include_router(workflow_router)
     app.include_router(named_shared_router)
+    app.include_router(continuous_shared_router)
 
     return app
 

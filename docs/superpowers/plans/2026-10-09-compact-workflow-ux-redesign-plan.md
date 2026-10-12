@@ -136,6 +136,8 @@ Tests: event-to-state mapping table; no break state inferred from idle; accounti
 
 ## Phase 10 — B4a + U7b Continuous shared run (preview)
 
+Status (2026-10-12): implemented on `feat/ux-u1-shell` after `2143f602`, uncommitted pending the owner's approval. Migration 0007 (`analysis_projects.shared_closing_policy`), adapter `backend/api/shared_continuous.py`, full-day section on the Queue simulation pages for shared lines; the older period-by-period run stays, labelled. Key results follow D30 (four cards, two charts, More results) rather than the earlier "Day summary table and four charts". Boundary continuity is covered by the engine's existing tests (`tests/test_shared_continuous_des.py`), unchanged.
+
 Implement per the B4a spec; frontend "Run full operation" for compatible shared analyses, Day summary table (spec §9.2) and four charts, replay with go-to-time, closing-rule summary and "Change", compatibility refusals, preview label.
 
 Tests (backend): continuity across period boundaries (customer identity, order, accumulated wait, in-service customer completes after boundary); closing rules recorded per run; refusal for `variance`/`K`/`theta`; pin test unchanged. Frontend: Day summary equals response fields; preview label present.

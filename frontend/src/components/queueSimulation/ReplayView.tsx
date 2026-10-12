@@ -17,7 +17,7 @@ export function ReplayView({ context, run }: { context: SimulationContext; run: 
   const suggested = run === 'suggested' ? suggestedRun(context) : null
   const current = run === 'current' ? currentRun(context) : null
 
-  if (!suggested && !current) return <p className="empty-state">{t('simulation.run_first')}</p>
+  if (!suggested && !current) return <p className="empty-state">{t(context.separate ? 'simulation.run_first' : 'simulation.run_first_period')}</p>
 
   if (suggested?.kind === 'separate') {
     const day = context.representativeDay ? mergeDayTrace(suggested.result.periods) : null
@@ -56,7 +56,7 @@ export function ReplayView({ context, run }: { context: SimulationContext; run: 
   }
 
   const trace = suggested?.result ?? current
-  if (!trace) return <p className="empty-state">{t('simulation.run_first')}</p>
+  if (!trace) return <p className="empty-state">{t(context.separate ? 'simulation.run_first' : 'simulation.run_first_period')}</p>
   const segment = trace.segments.find((item) => item.simulation_supported && !item.error) ?? trace.segments[0]
   const layout = segment ? selectPlaybackLayout(segment.queue_structure) : (context.separate ? 'separate' : 'shared')
   return (

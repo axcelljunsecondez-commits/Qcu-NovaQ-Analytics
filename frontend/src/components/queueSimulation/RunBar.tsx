@@ -8,7 +8,7 @@ import { operatingHours } from '../../lib/replay'
 import { breakNoticeKey, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** One-row run bar (D30): hours, closing rule, status, Run full operation, Advanced. */
-export function RunBar({ context, run }: { context: SimulationContext; run: RunChoice }) {
+export function RunBar({ context, run, runLabelKey = 'simulation.run_full_operation' }: { context: SimulationContext; run: RunChoice; runLabelKey?: string }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { analysisId } = context
@@ -71,7 +71,7 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
           {t(runMutation.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
         </span>
         <button type="button" className="btn-primary" onClick={start} disabled={!canRun || runMutation.isPending}>
-          {runMutation.isPending ? t('common.loading') : t('simulation.run_full_operation')}
+          {runMutation.isPending ? t('common.loading') : t(runLabelKey)}
         </button>
       </div>
       <p className="form-hint">

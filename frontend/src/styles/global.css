@@ -5176,3 +5176,18 @@ summary.setup-step-title::before {
   outline: 2px dashed var(--warning);
   outline-offset: -2px;
 }
+
+/* B4a full-day shared-line run (preview) */
+.continuous-section .run-bar .section-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.closing-choice { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0; min-width: 0; }
+.closing-choice legend { font-weight: 600; padding: 0 4px; }
+.radio-row { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+.button-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.btn-inline { padding: 2px 8px; }
+.preview-explained summary { cursor: pointer; }
+.preview-explained p { margin: 6px 0 0; }
+.reason-list { margin: 6px 0 0; padding-left: 20px; }
+.inline-field { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.waiting-chart-close { stroke: var(--border-accent); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.older-run { border-top: 1px solid var(--border); padding-top: 16px; }
+.replay-clock { font-size: 1.1rem; margin: 8px 0; }

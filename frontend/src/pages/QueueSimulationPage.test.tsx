@@ -25,6 +25,13 @@ const runSelectedDecisionMock = vi.fn()
 const optimizeSpy = vi.fn()
 const getAnalysisMock = vi.fn()
 const getAnalysisCurrentMock = vi.fn()
+const getClosingPolicyMock = vi.fn()
+const putClosingPolicyMock = vi.fn()
+const getCompatibilityMock = vi.fn()
+const createContinuousRunMock = vi.fn()
+const listContinuousRunsMock = vi.fn()
+const getContinuousRunMock = vi.fn()
+const getContinuousPlaybackMock = vi.fn()
 
 vi.mock('../api/workflow', () => ({
   getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
@@ -39,6 +46,15 @@ vi.mock('../api/workflow', () => ({
   runSelectedMc: (...args: unknown[]) => runSelectedMcMock(...args),
   runSelectedValidation: (...args: unknown[]) => runSelectedValidationMock(...args),
   runSelectedDecision: (...args: unknown[]) => runSelectedDecisionMock(...args),
+}))
+vi.mock('../api/continuous', () => ({
+  getClosingPolicy: (...args: unknown[]) => getClosingPolicyMock(...args),
+  putClosingPolicy: (...args: unknown[]) => putClosingPolicyMock(...args),
+  getContinuousCompatibility: (...args: unknown[]) => getCompatibilityMock(...args),
+  createContinuousRun: (...args: unknown[]) => createContinuousRunMock(...args),
+  listContinuousRuns: (...args: unknown[]) => listContinuousRunsMock(...args),
+  getContinuousRun: (...args: unknown[]) => getContinuousRunMock(...args),
+  getContinuousPlayback: (...args: unknown[]) => getContinuousPlaybackMock(...args),
 }))
 vi.mock('../api/optimization', () => ({
   optimize: (...args: unknown[]) => optimizeSpy(...args),
@@ -109,6 +125,68 @@ function setupOf(structure: 'shared_queue' | 'separate_queues', extra: Record<st
   return { analysis: { id: 7, name: 'Checkout', queue_setup: { queue_structure: structure, segments: [], breaks: [], ...extra } } }
 }
 
+const compatiblePlan = {
+  compatible: true, reasons: [], expected_customers_per_day: 13, horizon: { start_minute: 480, end_minute: 600 },
+  dataset_id: 9, scenario_id: null, scenario_name: null,
+}
+function compatibility(overrides: Record<string, unknown> = {}, closing: string | null = 'DRAIN') {
+  return {
+    closing_policy: closing,
+    plans: { current: compatiblePlan, suggested: { ...compatiblePlan, scenario_id: 3, scenario_name: 'Plan A' } },
+    default_replications: 5, default_seed: 42,
+    limits: { max_replications: 9, max_expected_customers_per_run: 2900, result_max_bytes: 786432, status: 'provisional_not_production_approved' },
+    preview: true, model_scope: 'Preview', verdict: null, verdict_reason: 'No rule.', ...overrides,
+  }
+}
+const metric = (mean: number | null, min: number | null, max: number | null) => ({ mean, min, max, n: 5, n_undefined: 0, ci_lower: null, ci_upper: null })
+function continuousRun(id: number, plan: 'current' | 'suggested', { waitHours = 0.07, served = 12, extra = {} as Record<string, unknown> } = {}) {
+  return {
+    evidence: {
+      id, kind: 'shared_continuous_preview', created_at: '2026-10-12T00:00:00Z',
+      params: { analysis_id: 7, plan, scenario_id: plan === 'suggested' ? 3 : null, dataset_id: 9, replications: 5, seed: 42, closing_policy: 'DRAIN' },
+      result: {
+        replications: [],
+        summary: {
+          replications: 5,
+          customers: { arrivals: 65, served: 65, unserved: 0, conserved_in_every_replication: true,
+            per_replication: { arrivals: metric(13, 10, 16), served: metric(served, 10, 16), unserved: metric(0, 0, 0) } },
+          waiting_time: { mean_of_replication_means_hours: metric(waitHours, 0.05, 0.1), customer_weighted_mean_hours: { value: waitHours } },
+          metrics: { max_queue_in_horizon: metric(3.4, 2, 5), utilization_in_horizon: metric(0.62, 0.5, 0.7) },
+        },
+        provenance: { replications: 5, seed: 42, closing_policy: 'DRAIN', engine_version: 'novaq-shared-continuous-des-v2',
+          inputs: { horizon: { start_minute: 480, end_minute: 600 }, demand_periods: [], staffing_segments: [] } },
+      },
+    },
+    setup_matches_current: true, dataset_is_current: true, plan_is_selected: plan === 'suggested' ? true : null, ...extra,
+  }
+}
+const dayPlayback = {
+  replication_index: 0,
+  playback: {
+    events: [
+      { seq: 0, t: 0, type: 'server_open', queue_len_after: 0, servers_idle_after: 1, servers_busy_after: 0, servers_draining_after: 0 },
+      { seq: 1, t: 0.25, type: 'arrival', queue_len_after: 1, servers_idle_after: 1, servers_busy_after: 0, servers_draining_after: 0 },
+      { seq: 2, t: 0.25, type: 'service_start', queue_len_after: 0, servers_idle_after: 0, servers_busy_after: 1, servers_draining_after: 0 },
+      { seq: 3, t: 0.5, type: 'arrival', queue_len_after: 1, servers_idle_after: 0, servers_busy_after: 1, servers_draining_after: 0 },
+      { seq: 4, t: 0.6, type: 'service_end', queue_len_after: 1, servers_idle_after: 1, servers_busy_after: 0, servers_draining_after: 0 },
+      { seq: 5, t: 0.6, type: 'service_start', queue_len_after: 0, servers_idle_after: 0, servers_busy_after: 1, servers_draining_after: 0 },
+      { seq: 6, t: 1.1, type: 'service_end', queue_len_after: 0, servers_idle_after: 1, servers_busy_after: 0, servers_draining_after: 0 },
+      { seq: 7, t: 2, type: 'closing', queue_len_after: 0, servers_idle_after: 0, servers_busy_after: 0, servers_draining_after: 0 },
+    ],
+    closing: { closing_hours: 2, overrun_hours: 0 },
+  },
+  by_period: [
+    { period_id: '08:00-09:00', start_hours: 0, end_hours: 1, arrivals: 2, served: 2, unserved: 0, mean_wait_hours: 0.05 },
+    { period_id: '09:00-10:00', start_hours: 1, end_hours: 2, arrivals: 0, served: 0, unserved: 0, mean_wait_hours: null },
+  ],
+  preview: true,
+}
+
+/** The older period-by-period run's section on a shared line (B4a keeps it, labelled). */
+async function olderRun() {
+  return within(await screen.findByRole('region', { name: 'Period-by-period run (older method)' }))
+}
+
 function Where() {
   const location = useLocation()
   return <output data-testid="where">{location.pathname}{location.search}</output>
@@ -152,6 +230,13 @@ beforeEach(() => {
     }, { scenario_id: null }),
   })
   for (const mock of [runSelectedDesMock, runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock, optimizeSpy]) mock.mockReset()
+  getClosingPolicyMock.mockReset().mockResolvedValue({ closing_policy: 'DRAIN', choices: [] })
+  putClosingPolicyMock.mockReset().mockResolvedValue({ closing_policy: 'DRAIN' })
+  getCompatibilityMock.mockReset().mockResolvedValue(compatibility())
+  createContinuousRunMock.mockReset()
+  listContinuousRunsMock.mockReset().mockResolvedValue({ runs: [] })
+  getContinuousRunMock.mockReset()
+  getContinuousPlaybackMock.mockReset().mockResolvedValue(dayPlayback)
 })
 
 describe('Queue simulation shell (D28)', () => {
@@ -197,7 +282,7 @@ describe('the legacy shared path', () => {
     const user = userEvent.setup()
     renderPage()
     expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
-    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    await user.click(screen.getByRole('button', { name: 'Run period by period' }))
     await waitFor(() => expect(runDesMock).toHaveBeenCalledWith(7, { sim_hours: 24, queue_overload_threshold: 20, max_events: 3000, seed: null, carryover: true }))
     expect(screen.getByText('One period at a time', { exact: false })).toBeInTheDocument()
     expect(optimizeSpy).not.toHaveBeenCalled()
@@ -208,7 +293,7 @@ describe('the legacy shared path', () => {
     const unsupported = { ...desRow, simulation_supported: false, status: 'ERROR', error: 'Unsupported simulation model: M/G/c.' }
     runDesMock.mockResolvedValue({ evidence: job('workflow_des', { ...trace, results: [unsupported, { ...unsupported, time: '09:00-10:00' }] }) })
     renderPage()
-    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    await user.click(await screen.findByRole('button', { name: 'Run period by period' }))
     const errors = await screen.findByTestId('run-capability-errors')
     expect(errors).toHaveTextContent('This run could not simulate any period, so it was not saved:')
     expect(errors).toHaveTextContent('08:00-09:00: Unsupported simulation model: M/G/c.')
@@ -222,7 +307,7 @@ describe('the legacy shared path', () => {
     const hours = await screen.findByLabelText('Hours per segment')
     await user.clear(hours)
     await user.type(hours, '0')
-    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    await user.click(screen.getByRole('button', { name: 'Run period by period' }))
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(runDesMock).not.toHaveBeenCalled()
   })
@@ -233,11 +318,12 @@ describe('the legacy shared path', () => {
       des_current: job('workflow_des_current', { ...trace, summary: { ...perPeriodSummary, average_wait_hours: 0.1, longest_line: 9 } }, { scenario_id: null }),
     }))
     renderPage()
-    const wait = await screen.findByRole('region', { name: 'Average wait' })
+    const older = await olderRun()
+    const wait = await older.findByRole('region', { name: 'Average wait' })
     expect(wait).toHaveTextContent('Current: 6 min')
     expect(wait).toHaveTextContent('Suggested plan: 3 min')
-    expect(screen.getByRole('region', { name: 'Longest single line' })).toHaveTextContent('Current: 9')
-    const served = screen.getByRole('region', { name: 'Customers served' })
+    expect(older.getByRole('region', { name: 'Longest single line' })).toHaveTextContent('Current: 9')
+    const served = older.getByRole('region', { name: 'Customers served' })
     expect(served).toHaveTextContent('Current: Unavailable')
     expect(served).toHaveTextContent('Customer totals need one continuous run of the day')
   })
@@ -246,7 +332,7 @@ describe('the legacy shared path', () => {
     const { summary: _drop, ...old } = trace
     getWorkflowMock.mockResolvedValue(workflow({ des: job('workflow_des', old) }))
     renderPage()
-    expect(await screen.findByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: Run again to see this')
+    expect(await (await olderRun()).findByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: Run again to see this')
   })
 
   it('replays the legacy run one period at a time', async () => {
@@ -598,5 +684,147 @@ describe('a selected separate-lines plan', () => {
     renderPage()
     expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
     expect(screen.getByRole('region', { name: 'Customers served' })).toHaveTextContent('Suggested plan: Not run')
+  })
+})
+
+describe('the continuous full-day run (B4a preview)', () => {
+  it('asks for the closing rule first and saves the choice for future runs', async () => {
+    const user = userEvent.setup()
+    getClosingPolicyMock.mockResolvedValue({ closing_policy: null, choices: [] })
+    getCompatibilityMock.mockResolvedValue(compatibility({
+      plans: { current: { ...compatiblePlan, compatible: false, reasons: [{ code: 'no_closing_policy' }] },
+        suggested: { ...compatiblePlan, compatible: false, reasons: [{ code: 'no_closing_policy' }] } },
+    }, null))
+    renderPage()
+    const choice = await screen.findByTestId('closing-choice')
+    expect(choice).toHaveTextContent('Choose what happens at closing time first.')
+    expect(screen.getByRole('button', { name: 'Run full operation' })).toBeDisabled()
+    await user.click(within(choice).getByRole('radio', { name: /keep serving everyone already in line/ }))
+    await user.click(within(choice).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(putClosingPolicyMock).toHaveBeenCalledWith(7, 'DRAIN'))
+  })
+
+  it('shows the saved rule with a Change link, the hours and the preview label', async () => {
+    renderPage()
+    expect(await screen.findByTestId('closing-rule')).toHaveTextContent('At closing time: counters on duty keep serving everyone already in line.')
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument()
+    const bar = screen.getByRole('region', { name: 'Full-day run' })
+    expect(bar).toHaveTextContent('Operating hours: 08:00–10:00')
+    expect(bar).toHaveTextContent('Simulated · preview')
+    expect(bar).toHaveTextContent('About 13 customers per day.')
+  })
+
+  it('names why a shared line cannot run the full day and keeps the older run', async () => {
+    getCompatibilityMock.mockResolvedValue(compatibility({
+      plans: { current: { ...compatiblePlan, compatible: false, reasons: [{ code: 'service_time_variation' }] },
+        suggested: { ...compatiblePlan, compatible: false, reasons: [{ code: 'timeline_invalid', problems: ['09:00 to 09:30 is not covered.'] }] } },
+    }))
+    renderPage()
+    const refusal = await screen.findByTestId('continuous-refusal')
+    expect(refusal).toHaveTextContent('The periods do not form one operating day:')
+    expect(refusal).toHaveTextContent('09:00 to 09:30 is not covered.')
+    expect(screen.getByRole('button', { name: 'Run full operation' })).toBeDisabled()
+    expect((await olderRun()).getByRole('button', { name: 'Run period by period' })).toBeEnabled()
+    expect((await olderRun()).getByText('Not run yet. Use Run period by period.')).toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Current' }))
+    expect(await screen.findByTestId('continuous-refusal')).toHaveTextContent('Your data has real service times.')
+  })
+
+  it('runs the chosen plan once with the labelled defaults', async () => {
+    const user = userEvent.setup()
+    createContinuousRunMock.mockResolvedValue(continuousRun(21, 'suggested'))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    await waitFor(() => expect(createContinuousRunMock).toHaveBeenCalledWith(7, { plan: 'suggested', replications: 5, seed: 42 }))
+    expect(runDesMock).not.toHaveBeenCalled()
+    expect(optimizeSpy).not.toHaveBeenCalled()
+  })
+
+  it('refuses repeated days outside the limits before any request', async () => {
+    const user = userEvent.setup()
+    getCompatibilityMock.mockResolvedValue(compatibility({ plans: { current: compatiblePlan, suggested: { ...compatiblePlan, expected_customers_per_day: 600 } } }))
+    renderPage()
+    const repeats = await screen.findByLabelText('Repeated days')
+    await user.clear(repeats)
+    await user.type(repeats, '10')
+    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Repeated days must be a whole number from 1 to 9.')
+    await user.clear(repeats)
+    await user.type(repeats, '5')
+    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('at most 2900 expected customers')
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+  })
+
+  it('shows both stored runs on the four cards, from their own summaries', async () => {
+    listContinuousRunsMock.mockResolvedValue({ runs: [
+      { id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN', setup_matches_current: true, dataset_is_current: true, plan_is_selected: true },
+      { id: 30, plan: 'current', replications: 5, seed: 42, closing_policy: 'DRAIN', setup_matches_current: true, dataset_is_current: true, plan_is_selected: null },
+      { id: 12, plan: 'current', replications: 5, seed: 1, closing_policy: 'DRAIN', setup_matches_current: true, dataset_is_current: true, plan_is_selected: null },
+    ] })
+    getContinuousRunMock.mockImplementation(async (_analysis: number, runId: number) => (runId === 31
+      ? continuousRun(31, 'suggested', { waitHours: 0.05, served: 13 }) : continuousRun(runId, 'current', { waitHours: 0.1, served: 11 })))
+    renderPage()
+    const cards = await screen.findByRole('group', { name: 'Full-day key results' })
+    await waitFor(() => expect(within(cards).getByRole('region', { name: 'Average wait' })).toHaveTextContent('Current: 6 min (3 min–6 min)'))
+    expect(within(cards).getByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: 3 min (3 min–6 min)')
+    expect(within(cards).getByRole('region', { name: 'Customers served' })).toHaveTextContent('Current: 11 (10–16)')
+    expect(within(cards).getByRole('region', { name: 'Not served at closing' })).toHaveTextContent('Suggested plan: 0')
+    expect(getContinuousRunMock).not.toHaveBeenCalledWith(7, 12)
+    expect(await screen.findByRole('heading', { name: 'People waiting through the day' })).toBeInTheDocument()
+    expect(screen.getByText('The charts show repeated day 1 of 5.')).toBeInTheDocument()
+    expect(getContinuousPlaybackMock).toHaveBeenCalledWith(7, 31, 0)
+    const byPeriod = screen.getByRole('region', { name: 'Day 1 by period' })
+    expect(within(within(byPeriod).getByRole('row', { name: /08:00-09:00/ })).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['2', '2', '0', '3 min'])
+    expect(within(byPeriod).getByRole('row', { name: /09:00-10:00/ })).toHaveTextContent('Unavailable')
+  })
+
+  it('says when the Setup, the data or the plan changed after a stored run', async () => {
+    listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
+      setup_matches_current: false, dataset_is_current: false, plan_is_selected: false }] })
+    getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested', { extra: { setup_matches_current: false, dataset_is_current: false, plan_is_selected: false } }))
+    renderPage()
+    expect(await screen.findByText('Data and setup changed after this run.')).toBeInTheDocument()
+    expect(screen.getByText('The planning file changed after this run.')).toBeInTheDocument()
+    expect(screen.getByText('This run used a plan that is no longer selected.')).toBeInTheDocument()
+  })
+
+  it('replays a repeated day on the store clock from its own events', async () => {
+    const user = userEvent.setup()
+    listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
+      setup_matches_current: true, dataset_is_current: true, plan_is_selected: true }] })
+    getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested'))
+    renderPage('/simulation/replay?analysis=7')
+    expect(await screen.findByTestId('continuous-clock')).toHaveTextContent('08:00')
+    const replay = screen.getByRole('region', { name: 'Full-day replay' })
+    fireEvent.change(within(replay).getByLabelText('Go to time'), { target: { value: '08:33' } })
+    await user.click(within(replay).getByRole('button', { name: 'Go' }))
+    expect(screen.getByTestId('continuous-clock')).toHaveTextContent('08:33')
+    const state = screen.getByTestId('continuous-state')
+    expect(state).toHaveTextContent('Waiting: 1')
+    expect(state).toHaveTextContent('Counters serving: 1')
+    expect(state).toHaveTextContent('Arrived so far: 2')
+    expect(state).toHaveTextContent('Served so far: 0')
+    await user.selectOptions(within(replay).getByLabelText('Repeated day'), '3')
+    await waitFor(() => expect(getContinuousPlaybackMock).toHaveBeenCalledWith(7, 31, 3))
+  })
+
+  it('makes no Decision from the full-day run and shows its ranges', async () => {
+    listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
+      setup_matches_current: true, dataset_is_current: true, plan_is_selected: true }] })
+    getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested'))
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('continuous-no-decision')).toHaveTextContent('No Decision is made from the full-day run yet')
+    const ranges = await screen.findByRole('region', { name: 'Ranges across the repeated days (average, lowest–highest)' })
+    expect(ranges).toHaveTextContent('Counter utilization during opening hours62% (50%–70%)')
+  })
+
+  it('is not offered for separate lines', async () => {
+    getAnalysisMock.mockResolvedValue(setupOf('separate_queues'))
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
+    renderPage()
+    await screen.findByTestId('run-status')
+    expect(screen.queryByRole('region', { name: 'Full-day run' })).not.toBeInTheDocument()
+    expect(getCompatibilityMock).not.toHaveBeenCalled()
   })
 })
