@@ -32,6 +32,7 @@
 | 8 | U6 Analysis results | 5, 7 |
 | 9 | B5 + U7a Queue simulation for separate lines and legacy paths | 5 |
 | 10 | B4a + U7b Continuous shared run (preview) | 6 (B4a spec), 9 |
+| 10b | B13 Per-date separate-lines plans as one continuous day per date | B13 spec (approved 2026-10-12), 9 |
 | 11 | B4b Recorded service times (standard version) | 6 (B4b spec), 10 |
 | 12 | B4c Shared-line break modeling | 6 (B4c spec), 11 |
 | 13 | U8 Help center | 8, 10 |
@@ -125,7 +126,7 @@ Tests: all values come from the selected file's response (fixtures for two files
 
 ## Phase 9 — B5 + U7a Queue simulation (separate lines and legacy paths)
 
-Status (2026-10-12): implemented on `feat/ux-u1-shell` after `c09ce3cc`, uncommitted pending the owner's approval. No engine change to simulated numbers; additive `in_system_at_close`, `start_hours` and run `summary`. Routes `/simulation/results`, `/simulation/replay`, `/simulation/checks`; the old Simulate page is removed and its route redirects. Deviations and the pre-existing per-date break issue (dilution in 24 h period runs) are recorded in `handoff.md`; PROPOSED B13, each date as one continuous day in the optimizer and the check, needs its own spec and the owner's GO and is not part of Phase 10.
+Status (2026-10-12): committed `ddf03de2` on `feat/ux-u1-shell` after the owner's approval (local, not pushed). No engine change to simulated numbers; additive `in_system_at_close`, `start_hours` and run `summary`. Routes `/simulation/results`, `/simulation/replay`, `/simulation/checks`; the old Simulate page is removed and its route redirects. Deviations and the pre-existing per-date break issue (dilution in 24 h period runs) are recorded in `handoff.md`; B13, each date as one continuous day in the optimizer and the check, has its own spec (`docs/superpowers/specs/2026-10-12-b13-per-date-continuous-day.md`, approved 2026-10-12) and is step 10b.
 
 B5: confirm stored selected-plan traces contain `draining_start`, `break_start`, `break_end`; add a test that aggregates are identical with and without trace consumption changes (no engine change expected). Frontend: reducer handles the three events → Finishing customers before break / On break / Available; Closed / not staffed from `inactive_queue_ids`; scheduled breaks from setup on a separate timeline row; "Break state unavailable" when events are absent.
 
@@ -138,6 +139,10 @@ Tests: event-to-state mapping table; no break state inferred from idle; accounti
 Implement per the B4a spec; frontend "Run full operation" for compatible shared analyses, Day summary table (spec §9.2) and four charts, replay with go-to-time, closing-rule summary and "Change", compatibility refusals, preview label.
 
 Tests (backend): continuity across period boundaries (customer identity, order, accumulated wait, in-service customer completes after boundary); closing rules recorded per run; refusal for `variance`/`K`/`theta`; pin test unchanged. Frontend: Day summary equals response fields; preview label present.
+
+## Phase 10b — B13 Per-date separate-lines plans as one continuous day per date
+
+Implement per the B13 spec (owner answers 2026-10-12: basis-specific engine version, refuse a date that cannot be laid out, keep today's method with the notice for uploads without operating segments). Tests per spec §10, including the replaced `test_per_date_basis_keeps_the_24_hour_candidate_runs`.
 
 ## Phase 11 — B4b Recorded service times
 
