@@ -23,7 +23,7 @@ export function AnalysisWorkspace() {
   if (!Number.isInteger(id)) return <Navigate to="/analyses" replace />
   if (analysis.isLoading) return <ApiState.Loading />
   if (analysis.isError || !analysis.data) return <ApiState.ErrorState />
-  const currentStep = analysisWorkflow.find(([path]) => location.pathname.endsWith(path))?.[0] ?? 'current'
+  const currentStep = analysisWorkflow.find(([path]) => location.pathname.endsWith(path))?.[0] ?? 'data'
   return (
     <div>
       <div className="analysis-context card">

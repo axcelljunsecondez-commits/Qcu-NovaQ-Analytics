@@ -77,6 +77,13 @@ describe('Data and setup address (spec §5)', () => {
     expect(router.state.location.hash).toBe('#costs')
   })
 
+  it.each(['current', 'compare'])('redirects the old %s address to Analysis results', async (step) => {
+    const router = renderAt(`/analyses/7/${step}`)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/results'))
+    expect(router.state.location.search).toBe('?analysis=7')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Analysis results' })).toBeInTheDocument()
+  })
+
   it('shows Data and setup | Suggested plans as tabs that are links', async () => {
     renderAt('/analyses/7/plans')
     const tabs = await screen.findByRole('navigation', { name: 'Analysis sections' })

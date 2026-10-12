@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, useLocation, useParams } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
 import { RequireRole } from './auth/RequireRole'
@@ -25,9 +25,7 @@ const OptimizePage = lazy(() =>
 const SimulationPage = lazy(() =>
   import('./pages/SimulationPage').then((m) => ({ default: m.SimulationPage })),
 )
-const ComparisonPage = lazy(() =>
-  import('./pages/ComparisonPage').then((m) => ({ default: m.ComparisonPage })),
-)
+const ResultsPage = lazy(() => import('./pages/ResultsPage').then((m) => ({ default: m.ResultsPage })))
 const ReportsPage = lazy(() =>
   import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
@@ -36,7 +34,6 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ de
 const AnalysesPage = lazy(() => import('./pages/AnalysesPage').then((m) => ({ default: m.AnalysesPage })))
 const NewAnalysisPage = lazy(() => import('./pages/NewAnalysisPage').then((m) => ({ default: m.NewAnalysisPage })))
 const AnalysisSetupPage = lazy(() => import('./pages/AnalysisSetupPage').then((m) => ({ default: m.AnalysisSetupPage })))
-const AnalysisCurrentPage = lazy(() => import('./pages/AnalysisCurrentPage').then((m) => ({ default: m.AnalysisCurrentPage })))
 const DecisionEndpointPage = lazy(() => import('./components/analysis/DecisionEndpointPage').then((m) => ({ default: m.DecisionEndpointPage })))
 
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
@@ -63,6 +60,13 @@ function UnknownRoute() {
 function KeepQueryRedirect({ to }: { to: string }) {
   const location = useLocation()
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />
+}
+
+// The workspace Current and Compare pages became Analysis results (spec §5): /results?analysis=:id.
+// oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
+function ResultsRedirect() {
+  const { analysisId } = useParams()
+  return <Navigate to={`/results?analysis=${analysisId ?? ''}`} replace />
 }
 
 export function createAppRouter() {
@@ -98,16 +102,18 @@ export function createAppRouter() {
                     // Compatibility: the Setup page is now Data and setup (spec §5).
                     { path: 'setup', element: <KeepQueryRedirect to="../data" /> },
                     { path: 'guided-setup', element: <GuidedSetupPage /> },
-                    { path: 'current', element: <AnalysisCurrentPage /> },
+                    // Compatibility: Current and Compare are now Analysis results (spec §5, D21).
+                    { path: 'current', element: <ResultsRedirect /> },
                     { path: 'plans', element: <OptimizePage /> },
                     // Compatibility: Optimize is now Suggested plans (spec §5).
                     { path: 'optimize', element: <KeepQueryRedirect to="../plans" /> },
-                    { path: 'compare', element: <ComparisonPage /> },
+                    { path: 'compare', element: <ResultsRedirect /> },
                     { path: 'simulate', element: <SimulationPage /> },
                     { path: 'decision', element: <DecisionEndpointPage /> },
                     { path: 'reports', element: <ReportsPage /> },
                   ],
                 },
+                { path: '/results', element: <ResultsPage /> },
                 { path: '/tools/calculator', element: <AnalysisPage /> },
                 { path: '/help', element: <HelpPage /> },
                 { path: '/settings', element: <Navigate to="/settings/account" replace /> },

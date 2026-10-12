@@ -569,7 +569,7 @@ function SelectedSeparateSimulationView({
                 <Link to={`/analyses/${analysisId}/reports`}>{t('simulation.sep_decision_next_reports')}</Link>
               )}
               {(decision.status === 'revise' || decision.status === 'insufficient_evidence') && (
-                <Link to={`/analyses/${analysisId}/compare`}>{t('simulation.sep_decision_next_compare')}</Link>
+                <Link to={`/analyses/${analysisId}/plans`}>{t('simulation.sep_decision_next_compare')}</Link>
               )}
             </div>
           </div>
@@ -764,7 +764,7 @@ export function SimulationPage() {
   const selectionUnavailable = unavailableKey && selectionEvidence ? (
     <div role="status" className="alert alert-warn" data-testid="selection-unavailable" style={{ marginTop: '12px' }}>
       {t('simulation.selection_unavailable', { scenario: selectionEvidence.scenario_id ?? '—', status: t(unavailableKey) })}{' '}
-      <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+      <Link to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>
       {selectionEvidence.evidence_reasons?.[0]?.detail && <p className="form-hint">{selectionEvidence.evidence_reasons[0].detail}</p>}
     </div>
   ) : null
@@ -782,7 +782,7 @@ export function SimulationPage() {
         {selectionUnavailable ?? (
           <div className="alert alert-warn">
             {t('simulation.select_scenario_first')}{' '}
-            <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+            <Link to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>
           </div>
         )}
       </div>
@@ -805,7 +805,7 @@ export function SimulationPage() {
         {selectionUnavailable ?? (
           <div className="alert alert-warn" style={{ marginTop: '12px' }}>
             {t('simulation.sep_stale_body')}{' '}
-            <Link to={`/analyses/${analysisId}/compare`}>{t('nav.compare')}</Link>
+            <Link to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>
           </div>
         )}
       </div>

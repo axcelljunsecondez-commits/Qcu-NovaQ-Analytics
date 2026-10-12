@@ -117,6 +117,8 @@ Status (2026-10-12): B10 committed `598658e6` (local, not pushed; PostgreSQL not
 
 ## Phase U6 — Analysis results
 
+Status (2026-10-12): implemented on `feat/ux-u1-shell` after `864dff87` (B11/B3/B12 committed), uncommitted pending the owner's approval. Route `/results` (spec §5); Current and Compare pages removed, their routes redirect. Deviations recorded in `handoff.md` (cost line, report link, older-file Setup, multi-plan chart).
+
 `pages/ResultsPage.tsx` composing extracted Current and Comparison pieces; "View results from" selector (B3/B11), older-file banner and recalculation label, key results table (spec §7.7), busy-level strip with legend, charts, "What the plan changes" section with saved-plan switcher and staff cost (plan only).
 
 Tests: all values come from the selected file's response (fixtures for two files, no leakage on switch); review-only selection never calls selection/scenario/simulation endpoints; recorded wait unavailable message for aggregate uploads; "can't keep up" periods listed before highest-wait period; plan target flag only with a selected plan; missing values show "Unavailable".

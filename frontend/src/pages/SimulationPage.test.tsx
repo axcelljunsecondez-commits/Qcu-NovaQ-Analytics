@@ -268,11 +268,11 @@ describe('SimulationPage workflow', () => {
     expect(des).toHaveFocus()
   })
 
-  it('requires a scenario selected in Compare', async () => {
+  it('requires a plan chosen in Suggested plans', async () => {
     getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null }))
     renderPage()
-    expect(await screen.findByText(/Select a verified scenario in Compare/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Compare' })).toHaveAttribute('href', '/analyses/7/compare')
+    expect(await screen.findByText(/Choose a plan in Suggested plans \(Use this plan\)/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
   })
 
   it('shows three simulation categories and no duplicate Live tab', async () => {
@@ -380,13 +380,13 @@ describe('SimulationPage Simulate Current mode', () => {
     renderPage()
     expect(await screen.findByRole('heading', { name: 'Simulate Current' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Current DES' })).toBeInTheDocument()
-    expect(screen.queryByText(/Select a verified scenario in Compare/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Choose a plan in Suggested plans \(Use this plan\)/)).not.toBeInTheDocument()
   })
 
   it('keeps the scenario-first stop for pooled analyses with no scenario', async () => {
     getWorkflowMock.mockResolvedValue(workflow({ selection: null, scenario: null }))
     renderPage()
-    expect(await screen.findByText(/Select a verified scenario in Compare/)).toBeInTheDocument()
+    expect(await screen.findByText(/Choose a plan in Suggested plans \(Use this plan\)/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Run Current DES' })).not.toBeInTheDocument()
   })
 
@@ -785,7 +785,7 @@ describe('selected separate plan simulation', () => {
     expect(screen.getAllByText(/Replicated DES/).length).toBeGreaterThan(0)
   })
 
-  it('blocks runs and points to Comparison when the selection went stale', async () => {
+  it('blocks runs and points to Suggested plans when the selection went stale', async () => {
     separateSetup()
     getWorkflowMock.mockResolvedValue(workflow({
       selection: job('workflow_selection', { scenario_id: 9 }),
@@ -1029,7 +1029,7 @@ describe('selected separate plan simulation', () => {
     expect(optimizeSpy).not.toHaveBeenCalled()
   })
 
-  it('shows REVISE with failed periods and a Comparison route', async () => {
+  it('shows REVISE with failed periods and a route back to Suggested plans', async () => {
     const user = userEvent.setup()
     decidedEvidenceSetup(selectedValidationResult)
     const revise = { ...selectedDecisionResult, status: 'revise', failed_periods: ['10:00'] }
@@ -1042,7 +1042,7 @@ describe('selected separate plan simulation', () => {
     await user.click(await screen.findByRole('button', { name: 'Run decision' }))
     expect(await screen.findByText('Decision: REVISE')).toBeInTheDocument()
     expect(screen.getByText('10:00')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Return to Optimize / Comparison' })).toHaveAttribute('href', '/analyses/7/compare')
+    expect(screen.getByRole('link', { name: 'Return to Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
     expect(screen.queryByRole('link', { name: 'Continue to Reports' })).not.toBeInTheDocument()
   })
 
@@ -1126,8 +1126,8 @@ describe('SimulationPage unavailable selected evidence (4f, 5e)', () => {
     const note = await screen.findByTestId('selection-unavailable')
     expect(note).toHaveTextContent('Selected scenario #3 is unavailable: Stale: dataset replaced.')
     expect(note).toHaveTextContent('Scenario is stale for the current dataset.')
-    expect(within(note).getByRole('link', { name: 'Compare' })).toHaveAttribute('href', '/analyses/7/compare')
-    expect(screen.queryByText(/Select a verified scenario in Compare/)).not.toBeInTheDocument()
+    expect(within(note).getByRole('link', { name: 'Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
+    expect(screen.queryByText(/Choose a plan in Suggested plans \(Use this plan\)/)).not.toBeInTheDocument()
   })
 
   it('shows a deleted selected plan as Source deleted, not as Current mode', async () => {
@@ -1146,7 +1146,7 @@ describe('SimulationPage unavailable selected evidence (4f, 5e)', () => {
       scenario: null, selection_evidence: { ...staleSelection, evidence_status: 'SOMETHING_NEW' },
     }))
     renderPage()
-    expect(await screen.findByText(/Select a verified scenario in Compare/)).toBeInTheDocument()
+    expect(await screen.findByText(/Choose a plan in Suggested plans \(Use this plan\)/)).toBeInTheDocument()
     expect(screen.queryByTestId('selection-unavailable')).not.toBeInTheDocument()
   })
 

@@ -55,9 +55,9 @@ describe('AnalysisWorkspace', () => {
       [{
         path: '/analyses/:analysisId',
         element: <AnalysisWorkspace />,
-        children: [{ path: 'current', element: <TransientProbe /> }],
+        children: [{ path: 'plans', element: <TransientProbe /> }],
       }],
-      { initialEntries: ['/analyses/1/current'] },
+      { initialEntries: ['/analyses/1/plans'] },
     )
     render(
       <QueryClientProvider client={makeQueryClient()}>
@@ -67,20 +67,20 @@ describe('AnalysisWorkspace', () => {
       </QueryClientProvider>,
     )
     expect(await screen.findByRole('heading', { name: 'Analysis 1' })).toBeInTheDocument()
-    expect(screen.getByText('Step 2 of 7')).toBeInTheDocument()
+    expect(screen.getByText('Step 2 of 6')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back: Data and setup' })).toHaveAttribute(
       'href',
       '/analyses/1/data',
     )
-    expect(screen.getByRole('link', { name: 'Next: Suggested plans' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Next: Analysis results' })).toHaveAttribute(
       'href',
-      '/analyses/1/plans',
+      '/results?analysis=1',
     )
     fireEvent.click(screen.getByRole('button', { name: 'Transient 0' }))
     expect(screen.getByRole('button', { name: 'Transient 1' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Switch Analysis'), { target: { value: '2' } })
     expect(await screen.findByRole('heading', { name: 'Analysis 2' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Transient 0' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/analyses/2/current')
+    expect(router.state.location.pathname).toBe('/analyses/2/plans')
   })
 })

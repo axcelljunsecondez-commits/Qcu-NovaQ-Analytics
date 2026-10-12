@@ -51,6 +51,7 @@ describe('canonical route contract', () => {
       '/analysis',
       '/account',
       '/admin',
+      '/results',
       '/tools/calculator',
       '/settings',
       '/settings/:section',

@@ -69,7 +69,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     localStorage.setItem(LAST_ANALYSIS_KEY, '7')
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
-    expect(await screen.findByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/analyses/7/current')
+    expect(await screen.findByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
     expect(screen.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/analyses/7/reports')
     expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/analyses/7/simulate')
     expect(screen.getByRole('link', { name: 'Quick calculator' })).toHaveAttribute('href', '/tools/calculator')
@@ -81,7 +81,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     await vi.waitFor(() => expect(listAnalysesMock).toHaveBeenCalled())
     expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/analyses')
     act(() => rememberLastAnalysis(7))
-    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/analyses/7/current')
+    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
     expect(localStorage.getItem(LAST_ANALYSIS_KEY)).toBe('7')
   })
 
@@ -117,8 +117,8 @@ describe('Sidebar global navigation (spec §7.3)', () => {
   it.each([
     ['/analyses/7/setup', 'My analyses'],
     ['/analyses/7/data', 'My analyses'],
-    ['/analyses/7/current', 'Analysis results'],
-    ['/analyses/7/compare', 'Analysis results'],
+    ['/results?analysis=7', 'Analysis results'],
+    ['/results?analysis=7&file=12&period=08%3A00', 'Analysis results'],
     ['/analyses/7/reports', 'Reports'],
     ['/analyses/7/decision', 'Queue simulation'],
     ['/tools/calculator', 'Quick calculator'],

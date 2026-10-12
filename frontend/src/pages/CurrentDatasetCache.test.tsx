@@ -9,7 +9,7 @@ import { AnalysisSetupPage } from './AnalysisSetupPage'
 import { DatasetsPage } from './DatasetsPage'
 import { SimulationPage } from './SimulationPage'
 import { DecisionEndpointPage } from '../components/analysis/DecisionEndpointPage'
-import { ComparisonPage } from './ComparisonPage'
+import { ResultsPage } from './ResultsPage'
 
 // A dataset upload or deletion can change which dataset is current for an analysis. The workflow
 // evidence cached for the replaced dataset must never be shown again, not even while the fresh
@@ -51,6 +51,7 @@ vi.mock('../api/optimization', () => ({
 
 vi.mock('../api/analyses', () => ({
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+  listAnalyses: vi.fn(async () => ({ analyses: [] })),
   getAnalysisCurrent: (...args: unknown[]) => getAnalysisCurrentMock(...args),
   listAnalysisDatasets: (...args: unknown[]) => listAnalysisDatasetsMock(...args),
   uploadAnalysisDataset: (...args: unknown[]) => uploadAnalysisDatasetMock(...args),
@@ -281,7 +282,7 @@ function Nav() {
       <Link to="/analyses/7/simulate">Open Simulate</Link>
       <Link to="/analyses/7/decision">Open Decision</Link>
       <Link to="/datasets">Open Datasets</Link>
-      <Link to="/analyses/7/compare">Open Compare</Link>
+      <Link to="/results?analysis=7">Open Results</Link>
     </nav>
   )
 }
@@ -298,7 +299,7 @@ function renderApp(route: string) {
         <Route path="/analyses/:analysisId/simulate" element={<SimulationPage />} />
         <Route path="/analyses/:analysisId/decision" element={<DecisionEndpointPage />} />
         <Route path="/datasets" element={<DatasetsPage />} />
-        <Route path="/analyses/:analysisId/compare" element={<ComparisonPage />} />
+        <Route path="/results" element={<ResultsPage />} />
       </Routes>
     </>,
     { route, queryClient },
@@ -475,23 +476,24 @@ describe('Current dataset changes and cached workflow evidence', () => {
     expect(screen.queryByText(/No current run for dataset/)).not.toBeInTheDocument()
   })
 
-  it('never shows the scenario of a replaced dataset as current on Compare after a Setup upload', async () => {
+  it('never shows the plan of a replaced dataset as current on Analysis results after a Setup upload', async () => {
     server.structure = 'shared_queue'
     const user = userEvent.setup()
-    renderApp('/analyses/7/compare')
-    expect(await screen.findByTestId('compare-totals-dataset')).toHaveTextContent('Totals computed from dataset #11.')
+    renderApp('/results?analysis=7')
+    expect(await screen.findByText('Calculated result · not yet checked by simulation')).toBeInTheDocument()
+    expect(screen.getByText('Total cost (counters and waiting) now → with the plan:')).toBeInTheDocument()
 
     await uploadOnSetup(user, 12)
     const release = holdScenarioRequests()
-    const watch = watchForText(['Current Total Cost', 'Totals computed from dataset'])
+    const watch = watchForText(['Calculated result · not yet checked by simulation', 'Total cost (counters and waiting) now'])
     const requestsBefore = listScenariosMock.mock.calls.length
-    await user.click(screen.getByRole('link', { name: 'Open Compare' }))
+    await user.click(screen.getByRole('link', { name: 'Open Results' }))
     expect(watch.seen()).toEqual([])
     await waitFor(() => expect(listScenariosMock.mock.calls.length).toBeGreaterThan(requestsBefore))
     expect(watch.seen()).toEqual([])
 
     release()
-    expect(await screen.findByTestId('compare-not-current')).toHaveTextContent('Stale: dataset replaced')
+    expect(await screen.findByText(/"Plan A" no longer matches your current data or setup/)).toBeInTheDocument()
     expect(watch.stop()).toEqual([])
   })
 })

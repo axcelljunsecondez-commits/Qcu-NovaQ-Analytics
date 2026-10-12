@@ -1026,7 +1026,7 @@ describe('Use this plan (spec §7.6, D4)', () => {
     await user.click(screen.getByRole('button', { name: 'Use this plan' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('The plan was saved but not selected: Scenario provenance is not verified.')
-    expect(alert).toHaveTextContent('You can select it on the Compare page.')
+    expect(alert).toHaveTextContent('You can select it in Analysis results.')
     expect(createScenarioMock).toHaveBeenCalledTimes(1)
     expect(screen.queryByText('Plan saved and selected. Queue simulation will use this plan.')).not.toBeInTheDocument()
   })
