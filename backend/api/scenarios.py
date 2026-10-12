@@ -272,9 +272,22 @@ def _verify_calculation(payload: ScenarioIn, dataset=None, analysis=None) -> Non
                 "effective_constraints",
                 "effective_costs",
                 "explanation",
+                "candidates",
             }
             legacy = {"results": [{k: v for k, v in row.items() if k not in added} for row in expected["results"]]}
-            if _same_result(payload.results, legacy):
+            # B8's additive candidates may or may not travel with a legacy payload; both compare equal.
+            with_candidates = {"results": [{k: v for k, v in row.items() if k not in added or k == "candidates"}
+                                           for row in expected["results"]]}
+            if _same_result(payload.results, legacy) or _same_result(payload.results, with_candidates):
+                return
+        rows = payload.results.get("results") if isinstance(payload.results, dict) else None
+        if isinstance(rows, list) and rows and all(isinstance(row, dict) and "candidates" not in row for row in rows):
+            # B8: a page loaded before the additive optimizer candidates existed sends results without them.
+            # Compare without them; the saved results below are the server's, candidates included.
+            without = {**expected, "results": [{k: v for k, v in row.items() if k != "candidates"}
+                                               for row in expected["results"]]}
+            if _same_result(payload.results, without):
+                payload.results = expected
                 return
         if not _same_result(payload.results, expected):
             raise ValueError("Results do not match the calculation inputs")

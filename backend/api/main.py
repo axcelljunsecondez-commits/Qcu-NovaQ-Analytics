@@ -30,6 +30,7 @@ from backend.api.email_delivery import build_email_sender
 from backend.api.google_auth import OfficialGoogleTokenVerifier
 from backend.api.onboarding import router as onboarding_router
 from backend.api.optimization import router as optimization_router
+from backend.api.plan_reports import router as plan_reports_router
 from backend.api.proxy_assertion import NonceReplayCache, ProxyAssertionMiddleware
 from backend.api.public_calculator import router as public_calculator_router
 from backend.api.rate_limit import FixedWindowLimiter, ResourceLimitMiddleware
@@ -335,6 +336,7 @@ def create_app(
     app.include_router(datasets_router)
     app.include_router(analysis_router)
     app.include_router(public_calculator_router)
+    app.include_router(plan_reports_router)
     app.include_router(analyses_router)
     app.include_router(optimization_router)
     app.include_router(simulation_router)

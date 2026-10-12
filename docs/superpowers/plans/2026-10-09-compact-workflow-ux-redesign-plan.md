@@ -168,13 +168,15 @@ Search, guides (spec §7.11) including "Reviewing older files", "Planning vs rev
 
 ## Phase U9 + B2 — Quick calculator
 
-Status (2026-10-12): implemented on `feat/ux-u1-shell` after `4a4fc58b`, uncommitted. Guest limit 30 calls per minute per client (10 Calculates). The explicit-model calculator page is replaced; Limited waiting space with the optional spread keeps M/G/c/K reachable.
+Status (2026-10-12): committed `d31a527e` (local, not pushed). Guest limit 30 calls per minute per client (10 Calculates). The explicit-model calculator page is replaced; Limited waiting space with the optional spread keeps M/G/c/K reachable.
 
 B2 per spec §11 with a limit sized for three calls per click. Frontend guest and signed-in pages: situation tabs, ⓘ tooltips, results, "What this means" with c−1 / c / c+1 from three real calls; unstable case wording.
 
 Tests: B2 numbers identical to `/analysis/{model}`; 429 by client; tooltips reachable by keyboard; c−1 = 0 is not requested; unstable result shows no wait.
 
 ## Phase 15 — B8 Reports
+
+Status (2026-10-13): split into 15a (report model, plan preview, workbook with Formula check and Plan search; implemented after `d31a527e`, uncommitted), 15b (PDFs and the full report) and 15c (Reports page). The shared full report shows the period-by-period evidence the Decision uses.
 
 Per its spec: PDF summary and Excel calculation workbook, previews derived from the export contract, parity tests per format, formula-check sheet differences within stated tolerance.
 
