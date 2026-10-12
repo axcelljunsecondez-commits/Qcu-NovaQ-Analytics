@@ -420,6 +420,8 @@ export interface SelectedDesResult {
   overall_conservation: boolean | null
   overall_status: string | null
   summary?: RunSummary
+  /** B13: one continuous day per date (per-date plans); totals per date, added up on the server. */
+  days?: Array<{ date: string; admitted: number; served: number; in_system_at_close: number | null; customer_conservation: boolean; day_hours: number }>
 }
 
 export interface SelectedMcResult {

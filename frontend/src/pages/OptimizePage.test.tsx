@@ -551,6 +551,7 @@ describe('separate staffing optimization', () => {
   })
 
   const completeSchedule = {
+    engine_version: 'novaq-2026-09-separate-des-v2',
     schedule: {
       overall: 'COMPLETE',
       reason: null,
@@ -655,9 +656,10 @@ describe('separate staffing optimization', () => {
     expect(screen.queryByText('0 cashiers')).not.toBeInTheDocument()
   })
 
-  it('saves a verified snapshot when the schedule is complete', async () => {
+  it('saves a verified snapshot when the schedule is complete, with the engine version the server reported', async () => {
     const user = userEvent.setup()
-    optimizeSeparateMock.mockResolvedValue(completeSchedule)
+    // B13: a per-date plan is calculated with the continuous-day version; the page never hardcodes it.
+    optimizeSeparateMock.mockResolvedValue({ ...completeSchedule, engine_version: 'novaq-2026-10-separate-des-v3' })
     createScenarioMock.mockResolvedValue({ scenario: { id: 9 } })
     renderSeparate()
     await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
@@ -670,7 +672,7 @@ describe('separate staffing optimization', () => {
     expect(createScenarioMock).toHaveBeenCalledTimes(1)
     const payload = createScenarioMock.mock.calls[0][0]
     expect(payload.settings.calculation.schema_version).toBe(2)
-    expect(payload.settings.calculation.engine_version).toBe('novaq-2026-09-separate-des-v2')
+    expect(payload.settings.calculation.engine_version).toBe('novaq-2026-10-separate-des-v3')
     expect(payload.results.schedule.overall).toBe('COMPLETE')
   })
 
@@ -1049,6 +1051,7 @@ describe('Use this plan (spec §7.6, D4)', () => {
 
   it('uses a separate-lines plan the same way, with the simulation estimate note', async () => {
     optimizeSeparateMock.mockResolvedValue({
+      engine_version: 'novaq-2026-09-separate-des-v2',
       schedule: {
         overall: 'COMPLETE', reason: null, target_utilization: 0.7, evaluation_method: 'DES_REPLICATIONS',
         des: { replications: 5, base_seed: 42, duration_hours: 24, max_events: 10000 },

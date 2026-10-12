@@ -516,6 +516,17 @@ describe('a selected separate-lines plan', () => {
     summary: { basis: 'continuous_day', average_wait_hours: 0.09, longest_line: 4, arrivals: 92, served: 90, in_system_at_close: 2,
       periods: [{ time: '08:00', average_wait_hours: 0.09, longest_line: 4, arrivals: 46, served: 45 }, { time: '09:00', average_wait_hours: 0.09, longest_line: 4, arrivals: 46, served: 45 }] },
   }
+  // B13: a per-date plan's selected run is one continuous day per date (periods labelled by date).
+  const perDateResult = {
+    ...dayResult,
+    periods: ['2026-09-08', '2026-09-09'].flatMap((date) => dayResult.periods.map((period) => ({
+      ...period, time: `${date} ${period.time} UTC`, trace: periodTrace(`${date} ${period.time} UTC`, period.trace.trace),
+    }))),
+    days: [
+      { date: '2026-09-08', admitted: 46, served: 45, in_system_at_close: 1, customer_conservation: true, day_hours: 2 },
+      { date: '2026-09-09', admitted: 46, served: 45, in_system_at_close: 1, customer_conservation: true, day_hours: 2 },
+    ],
+  }
   const daySetup = {
     event_period_basis: 'representative_day',
     segments: [{ id: '08:00', start_time: '08:00', end_time: '09:00', active_queue_ids: null }, { id: '09:00', start_time: '09:00', end_time: '10:00', active_queue_ids: null }],
@@ -576,10 +587,18 @@ describe('a selected separate-lines plan', () => {
     expect(screen.queryByTestId('break-notice')).not.toBeInTheDocument()
   })
 
-  it('says a date-by-date plan run understates breaks', async () => {
-    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
+  it('places breaks in time for a per-date plan run one day per date (B13)', async () => {
+    selected({ des: job('workflow_des', perDateResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
     renderPage()
-    expect(await screen.findByTestId('break-notice')).toHaveTextContent('Breaks are understated in date-by-date runs')
+    expect(await screen.findByText('One continuous run per date', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByTestId('break-notice')).not.toBeInTheDocument()
+    expect(screen.getByTestId('dates-note')).toHaveTextContent('Customer totals add up all 2 dates; each date starts empty.')
+  })
+
+  it('still says a per-date run without operating segments understates breaks', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date', segments: [] })
+    renderPage()
+    expect(await screen.findByTestId('break-notice')).toHaveTextContent('Breaks are understated in runs with one period per calendar date')
   })
 
   it('says the Current run leaves the breaks out', async () => {
@@ -611,8 +630,20 @@ describe('a selected separate-lines plan', () => {
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('t=08%3A30'))
   })
 
-  it('replays a one-result-per-date plan one period at a time', async () => {
-    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
+  it('replays a per-date plan one whole date at a time and keeps the date in the address (B13)', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', perDateResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
+    renderPage('/simulation/replay?analysis=7&t=08:15')
+    expect(await screen.findByTestId('replay-clock')).toHaveTextContent('08:15')
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^2026-09-08 · 08:00–10:00 · /)
+    await user.selectOptions(screen.getByLabelText('Date'), '2026-09-09')
+    expect(screen.getByTestId('where')).toHaveTextContent('date=2026-09-09')
+    expect(screen.getByTestId('where')).not.toHaveTextContent('t=')
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^2026-09-09 · /)
+  })
+
+  it('replays a per-date plan without operating segments one period at a time', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date', segments: [] })
     renderPage('/simulation/replay?analysis=7')
     expect(await screen.findByText('This run simulates one period at a time; it is not one continuous day.')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Period' })).toBeInTheDocument()

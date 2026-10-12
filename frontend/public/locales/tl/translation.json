@@ -1643,7 +1643,7 @@
   "simulation.run_unsupported_all": "Walang period na na-simulate ng takbong ito, kaya hindi ito na-save:",
   "simulation.run_unsupported_some": "May mga period na hindi ma-simulate:",
   "simulation.breaks_not_modeled": "Hindi kasama sa takbong ito ang mga naka-iskedyul na break sa iyong setup, kaya maaaring mas maikli ang hintay kaysa sa araw na may break.",
-  "simulation.breaks_understated_per_date": "Kulang ang epekto ng mga break sa takbong bawat petsa: bawat period ay sini-simulate nang hiwalay nang maraming oras, kaya maliit na bahagi lang ng takbo ang break. Malamang mas mahaba ang hintay sa mga period na may break kaysa sa ipinapakita.",
+  "simulation.breaks_understated_per_date": "Kulang ang epekto ng mga break sa takbong may isang panahon bawat petsa: bawat period ay sini-simulate nang hiwalay nang maraming oras, kaya maliit na bahagi lang ng takbo ang break. Malamang mas mahaba ang hintay sa mga period na may break kaysa sa ipinapakita.",
   "continuous.title": "Takbo ng buong araw",
   "continuous.preview_label": "Sinimulate · preview",
   "continuous.preview_what": "Ano ang ibig sabihin ng preview?",
@@ -1711,5 +1711,8 @@
   "continuous.older_hint": "Sini-simulate nang hiwalay ang bawat period; hindi nadadala ang mga customer sa susunod na period.",
   "simulation.run_period_by_period": "Patakbuhin bawat period",
   "simulation.run_first_period": "Hindi pa tumatakbo. Gamitin ang Patakbuhin bawat period.",
-  "continuous.period_table": "Araw {{day}} bawat period"
+  "continuous.period_table": "Araw {{day}} bawat period",
+  "simulation.run_basis_continuous_per_date": "Isang tuloy-tuloy na takbo bawat petsa",
+  "simulation.run_date": "Petsa",
+  "simulation.totals_all_dates": "Pinagsama ng kabuuang bilang ng customer ang lahat ng {{dates}} petsa; nagsisimulang walang laman ang bawat petsa."
 }

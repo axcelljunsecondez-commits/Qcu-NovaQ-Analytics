@@ -20,10 +20,10 @@ from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
 from backend.queueing_engine.services.optimization import unstable_current_reason
 from backend.queueing_engine.services.separate_optimization import (
-    SEPARATE_DES_ENGINE_VERSION,
     full_coverage_min_lanes,
     optimize_separate_schedule,
     prune_separate_schedule,
+    separate_engine_version,
     validate_des_replication_config,
 )
 
@@ -163,7 +163,8 @@ def _verify_separate_calculation(payload: ScenarioIn, dataset=None, analysis=Non
     snapshot = payload.settings.get("calculation")
     if not isinstance(snapshot, dict):
         raise ValueError("Unknown calculation schema or engine version")
-    if snapshot.get("engine_version") != SEPARATE_DES_ENGINE_VERSION:
+    setup = (analysis.queue_setup_json or {}) if analysis is not None else {}
+    if snapshot.get("engine_version") != separate_engine_version(setup):
         raise ValueError("Unknown calculation schema or engine version")
     if not isinstance(snapshot.get("calculated_at"), str):
         raise ValueError("Calculation time must be an ISO timestamp")
@@ -181,7 +182,6 @@ def _verify_separate_calculation(payload: ScenarioIn, dataset=None, analysis=Non
         raise ValueError("Separate optimization snapshot requires its dataset.")
     if snapshot.get("dataset_row_count") != len(dataset.normalized_json or []):
         raise ValueError("Dataset changed since the optimization run.")
-    setup = (analysis.queue_setup_json or {}) if analysis is not None else {}
     if setup.get("queue_structure") != "separate_queues":
         raise ValueError("Separate optimization requires a separate_queues analysis.")
     des_settings = validate_des_replication_config(options.get("des") or {})

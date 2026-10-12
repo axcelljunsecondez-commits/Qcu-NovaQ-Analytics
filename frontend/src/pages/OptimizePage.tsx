@@ -527,7 +527,7 @@ export function OptimizePage() {
   const [sepSnapshot, setSepSnapshot] = useState<{
     signature: string; datasetId: string; rowCount: number; target: number;
     serverCost: number | undefined; waitingCost: number | undefined;
-    factor: number; minLanes: number; calculatedAt: string;
+    factor: number; minLanes: number; calculatedAt: string; engineVersion: string;
   } | null>(null)
   const sepSignature = JSON.stringify({
     datasetId, sepTarget,
@@ -594,6 +594,7 @@ export function OptimizePage() {
         signature: sepSignature, datasetId, rowCount, target: sepTarget,
         serverCost: options.server_cost_per_hr, waitingCost: options.customer_waiting_cost,
         factor, minLanes: separateQueueCount, calculatedAt: new Date().toISOString(),
+        engineVersion: out.engine_version,
       })
       setScenarioName((prev) => prev || `Optimal @ ${Math.round(sepTarget * 100)}%`)
     } catch (err) {
@@ -709,7 +710,7 @@ export function OptimizePage() {
           ...inputOptions,
           calculation: {
             schema_version: 2,
-            engine_version: 'novaq-2026-09-separate-des-v2',
+            engine_version: sepSnapshot.engineVersion,
             analysis_id: analysisId,
             dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
             dataset_row_count: sepSnapshot.rowCount,

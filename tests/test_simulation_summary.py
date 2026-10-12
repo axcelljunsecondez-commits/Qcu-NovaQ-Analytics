@@ -52,7 +52,8 @@ def test_a_continuous_day_summary_is_added_up_from_the_run():
 
 
 def test_a_period_by_period_run_reports_no_customer_totals():
-    plan = _plan(_setup(basis="per_date"))
+    # Without operating segments a per-date plan still runs each period on its own (OD-B13-3).
+    plan = _plan({**_setup(basis="per_date"), "segments": [], "breaks": []})
     plan["duration_hours"] = 24.0
     summary = _run_summary(workflow_api._run_selected_plan_des(plan, seed=7))
     assert summary["basis"] == "per_period"

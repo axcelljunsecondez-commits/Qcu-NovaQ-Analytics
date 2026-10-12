@@ -61,6 +61,26 @@ export function mergeDayTrace(periods: SelectedDesPeriod[]): SimulationTrace | n
   }
 }
 
+/** B13: a per-date run's periods grouped by the date that starts each label ("YYYY-MM-DD ..."), in order. */
+export function periodsByDate(periods: SelectedDesPeriod[]): Array<{ date: string; periods: SelectedDesPeriod[] }> {
+  const groups: Array<{ date: string; periods: SelectedDesPeriod[] }> = []
+  for (const period of periods) {
+    const date = /^(\d{4}-\d{2}-\d{2}) /.exec(period.time)?.[1] ?? ''
+    const group = groups.find((item) => item.date === date)
+    if (group) group.periods.push(period)
+    else groups.push({ date, periods: [period] })
+  }
+  return groups
+}
+
+/** The periods of one continuous day: the chosen date's for a per-date run, otherwise all of them. */
+export function dayPeriods(periods: SelectedDesPeriod[], perDate: boolean, date: string | null): { date: string | null; dates: string[]; periods: SelectedDesPeriod[] } {
+  if (!perDate) return { date: null, dates: [], periods }
+  const groups = periodsByDate(periods)
+  const chosen = groups.find((group) => group.date === date) ?? groups[0]
+  return { date: chosen?.date ?? null, dates: groups.map((group) => group.date), periods: chosen?.periods ?? [] }
+}
+
 /** Counters not staffed at a run time: the inactive lanes of the period that contains it. */
 export function inactiveQueueIdsAt(periods: SelectedDesPeriod[], hours: number): string[] {
   const ordered = [...periods].sort((left, right) => (left.start_hours ?? 0) - (right.start_hours ?? 0))

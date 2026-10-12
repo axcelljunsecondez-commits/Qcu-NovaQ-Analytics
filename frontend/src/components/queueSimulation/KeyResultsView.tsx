@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import type { RunSummary, SelectedDesPeriod, SimDesOut, SimulationTrace } from '../../api/types'
 import { fmt, fmtDecimal, downloadCsv } from '../../lib/format'
-import { SAMPLE_MINUTES, dayOrigin, mergeDayTrace, scheduledBreaks, waitingThroughTheDay, wallClock, type ScheduledBreak } from '../../lib/replay'
+import { SAMPLE_MINUTES, dayOrigin, dayPeriods, mergeDayTrace, scheduledBreaks, waitingThroughTheDay, wallClock, type ScheduledBreak } from '../../lib/replay'
+import { DatePicker } from './DatePicker'
 import { LqHistogram, MaxQueueBars, RhoLqLines, UtilizationHeatmap } from '../charts/Charts'
 import { currentRun, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
@@ -142,7 +144,10 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
   const shownSummary = run === 'suggested' ? planSummary : nowSummary
   const origin = dayOrigin(context.analysis.queue_setup)
   const breaks = context.separate ? scheduledBreaks(context.analysis.queue_setup) : []
-  const dayTrace = shown?.kind === 'separate' && shownSummary?.basis === 'continuous_day' ? mergeDayTrace(shown.result.periods) : null
+  const [params] = useSearchParams()
+  const chosenDay = shown?.kind === 'separate' ? dayPeriods(shown.result.periods, context.perDateDays, params.get('date')) : null
+  const dayTrace = chosenDay && shownSummary?.basis === 'continuous_day' ? mergeDayTrace(chosenDay.periods) : null
+  const dayCount = shown?.kind === 'separate' ? shown.result.days?.length ?? 0 : 0
 
   const value = (summary: RunSummary | null, exists: boolean, pick: (summary: RunSummary) => string | null) => {
     if (!exists) return t('simulation.status_not_run')
@@ -167,6 +172,8 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
           {shown.result.overall_conservation ? t('simulation.sep_conservation_ok') : t('simulation.sep_conservation_bad')}
         </div>
       )}
+      {dayCount > 1 && <p className="form-hint" data-testid="dates-note">{t('simulation.totals_all_dates', { dates: dayCount })}</p>}
+      {chosenDay && chosenDay.dates.length > 1 && <DatePicker dates={chosenDay.dates} date={chosenDay.date} />}
       {shown && (
         <div className="grid g2">
           {dayTrace

@@ -18,7 +18,7 @@ import pytest
 
 import backend.api.workflow as workflow_api
 from backend.queueing_engine.services import separate_optimization as sep
-from tests.test_separate_day_feasibility import LABELS, _records, _setup
+from tests.test_separate_day_feasibility import LABELS, _per_date_records, _records, _setup
 
 BREAK_EVENTS = ("draining_start", "break_start", "break_end")
 
@@ -32,6 +32,16 @@ def _plan(setup: dict, max_events: int = 200000) -> dict:
         "setup": setup, "target": 0.70, "server_cost": 87.0, "waiting_cost": 100.0, "multiplier": 1.0,
         "duration_hours": 1.0, "max_events": max_events,
     }
+
+
+def _per_date_plan(setup: dict, max_events: int = 200000, dates: tuple[str, ...] = ("2026-09-08",)) -> dict:
+    """A selected per-date plan as ingestion and the optimizer write it: periods labelled by date."""
+    plan = _plan(setup, max_events)
+    labels = [f"{date} {label} UTC" for date in dates for label in LABELS]
+    plan["schedule"] = {"periods": [{"time": label, "optimum": {"active_queue_ids": ["a", "b"], "inactive_queue_ids": [],
+                                                                "active_lane_count": 2}} for label in labels]}
+    plan["dataset"] = types.SimpleNamespace(normalized_json=_per_date_records(dates))
+    return plan
 
 
 def _day_events(setup: dict, seed: int) -> list[dict]:
@@ -83,21 +93,27 @@ def test_the_period_traces_are_exactly_the_one_executions_events():
     assert len({p["start_hours"] for p in result["periods"]}) == len(result["periods"])
 
 
-def test_per_date_selected_runs_keep_break_events_too():
-    # Per-date runs use the 24-hour period run length. Only the presence of the events is pinned
-    # here: where a period run places a break that is not in the day's first period is a separate,
-    # reported question (the offset is counted from the day's start, not the period's).
-    plan = _plan(_setup(basis="per_date"))
-    plan["duration_hours"] = 24.0
-    result = workflow_api._run_selected_plan_des(plan, seed=7)
-    kinds = {e["type"] for e in _period_events(result)}
-    assert set(BREAK_EVENTS) <= kinds
+def test_per_date_selected_runs_place_each_break_inside_its_own_date():
+    # B13: every date is one continuous day from empty, so its 11:00 break starts at 11:00 of that date.
+    dates = ("2026-09-08", "2026-09-09")
+    result = workflow_api._run_selected_plan_des(_per_date_plan(_setup(basis="per_date"), dates=dates), seed=7)
+    assert [day["date"] for day in result["days"]] == list(dates)
+    assert result["admitted"] == sum(day["admitted"] for day in result["days"])
+    for date in dates:
+        events = [e for p in result["periods"] if p["time"].startswith(date) for e in p["trace"]["trace"]]
+        drain, start, end = ([e["t"] for e in events if e["type"] == kind] for kind in BREAK_EVENTS)
+        # On a day that opens at 10:00, lane b stops taking customers 3 minutes before its 11:00 break
+        # (PRE_BREAK_CUTOFF_MINUTES), goes on break when its current customer is done, for 60 minutes.
+        assert drain == [pytest.approx(1.0 - 3 / 60)]
+        assert len(start) == len(end) == 1 and drain[0] <= start[0] < 2.0 and end[0] - start[0] == pytest.approx(1.0)
+        assert [p["start_hours"] for p in result["periods"] if p["time"].startswith(date)] == [0.0, 1.0, 2.0]
 
 
 @pytest.mark.parametrize("basis", ["representative_day", "per_date"])
 def test_the_trace_cap_never_changes_the_numbers(basis):
-    full = workflow_api._run_selected_plan_des(_plan(_setup(basis=basis)), seed=7)
-    capped = workflow_api._run_selected_plan_des(_plan(_setup(basis=basis), max_events=5), seed=7)
+    build = _per_date_plan if basis == "per_date" else _plan
+    full = workflow_api._run_selected_plan_des(build(_setup(basis=basis)), seed=7)
+    capped = workflow_api._run_selected_plan_des(build(_setup(basis=basis), max_events=5), seed=7)
     assert any(period["trace"]["truncated"] for period in capped["periods"])
     assert not any(period["trace"]["truncated"] for period in full["periods"])
     assert _numbers(capped) == _numbers(full)

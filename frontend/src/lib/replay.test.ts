@@ -3,9 +3,11 @@ import type { SelectedDesPeriod, SimulationTrace, SimulationTraceEvent } from '.
 import { counterState, deriveSeparateLaneSnapshots } from './simulationPlayback'
 import {
   dayOrigin,
+  dayPeriods,
   hasBreakEvents,
   inactiveQueueIdsAt,
   mergeDayTrace,
+  periodsByDate,
   runTimeFor,
   scheduledBreaks,
   waitingThroughTheDay,
@@ -135,5 +137,23 @@ describe('store clock and scheduled breaks', () => {
   it('places setup breaks on the run clock and skips malformed ones', () => {
     expect(scheduledBreaks(setup)).toEqual([{ queueId: 'a', startHours: 0.75, endHours: 1.25, name: null }])
     expect(scheduledBreaks({ segments: [], breaks: setup.breaks })).toEqual([])
+  })
+})
+
+describe('per-date days (B13)', () => {
+  const period = (time: string) => ({ time } as SelectedDesPeriod)
+  const periods = ['2026-09-08 s1 UTC', '2026-09-08 s2 UTC', '2026-09-09 s1 UTC', '2026-09-09 s2 UTC'].map(period)
+
+  it('groups a per-date run by the date that starts each label, in order', () => {
+    expect(periodsByDate(periods).map((group) => [group.date, group.periods.map((item) => item.time)])).toEqual([
+      ['2026-09-08', ['2026-09-08 s1 UTC', '2026-09-08 s2 UTC']],
+      ['2026-09-09', ['2026-09-09 s1 UTC', '2026-09-09 s2 UTC']],
+    ])
+  })
+
+  it('picks the chosen date, else the first, and keeps a representative day whole', () => {
+    expect(dayPeriods(periods, true, '2026-09-09').periods.map((item) => item.time)).toEqual(['2026-09-09 s1 UTC', '2026-09-09 s2 UTC'])
+    expect(dayPeriods(periods, true, 'not-a-date')).toMatchObject({ date: '2026-09-08', dates: ['2026-09-08', '2026-09-09'] })
+    expect(dayPeriods(periods, false, '2026-09-09')).toEqual({ date: null, dates: [], periods })
   })
 })

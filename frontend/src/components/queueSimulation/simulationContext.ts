@@ -3,6 +3,7 @@
 import type { AnalysisProjectOut, SelectedDesResult, SimulationTrace } from '../../api/types'
 import type { WorkflowEvidence, WorkflowScenario } from '../../api/workflow'
 import { evidenceStatusKey } from '../../lib/format'
+import { dayOrigin } from '../../lib/replay'
 import { isSelectedDesResult } from '../../lib/simulationEvidence'
 
 export type SimulationPageName = 'results' | 'replay' | 'checks'
@@ -19,6 +20,8 @@ export interface SimulationContext {
   planTarget: number | null
   /** Separate lines with one typical day: the plan runs as one continuous day. */
   representativeDay: boolean
+  /** B13: separate lines with per-date data and operating segments: the plan runs one continuous day per date. */
+  perDateDays: boolean
   selectionUnavailable: { scenarioId: number | null; statusKey: string; detail: string | null } | null
 }
 
@@ -41,6 +44,7 @@ export function buildContext(analysisId: number, analysis: AnalysisProjectOut, w
     selectedSeparate: separate && scenario !== null && calculation.schema_version === 2,
     planTarget,
     representativeDay: separate && setup.event_period_basis === 'representative_day',
+    perDateDays: separate && setup.event_period_basis === 'per_date' && dayOrigin(setup) !== null,
     selectionUnavailable: statusKey && evidence
       ? { scenarioId: evidence.scenario_id, statusKey, detail: evidence.evidence_reasons?.[0]?.detail ?? null }
       : null,
@@ -65,14 +69,14 @@ export function currentRun(context: SimulationContext): SimulationTrace | null {
 
 /**
  * Whether the chosen run models the setup's breaks. Only the continuous day of a selected
- * separate-lines plan places them in time. A date-by-date plan run simulates each period alone for
- * many hours, so a break is a small share of the run and its effect is understated. The Current run
+ * separate-lines plan places them in time. A plan whose data has one period per calendar date and no
+ * operating segments simulates each period alone for many hours, so a break is a small share of the run and its effect is understated. The Current run
  * and the legacy shared run have no breaks at all (simulation.py).
  */
 export function breakNoticeKey(context: SimulationContext, run: RunChoice): string | null {
   if ((context.analysis.queue_setup.breaks ?? []).length === 0) return null
   if (run === 'suggested' && context.selectedSeparate) {
-    return context.representativeDay ? null : 'simulation.breaks_understated_per_date'
+    return context.representativeDay || context.perDateDays ? null : 'simulation.breaks_understated_per_date'
   }
   return 'simulation.breaks_not_modeled'
 }
@@ -80,7 +84,8 @@ export function breakNoticeKey(context: SimulationContext, run: RunChoice): stri
 /** Which kind of run backs the chosen view, said on screen (spec §7.8 engine coverage). */
 export function runBasisKey(context: SimulationContext, run: RunChoice): string {
   if (run === 'suggested' && context.selectedSeparate) {
-    return context.representativeDay ? 'simulation.run_basis_continuous' : 'simulation.run_basis_per_period'
+    if (context.representativeDay) return 'simulation.run_basis_continuous'
+    return context.perDateDays ? 'simulation.run_basis_continuous_per_date' : 'simulation.run_basis_per_period'
   }
   return 'simulation.run_basis_per_period'
 }

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { selectPlaybackLayout } from '../../lib/simulationPlayback'
-import { dayOrigin, inactiveQueueIdsAt, mergeDayTrace, operatingHours, runTimeFor, scheduledBreaks, wallClock } from '../../lib/replay'
+import { dayOrigin, dayPeriods, inactiveQueueIdsAt, mergeDayTrace, operatingHours, runTimeFor, scheduledBreaks, wallClock } from '../../lib/replay'
+import { DatePicker } from './DatePicker'
 import { LiveSimulationPlayback } from '../simulation/LiveSimulationPlayback'
 import { SeparateSimulationPlayback } from '../simulation/SeparateSimulationPlayback'
 import { currentRun, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
@@ -20,16 +21,21 @@ export function ReplayView({ context, run }: { context: SimulationContext; run: 
   if (!suggested && !current) return <p className="empty-state">{t(context.separate ? 'simulation.run_first' : 'simulation.run_first_period')}</p>
 
   if (suggested?.kind === 'separate') {
-    const day = context.representativeDay ? mergeDayTrace(suggested.result.periods) : null
+    const chosen = dayPeriods(suggested.result.periods, context.perDateDays, params.get('date'))
+    const day = context.representativeDay || context.perDateDays ? mergeDayTrace(chosen.periods) : null
     if (day) {
       const requested = origin === null ? null : runTimeFor(origin, params.get('t') ?? '')
+      const hoursText = operatingHours(context.analysis.queue_setup)
       return (
+        <div className="page-stack">
+        <DatePicker dates={chosen.dates} date={chosen.date} />
         <SeparateSimulationPlayback
+          key={chosen.date ?? 'day'}
           trace={day}
-          periodLabel={operatingHours(context.analysis.queue_setup)}
+          periodLabel={chosen.date ? `${chosen.date} · ${hoursText ?? ''}` : hoursText}
           originMinutes={origin}
           scheduled={breaks}
-          inactiveQueueIds={(hours) => inactiveQueueIdsAt(suggested.result.periods, hours)}
+          inactiveQueueIds={(time) => inactiveQueueIdsAt(chosen.periods, time)}
           initialTime={requested !== null && requested <= day.total_hours ? requested : 0}
           onTimeChange={(hours) => {
             if (origin === null) return
@@ -38,6 +44,7 @@ export function ReplayView({ context, run }: { context: SimulationContext; run: 
             setParams(next, { replace: true })
           }}
         />
+        </div>
       )
     }
     const periods = suggested.result.periods

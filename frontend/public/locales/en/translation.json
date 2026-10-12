@@ -1643,7 +1643,7 @@
   "simulation.run_unsupported_all": "This run could not simulate any period, so it was not saved:",
   "simulation.run_unsupported_some": "Some periods could not be simulated:",
   "simulation.breaks_not_modeled": "This run does not include the scheduled breaks in your setup, so waits may be shorter than on a day with breaks.",
-  "simulation.breaks_understated_per_date": "Breaks are understated in date-by-date runs: each period is simulated on its own for many hours, so a break is only a small part of the run. Waits in periods with breaks are likely longer than shown.",
+  "simulation.breaks_understated_per_date": "Breaks are understated in runs with one period per calendar date: each period is simulated on its own for many hours, so a break is only a small part of the run. Waits in periods with breaks are likely longer than shown.",
   "continuous.title": "Full-day run",
   "continuous.preview_label": "Simulated · preview",
   "continuous.preview_what": "What does preview mean?",
@@ -1711,5 +1711,8 @@
   "continuous.older_hint": "Each period is simulated on its own; customers do not carry over between periods.",
   "simulation.run_period_by_period": "Run period by period",
   "simulation.run_first_period": "Not run yet. Use Run period by period.",
-  "continuous.period_table": "Day {{day}} by period"
+  "continuous.period_table": "Day {{day}} by period",
+  "simulation.run_basis_continuous_per_date": "One continuous run per date",
+  "simulation.run_date": "Date",
+  "simulation.totals_all_dates": "Customer totals add up all {{dates}} dates; each date starts empty."
 }

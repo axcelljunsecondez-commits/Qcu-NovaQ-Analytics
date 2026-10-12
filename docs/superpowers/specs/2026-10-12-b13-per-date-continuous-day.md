@@ -55,7 +55,7 @@ Out of scope:
 ## 5. Rules
 
 1. **One day per date.** Periods are grouped by calendar date: the first token of the per-date label `"<YYYY-MM-DD> <segment> UTC"` (`analysis_ingestion.py:61-63`). Each record's `segment_id` names its configured segment, and that gives its window on the day clock (`_segment_window`, origin `des_day_start_minutes`). For each date and each replication seed, one `run_routing_day_des` call simulates the date from its first configured segment to its last.
-2. **Dates are independent.** Each date starts empty. Nothing carries from one date to the next (separate terminating runs).
+2. **Dates are independent.** Each date starts empty. Nothing carries from one date to the next (separate terminating runs). Each date also gets its own seed (implementation note 2026-10-12: `date_seed`, date 0 keeps the replication seed), so dates with equal inputs are independent samples rather than identical replays.
 3. **Breaks.** `resolve_des_breaks(setup)` is applied to every date, placed at their real time and length within that date.
 4. **Evaluation.** Each period's lane values come from its own date's day run, as `_day_candidate_runner` already does: utilization = busy time in the period / period length (clamped at 1), waiting cost with the period as the horizon, and `utilization_basis = "continuous-day DES"`. As on the representative-day path, the day runner evaluates the scheduled lanes of each period. Other candidates are refused (`separate_optimization.py:1717-1720`), never silently run as 24 h periods.
 5. **No silent fallback.** If a date cannot be laid out, the schedule is `INVALID_INPUT` with a reason naming the date and segment, as K2-a does for representative-day. NovaQ never falls back to 24 h period runs. Causes include a period whose `segment_id` matches no configured segment, a malformed segment time, or a configured segment with no records on that date (§9, OD-B13-2).
@@ -111,7 +111,7 @@ This adaptation is PROPOSED only. Its convergence and quality for routed separat
 
 - Replace `test_per_date_basis_keeps_the_24_hour_candidate_runs`: a per-date schedule now carries `utilization_basis = "continuous-day DES"`, and the 11:00 break hour's candidate utilization matches the continuous day of its date (above 0.70 in that fixture, as for representative-day).
 - Two dates: each date's results equal its own day run. Day 2 starts empty. A break on day 1 never affects day 2.
-- The selected-plan per-date run equals the date-by-date day runs (event multiset equality, as `test_b5_break_events.py` does for representative-day).
+- The selected-plan per-date run equals the per-date day runs (event multiset equality, as `test_b5_break_events.py` does for representative-day).
 - No fallback: an unmappable date gives `INVALID_INPUT` naming the date, and no 24 h run happens (spy on `evaluate_candidate_with_des`).
 - Versioning (Option B):
   - a representative-day v2 plan stays CURRENT;
