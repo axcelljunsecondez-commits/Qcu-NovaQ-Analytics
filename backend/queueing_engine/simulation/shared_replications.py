@@ -38,11 +38,14 @@ from backend.queueing_engine.services.shared_segments import (
     validate_timeline,
 )
 from backend.queueing_engine.simulation.shared_continuous_des import (
+    BREAK_RULES,
+    BREAKS_SUFFIX,
     CLOSING_POLICIES,
     ENGINE_VERSION,
     RECORDED,
     RECORDED_ENGINE_VERSION,
     SERVER_HOURS_MEANING,
+    CounterBreak,
     resolve_service_samples,
     simulate_shared_replication,
 )
@@ -261,6 +264,13 @@ def replication_row(
     if failure_criteria is not None:
         outcomes = criterion_outcomes(row, failure_criteria)
         row["criteria"] = {"outcomes": outcomes, "replication_outcome": replication_outcome(outcomes)}
+    if "breaks" in result:  # B4c: only runs with counter breaks carry these
+        started = [item for item in result["breaks"] if item["start_hours"] is not None]
+        row["break_server_hours"] = totals["break_server_hours"]
+        row["breaks_started"] = len(started)
+        row["breaks_cancelled_at_closing"] = len(result["breaks"]) - len(started)
+        row["mean_break_delay_hours"] = (
+            math.fsum(item["delay_hours"] for item in started) / len(started) if started else None)
     return row
 
 
@@ -421,6 +431,7 @@ def run_shared_replications(
     cost_rates: DayCostRates | None = None,
     failure_criteria: FailureCriteria | None = None,
     service_samples: Mapping[str, Sequence[float]] | None = None,
+    counter_breaks: Sequence[CounterBreak] | None = None,
 ) -> dict[str, Any]:
     """Run ``replications`` independent continuous-DES replications and aggregate them.
 
@@ -456,7 +467,7 @@ def run_shared_replications(
         result = simulate_shared_replication(
             horizon, demand_periods, staffing_segments,
             seed_sequence=child, closing_policy=closing_policy, max_trace_events=0,
-            service_samples=service_samples,
+            service_samples=service_samples, counter_breaks=counter_breaks,
         )
         if cost_rates is not None and not cost_reference:
             cost_reference = cost_shared_day(result, cost_rates)
@@ -501,4 +512,11 @@ def run_shared_replications(
                            "service_fallbacks": fallbacks, "seed_scheme": RECORDED_SEED_SCHEME})
         provenance["inputs"]["service_samples_hours"] = {
             key: [float(value) for value in values] for key, values in service_samples.items()}
+    if counter_breaks:
+        provenance = result["provenance"]
+        provenance["engine_version"] += BREAKS_SUFFIX
+        provenance["break_rules"] = BREAK_RULES
+        provenance["inputs"]["counter_breaks"] = [asdict(item) for item in counter_breaks]
+        result["summary"]["breaks"] = {key: summarize_metric([row[key] for row in rows]) for key in (
+            "break_server_hours", "breaks_started", "breaks_cancelled_at_closing", "mean_break_delay_hours")}
     return result

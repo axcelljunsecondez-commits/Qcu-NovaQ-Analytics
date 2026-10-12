@@ -146,6 +146,13 @@ export interface AnalysisSegment {
   active_queue_ids: string[] | null
 }
 
+/** A break on one shared line, taken by whichever counter is free first (B4c addendum). */
+export interface CounterBreak {
+  scheduled_start_time: string
+  duration_minutes: number
+  break_name?: string
+}
+
 export interface QueueBreak {
   queue_id: string
   scheduled_start_time: string
@@ -203,6 +210,8 @@ export interface QueueSetup {
   queue_ids: string[]
   breaks: QueueBreak[]
   event_period_basis?: EventPeriodBasis
+  /** Shared lines only; absent when there are none. */
+  counter_breaks?: CounterBreak[]
 }
 
 export interface AnalysisProjectOut {

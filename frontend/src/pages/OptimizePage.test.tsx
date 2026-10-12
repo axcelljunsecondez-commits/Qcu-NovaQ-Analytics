@@ -525,6 +525,28 @@ describe('OptimizePage', () => {
   })
 })
 
+describe('counter breaks (B4c)', () => {
+  it('says that suggested counters do not account for the counter breaks in the Setup', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue', queue_ids: [],
+      counter_breaks: [{ scheduled_start_time: '12:00:00', duration_minutes: 30 }] } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} /></Routes>,
+      { route: '/analyses/7/optimize' },
+    )
+    expect(await screen.findByTestId('counter-breaks-note')).toHaveTextContent('Suggested counters do not account for the counter breaks in the Setup.')
+  })
+
+  it('says nothing about breaks when the Setup has none', async () => {
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} /></Routes>,
+      { route: '/analyses/7/optimize' },
+    )
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(getAnalysisMock).toHaveBeenCalled())
+    expect(screen.queryByTestId('counter-breaks-note')).not.toBeInTheDocument()
+  })
+})
+
 describe('separate staffing optimization', () => {
   function renderSeparate() {
     getAnalysisMock.mockResolvedValue({

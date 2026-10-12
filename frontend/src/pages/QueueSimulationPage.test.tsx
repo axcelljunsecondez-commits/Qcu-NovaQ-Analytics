@@ -780,6 +780,22 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect(screen.queryByTestId('continuous-refusal')).not.toBeInTheDocument()
   })
 
+  it('says how many counter breaks a run includes, and nothing when it is refused (B4c)', async () => {
+    getCompatibilityMock.mockResolvedValue(compatibility({
+      plans: { current: { ...compatiblePlan, counter_breaks: 2 },
+        suggested: { ...compatiblePlan, compatible: false, counter_breaks: 2, scenario_id: 3, scenario_name: 'Plan A',
+          reasons: [{ code: 'breaks_not_staffed', problems: ['Break at 09:00 needs a counter, but this staffing has 1 counter(s) and 2 break(s) at 09:00.'] }] } },
+    }))
+    renderPage()
+    const refusal = await screen.findByTestId('continuous-refusal')
+    expect(refusal).toHaveTextContent('A counter break cannot be covered by this staffing:')
+    expect(refusal).toHaveTextContent('Break at 09:00 needs a counter')
+    expect(screen.queryByTestId('continuous-breaks')).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Current' }))
+    await waitFor(() => expect(screen.getByTestId('continuous-breaks')).toHaveTextContent(
+      'Includes 2 counter break(s) from the Setup, each taken by the first free counter.'))
+  })
+
   it('says a counts-per-period run uses estimated service times', async () => {
     getCompatibilityMock.mockResolvedValue(compatibility({
       plans: { current: { ...compatiblePlan, service_model: 'exponential' },

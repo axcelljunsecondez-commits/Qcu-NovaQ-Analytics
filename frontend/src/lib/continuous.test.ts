@@ -25,6 +25,17 @@ describe('full-day replay helpers (B4a)', () => {
     expect(stateAt(events, 2).event?.seq).toBe(6)
   })
 
+  it('reads counters on break and breaks waiting, and zero for runs without breaks (B4c)', () => {
+    const withBreaks: ContinuousEvent[] = [
+      event(0, 0, 'server_open', 0, 0, 1),
+      { ...event(1, 0.5, 'break_due', 0, 1, 0), servers_on_break_after: 0, breaks_waiting_after: 1 },
+      { ...event(2, 0.75, 'break_start', 0, 0, 0), servers_on_break_after: 1, breaks_waiting_after: 0 },
+    ]
+    expect(stateAt(withBreaks, 0.6)).toMatchObject({ onBreak: 0, breaksWaiting: 1, serving: 1 })
+    expect(stateAt(withBreaks, 0.8)).toMatchObject({ onBreak: 1, breaksWaiting: 0, serving: 0 })
+    expect(stateAt(events, 0.5)).toMatchObject({ onBreak: 0, breaksWaiting: 0 })
+  })
+
   it('draws people waiting from every recorded event, never sampled', () => {
     expect(waitingSteps(events).map((step) => [step.hours, step.waiting])).toEqual([[0, 0], [0.5, 1], [0.5, 0], [0.7, 1], [1, 1], [1.1, 1], [1.1, 0]])
   })

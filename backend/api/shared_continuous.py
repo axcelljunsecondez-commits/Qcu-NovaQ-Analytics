@@ -52,6 +52,7 @@ from backend.queueing_engine.simulation.shared_continuous_des import (
     CLOSING_POLICIES,
     CLOSING_RULES,
     RECORDED,
+    CounterBreak,
     resolve_service_samples,
 )
 from backend.queueing_engine.simulation.shared_playback import PlaybackConsistencyError, playback_from_replications
@@ -67,8 +68,8 @@ DEFAULT_REPLICATIONS = 5  # OD-B4a-3 A
 EXPONENTIAL = "exponential"
 PREVIEW_SCOPE = (
     "Preview: Poisson arrivals, first come first served, unlimited waiting room. Customer-record uploads use "
-    "their recorded service durations (B4b); counts per period use exponential service (M/M/c). Breaks (B4c) "
-    "are not in this run."
+    "their recorded service durations (B4b); counts per period use exponential service (M/M/c). Counter breaks "
+    "from the Setup are taken by the first free counter (B4c)."
 )
 
 Plan = Literal["current", "suggested"]
@@ -211,6 +212,39 @@ def _recorded_timeline(setup: dict[str, Any], rows: list[Any], dataset_rows: lis
             "missing_plan_periods": missing if plan == "suggested" else []}
 
 
+def _counter_breaks(setup: dict[str, Any], horizon: OperatingHorizon, staffing: list[StaffingSegment]
+                    ) -> tuple[list[CounterBreak], list[dict[str, Any]]]:
+    """The Setup's counter breaks for the engine, or why this run's staffing cannot hold them (B4c addendum s4).
+
+    A break is refused when it starts outside the operating hours, or when at its start more breaks are
+    under way (start <= t < start + length) than counters are scheduled. Nothing is skipped silently.
+    """
+    entries = [entry for entry in setup.get("counter_breaks") or [] if isinstance(entry, dict)]
+    windows = [(_setup_minute(entry.get("scheduled_start_time"), "Counter break start"),
+                int(entry.get("duration_minutes") or 0)) for entry in entries]
+    outside, unstaffed = [], []
+    breaks = []
+    for index, (start, minutes) in enumerate(windows, start=1):
+        clock = format_clock(start)
+        if not horizon.start_minute <= start < horizon.end_minute:
+            outside.append(f"Break at {clock} is outside the operating hours "
+                           f"{format_clock(horizon.start_minute)}-{format_clock(horizon.end_minute)}.")
+            continue
+        counters = next(int(item.servers) for item in staffing if item.start_minute <= start < item.end_minute)
+        under_way = sum(1 for other, length in windows if other <= start < other + length)
+        if under_way > counters:
+            unstaffed.append(f"Break at {clock} needs a counter, but this staffing has {counters} counter(s) and "
+                             f"{under_way} break(s) at {clock}.")
+            continue
+        breaks.append(CounterBreak(f"break_{index}", (start - horizon.start_minute) / 60, minutes / 60))
+    reasons = []
+    if outside:
+        reasons.append(_reason("breaks_outside_hours", problems=outside))
+    if unstaffed:
+        reasons.append(_reason("breaks_not_staffed", problems=unstaffed))
+    return breaks, reasons
+
+
 def _expected_customers_per_day(periods: list[DemandPeriod]) -> float:
     """Sum of arrival rate x period hours (the named run's run-time measure, spec section 22.8)."""
     return math.fsum(p.arrival_rate_per_hour * (p.end_minute - p.start_minute) / 60 for p in periods)
@@ -221,7 +255,7 @@ def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> d
     setup = analysis.queue_setup_json or {}
     out: dict[str, Any] = {"plan": plan, "dataset": None, "scenario": None, "timeline": None,
                            "expected_customers_per_day": None, "horizon": None, "service_model": None,
-                           "service_samples": None, "service_fallbacks": []}
+                           "service_samples": None, "service_fallbacks": [], "counter_breaks": []}
     reasons = _setup_reasons(setup)
     rows: list[Any] | None = None
     if not reasons:
@@ -264,6 +298,8 @@ def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> d
                     out["expected_customers_per_day"] = _expected_customers_per_day(out["timeline"][1])
                     horizon = out["timeline"][0]
                     out["horizon"] = {"start_minute": horizon.start_minute, "end_minute": horizon.end_minute}
+                    out["counter_breaks"], break_reasons = _counter_breaks(setup, horizon, out["timeline"][2])
+                    reasons += break_reasons
             except SharedSegmentError as error:
                 reasons.append(_reason("timeline_invalid", problems=error.problems))
     if analysis.shared_closing_policy not in CLOSING_POLICIES:
@@ -285,6 +321,7 @@ def _plan_view(assessment: dict[str, Any]) -> dict[str, Any]:
         "scenario_name": scenario.name if scenario is not None else None,
         "service_model": assessment["service_model"],
         "service_fallbacks": assessment["service_fallbacks"],
+        "counter_breaks": len(assessment["counter_breaks"]),
     }
 
 
@@ -430,7 +467,8 @@ def create_continuous_run(
                 "code": "evidence_too_large", "bytes": size, "max_bytes": settings.result_jsonb_max_bytes})
     try:
         result = run_shared_replications(horizon, periods, segments, replications=body.replications,
-                                         seed=body.seed, closing_policy=closing_policy, service_samples=samples)
+                                         seed=body.seed, closing_policy=closing_policy, service_samples=samples,
+                                         counter_breaks=assessment["counter_breaks"] or None)
     except SharedSegmentError as error:
         raise HTTPException(status_code=422, detail={
             "code": "not_compatible", "plan": body.plan,
@@ -464,6 +502,7 @@ def create_continuous_run(
             "closing_policy": closing_policy,
             "expected_customers_per_day": per_day,
             "service_model": assessment["service_model"],
+            "counter_breaks": len(assessment["counter_breaks"]),
             # Server keys, written after the request keys so no request value can replace them.
             "api_version": API_VERSION,
             "engine_version": provenance["engine_version"],

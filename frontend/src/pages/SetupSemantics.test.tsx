@@ -380,6 +380,38 @@ describe('separate server break schedule', () => {
     }))
   })
 
+  it('saves counter breaks for a shared line and refuses one without minutes (B4c)', async () => {
+    const user = userEvent.setup()
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
+      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [], fixed_server_count: 2,
+    } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+    expect(await screen.findByTestId('counter-breaks')).toHaveTextContent('Suggested counters do not account for breaks.')
+    await user.click(screen.getByRole('button', { name: 'Add counter break' }))
+    await user.type(screen.getByLabelText('Break 1 start'), '12:00')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/Each counter break needs a start time/)).toBeInTheDocument()
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText('Break 1 minutes'), '0')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+    await user.clear(screen.getByLabelText('Break 1 minutes'))
+    await user.type(screen.getByLabelText('Break 1 minutes'), '30')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
+      queue_setup: expect.objectContaining({ counter_breaks: [{ scheduled_start_time: '12:00', duration_minutes: 30 }] }),
+    }))
+  })
+
+  it('shows no counter breaks for separate lines', async () => {
+    renderSeparateSetup()
+    await screen.findByLabelText('Customer data periods')
+    expect(screen.queryByTestId('counter-breaks')).not.toBeInTheDocument()
+  })
+
   it('offers no representative-day basis for a single server', async () => {
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
       ...separateSetup, queue_structure: 'single_server', queue_ids: [],

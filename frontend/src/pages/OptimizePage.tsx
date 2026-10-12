@@ -758,6 +758,9 @@ export function OptimizePage() {
         </div>
       </div>
 
+      {(analysis.data?.analysis.queue_setup.counter_breaks?.length ?? 0) > 0 && (
+        <p className="form-hint" data-testid="counter-breaks-note">{t('optimize.counter_breaks_note')}</p>
+      )}
       {stale && <div role="alert" className="alert alert-warn">{t('integrity.stale')}</div>}
       {rows && !comparisonComplete(rows) && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
       {rows && !staffingSummaryAvailable && (

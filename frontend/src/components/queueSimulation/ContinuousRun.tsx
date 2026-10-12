@@ -164,6 +164,9 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
           })}`}
         </p>
       )}
+      {(view.counter_breaks ?? 0) > 0 && blocking.length === 0 && (
+        <p className="form-hint" data-testid="continuous-breaks">{t('continuous.breaks_included', { breaks: view.counter_breaks })}</p>
+      )}
       <details className="preview-explained">
         <summary>{t('continuous.preview_what')}</summary>
         <p>{t('continuous.preview_explained')}</p>
@@ -381,6 +384,7 @@ function ContinuousReplay({ analysisId, shown }: { analysisId: number; shown: Co
 
   if (!shown) return <p className="empty-state">{t('simulation.run_first')}</p>
   const state = stateAt(events, time)
+  const hasBreaks = events.some((event) => event.type === 'break_due')
   const go = () => {
     const hours = hoursAt(startMinute, goTo)
     if (hours === null || hours > end) return setGoError(t('continuous.goto_error', { start: clockAt(startMinute, 0), end: clockAt(startMinute, end) }))
@@ -401,6 +405,8 @@ function ContinuousReplay({ analysisId, shown }: { analysisId: number; shown: Co
             <span>{t('continuous.state_serving')}: <strong>{state.serving}</strong></span>
             <span>{t('continuous.state_idle')}: <strong>{state.idle}</strong></span>
             <span>{t('continuous.state_draining')}: <strong>{state.draining}</strong></span>
+            {hasBreaks && <span>{t('continuous.state_on_break')}: <strong>{state.onBreak}</strong></span>}
+            {hasBreaks && <span>{t('continuous.state_breaks_waiting')}: <strong>{state.breaksWaiting}</strong></span>}
             <span>{t('continuous.state_arrived')}: <strong>{state.arrived}</strong></span>
             <span>{t('continuous.state_served')}: <strong>{state.served}</strong></span>
             <span>{t('continuous.state_unserved')}: <strong>{state.unserved}</strong></span>

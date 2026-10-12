@@ -34,6 +34,8 @@ export interface ContinuousPlanView {
   scenario_name: string | null
   service_model?: ServiceModel | null
   service_fallbacks?: Array<{ period_id: string; uses_period_id: string }>
+  /** Counter breaks this run will include (B4c). */
+  counter_breaks?: number
 }
 
 export interface ContinuousCompatibility {
@@ -103,6 +105,7 @@ export interface ContinuousRunEvidence {
     seed: number
     closing_policy: ClosingPolicy
     service_model?: ServiceModel
+    counter_breaks?: number
   }
   result: ContinuousResult
   created_at: string
@@ -134,6 +137,9 @@ export interface ContinuousEvent {
   servers_idle_after: number
   servers_busy_after: number
   servers_draining_after: number
+  /** Present only in runs with counter breaks (B4c). */
+  servers_on_break_after?: number
+  breaks_waiting_after?: number
 }
 
 export interface ContinuousPeriod {

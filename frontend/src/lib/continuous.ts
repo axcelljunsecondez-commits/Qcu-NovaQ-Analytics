@@ -40,6 +40,8 @@ export interface DayState {
   serving: number
   idle: number
   draining: number
+  onBreak: number
+  breaksWaiting: number
   arrived: number
   served: number
   unserved: number
@@ -48,7 +50,7 @@ export interface DayState {
 
 /** The line and counters after the last event at or before ``hours``, read from the events only. */
 export function stateAt(events: ContinuousEvent[], hours: number): DayState {
-  const state: DayState = { waiting: 0, serving: 0, idle: 0, draining: 0, arrived: 0, served: 0, unserved: 0, event: null }
+  const state: DayState = { waiting: 0, serving: 0, idle: 0, draining: 0, onBreak: 0, breaksWaiting: 0, arrived: 0, served: 0, unserved: 0, event: null }
   for (const event of events) {
     if (event.t > hours + 1e-9) break
     if (event.type === 'arrival') state.arrived += 1
@@ -58,6 +60,8 @@ export function stateAt(events: ContinuousEvent[], hours: number): DayState {
     state.serving = event.servers_busy_after
     state.idle = event.servers_idle_after
     state.draining = event.servers_draining_after
+    state.onBreak = event.servers_on_break_after ?? 0
+    state.breaksWaiting = event.breaks_waiting_after ?? 0
     state.event = event
   }
   return state
