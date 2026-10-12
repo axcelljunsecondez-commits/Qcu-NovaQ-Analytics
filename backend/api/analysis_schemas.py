@@ -144,11 +144,11 @@ class QueueSetup(BaseModel):
         if self.queue_structure == QueueStructure.separate_queues and not self.queue_ids:
             raise ValueError("Separate-queue analysis requires at least one configured queue ID.")
         configured = set(self.queue_ids)
-        if (
-            self.event_period_basis == EventPeriodBasis.representative_day
-            and self.queue_structure != QueueStructure.separate_queues
+        # Shared lines may use it too (B4b addendum, owner-approved 2026-10-12): ingestion pools them the same way.
+        if self.event_period_basis == EventPeriodBasis.representative_day and self.queue_structure not in (
+            QueueStructure.separate_queues, QueueStructure.shared_queue,
         ):
-            raise ValueError("The representative day basis is only supported for separate queues.")
+            raise ValueError("The representative day basis is only supported for shared or separate queues.")
         if self.breaks and self.queue_structure != QueueStructure.separate_queues:
             raise ValueError("Server break schedules are only supported for separate queues.")
         for entry in self.breaks:

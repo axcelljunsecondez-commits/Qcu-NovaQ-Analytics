@@ -20,6 +20,8 @@ Make the full-day shared-line run use the service times customers actually took,
 | The separate-lines routing DES already serves customers from each lane's own resampled recorded durations. | `backend/queueing_engine/services/separate_optimization.py:1-29, 428, 497` |
 | The continuous engine's current results are pinned. | `tests/test_shared_continuous_des_pin.py` |
 
+**Correction (2026-10-12, VERIFIED):** the Setup refuses the Representative day basis for shared lines (`backend/api/analysis_schemas.py:151`), so a shared customer-record upload is always per-date. The pooling above applies to separate lines only today. OD-B4b-3 (section 8) decides how shared uploads reach this run.
+
 ## 3. Proposed representation (PROPOSED; OD-B4b-1)
 
 | Option | What it means | For | Against |
@@ -77,3 +79,4 @@ Mutation testing of the sampling path is required (drawing from the wrong period
 - **OD-B4b-1:** resample recorded durations (A, recommended) or fit a distribution (B).
 - **OD-B4b-2:** periods without recordings: nearest-period fallback and list them (A, recommended) or refuse (B).
 - **OD-UX-9:** approve the reference cases in §5 as the acceptance set.
+- **OD-B4b-3 (owner chose A, 2026-10-12; addendum `2026-10-12-b4b-addendum-shared-representative-day.md` awaits approval):** how shared customer-record uploads reach the full-day run: A allow the Representative day basis for shared lines; B run one chosen calendar date per run; C both.

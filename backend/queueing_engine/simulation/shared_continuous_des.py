@@ -22,7 +22,7 @@ import heapq
 import itertools
 import math
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from numbers import Integral, Real
 from typing import Any
@@ -38,6 +38,9 @@ from backend.queueing_engine.services.shared_segments import (
 )
 
 ENGINE_VERSION = "novaq-shared-continuous-des-v2"
+# B4b (spec 2026-10-09-b4b-recorded-service-times.md): the same engine with recorded service durations.
+RECORDED_ENGINE_VERSION = "novaq-shared-continuous-des-v2+recorded-v1"
+RECORDED = "recorded"
 
 # Same-time order: a completion frees its server before a capacity change is applied, and an
 # arrival at a boundary sees the new capacity. Ties among arrivals follow customer id.
@@ -97,6 +100,64 @@ ASSUMPTIONS = [
     "Simulated values are one stochastic realization of the configured model, not observations "
     "and not steady-state expectations.",
 ]
+# Recorded service times (B4b, OD-B4b-1 A and OD-B4b-2 A) replace the second and fourth assumptions.
+RECORDED_ASSUMPTIONS = [
+    ASSUMPTIONS[0],
+    "Each customer carries a service quantile u drawn once from Uniform[0, 1) (stored as unit_work). "
+    "Service lasts the recorded duration at position floor(u x n) of the n sorted durations recorded in "
+    "the demand period in which service starts: a uniform draw, with replacement, from those durations "
+    "(inverse-transform sampling of their empirical distribution). A started service is never redrawn, "
+    "rescaled, or interrupted.",
+    "A demand period without recorded durations uses those of the nearest earlier period that has "
+    "them, else the nearest later one; each such period is listed in service_fallbacks.",
+    ASSUMPTIONS[2],
+    "The horizon end is the closing time. Services that start after closing (DRAIN only) use the "
+    "final demand period's recorded durations, because no data exists after closing.",
+    ASSUMPTIONS[4],
+    ASSUMPTIONS[5],
+]
+
+
+def resolve_service_samples(
+    demand_periods: Sequence[DemandPeriod], service_samples: object
+) -> tuple[list[tuple[float, ...]], list[dict[str, str]]]:
+    """Sorted recorded durations (hours) for every demand period, in period order, and the fallbacks used.
+
+    ``service_samples`` maps a demand period id to its recorded durations; a period that is absent or
+    has an empty list borrows the durations of the nearest earlier period that has some, else the
+    nearest later one (OD-B4b-2 A). Every problem is raised at once.
+    """
+    if not isinstance(service_samples, Mapping):
+        raise SharedSegmentError(["service_samples must map demand period ids to lists of recorded durations."])
+    known = [period.period_id for period in demand_periods]
+    problems = [f"service_samples names unknown demand period {key!r}." for key in service_samples if key not in known]
+    own: list[tuple[float, ...]] = []
+    for period_id in known:
+        values = service_samples.get(period_id, [])
+        if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+            problems.append(f"Recorded durations of demand period {period_id} must be a list of hours.")
+            own.append(())
+            continue
+        if not all(_is_finite_real(value) and float(value) > 0 for value in values):
+            problems.append(f"Every recorded duration of demand period {period_id} must be a finite number of hours above 0.")
+            own.append(())
+            continue
+        own.append(tuple(sorted(float(value) for value in values)))
+    if not problems and not any(own):
+        problems.append("At least one demand period needs recorded service durations.")
+    if problems:
+        raise SharedSegmentError(problems)
+    resolved: list[tuple[float, ...]] = []
+    fallbacks: list[dict[str, str]] = []
+    for index, values in enumerate(own):
+        if values:
+            resolved.append(values)
+            continue
+        earlier = [i for i in range(index - 1, -1, -1) if own[i]]
+        source = earlier[0] if earlier else next(i for i in range(index + 1, len(own)) if own[i])
+        resolved.append(own[source])
+        fallbacks.append({"period_id": known[index], "uses_period_id": known[source]})
+    return resolved, fallbacks
 
 
 @dataclass
@@ -142,14 +203,22 @@ def simulate_prescribed(
     *,
     closing_policy: str,
     max_trace_events: int | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
 ) -> dict[str, Any]:
     """Run the continuous engine on prescribed (arrival hour, unit work) pairs.
 
     Arrival hours are measured from the horizon start. ``closing_policy`` (``DRAIN`` or
     ``HARD_CUTOFF``) has no default. This entry point is deterministic;
     ``simulate_shared_day`` draws the pairs from seeded random streams.
+
+    With ``service_samples`` (recorded durations per demand period id, B4b) the second item of
+    each pair is the customer's service quantile in [0, 1) instead of its unit work, and
+    services last recorded durations (``RECORDED_ASSUMPTIONS``). Without it the run is the
+    exponential engine, unchanged.
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
+    recorded = service_samples is not None
+    samples, fallbacks = resolve_service_samples(demand_periods, service_samples) if recorded else ([], [])
     end = _hours(horizon.end_minute, horizon)
     period_starts = [_hours(period.start_minute, horizon) for period in demand_periods]
     segment_starts = [_hours(segment.start_minute, horizon) for segment in staffing_segments]
@@ -174,7 +243,10 @@ def simulate_prescribed(
         if float(at) < previous:
             problems.append(f"Arrival {position} is earlier than the arrival before it.")
         previous = float(at)
-        if not _is_finite_real(work) or float(work) <= 0:
+        if recorded:
+            if not _is_finite_real(work) or not 0 <= float(work) < 1:
+                problems.append(f"Arrival {position} service quantile must be a number from 0 up to, not including, 1.")
+        elif not _is_finite_real(work) or float(work) <= 0:
             problems.append(f"Arrival {position} work must be a finite number above 0.")
         period = demand_periods[bisect.bisect_right(period_starts, float(at)) - 1]
         if float(period.arrival_rate_per_hour) == 0:
@@ -190,6 +262,14 @@ def simulate_prescribed(
     def mu_at(hour: float) -> float:
         # At or after closing this is the final demand period's rate (approved Phase 3A rule).
         return float(demand_periods[bisect.bisect_right(period_starts, hour) - 1].service_rate_per_hour)
+
+    def duration_at(hour: float, work: float) -> float:
+        if not recorded:
+            return work / mu_at(hour)
+        # The period in which service starts; at or after closing, the final period (as mu_at).
+        durations = samples[bisect.bisect_right(period_starts, hour) - 1]
+        # u < 1, so floor(u x n) < n; min() only guards a product rounded up to n.
+        return durations[min(int(work * len(durations)), len(durations) - 1)]
 
     servers: list[_Server] = []
     customers = [
@@ -252,7 +332,7 @@ def simulate_prescribed(
                 break
             server = min(free, key=lambda item: item.server_id)
             customer = customers[queue.popleft() - 1]
-            duration = customer.work / mu_at(now)
+            duration = duration_at(now, customer.work)
             customer.service_start, customer.service_end = now, now + duration
             customer.server_id = server.server_id
             server.state, server.customer_id = BUSY, customer.customer_id
@@ -380,11 +460,24 @@ def simulate_prescribed(
     assert not queue and all(server.state == CLOSED for server in servers)
     assert all(customer.departed or customer.unserved_reason for customer in customers)
 
-    return _summarize(
+    result = _summarize(
         horizon, demand_periods, staffing_segments, arrivals, customers, servers,
         segment_hours, areas, max_queue, transitions, drain_records, trace, truncated, end,
         max_trace_events, closing_policy, at_close, after_close,
     )
+    if recorded:
+        assert service_samples is not None
+        provenance = result["provenance"]
+        provenance.update({
+            "engine_version": RECORDED_ENGINE_VERSION,
+            "service_model": RECORDED,
+            "service_fallbacks": fallbacks,
+            "assumptions": list(RECORDED_ASSUMPTIONS),
+            "unit_work_meaning": "Each customer's service quantile u in [0, 1) (recorded service times).",
+        })
+        provenance["inputs"]["service_samples_hours"] = {
+            key: [float(value) for value in values] for key, values in service_samples.items()}
+    return result
 
 
 def _mean(values: Sequence[float]) -> float | None:
@@ -568,33 +661,69 @@ def simulate_shared_day(
     seed: int | None,
     closing_policy: str,
     max_trace_events: int | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
 ) -> dict[str, Any]:
     """Draw arrivals and unit work from seeded streams, then run the continuous engine.
 
     ``seed=None`` draws fresh entropy; it is recorded in the provenance so the run can be
     repeated exactly by passing it back as ``seed``. ``closing_policy`` has no default.
+    ``service_samples`` selects recorded service times (see ``simulate_prescribed``).
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
     if seed is not None and (not isinstance(seed, Integral) or isinstance(seed, bool) or seed < 0):
         raise SharedSegmentError(["seed must be a whole number, 0 or more, or omitted."])
     seed_sequence = np.random.SeedSequence(seed)
+    recorded = service_samples is not None
+    if recorded:
+        resolve_service_samples(demand_periods, service_samples)  # refuse bad durations before drawing
     result = simulate_prescribed(
-        horizon, demand_periods, staffing_segments, _draw_arrivals(horizon, demand_periods, seed_sequence),
-        closing_policy=closing_policy, max_trace_events=max_trace_events,
+        horizon, demand_periods, staffing_segments,
+        _draw_arrivals(horizon, demand_periods, seed_sequence, recorded=recorded),
+        closing_policy=closing_policy, max_trace_events=max_trace_events, service_samples=service_samples,
     )
     result["provenance"].update({
         "seed": seed,
         "seed_entropy": seed_sequence.entropy,
-        "random_streams": "numpy SeedSequence(seed).spawn(2): arrival gaps, then unit work (PCG64)",
+        "random_streams": f"numpy SeedSequence(seed).spawn({_streams(recorded)})" + _STREAM_TEXT[recorded],
     })
     return result
 
 
+_STREAM_TEXT = {
+    False: ": arrival gaps, then unit work (PCG64)",
+    True: (": arrival gaps, then unit work (not drawn), then service quantiles (PCG64); the arrivals equal "
+           "those of the exponential engine for the same sequence"),
+}
+
+
+def _streams(recorded: bool) -> int:
+    return 3 if recorded else 2
+
+
 def _draw_arrivals(
-    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], seed_sequence: np.random.SeedSequence
+    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], seed_sequence: np.random.SeedSequence,
+    *, recorded: bool = False,
 ) -> list[tuple[float, float]]:
-    """(arrival hour, unit work) pairs from the two streams ``seed_sequence.spawn(2)``."""
+    """(arrival hour, unit work) pairs from the two streams ``seed_sequence.spawn(2)``.
+
+    Recorded service times (B4b) spawn three streams instead and pair each arrival with a service
+    quantile from the third, its own stream. A spawned child does not depend on how many are
+    spawned, so the arrival gaps are the same stream as in the exponential engine.
+    """
+    if recorded:
+        arrival_child, _, quantile_child = seed_sequence.spawn(3)
+        times = _arrival_times(horizon, demand_periods, np.random.default_rng(arrival_child))
+        quantiles = np.random.default_rng(quantile_child).random(size=len(times))
+        return list(zip(times, (float(value) for value in quantiles)))
     arrival_stream, work_stream = (np.random.default_rng(child) for child in seed_sequence.spawn(2))
+    times = _arrival_times(horizon, demand_periods, arrival_stream)
+    works = [float(work) for work in work_stream.exponential(1.0, size=len(times))]
+    return list(zip(times, works))
+
+
+def _arrival_times(
+    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], arrival_stream: np.random.Generator
+) -> list[float]:
     times: list[float] = []
     for period in demand_periods:
         rate = float(period.arrival_rate_per_hour)
@@ -605,8 +734,7 @@ def _draw_arrivals(
             if at >= stop:
                 break
             times.append(at)
-    works = [float(work) for work in work_stream.exponential(1.0, size=len(times))]
-    return list(zip(times, works))
+    return times
 
 
 def draw_arrivals(
@@ -638,6 +766,7 @@ def simulate_shared_replication(
     seed_sequence: np.random.SeedSequence,
     closing_policy: str,
     max_trace_events: int | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
 ) -> dict[str, Any]:
     """Run one replication from a numpy ``SeedSequence`` (Phase 4 replications and playback).
 
@@ -649,16 +778,20 @@ def simulate_shared_replication(
     validate_timeline(horizon, demand_periods, staffing_segments)
     if not isinstance(seed_sequence, np.random.SeedSequence) or seed_sequence.n_children_spawned != 0:
         raise SharedSegmentError(["seed_sequence must be an unused numpy SeedSequence."])
+    recorded = service_samples is not None
+    if recorded:
+        resolve_service_samples(demand_periods, service_samples)  # refuse bad durations before drawing
     result = simulate_prescribed(
-        horizon, demand_periods, staffing_segments, _draw_arrivals(horizon, demand_periods, seed_sequence),
-        closing_policy=closing_policy, max_trace_events=max_trace_events,
+        horizon, demand_periods, staffing_segments,
+        _draw_arrivals(horizon, demand_periods, seed_sequence, recorded=recorded),
+        closing_policy=closing_policy, max_trace_events=max_trace_events, service_samples=service_samples,
     )
     result["provenance"].update({
         "seed": None,
         "seed_entropy": seed_sequence.entropy,
         "spawn_key": list(seed_sequence.spawn_key),
         "random_streams": (
-            "numpy SeedSequence(entropy, spawn_key).spawn(2): arrival gaps, then unit work (PCG64)"
+            f"numpy SeedSequence(entropy, spawn_key).spawn({_streams(recorded)})" + _STREAM_TEXT[recorded]
         ),
     })
     return result

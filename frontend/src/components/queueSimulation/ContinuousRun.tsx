@@ -49,6 +49,7 @@ function ReasonList({ reasons }: { reasons: ContinuousReason[] }) {
         <li key={reason.code}>
           {t(`continuous.reason.${reason.code}`, { defaultValue: reason.code })}
           {reason.problems && <ul>{reason.problems.map((problem) => <li key={problem}>{problem}</li>)}</ul>}
+          {reason.periods && <span> {reason.periods.join(', ')}</span>}
           {reason.detail && <span className="form-hint"> {reason.detail}</span>}
         </li>
       ))}
@@ -155,12 +156,20 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
         </button>
         {view.expected_customers_per_day !== null && <span className="form-hint">{t('continuous.expected', { customers: Math.round(view.expected_customers_per_day) })}</span>}
       </div>
+      {view.service_model && blocking.length === 0 && (
+        <p className="form-hint" data-testid="continuous-service">
+          {t(view.service_model === 'recorded' ? 'continuous.service_recorded' : 'continuous.service_estimated')}
+          {view.service_fallbacks && view.service_fallbacks.length > 0 && ` ${t('continuous.service_fallbacks', {
+            list: view.service_fallbacks.map((item) => t('continuous.service_fallback_item', { period: item.period_id, source: item.uses_period_id })).join('; '),
+          })}`}
+        </p>
+      )}
       <details className="preview-explained">
         <summary>{t('continuous.preview_what')}</summary>
         <p>{t('continuous.preview_explained')}</p>
       </details>
       {stored && (
-        <p className="form-hint">{t('continuous.stored', { repeats: stored.evidence.params.replications, seed: stored.evidence.params.seed })} · {t(`continuous.closing_short_${stored.evidence.params.closing_policy}`)}</p>
+        <p className="form-hint">{t('continuous.stored', { repeats: stored.evidence.params.replications, seed: stored.evidence.params.seed })} · {t(`continuous.closing_short_${stored.evidence.params.closing_policy}`)}{stored.evidence.params.service_model === 'recorded' && ` · ${t('continuous.service_recorded_short')}`}</p>
       )}
       {stored && staleNotes(stored, t).map((note) => <p key={note} role="status" className="alert alert-warn">{note}</p>)}
       {blocking.length > 0 && (

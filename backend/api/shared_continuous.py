@@ -1,6 +1,8 @@
 """B4a: the continuous shared-line run (preview) for an ordinary analysis — the second thin adapter.
 
 Spec: docs/superpowers/specs/2026-10-09-b4a-continuous-shared-run-preview.md (owner answers OD-B4a-1..3 = A).
+B4b (docs/superpowers/specs/2026-10-09-b4b-recorded-service-times.md): a customer-record upload runs with its
+recorded service durations, its periods laid out by the Setup's operating segments.
 Like ``shared_named`` (A6), this module is allowed to import the shared-queue enhancement modules; the
 isolation guard in tests/test_shared_segments.py names it. It authenticates, authorizes, picks the
 staffing source (the current planning dataset's ``c``, or the selected plan's ``c_optimal``), maps rows
@@ -33,6 +35,7 @@ from backend.api.scenarios import setup_fingerprint
 from backend.api.settings import Settings
 from backend.api.shared_named import C_MAX, LIMITS_STATUS, N_MAX, SEED_MAX
 from backend.api.workflow import _job_out, _segments_for, _selected_scenario_and_dataset
+from backend.data.analysis_ingestion import DES_EMPIRICAL_SOURCE
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
 from backend.db.session import get_db
 from backend.queueing_engine.services.shared_segments import (
@@ -40,10 +43,17 @@ from backend.queueing_engine.services.shared_segments import (
     OperatingHorizon,
     SharedSegmentError,
     StaffingSegment,
+    format_clock,
+    parse_clock,
     timeline_from_aggregate_rows,
     validate_timeline,
 )
-from backend.queueing_engine.simulation.shared_continuous_des import CLOSING_POLICIES, CLOSING_RULES
+from backend.queueing_engine.simulation.shared_continuous_des import (
+    CLOSING_POLICIES,
+    CLOSING_RULES,
+    RECORDED,
+    resolve_service_samples,
+)
 from backend.queueing_engine.simulation.shared_playback import PlaybackConsistencyError, playback_from_replications
 from backend.queueing_engine.simulation.shared_replications import NO_VERDICT_REASON, run_shared_replications
 from backend.queueing_engine.simulation.simulation import RANDOM_SEED
@@ -54,9 +64,11 @@ logger = logging.getLogger("novaq.api.shared_continuous")
 JOB_KIND = "shared_continuous_preview"
 API_VERSION = "novaq-shared-continuous-preview-api-v1"
 DEFAULT_REPLICATIONS = 5  # OD-B4a-3 A
+EXPONENTIAL = "exponential"
 PREVIEW_SCOPE = (
-    "Preview: Poisson arrivals and exponential service (M/M/c) from the counts per period, first come first "
-    "served, unlimited waiting room. Recorded service times (B4b) and breaks (B4c) are not in this run."
+    "Preview: Poisson arrivals, first come first served, unlimited waiting room. Customer-record uploads use "
+    "their recorded service durations (B4b); counts per period use exponential service (M/M/c). Breaks (B4c) "
+    "are not in this run."
 )
 
 Plan = Literal["current", "suggested"]
@@ -97,10 +109,13 @@ def _setup_reasons(setup: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-def _row_reasons(rows: list[Any]) -> list[dict[str, Any]]:
-    """What the engine's timeline mapping would reject, named so the page can say it in plain words."""
+def _row_reasons(rows: list[Any], recorded: bool = False) -> list[dict[str, Any]]:
+    """What the engine's timeline mapping would reject, named so the page can say it in plain words.
+
+    Recorded service durations replace the variance of a customer-record upload, so it is not refused there.
+    """
     reasons = []
-    if any(isinstance(row, dict) and row.get("variance") is not None for row in rows):
+    if not recorded and any(isinstance(row, dict) and row.get("variance") is not None for row in rows):
         reasons.append(_reason("service_time_variation"))
     if any(isinstance(row, dict) and (row.get("K") is not None or row.get("theta") is not None) for row in rows):
         reasons.append(_reason("capacity_or_abandonment"))
@@ -116,6 +131,86 @@ def _timeline(rows: list[Any]) -> tuple[OperatingHorizon, list[DemandPeriod], li
     return horizon, periods, segments
 
 
+def _is_recorded(dataset_rows: list[Any]) -> bool:
+    """A customer-record upload: its rows carry the durations customers took (``analysis_ingestion``)."""
+    return any(isinstance(row, dict) and row.get("service_time_source") == DES_EMPIRICAL_SOURCE for row in dataset_rows)
+
+
+def _recorded_reasons(setup: dict[str, Any], dataset_rows: list[Any]) -> list[dict[str, Any]]:
+    """B4b runs one representative day whose every row carries recorded durations."""
+    reasons = []
+    if setup.get("event_period_basis") != "representative_day":
+        reasons.append(_reason("per_date_data"))
+    if not all(isinstance(row, dict) and row.get("service_time_source") == DES_EMPIRICAL_SOURCE
+               and isinstance(row.get("service_samples_hours"), list) and row["service_samples_hours"]
+               for row in dataset_rows):
+        reasons.append(_reason("service_time_variation"))
+    return reasons
+
+
+def _setup_minute(value: object, where: str) -> int:
+    """Minutes since midnight of a Setup time ``HH:MM`` or ``HH:MM:SS`` (whole minutes only)."""
+    text = value if isinstance(value, str) else ""
+    if len(text) == 8 and text[5:] == ":00":
+        text = text[:5]
+    try:
+        return parse_clock(text)
+    except SharedSegmentError:
+        raise SharedSegmentError([f"{where} time {value!r} must be a whole minute such as 08:00."]) from None
+
+
+def _setup_segments(setup: dict[str, Any]) -> list[tuple[str, int, int]]:
+    """The Setup's operating segments as (id, start, end) in time order, with the id the upload labels rows by."""
+    items = []
+    for segment in setup.get("segments") or []:
+        if not isinstance(segment, dict):
+            continue
+        start = _setup_minute(segment.get("start_time"), "Operating segment start")
+        end = _setup_minute(segment.get("end_time"), "Operating segment end")
+        items.append((str(segment.get("id") or f"{format_clock(start)}-{format_clock(end)}"), start, end))
+    if not items:
+        raise SharedSegmentError(["The Setup has no operating segments to lay out the day."])
+    return sorted(items, key=lambda item: item[1])
+
+
+def _recorded_timeline(setup: dict[str, Any], rows: list[Any], dataset_rows: list[Any], plan: Plan) -> dict[str, Any]:
+    """Lay the plan's rows on the Setup's operating segments, with each segment's recorded durations.
+
+    A segment without customers in the data has no row: its arrival rate is 0 and its durations come from
+    the nearest recorded period (OD-B4b-2 A). Its server count is the Setup's fixed count for Current
+    staffing; a plan has none for it, so a plan run names those segments and does not run.
+    """
+    segments = _setup_segments(setup)
+    ids = [segment_id for segment_id, _, _ in segments]
+    by_id = {str(row.get("time")): row for row in rows if isinstance(row, dict)}
+    unknown = [key for key in by_id if key not in ids]
+    if unknown:
+        raise SharedSegmentError([f"Period {key} is not one of the Setup's operating segments ({', '.join(ids)})."
+                                  for key in unknown])
+    samples = {str(row["time"]): [float(value) for value in row["service_samples_hours"]]
+               for row in dataset_rows if str(row.get("time")) in ids}
+    placeholders = [DemandPeriod(segment_id, start, end, 0.0, 1.0) for segment_id, start, end in segments]
+    resolved, fallbacks = resolve_service_samples(placeholders, samples)
+    missing = [segment_id for segment_id in ids if segment_id not in by_id]
+    periods: list[DemandPeriod] = []
+    staffing: list[StaffingSegment] = []
+    for (segment_id, start, end), durations in zip(segments, resolved):
+        row = by_id.get(segment_id)
+        if row is None:
+            periods.append(DemandPeriod(segment_id, start, end, 0.0, len(durations) / math.fsum(durations)))
+            servers = setup.get("fixed_server_count")
+        else:
+            periods.append(DemandPeriod(segment_id, start, end, row.get("lambda"), row.get("mu")))  # type: ignore[arg-type]
+            servers = row.get("c")
+        if isinstance(servers, float) and servers.is_integer():
+            servers = int(servers)
+        staffing.append(StaffingSegment(segment_id, start, end, servers))  # type: ignore[arg-type]
+    horizon = OperatingHorizon(segments[0][1], max(end for _, _, end in segments))
+    validate_timeline(horizon, periods, staffing)
+    return {"timeline": (horizon, periods, staffing), "samples": samples, "fallbacks": fallbacks,
+            "missing_plan_periods": missing if plan == "suggested" else []}
+
+
 def _expected_customers_per_day(periods: list[DemandPeriod]) -> float:
     """Sum of arrival rate x period hours (the named run's run-time measure, spec section 22.8)."""
     return math.fsum(p.arrival_rate_per_hour * (p.end_minute - p.start_minute) / 60 for p in periods)
@@ -125,7 +220,8 @@ def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> d
     """Everything a run of ``plan`` needs, or every reason it cannot run. Runs nothing."""
     setup = analysis.queue_setup_json or {}
     out: dict[str, Any] = {"plan": plan, "dataset": None, "scenario": None, "timeline": None,
-                           "expected_customers_per_day": None, "horizon": None}
+                           "expected_customers_per_day": None, "horizon": None, "service_model": None,
+                           "service_samples": None, "service_fallbacks": []}
     reasons = _setup_reasons(setup)
     rows: list[Any] | None = None
     if not reasons:
@@ -147,14 +243,27 @@ def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> d
                 except HTTPException as error:
                     reasons.append(_reason("plan_inputs_invalid", detail=str(error.detail)))
     if rows is not None:
-        row_reasons = _row_reasons(rows)
+        dataset_rows = list(out["dataset"].normalized_json or [])
+        recorded = _is_recorded(dataset_rows)
+        out["service_model"] = RECORDED if recorded else EXPONENTIAL
+        row_reasons = _row_reasons(rows, recorded) + (_recorded_reasons(setup, dataset_rows) if recorded else [])
         reasons += row_reasons
         if not row_reasons:
             try:
-                out["timeline"] = _timeline(rows)
-                out["expected_customers_per_day"] = _expected_customers_per_day(out["timeline"][1])
-                horizon = out["timeline"][0]
-                out["horizon"] = {"start_minute": horizon.start_minute, "end_minute": horizon.end_minute}
+                if recorded:
+                    laid_out = _recorded_timeline(setup, rows, dataset_rows, plan)
+                    if laid_out["missing_plan_periods"]:
+                        reasons.append(_reason("plan_missing_periods", periods=laid_out["missing_plan_periods"]))
+                    else:
+                        out["timeline"] = laid_out["timeline"]
+                        out["service_samples"] = laid_out["samples"]
+                        out["service_fallbacks"] = laid_out["fallbacks"]
+                else:
+                    out["timeline"] = _timeline(rows)
+                if out["timeline"] is not None:
+                    out["expected_customers_per_day"] = _expected_customers_per_day(out["timeline"][1])
+                    horizon = out["timeline"][0]
+                    out["horizon"] = {"start_minute": horizon.start_minute, "end_minute": horizon.end_minute}
             except SharedSegmentError as error:
                 reasons.append(_reason("timeline_invalid", problems=error.problems))
     if analysis.shared_closing_policy not in CLOSING_POLICIES:
@@ -174,6 +283,8 @@ def _plan_view(assessment: dict[str, Any]) -> dict[str, Any]:
         "dataset_id": dataset.id if dataset is not None else None,
         "scenario_id": scenario.id if scenario is not None else None,
         "scenario_name": scenario.name if scenario is not None else None,
+        "service_model": assessment["service_model"],
+        "service_fallbacks": assessment["service_fallbacks"],
     }
 
 
@@ -311,9 +422,15 @@ def create_continuous_run(
             "code": "limit_exceeded", "limit": "expected_customers", "value": round(expected, 1), "max": C_MAX,
             "replications": body.replications, "max_replications": math.floor(C_MAX / per_day)})
     closing_policy = str(analysis.shared_closing_policy)  # _assess refused a run with no rule chosen
+    samples = assessment["service_samples"]
+    if samples is not None:  # the stored run carries its durations, so they alone must fit (before simulating)
+        size = len(json.dumps(samples, allow_nan=False).encode("utf-8"))
+        if size > settings.result_jsonb_max_bytes:
+            raise HTTPException(status_code=413, detail={
+                "code": "evidence_too_large", "bytes": size, "max_bytes": settings.result_jsonb_max_bytes})
     try:
         result = run_shared_replications(horizon, periods, segments, replications=body.replications,
-                                         seed=body.seed, closing_policy=closing_policy)
+                                         seed=body.seed, closing_policy=closing_policy, service_samples=samples)
     except SharedSegmentError as error:
         raise HTTPException(status_code=422, detail={
             "code": "not_compatible", "plan": body.plan,
@@ -346,6 +463,7 @@ def create_continuous_run(
             "seed": body.seed,
             "closing_policy": closing_policy,
             "expected_customers_per_day": per_day,
+            "service_model": assessment["service_model"],
             # Server keys, written after the request keys so no request value can replace them.
             "api_version": API_VERSION,
             "engine_version": provenance["engine_version"],
@@ -388,6 +506,8 @@ def list_continuous_runs(
             "scenario_id": params.get("scenario_id"), "dataset_id": params.get("dataset_id"),
             "replications": params.get("replications"), "seed": params.get("seed"),
             "closing_policy": params.get("closing_policy"), "engine_version": params.get("engine_version"),
+            # Runs stored before B4b had no recorded mode, so they are exponential.
+            "service_model": params.get("service_model") or EXPONENTIAL,
             **_currentness(db, user, analysis, job),
         })
     return {"runs": runs}

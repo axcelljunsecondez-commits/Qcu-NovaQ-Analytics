@@ -144,11 +144,13 @@ Tests (backend): continuity across period boundaries (customer identity, order, 
 
 ## Phase 10b — B13 Per-date separate-lines plans as one continuous day per date
 
-Status (2026-10-12): implemented on `feat/ux-u1-shell` after `7f4c5cd0`, uncommitted pending the owner's approval. One deviation from the spec's text: each date gets its own seed (`date_seed`) rather than the same seed, because the browser check showed equal-input dates replaying identical customers.
+Status (2026-10-12): committed `94ba3a25` on `feat/ux-u1-shell` (local, not pushed). One deviation from the spec's text: each date gets its own seed (`date_seed`) rather than the same seed, because the browser check showed equal-input dates replaying identical customers.
 
 Implement per the B13 spec (owner answers 2026-10-12: basis-specific engine version, refuse a date that cannot be laid out, keep today's method with the notice for uploads without operating segments). Tests per spec §10, including the replaced `test_per_date_basis_keeps_the_24_hour_candidate_runs`.
 
 ## Phase 11 — B4b Recorded service times
+
+Status (2026-10-12): engine, replications, playback, adapter and run-bar wording implemented on `feat/ux-u1-shell` after `94ba3a25`, uncommitted. OD-B4b-3 = A: the approved addendum (`2026-10-12-b4b-addendum-shared-representative-day.md`) lets shared lines use the Representative day basis and set operating segments, so shared customer-record uploads reach the run.
 
 Per its spec. Becomes the standard shared simulation for customer-record uploads only after its reference cases and continuity tests pass; until then the preview label and legacy fallback remain.
 

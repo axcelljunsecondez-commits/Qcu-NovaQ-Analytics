@@ -17,7 +17,12 @@ export interface ContinuousReason {
   problems?: string[]
   detail?: string
   status?: string
+  periods?: string[]
 }
+
+/** B4b: customer-record uploads run with recorded service times; counts per period with exponential ones. */
+export type ServiceModel = 'recorded' | 'exponential'
+
 
 export interface ContinuousPlanView {
   compatible: boolean
@@ -27,6 +32,8 @@ export interface ContinuousPlanView {
   dataset_id: number | null
   scenario_id: number | null
   scenario_name: string | null
+  service_model?: ServiceModel | null
+  service_fallbacks?: Array<{ period_id: string; uses_period_id: string }>
 }
 
 export interface ContinuousCompatibility {
@@ -95,6 +102,7 @@ export interface ContinuousRunEvidence {
     replications: number
     seed: number
     closing_policy: ClosingPolicy
+    service_model?: ServiceModel
   }
   result: ContinuousResult
   created_at: string

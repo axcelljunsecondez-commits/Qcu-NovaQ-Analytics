@@ -356,9 +356,33 @@ describe('separate server break schedule', () => {
     }))
   })
 
-  it('offers no representative-day basis for shared queues', async () => {
+  it('lets a shared line set time segments and the representative-day basis, without counter lists', async () => {
+    // B4b addendum (owner-approved 2026-10-12).
+    const user = userEvent.setup()
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
-      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [],
+      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [], fixed_server_count: 2, staffing_varies_by_period: true,
+    } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+    const basis = await screen.findByLabelText('Customer data periods')
+    await user.selectOptions(basis, 'representative_day')
+    await user.click(screen.getByRole('button', { name: 'Add time segment' }))
+    expect(screen.getByLabelText('Start time')).toHaveValue('07:00')
+    expect(screen.queryByRole('checkbox', { name: /cashier/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
+      queue_setup: expect.objectContaining({
+        event_period_basis: 'representative_day',
+        segments: [expect.objectContaining({ start_time: '07:00', end_time: '08:00', active_queue_ids: null })],
+      }),
+    }))
+  })
+
+  it('offers no representative-day basis for a single server', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
+      ...separateSetup, queue_structure: 'single_server', queue_ids: [],
     } } })
     renderWithProviders(
       <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,

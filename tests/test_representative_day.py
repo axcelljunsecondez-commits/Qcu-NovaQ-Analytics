@@ -46,12 +46,49 @@ EVENTS = [
 ]
 
 
-def test_period_basis_defaults_to_per_date_and_is_separate_only():
+def test_period_basis_defaults_to_per_date_and_is_for_shared_or_separate_lines():
     assert _setup().event_period_basis == "per_date"
     assert _setup(event_period_basis="representative_day").event_period_basis == "representative_day"
-    with pytest.raises(ValidationError, match="representative day"):
-        QueueSetup.model_validate({"queue_structure": "shared_queue", "fixed_server_count": 2,
-                                   "event_period_basis": "representative_day"})
+    # B4b addendum (owner-approved 2026-10-12): shared lines may use it too.
+    shared = QueueSetup.model_validate({"queue_structure": "shared_queue", "fixed_server_count": 2,
+                                        "event_period_basis": "representative_day"})
+    assert shared.event_period_basis == "representative_day"
+    for structure in ("single_server", "unknown"):
+        with pytest.raises(ValidationError, match="representative day"):
+            QueueSetup.model_validate({"queue_structure": structure, "fixed_server_count": 1,
+                                       "event_period_basis": "representative_day"})
+
+
+def _shared_setup(**over):
+    return _setup(queue_structure="shared_queue", queue_ids=[], **over)
+
+
+SHARED_EVENTS = [(date, arrive, minutes, None) for date, arrive, minutes, _ in EVENTS]
+
+
+def test_shared_representative_day_pools_all_dates_per_segment():
+    records, provenance = normalize_analysis_input(
+        _events(SHARED_EVENTS).drop(columns=["queue_id"]), _shared_setup(event_period_basis="representative_day"))
+    by_time = {r["time"]: r for r in records}
+    assert set(by_time) == {"s1", "s2"}
+    # s1: 4 arrivals over 2 observed days of 1 hour; durations 6, 12, 9 and 3 minutes.
+    s1 = by_time["s1"]
+    assert s1["lambda"] == pytest.approx(4 / (1.0 * 2))
+    assert s1["mu"] == pytest.approx(1 / ((6 + 12 + 9 + 3) / 4 / 60))
+    assert sorted(s1["service_samples_hours"]) == pytest.approx(sorted([6 / 60, 12 / 60, 9 / 60, 3 / 60]))
+    assert (s1["c"], s1["observation_days"], s1["segment_id"]) == (2, 2, "s1")
+    assert "queue_id" not in s1
+    # s2: 2 arrivals over 2 days; durations 10 and 5 minutes.
+    assert by_time["s2"]["lambda"] == pytest.approx(2 / 2)
+    assert by_time["s2"]["mu"] == pytest.approx(1 / (7.5 / 60))
+    assert provenance["period_basis"] == "representative_day"
+    assert provenance["observation_days"] == 2
+
+
+def test_shared_representative_day_still_needs_segments():
+    with pytest.raises(AnalysisIngestionError, match="operating segments"):
+        normalize_analysis_input(_events(SHARED_EVENTS).drop(columns=["queue_id"]),
+                                 _shared_setup(event_period_basis="representative_day", segments=[]))
 
 
 def test_per_date_records_are_unchanged():

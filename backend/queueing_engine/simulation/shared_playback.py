@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from numbers import Integral
 from typing import Any, NoReturn
 
@@ -29,6 +29,7 @@ from backend.queueing_engine.services.shared_segments import (
 from backend.queueing_engine.simulation.shared_continuous_des import (
     ENGINE_VERSION,
     HARD_CUTOFF,
+    RECORDED_ENGINE_VERSION,
     simulate_shared_replication,
 )
 from backend.queueing_engine.simulation.shared_replications import replication_row
@@ -311,6 +312,7 @@ def prepare_shared_playback(
     root_entropy: int,
     replication_index: int,
     closing_policy: str,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
 ) -> dict[str, Any]:
     """Regenerate replication ``replication_index`` of the run with ``root_entropy`` and prepare its playback."""
     problems = []
@@ -324,6 +326,7 @@ def prepare_shared_playback(
     result = simulate_shared_replication(
         horizon, demand_periods, staffing_segments,
         seed_sequence=child, closing_policy=closing_policy, max_trace_events=None,
+        service_samples=service_samples,
     )
     return build_playback(result, staffing_segments, replication_index=replication_index, root_entropy=root_entropy)
 
@@ -331,9 +334,15 @@ def prepare_shared_playback(
 def playback_from_replications(replication_result: dict[str, Any], replication_index: int) -> dict[str, Any]:
     """Playback of one replication of a ``run_shared_replications`` result, checked against its stored row."""
     provenance = replication_result["provenance"]
-    if provenance["engine_version"] != ENGINE_VERSION:
+    if provenance["engine_version"] not in (ENGINE_VERSION, RECORDED_ENGINE_VERSION):
         raise PlaybackConsistencyError(
-            f"The run used engine {provenance['engine_version']}, not {ENGINE_VERSION}; it cannot be regenerated exactly."
+            f"The run used engine {provenance['engine_version']}, not {ENGINE_VERSION} or {RECORDED_ENGINE_VERSION}; "
+            "it cannot be regenerated exactly."
+        )
+    service_samples = provenance["inputs"].get("service_samples_hours")
+    if (provenance["engine_version"] == RECORDED_ENGINE_VERSION) != (service_samples is not None):
+        raise PlaybackConsistencyError(
+            "The run's recorded service durations do not match its engine version; it cannot be regenerated exactly."
         )
     if not _whole(replication_index) or replication_index >= provenance["replications"]:
         raise SharedSegmentError([f"replication_index must be from 0 to {provenance['replications'] - 1}."])
@@ -346,6 +355,7 @@ def playback_from_replications(replication_result: dict[str, Any], replication_i
         root_entropy=provenance["root_entropy"],
         replication_index=replication_index,
         closing_policy=provenance["closing_policy"],
+        service_samples=service_samples,
     )
     stored = replication_result["replications"][replication_index]
     regenerated = playback["summary"]

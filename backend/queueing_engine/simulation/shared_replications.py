@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from numbers import Integral, Real
 from typing import Any
@@ -40,7 +40,10 @@ from backend.queueing_engine.services.shared_segments import (
 from backend.queueing_engine.simulation.shared_continuous_des import (
     CLOSING_POLICIES,
     ENGINE_VERSION,
+    RECORDED,
+    RECORDED_ENGINE_VERSION,
     SERVER_HOURS_MEANING,
+    resolve_service_samples,
     simulate_shared_replication,
 )
 from backend.queueing_engine.statistics.proportions import wilson_ci
@@ -60,6 +63,11 @@ SEED_SCHEME = (
     "(0-based) uses child SeedSequence(entropy=root_entropy, spawn_key=(i,)), the i-th child of "
     "root.spawn(replications); numpy documents spawned children as seeds for independent bit generators. "
     "Each child spawns two PCG64 streams: arrival gaps, then unit work."
+)
+RECORDED_SEED_SCHEME = SEED_SCHEME.replace(
+    "Each child spawns two PCG64 streams: arrival gaps, then unit work.",
+    "Each child spawns three PCG64 streams: arrival gaps, unit work (not drawn), then service quantiles; the "
+    "arrivals equal those of the exponential engine for the same seed.",
 )
 PARAMETER_UNCERTAINTY = (
     "None. Every replication uses the scenario's own arrival and service rates; the variation is the "
@@ -412,14 +420,19 @@ def run_shared_replications(
     closing_policy: str,
     cost_rates: DayCostRates | None = None,
     failure_criteria: FailureCriteria | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
 ) -> dict[str, Any]:
     """Run ``replications`` independent continuous-DES replications and aggregate them.
 
     ``replications`` (1 to ``config.MC_MAX_TRIALS``), ``seed``, and ``closing_policy`` are
     required. Each replication keeps one scalar row; no events are retained. A single
-    replication can be regenerated with its trace by ``shared_playback``.
+    replication can be regenerated with its trace by ``shared_playback``. ``service_samples`` (recorded
+    durations per demand period id, B4b) selects recorded service times; without it every
+    replication is the exponential engine, unchanged.
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
+    recorded = service_samples is not None
+    fallbacks = resolve_service_samples(demand_periods, service_samples)[1] if recorded else []
     problems = []
     if not _is_whole(replications) or not 1 <= replications <= MC_MAX_TRIALS:
         problems.append(f"replications must be a whole number from 1 to {MC_MAX_TRIALS} (config.MC_MAX_TRIALS).")
@@ -443,12 +456,13 @@ def run_shared_replications(
         result = simulate_shared_replication(
             horizon, demand_periods, staffing_segments,
             seed_sequence=child, closing_policy=closing_policy, max_trace_events=0,
+            service_samples=service_samples,
         )
         if cost_rates is not None and not cost_reference:
             cost_reference = cost_shared_day(result, cost_rates)
         rows.append(replication_row(result, index, cost_rates, failure_criteria))
 
-    return {
+    result = {
         "replications": rows,
         "summary": aggregate_replications(
             rows, cost_rates=cost_rates, cost_reference=cost_reference, failure_criteria=failure_criteria,
@@ -480,3 +494,11 @@ def run_shared_replications(
             },
         },
     }
+    if recorded:
+        assert service_samples is not None
+        provenance = result["provenance"]
+        provenance.update({"engine_version": RECORDED_ENGINE_VERSION, "service_model": RECORDED,
+                           "service_fallbacks": fallbacks, "seed_scheme": RECORDED_SEED_SCHEME})
+        provenance["inputs"]["service_samples_hours"] = {
+            key: [float(value) for value in values] for key, values in service_samples.items()}
+    return result

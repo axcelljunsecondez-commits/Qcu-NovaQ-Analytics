@@ -758,7 +758,35 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect((await olderRun()).getByRole('button', { name: 'Run period by period' })).toBeEnabled()
     expect((await olderRun()).getByText('Not run yet. Use Run period by period.')).toBeInTheDocument()
     await userEvent.setup().click(screen.getByRole('button', { name: 'Current' }))
-    expect(await screen.findByTestId('continuous-refusal')).toHaveTextContent('Your data has real service times.')
+    expect(await screen.findByTestId('continuous-refusal')).toHaveTextContent('not the service time of every customer')
+  })
+
+  it('says which service times a run uses and names borrowed periods and plan gaps', async () => {
+    getCompatibilityMock.mockResolvedValue(compatibility({
+      plans: {
+        current: { ...compatiblePlan, service_model: 'recorded', service_fallbacks: [{ period_id: 's3', uses_period_id: 's2' }] },
+        suggested: { ...compatiblePlan, compatible: false, service_model: 'recorded',
+          reasons: [{ code: 'plan_missing_periods', periods: ['s3'] }] },
+      },
+    }))
+    renderPage()
+    const refusal = await screen.findByTestId('continuous-refusal')
+    expect(refusal).toHaveTextContent('The selected plan has no counter count for periods without customers in the data: s3')
+    // A refused run says nothing about how it would have served customers.
+    expect(screen.queryByTestId('continuous-service')).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Current' }))
+    await waitFor(() => expect(screen.getByTestId('continuous-service')).toHaveTextContent(
+      'Uses your recorded service times. No customers were recorded in some periods, so service there uses the nearest recorded period: s3 uses s2.'))
+    expect(screen.queryByTestId('continuous-refusal')).not.toBeInTheDocument()
+  })
+
+  it('says a counts-per-period run uses estimated service times', async () => {
+    getCompatibilityMock.mockResolvedValue(compatibility({
+      plans: { current: { ...compatiblePlan, service_model: 'exponential' },
+        suggested: { ...compatiblePlan, service_model: 'exponential', scenario_id: 3, scenario_name: 'Plan A' } },
+    }))
+    renderPage()
+    expect(await screen.findByTestId('continuous-service')).toHaveTextContent('Uses estimated service times (counts per period).')
   })
 
   it('runs the chosen plan once with the labelled defaults', async () => {
