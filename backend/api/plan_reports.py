@@ -73,7 +73,7 @@ def plan_report_preview(
     analysis_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _rate_limit: None = Depends(user_rate_limit("report")),
+    _rate_limit: None = Depends(user_rate_limit("report_preview")),
 ) -> dict[str, Any]:
     """The plan report model; the files are rendered from the same model, with the contents listed here."""
     return _preview(_plan_model(db, user, own_analysis(db, user, analysis_id)))
@@ -141,7 +141,7 @@ def full_report_preview(
     analysis_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _rate_limit: None = Depends(user_rate_limit("report")),
+    _rate_limit: None = Depends(user_rate_limit("report_preview")),
 ) -> dict[str, Any]:
     """The full report model; the PDF and the workbook are rendered from the same model."""
     return _preview(_full_model(db, user, own_analysis(db, user, analysis_id)))

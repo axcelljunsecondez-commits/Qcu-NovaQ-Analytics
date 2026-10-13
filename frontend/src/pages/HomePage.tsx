@@ -35,7 +35,11 @@ export function HomePage() {
         <section className="home-hero" aria-labelledby="home-title">
           <h1 id="home-title">{t('home.hero_title')}<br /><span>{t('home.hero_accent')}</span></h1>
           <p>{t('home.hero_desc')}</p>
-          <Link className="btn-primary home-start" to={start}>{t('home.start')}</Link>
+          <div className="home-hero-actions">
+            <Link className="btn-primary home-start" to={start}>{t('home.start')}</Link>
+            <Link className="btn-ghost" to="/calculator">{t('home.try_calculator')}</Link>
+          </div>
+          <p className="home-note">{t('home.calculator_note')}</p>
         </section>
 
         <section className="home-structures" aria-labelledby="home-structures-title">

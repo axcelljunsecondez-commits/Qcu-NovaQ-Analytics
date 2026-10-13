@@ -1106,6 +1106,37 @@ describe('Suggested plans use planning files only (B10, OD-B10-3)', () => {
     expect(screen.queryByRole('option', { name: 'review copy' })).not.toBeInTheDocument()
   })
 
+  it('starts on the current planning file, never on a review file, and keeps what the user picks (U10 F11)', async () => {
+    const user = userEvent.setup()
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 6, name: 'newest review', purpose: 'review', is_current: false },
+      { ...dataset, id: 2, name: 'older plan file', purpose: 'planning', is_current: false },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: true },
+    ] })
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('1')
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '2')
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('2')
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '')
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('')
+  })
+
+  it('chooses nothing when the current file is not a planning file', async () => {
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 6, name: 'review', purpose: 'review', is_current: true },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: false },
+    ] })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('')
+    // Nothing is optimized behind an empty-looking choice: the review file is never used.
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText('Select a dataset first.')).toBeInTheDocument()
+    expect(optimizeBatchMock).not.toHaveBeenCalled()
+  })
+
   it('offers break apply on the planning file even when a newer review file exists', async () => {
     const user = userEvent.setup()
     listDatasetsMock.mockResolvedValue({ datasets: [

@@ -93,6 +93,9 @@ describe('DecisionEndpointPage', () => {
     renderPage()
     expect(await screen.findByText(insufficient.headline)).toBeInTheDocument()
     expect(screen.getByText('a completed Scenario Validation run')).toBeInTheDocument()
+    // U10 F5: the page asks the spec's question and answers it from the stored fields.
+    expect(screen.getByRole('heading', { level: 1, name: 'Should we use this plan?' })).toBeInTheDocument()
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent(`Not enough checks yet. Run: ${insufficient.missing_evidence.join('; ')}`)
   })
 
   it('requests deterministic derivation and renders the server result', async () => {

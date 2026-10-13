@@ -143,7 +143,7 @@ def test_break_optimize_rejects_per_date_and_missing_breaks(db_engine, client):
     analysis_id, setup = _workspace(db_engine)
     login(client, "brk@example.com", "pw")
     for change, message in (({"event_period_basis": "per_date"},
-                             "Break optimization requires the representative day basis."),
+                             "Break optimization requires the representative day basis. Choose Representative day under Customer data periods in Data and setup, then upload the file again."),
                             ({"breaks": []}, "This Analysis has no configured breaks to move.")):
         with make_sessionmaker(db_engine)() as db:
             db.get(AnalysisProject, analysis_id).queue_setup_json = {**setup, **change}

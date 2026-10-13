@@ -196,3 +196,16 @@ def test_the_listed_contents_are_exactly_the_files_contents(db_engine, client):
     with_breaks = {**full_preview["model"], "breaks": [{"scheduled_start_time": "08:30", "duration_minutes": 15}]}
     assert pdf_sections(with_breaks) == [*full_preview["contents"]["pdf"][:2], "Breaks in the Setup", *full_preview["contents"]["pdf"][2:]]
     assert "Breaks in the Setup" in pdf_text(generate_report_pdf(with_breaks).getvalue())
+
+
+def test_previews_have_their_own_limit_so_browsing_reports_does_not_block_downloads(db_engine, client):
+    """U10 F14: the Reports page asks for two previews per visit; they no longer use up the file limit."""
+    a = _shared_chain(client, db_engine)
+    settings = client.app.state.settings
+    settings.rate_limit_report, settings.rate_limit_report_preview = 1, 4
+    assert client.get(f"/analyses/{a}/reports/full.pdf").status_code == 200
+    assert client.get(f"/analyses/{a}/reports/full.xlsx").status_code == 429  # one file per window
+    for level in ("plan", "full", "plan", "full"):
+        assert _model(client, a, level).status_code == 200, level
+    refused = _model(client, a, "plan")
+    assert refused.status_code == 429 and "Retry-After" in refused.headers  # the preview limit is still enforced

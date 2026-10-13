@@ -22,6 +22,9 @@ interface PreviewWithAfter extends ReportPreview {
 
 type Stamp = 'no_plan' | 'out_of_date' | 'plan' | 'full'
 
+/** The full-level stamp takes the Decision's colour, as on the Decision page: only adopt is green (U10 F9). */
+const DECISION_BADGE: Record<string, string> = { adopt: 'badge-ok', conditional: 'badge-warn', revise: 'badge-bad', insufficient_evidence: 'badge-warn' }
+
 /** The reason a report request was refused, as the server wrote it. */
 function refusal(error: unknown): { code: string | null; detail: string | null } {
   const data = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -145,7 +148,7 @@ export function ReportsPage() {
         )}
         {stamp === 'full' && full.data?.model.decision && (
           <>
-            <span className="badge badge-ok">{t('reports.page.stamp_full', { decision: t(`decision.status.${full.data.model.decision.status}`) })}</span>
+            <span className={`badge ${DECISION_BADGE[full.data.model.decision.status] ?? 'badge-neutral'}`} data-testid="full-stamp">{t('reports.page.stamp_full', { decision: t(`decision.status.${full.data.model.decision.status}`) })}</span>
             <p>{full.data.model.decision.headline}</p>
           </>
         )}

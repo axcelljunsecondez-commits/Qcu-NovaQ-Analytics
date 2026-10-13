@@ -105,8 +105,12 @@ def _setup_reasons(setup: dict[str, Any]) -> list[dict[str, Any]]:
         return [_reason("separate_lines")]
     if structure != "shared_queue":
         return [_reason("not_shared_line")]
-    if setup.get("capacity_mode") != "unlimited" or setup.get("abandonment_mode") != "not_modeled":
+    capacity, abandonment = setup.get("capacity_mode"), setup.get("abandonment_mode")
+    if capacity not in ("unlimited", "unknown") or abandonment not in ("not_modeled", "unknown"):
         return [_reason("capacity_or_abandonment")]
+    if capacity == "unknown" or abandonment == "unknown":
+        # Still refused (unknown is never read as absent), but the user only has to answer the two questions.
+        return [_reason("capacity_or_abandonment_unknown")]
     return []
 
 

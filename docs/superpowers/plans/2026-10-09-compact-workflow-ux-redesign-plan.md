@@ -182,7 +182,7 @@ Per its spec: PDF summary and Excel calculation workbook, previews derived from 
 
 ## Phase U10 — Final verification
 
-Status (2026-10-13): run on `caffa6a1`; parity and gates passed; walkthrough on the dev stack (Compose deviation) found F1-F16 (`handoff.md`); Help screenshots deferred.
+Status (2026-10-13): run on `caffa6a1`; parity and gates passed; walkthrough on the dev stack (Compose deviation) found F1-F16 (`handoff.md`); F3-F15 fixed (uncommitted); F1, F2, F16 await the owner; Help screenshots deferred.
 
 Full gates; browser walkthrough on a local Compose stack with clearly synthetic data covering every path in spec §7 (planning vs review-only upload, older file review, both closing rules, separate-lines breaks, continuous shared preview and standard run, Decision, PDF and Excel); output parity checks for unchanged endpoints; annotated Help screenshots in EN and TL; update `handoff.md` and `memory.md`.
 

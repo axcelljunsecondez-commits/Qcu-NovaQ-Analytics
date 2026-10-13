@@ -4672,6 +4672,14 @@ th {
   font-size: 1.0625rem;
 }
 
+.home-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
 a.btn-primary.home-start {
   padding: 0 22px;
   color: #1b2a4a;

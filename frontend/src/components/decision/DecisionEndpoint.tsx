@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { WorkflowDecision } from '../../api/workflow'
+import { plainDecision } from '../../lib/decisionPlain'
 
 interface DecisionEndpointProps {
   decision: WorkflowDecision | null
@@ -29,15 +30,15 @@ export function DecisionEndpoint({
       <div className="topbar">
         <div>
           <div className="topbar-eyebrow">{t('decision.eyebrow')}</div>
-          <h1 className="page-title">{t('decision.title')}</h1>
-          <p className="page-caption">{t('decision.description')}</p>
+          <h1 className="page-title">{t('decision.plain.heading')}</h1>
+          <p className="page-caption">{t('decision.plain.description')}</p>
         </div>
         <button type="button" className="btn-primary" disabled={isPending} onClick={onDerive}>
           {isPending ? t('common.loading') : t('decision.derive')}
         </button>
       </div>
 
-      {decisionStale && <div className="alert alert-warn">{t('decision.stale')}</div>}
+      {decisionStale && <div className="alert alert-warn" role="status">{t('decision.plain.stale')} {t('decision.stale')}</div>}
       {error && <div role="alert" className="alert alert-error">{error}</div>}
       {(!decision || decisionStale) && (
         <div role="alert" className="alert alert-warn">{t('decision.gatedNoOptimization')}</div>
@@ -53,7 +54,12 @@ export function DecisionEndpoint({
           <span className={`badge ${statusClasses[decision.status]}`}>
             {t(`decision.status.${decision.status}`)}
           </span>
-          <h2 className="decision-title">{decision.headline}</h2>
+          <h2 className="decision-title" data-testid="decision-plain">{(() => {
+            const plain = plainDecision({ status: decision.status, separate: false, failedCount: decision.facts?.failed_intervals,
+              totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence })
+            return plain ? t(plain.key, plain.params) : decision.headline
+          })()}</h2>
+          <p className="decision-headline">{decision.headline}</p>
           <p className="decision-recommendation">{decision.recommendation}</p>
 
           <h3 className="section-title">{t('decision.evidence')}</h3>

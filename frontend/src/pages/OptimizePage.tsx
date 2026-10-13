@@ -14,7 +14,7 @@ import { applySeparateBreaks, optimizeSeparate, optimizeSeparateBreaks, type Bre
 import { createScenario } from '../api/scenarios'
 import { selectWorkflowScenario } from '../api/workflow'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
-import { isForPlanning } from '../lib/datasets'
+import { currentDatasetId, isForPlanning } from '../lib/datasets'
 import type { DatasetOut, OptimizationOut, SegmentRow, SeparateSchedule } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
 import { generateOptimizationInsights } from '../lib/insights'
@@ -506,7 +506,16 @@ export function OptimizePage() {
   const { t } = useTranslation()
   const analysisParam = useParams().analysisId
   const analysisId = analysisParam ? Number(analysisParam) : undefined
-  const [datasetId, setDatasetId] = useState('')
+  const [pickedDatasetId, setDatasetId] = useState<string | null>(null)
+  const datasets = useQuery({
+    queryKey: ['datasets', analysisId],
+    queryFn: () => listDatasets(analysisId),
+  })
+  // U10 F11: the current planning file is chosen until the user picks one ("—" is a pick too).
+  const planningFiles = (datasets.data?.datasets ?? []).filter(isForPlanning)
+  const defaultDatasetId = currentDatasetId(datasets.data?.datasets)
+  const datasetId = pickedDatasetId !== null ? pickedDatasetId
+    : defaultDatasetId !== null && planningFiles.some((d: DatasetOut) => d.id === defaultDatasetId) ? String(defaultDatasetId) : ''
   const queryClient = useQueryClient()
   const [options, setOptions] = useState<OptimizeOptions>(DEFAULT_OPTIONS)
   const [multiplier, setMultiplier] = useState('')
@@ -537,10 +546,6 @@ export function OptimizePage() {
   })
   const sepStale = sepSnapshot !== null && sepSnapshot.signature !== sepSignature
 
-  const datasets = useQuery({
-    queryKey: ['datasets', analysisId],
-    queryFn: () => listDatasets(analysisId),
-  })
   // The server applies break proposals only when made on this dataset (latest successfully processed).
   const latestValidDatasetId = (datasets.data?.datasets ?? [])
     .filter((d: DatasetOut) => d.validation?.ok && isForPlanning(d))

@@ -101,6 +101,10 @@ describe('public Home (spec §7.1)', () => {
     expect(screen.getByRole('img', { name: /one shared line/ })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /three separate lines/ })).toBeInTheDocument()
     expect(screen.getByLabelText('Language')).toBeInTheDocument()
+    // U10 F13: the hero's second action and its note (spec §7.1).
+    const hero = screen.getByRole('region', { name: /See how long your customers wait/ })
+    expect(within(hero).getByRole('link', { name: 'Try the quick calculator' })).toHaveAttribute('href', '/calculator')
+    expect(within(hero).getByText('The calculator works without an account.')).toBeInTheDocument()
   })
 
   it('offers My analyses and a direct Start to a signed-in visitor', async () => {

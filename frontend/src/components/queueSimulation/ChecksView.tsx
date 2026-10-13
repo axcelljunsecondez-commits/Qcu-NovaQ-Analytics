@@ -29,6 +29,7 @@ import {
   validationPasses,
   validationVerdictLabel,
 } from '../../lib/simulationEvidence'
+import { plainDecision, type PlainDecision } from '../../lib/decisionPlain'
 import { FailureRateBars, RhoMeanP95Lines } from '../charts/Charts'
 import { suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
@@ -48,6 +49,12 @@ function CheckLine({ name, required, status, children }: { name: string; require
       {children}
     </details>
   )
+}
+
+/** The plain answer to "Should we use this plan?" (spec §7.9), built only from the stored Decision's fields. */
+function PlainAnswer({ plain }: { plain: PlainDecision | null }) {
+  const { t } = useTranslation()
+  return plain ? <strong data-testid="decision-plain">{t(plain.key, plain.params)}</strong> : null
 }
 
 function PrecisionBadge({ level }: { level: SimMcOut['failure_rate_precision'] }) {
@@ -154,13 +161,16 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   return (
     <div className="page-stack">
       <section className="card" aria-labelledby="decision-title">
-        <h2 id="decision-title" className="section-title">{t('simulation.sep_decision_title')}</h2>
+        <h2 id="decision-title" className="section-title">{t('decision.plain.heading')}</h2>
         <p className="form-hint">{t('simulation.sep_selected_plan')}: {scenario.name}</p>
         {decision ? (
           <div>
             <div role={decision.status === 'revise' || decision.status === 'insufficient_evidence' ? 'alert' : 'status'} className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`}>
-              {decisionStatusLabel(decision.status, t)}
+              <PlainAnswer plain={plainDecision({ status: decision.status, separate: true, failedPeriods: decision.failed_periods, missing: decision.missing_evidence, inadequatePeriods: decision.inadequate_periods })} />
+              {' '}<span className="badge badge-neutral">{decisionStatusLabel(decision.status, t)}</span>
             </div>
+            <details className="decision-details">
+            <summary>{t('decision.plain.details')}</summary>
             {decision.headline && <p className="decision-headline">{decision.headline}</p>}
             {decision.recommendation && <p>{decision.recommendation}</p>}
             <h3 className="section-title">{t('simulation.sep_decision_rationale')}</h3>
@@ -170,12 +180,13 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
               <table><tbody>
                 <tr><th scope="row">{t('simulation.sep_lane')} Δ</th><td>{decision.facts?.lane_delta === null || decision.facts?.lane_delta === undefined ? '—' : String(decision.facts.lane_delta)}</td></tr>
                 <tr><th scope="row">{t('compare.sep_row_target')}</th><td>{decision.facts?.selected_target === null || decision.facts?.selected_target === undefined ? '—' : fmtPctDecimal(decision.facts.selected_target)}</td></tr>
-                <tr><th scope="row">{t('simulation.sep_col_validation')}</th><td>{decision.facts?.failed_checks ?? '—'} / {decision.facts?.validation_checks ?? '—'}</td></tr>
+                <tr><th scope="row">{t('simulation.sep_failed_checks')}</th><td>{decision.facts?.failed_checks == null || decision.facts?.validation_checks == null ? '—' : t('decision.plain.count', { failed: decision.facts.failed_checks, total: decision.facts.validation_checks })}</td></tr>
               </tbody></table>
             </div>
             {decision.failed_periods.length > 0 && (
               <div><h3 className="section-title">{t('simulation.sep_decision_periods')}</h3><ul>{decision.failed_periods.map((time) => <li key={time}>{time}</li>)}</ul></div>
             )}
+            </details>
             <div className="button-row">
               {(decision.status === 'conditional' || decision.status === 'adopt') && <Link to={`/reports?analysis=${analysisId}`}>{t('simulation.sep_decision_next_reports')}</Link>}
               {(decision.status === 'revise' || decision.status === 'insufficient_evidence') && <Link to={`/analyses/${analysisId}/plans`}>{t('simulation.sep_decision_next_compare')}</Link>}
@@ -295,6 +306,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   )
   const passed = savedCap !== null && validationRows.length > 0 && validationRows.every((row) => validationPasses(row, savedCap))
   const decision = decisionRun.data?.decision ?? (workflow.decision_stale ? null : workflow.decision?.result ?? null)
+  const staleDecision = !decisionRun.data && workflow.decision_stale && workflow.decision !== null && workflow.decision !== undefined
   const running = mcRun.isPending || validationRun.isPending || decisionRun.isPending
 
   function validationProblem(): string | null {
@@ -322,11 +334,15 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   return (
     <div className="page-stack">
       <section className="card" aria-labelledby="legacy-decision-title">
-        <h2 id="legacy-decision-title" className="section-title">{t('simulation.sep_decision_title')}</h2>
+        <h2 id="legacy-decision-title" className="section-title">{t('decision.plain.heading')}</h2>
         {decision ? (
           <div className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`} role="status">
-            <strong>{t(`decision.status.${decision.status}`)}</strong> {decision.headline}
+            <PlainAnswer plain={plainDecision({ status: decision.status, separate: false, failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence })} />
+            {' '}<span className="badge badge-neutral">{t(`decision.status.${decision.status}`)}</span>
+            <details className="decision-details"><summary>{t('decision.plain.details')}</summary><p>{decision.headline}</p>{decision.recommendation && <p>{decision.recommendation}</p>}</details>
           </div>
+        ) : staleDecision ? (
+          <div className="alert alert-warn" role="status"><PlainAnswer plain={plainDecision({ status: null, stale: true, separate: false })} /></div>
         ) : <p>{t('simulation.no_decision_yet')}</p>}
         <Link to={`/analyses/${analysisId}/decision`}>{t('simulation.open_decision')}</Link>
         <button type="button" className="btn-primary" onClick={() => void checkPlan()} disabled={running}>{running ? t('common.loading') : t('simulation.check_the_plan')}</button>

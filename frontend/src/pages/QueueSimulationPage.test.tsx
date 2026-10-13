@@ -351,6 +351,30 @@ describe('the legacy shared path', () => {
     expect(runValidationMock.mock.invocationCallOrder[0]).toBeLessThan(createDecisionMock.mock.invocationCallOrder[0])
     expect(runMcMock).not.toHaveBeenCalled()
     expect(await screen.findByText(/Consider Plan A conditionally/)).toBeInTheDocument()
+    // U10 F5: the plain answer to the spec's question, from the stored status.
+    expect(screen.getByRole('heading', { name: 'Should we use this plan?' })).toBeInTheDocument()
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent('The plan passed every check, but it costs more than today.')
+  })
+
+  it('says which evidence a shared Decision is missing, and how many periods failed', async () => {
+    const user = userEvent.setup()
+    createDecisionMock.mockResolvedValueOnce({ decision: { status: 'insufficient_evidence', headline: 'Insufficient evidence to make a management recommendation.',
+      recommendation: '', rationale: [], missing_evidence: ['completed Setup', 'a complete modeled cost comparison'], scenario_id: 3, scenario_name: 'Plan A',
+      dataset_id: 2, evidence_ids: {}, provenance_warning: '' }, persisted: true })
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. Run: completed Setup; a complete modeled cost comparison')
+    createDecisionMock.mockResolvedValueOnce({ decision: { status: 'revise', headline: 'Do not adopt Scenario "Plan A" yet.', recommendation: '', rationale: [],
+      missing_evidence: [], scenario_id: 3, scenario_name: 'Plan A', dataset_id: 2, evidence_ids: {}, provenance_warning: '',
+      facts: { validation_intervals: 4, failed_intervals: 1 } }, persisted: true })
+    await user.click(screen.getByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(screen.getByTestId('decision-plain')).toHaveTextContent('Change the plan first. It did not hold up in 1 of 4 periods.'))
+  })
+
+  it('says a stored shared Decision is out of date', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({ decision: job('workflow_decision', { status: 'adopt' }), decision_stale: true }))
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Out of date. Your data or setup changed after this check.')
   })
 
   it('keeps a stored validation verdict bound to its saved cap when next-run settings change', async () => {
@@ -662,6 +686,9 @@ describe('a selected separate-lines plan', () => {
     expect(order).toEqual([...order].sort((a, b) => a - b))
     expect(runSelectedMcMock.mock.calls[0][1]).not.toHaveProperty('failure_threshold')
     expect(await screen.findByText('Decision: CONDITIONAL')).toBeInTheDocument()
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent("The plan passed every check, but its cost saving can't be calculated for separate lines. Use it only if you accept the cost.")
+    // U10 F15: the evidence row says what the numbers count.
+    expect(screen.getByRole('row', { name: /Checks that did not pass/ })).toHaveTextContent('0 of 1')
     expect(screen.getByRole('link', { name: 'Continue to Reports' })).toHaveAttribute('href', '/reports?analysis=7')
     // Each period's lane table scrolls in its own box, so a phone never scrolls the page sideways.
     expect(screen.getByRole('region', { name: 'Period evidence · 08:00' })).toContainElement(screen.getByRole('rowheader', { name: 'east-07' }))
@@ -706,6 +733,7 @@ describe('a selected separate-lines plan', () => {
     })
     renderPage('/simulation/checks?analysis=7')
     expect(await screen.findByText('Decision: REVISE')).toBeInTheDocument()
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent('Change the plan first. It did not hold up in: 10:00')
     expect(screen.getByRole('link', { name: 'Return to Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
     expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
@@ -730,6 +758,9 @@ describe('the continuous full-day run (B4a preview)', () => {
     const choice = await screen.findByTestId('closing-choice')
     expect(choice).toHaveTextContent('Choose what happens at closing time first.')
     expect(screen.getByRole('button', { name: 'Run full operation' })).toBeDisabled()
+    // U10 F6: each option has its title before what it means.
+    expect(within(choice).getByRole('radio', { name: /^Finish serving customers already waiting — counters on duty keep serving/ })).toBeInTheDocument()
+    expect(within(choice).getByRole('radio', { name: /^Stop service at closing — customers still waiting are not served/ })).toBeInTheDocument()
     await user.click(within(choice).getByRole('radio', { name: /keep serving everyone already in line/ }))
     await user.click(within(choice).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(putClosingPolicyMock).toHaveBeenCalledWith(7, 'DRAIN'))
@@ -746,6 +777,17 @@ describe('the continuous full-day run (B4a preview)', () => {
     // Contextual help (plan U8).
     expect(within(bar).getByRole('link', { name: 'Help: Full-day run and period-by-period run' })).toHaveAttribute('href', '/help/simulation#methods')
     expect(screen.getByRole('link', { name: 'Help: Queue simulation' })).toHaveAttribute('href', '/help/simulation')
+  })
+
+  it('asks the two unanswered Setup questions instead of blaming features the user never turned on (U10 F12)', async () => {
+    getCompatibilityMock.mockResolvedValue(compatibility({
+      plans: { current: { ...compatiblePlan, compatible: false, reasons: [{ code: 'capacity_or_abandonment_unknown' }] },
+        suggested: { ...compatiblePlan, compatible: false, reasons: [{ code: 'capacity_or_abandonment_unknown' }] } },
+    }))
+    renderPage()
+    const refusal = await screen.findByTestId('continuous-refusal')
+    expect(refusal).toHaveTextContent('set Capacity mode to Unlimited and Abandonment to Not modeled')
+    expect(refusal).not.toHaveTextContent('capacity_or_abandonment_unknown')
   })
 
   it('names why a shared line cannot run the full day and keeps the older run', async () => {
@@ -855,6 +897,24 @@ describe('the continuous full-day run (B4a preview)', () => {
     const byPeriod = screen.getByRole('region', { name: 'Day 1 by period' })
     expect(within(within(byPeriod).getByRole('row', { name: /08:00-09:00/ })).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['2', '2', '0', '3 min'])
     expect(within(byPeriod).getByRole('row', { name: /09:00-10:00/ })).toHaveTextContent('Unavailable')
+    // U10 F7: the caption names the statistic; F8: no warning when both runs used the same closing rule.
+    expect(screen.getByText(/Average wait counts every customer served on the repeated days \(5\)/)).toBeInTheDocument()
+    expect(screen.queryByTestId('continuous-rules-differ')).not.toBeInTheDocument()
+  })
+
+  it('says when the two runs used different closing rules (U10 F8)', async () => {
+    listContinuousRunsMock.mockResolvedValue({ runs: [
+      { id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'HARD_CUTOFF', setup_matches_current: true, dataset_is_current: true, plan_is_selected: true },
+      { id: 30, plan: 'current', replications: 5, seed: 42, closing_policy: 'DRAIN', setup_matches_current: true, dataset_is_current: true, plan_is_selected: null },
+    ] })
+    getContinuousRunMock.mockImplementation(async (_analysis: number, runId: number) => {
+      if (runId !== 31) return continuousRun(runId, 'current')
+      const run = continuousRun(31, 'suggested')
+      return { ...run, evidence: { ...run.evidence, params: { ...run.evidence.params, closing_policy: 'HARD_CUTOFF' } } }
+    })
+    renderPage()
+    expect(await screen.findByTestId('continuous-rules-differ')).toHaveTextContent(
+      'These two runs used different closing rules (Current: closing rule: serve everyone in line; Suggested plan: closing rule: stop at closing).')
   })
 
   it('says when the Setup, the data or the plan changed after a stored run', async () => {

@@ -12,6 +12,7 @@ import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { SetupDataTemplates } from '../components/analysis/SetupDataTemplates'
 import { messageOf } from '../lib/format'
 import { currentDatasetId } from '../lib/datasets'
+import { missingSetupFields } from '../lib/setupStatus'
 import { MakePeriodsHelper } from '../components/setup/MakePeriodsHelper'
 import { ManualEntry } from '../components/setup/ManualEntry'
 import { HelpLink } from '../components/ui/HelpLink'
@@ -71,11 +72,16 @@ export function AnalysisSetupPage() {
   const [file, setFile] = useState<File | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   useEffect(() => { if (analysis.data) { setSetup(normalizeSetup(analysis.data.analysis.queue_setup)) } }, [analysis.data])
   const save = useMutation({
     mutationFn: () => patchAnalysis(id, { queue_setup: setup }),
     onSuccess: () => {
-      setFormError(null); setNotice(t('analyses.setup_saved')); void client.invalidateQueries({ queryKey: ['analysis', id] })
+      // U10 F3: the period basis is applied when a file is read, so a change needs the planning file uploaded again.
+      const basisChanged = (analysis.data?.analysis.queue_setup.event_period_basis ?? 'per_date') !== (setup.event_period_basis ?? 'per_date')
+      setFormError(null); setNoticeIsError(false)
+      setNotice(basisChanged && currentId !== null ? `${t('analyses.setup_saved')} ${t('setup.basis_reupload')}` : t('analyses.setup_saved'))
+      void client.invalidateQueries({ queryKey: ['analysis', id] })
       // Workflow evidence records the Setup it was computed for: drop it so no page shows evidence
       // of the previous Setup, even while its fresh request is in flight (invalidation would).
       void client.resetQueries({ queryKey: ['workflow', id] })
@@ -208,6 +214,16 @@ export function AnalysisSetupPage() {
   const savedIsSeparate = analysis.data.analysis.queue_setup.queue_structure === 'separate_queues'
   const savedIsShared = analysis.data.analysis.queue_setup.queue_structure === 'shared_queue'
   const read = preview?.derived_setup ?? null
+  // U10 F4/F10: name what the saved Setup still needs, and open the field that sets it.
+  const savedMissing = analysis.data.analysis.setup_status === 'incomplete' ? missingSetupFields(normalizeSetup(analysis.data.analysis.queue_setup)) : []
+  const firstMissingInput = savedMissing.find((item) => item.inputId !== null)?.inputId ?? null
+  function openField(inputId: string) {
+    setAdvancedOpen(true)
+    window.setTimeout(() => document.getElementById(inputId)?.focus(), 0)
+  }
+  const openMissing = firstMissingInput && (
+    <button type="button" className="btn-ghost btn-inline" onClick={() => openField(firstMissingInput)}>{t('setup.incomplete_open')}</button>
+  )
   // Data and setup (spec 2026-10-09 §7.6): numbered steps around the unchanged Setup
   // form, upload flow and cache resets. Advanced settings open by default only while
   // the queue structure is still unknown, because choosing it is needed first.
@@ -222,6 +238,13 @@ export function AnalysisSetupPage() {
         <div className="alert alert-warn" style={{ marginBottom: '12px' }}>
           {t('analyses.unknown_structure_help')}{' '}
           <Link to="../guided-setup">{t('analyses.choose_structure')}</Link>
+        </div>
+      )}
+      {setup.queue_structure !== 'unknown' && savedMissing.length > 0 && (
+        <div className="alert alert-warn" role="status" data-testid="setup-incomplete">
+          <strong>{t('setup.incomplete_title')}</strong>{' '}
+          {t('setup.incomplete_body', { items: savedMissing.map((item) => t(SETUP_FIELD_LABELS[item.field] ?? item.field)).join(', ') })}{' '}
+          {openMissing}
         </div>
       )}
       <ol className="setup-steps">
@@ -249,7 +272,7 @@ export function AnalysisSetupPage() {
             <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" onChange={pick} />
             <button type="button" disabled={!file || purpose === null || upload.isPending || checking} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
             {purpose === null && <p className="form-hint">{t('setup.purpose_required')}</p>}
-            {notice && <div className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}</div>}
+            {notice && <div className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}{(upload.isError || noticeIsError) && openMissing && <> {openMissing}</>}</div>}
             {readErrors.length > 0 && (
               <div className="alert alert-error" role="alert">
                 <strong>{t('analyses.upload_read_errors')}</strong>
@@ -293,7 +316,7 @@ export function AnalysisSetupPage() {
           )}
         </li>
         <li className="setup-step">
-          <details className="setup-advanced" open={setup.queue_structure === 'unknown' || undefined}>
+          <details className="setup-advanced" open={setup.queue_structure === 'unknown' || advancedOpen || undefined} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
             <summary className="setup-step-title">{t('setup.step_advanced')}</summary>
             <p className="page-caption">{t('setup.step_advanced_help')}</p>
             <form className="card" onSubmit={submit}>
@@ -304,7 +327,7 @@ export function AnalysisSetupPage() {
                 <div className="form-field"><span id="queue-structure-label">{t('analyses.queue_structure')}</span><strong data-testid="queue-structure-readonly" aria-labelledby="queue-structure-label">{t(structureDisplayKey(setup.queue_structure))}</strong><span className="form-hint">{t('setup.queue_structure_locked_help')}</span></div>
               )}
               {setup.queue_structure === 'separate_queues' && <QueueIdEditor ids={setup.queue_ids} onChange={changeQueueIds} />}
-              {periodLayout && <div className="form-field"><label htmlFor="period-basis">{t('analyses.period_basis')}</label> <HelpLink topic="data" section="advanced" /><select id="period-basis" aria-describedby="period-basis-help" value={setup.event_period_basis ?? 'per_date'} onChange={(e) => set('event_period_basis', e.target.value as EventPeriodBasis)}><option value="per_date">{t('analyses.period_basis_per_date')}</option><option value="representative_day">{t('analyses.period_basis_representative_day')}</option></select><span id="period-basis-help" className="form-hint">{t('analyses.period_basis_help')}</span></div>}
+              {periodLayout && <div className="form-field"><label htmlFor="period-basis">{t('analyses.period_basis')}</label> <HelpLink topic="data" section="advanced" /><select id="period-basis" aria-describedby="period-basis-help" value={setup.event_period_basis ?? 'per_date'} onChange={(e) => set('event_period_basis', e.target.value as EventPeriodBasis)}><option value="per_date">{t('analyses.period_basis_per_date')}</option><option value="representative_day">{t('analyses.period_basis_representative_day')}</option></select><span id="period-basis-help" className="form-hint">{t('analyses.period_basis_help')}{(setup.event_period_basis ?? 'per_date') === 'per_date' && ` ${t('analyses.period_basis_per_date_limits')}`}</span></div>}
               {setup.queue_structure === 'separate_queues' && <BreakEditor queueIds={setup.queue_ids} breaks={setup.breaks ?? []} onChange={(breaks) => set('breaks', breaks)} />}
               {setup.queue_structure === 'shared_queue' && <CounterBreakEditor breaks={setup.counter_breaks ?? []} onChange={(breaks) => set('counter_breaks', breaks)} />}
               <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>

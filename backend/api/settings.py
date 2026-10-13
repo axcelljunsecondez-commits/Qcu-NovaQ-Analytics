@@ -210,6 +210,8 @@ class Settings:
         self.rate_limit_auth = _int("RATE_LIMIT_AUTH", 10, 1, 1000)
         self.rate_limit_upload = _int("RATE_LIMIT_UPLOAD", 10, 1, 1000)
         self.rate_limit_report = _int("RATE_LIMIT_REPORT", 10, 1, 1000)
+        # Report previews only build the report model (no file); the Reports page asks for two per visit.
+        self.rate_limit_report_preview = _int("RATE_LIMIT_REPORT_PREVIEW", 60, 1, 1000)
         self.rate_limit_compute = _int("RATE_LIMIT_COMPUTE", 30, 1, 1000)
         self.rate_limit_admin = _int("RATE_LIMIT_ADMIN", 30, 1, 1000)
         # B2 guest calculator: one Calculate makes up to three calls (c - 1, c, c + 1), so 30 = 10 clicks.

@@ -334,3 +334,49 @@ describe('workflow evidence cache after a Setup save', () => {
     expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
   })
 })
+
+describe('U10: what the Setup still needs, and the period basis', () => {
+  const shared: QueueSetup = { ...unknownSetup, queue_structure: 'shared_queue', capacity_mode: 'unlimited', abandonment_mode: 'not_modeled', event_period_basis: 'per_date' }
+
+  it('names a missing counter count and opens the field that sets it (F4)', async () => {
+    const incomplete = analysisWith(shared)
+    getAnalysisMock.mockResolvedValue({ analysis: { ...incomplete.analysis, setup_status: 'incomplete' } })
+    const user = userEvent.setup()
+    renderPage()
+    const warning = await screen.findByTestId('setup-incomplete')
+    expect(warning).toHaveTextContent('Your Setup is not complete. NovaQ still needs: Fixed server count.')
+    await user.click(within(warning).getByRole('button', { name: 'Open Advanced settings' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Fixed server count')))
+    expect(screen.getByText('Advanced settings').closest('details')).toHaveAttribute('open')
+  })
+
+  it('offers the field beside an upload refusal (F10)', async () => {
+    const incomplete = analysisWith(shared)
+    getAnalysisMock.mockResolvedValue({ analysis: { ...incomplete.analysis, setup_status: 'incomplete' } })
+    uploadMock.mockRejectedValue(Object.assign(new Error('422'), { response: { status: 422, data: { detail: 'Enter the fixed server count before uploading customer-event data.' } } }))
+    await uploadFile('records.csv')
+    const refusal = await screen.findByRole('alert')
+    expect(refusal).toHaveTextContent('Enter the fixed server count before uploading customer-event data.')
+    expect(within(refusal).getByRole('button', { name: 'Open Advanced settings' })).toBeInTheDocument()
+  })
+
+  it('shows nothing extra for a complete Setup', async () => {
+    getAnalysisMock.mockResolvedValue(analysisWith({ ...shared, fixed_server_count: 3 }))
+    renderPage()
+    await screen.findByLabelText('Upload Data')
+    expect(screen.queryByTestId('setup-incomplete')).not.toBeInTheDocument()
+  })
+
+  it('says what per-date periods turn off, and asks for the file again after the basis changes (F3)', async () => {
+    getAnalysisMock.mockResolvedValue(analysisWith({ ...shared, fixed_server_count: 3 }))
+    vi.mocked(listAnalysisDatasets).mockResolvedValue({ datasets: [{ id: 4, name: 'records', is_current: true, purpose: 'planning', validation: { ok: true } }] } as never)
+    const user = userEvent.setup()
+    renderPage()
+    const basis = await screen.findByLabelText('Customer data periods')
+    expect(screen.getByText(/the full-day run and break suggestions are not available; choose Representative day for them/)).toBeInTheDocument()
+    await user.selectOptions(basis, 'representative_day')
+    expect(screen.queryByText(/the full-day run and break suggestions are not available/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/upload your planning file again to use the new one/)).toBeInTheDocument()
+  })
+})

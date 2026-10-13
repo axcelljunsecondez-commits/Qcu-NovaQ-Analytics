@@ -136,11 +136,21 @@ describe('Reports page (B8, D33)', () => {
     expect(await screen.findByText('Checked by simulation · Decision: Adopt')).toBeInTheDocument()
     expect(screen.getByText('Adopt Scenario "Four at eight".')).toBeInTheDocument()
     expect(screen.getByText('Plan: Four at eight')).toBeInTheDocument()
+    expect(screen.getByTestId('full-stamp')).toHaveClass('badge-ok')
     const excel = screen.getByTestId('report-card-excel')
     expect(within(excel).getAllByRole('listitem').map((item) => item.textContent)).toContain('Decision')
     expect(within(excel).queryByText(/after the checks/)).not.toBeInTheDocument()
     await userEvent.setup().click(within(excel).getByRole('button', { name: 'Download Excel' }))
     await waitFor(() => expect(fileMock).toHaveBeenCalledWith(7, 'full', 'xlsx'))
+  })
+
+  it('colours the full stamp by the Decision: a Revise is not shown in green (U10 F9)', async () => {
+    const revise = { ...fullPreview, model: { ...fullPreview.model, decision: { status: 'revise', headline: 'Do not adopt yet.', recommendation: '' } } }
+    previewMock.mockImplementation(async (_id: number, level: string) => (level === 'plan' ? planPreview : revise))
+    renderReports()
+    expect(await screen.findByText('Checked by simulation · Decision: Revise')).toBeInTheDocument()
+    expect(screen.getByTestId('full-stamp')).toHaveClass('badge-bad')
+    expect(screen.getByTestId('full-stamp')).not.toHaveClass('badge-ok')
   })
 
   it('shows a refused download as an alert', async () => {

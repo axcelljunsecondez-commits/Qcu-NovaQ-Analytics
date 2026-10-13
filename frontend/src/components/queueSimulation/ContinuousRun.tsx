@@ -85,7 +85,7 @@ function ClosingRule({ analysisId, rule }: { analysisId: number; rule: ClosingPo
       {(['DRAIN', 'HARD_CUTOFF'] as const).map((value) => (
         <label key={value} className="radio-row">
           <input type="radio" name={`closing-${analysisId}`} value={value} checked={choice === value} onChange={() => setChoice(value)} />
-          {t(`continuous.closing_${value}`)}
+          <span><strong>{t(`continuous.closing_option_${value}`)}</strong> — {t(`continuous.closing_${value}`)}</span>
         </label>
       ))}
       <p className="form-hint">{t('continuous.rule_future_only')}</p>
@@ -232,6 +232,9 @@ function ContinuousCards({ current, suggested }: { current: ContinuousRunOut | n
     run ? rangeText(pick(run), count) ?? unavailable : notRun
   )
   const repeats = [current, suggested].filter((run): run is ContinuousRunOut => run !== null).map((run) => run.evidence.params.replications)
+  const rules = current && suggested && current.evidence.params.closing_policy !== suggested.evidence.params.closing_policy
+    ? { current: t(`continuous.closing_short_${current.evidence.params.closing_policy}`), suggested: t(`continuous.closing_short_${suggested.evidence.params.closing_policy}`) }
+    : null
   return (
     <>
       <div className="key-results" role="group" aria-label={t('continuous.key_results')}>
@@ -241,6 +244,7 @@ function ContinuousCards({ current, suggested }: { current: ContinuousRunOut | n
         <Card label={t('continuous.not_served')} now={metric(current, (run) => run.evidence.result.summary.customers.per_replication.unserved)} plan={metric(suggested, (run) => run.evidence.result.summary.customers.per_replication.unserved)} />
       </div>
       {repeats.length > 0 && <p className="form-hint">{t('continuous.cards_note', { counts: [...new Set(repeats)].join(' / ') })}</p>}
+      {rules && <p role="status" className="alert alert-warn" data-testid="continuous-rules-differ">{t('continuous.rules_differ', rules)}</p>}
     </>
   )
 }
@@ -440,7 +444,7 @@ function ContinuousChecks({ shown }: { shown: ContinuousRunOut | null }) {
   const { t } = useTranslation()
   const count = (value: number) => fmtDecimal(value, 1)
   const rows: Array<[string, string | null]> = shown ? [
-    [t('simulation.average_wait'), rangeText(shown.evidence.result.summary.waiting_time.mean_of_replication_means_hours, (value) => `${fmtDecimal(value, 1)} ${t('results.min')}`, 60)],
+    [t('continuous.wait_daily_average'), rangeText(shown.evidence.result.summary.waiting_time.mean_of_replication_means_hours, (value) => `${fmtDecimal(value, 1)} ${t('results.min')}`, 60)],
     [t('simulation.longest_line'), rangeText(shown.evidence.result.summary.metrics.max_queue_in_horizon, count)],
     [t('simulation.served_customers'), rangeText(shown.evidence.result.summary.customers.per_replication.served, count)],
     [t('continuous.not_served'), rangeText(shown.evidence.result.summary.customers.per_replication.unserved, count)],

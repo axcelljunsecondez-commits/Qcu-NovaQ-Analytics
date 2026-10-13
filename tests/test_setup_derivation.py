@@ -169,6 +169,17 @@ def test_single_date_uses_per_date_and_fixed_staff_keeps_active_lists():
     assert all(s["active_queue_ids"] == ["a", "b"] for s in result.setup["segments"])
 
 
+def test_a_saved_representative_day_is_kept_for_a_single_date_file():
+    """U10 F3: re-uploading a one-date workbook no longer switches a chosen representative day back to per date."""
+    events = small_events(SMALL, dates=("2026-08-03",))
+    first = derive_setup(small(events=events), None).setup
+    kept = derive_setup(small(events=events), {**first, "event_period_basis": "representative_day"})
+    assert kept.errors == []
+    assert kept.setup["event_period_basis"] == "representative_day"
+    assert "event_period_basis" not in [item["field"] for item in setup_diff({**first, "event_period_basis": "representative_day"}, kept.setup)]
+    assert derive_setup(small(events=events), {**first, "event_period_basis": "per_date"}).setup["event_period_basis"] == "per_date"
+
+
 def test_saved_capacity_and_abandonment_are_kept_unknown_defaults_apply():
     fresh = derive_setup(small(), {"queue_structure": "unknown"}).setup
     assert (fresh["capacity_mode"], fresh["abandonment_mode"]) == ("unlimited", "not_modeled")

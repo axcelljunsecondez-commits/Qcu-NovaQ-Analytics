@@ -164,6 +164,9 @@ def test_a_compatible_analysis_reports_its_expected_customers(db_engine, client)
     ({}, {"variance": 0.01}, "service_time_variation"),
     ({}, {"K": 5}, "capacity_or_abandonment"),
     ({"abandonment_mode": "modeled", "patience_rate_per_hour": 2.0}, {}, "capacity_or_abandonment"),
+    ({"capacity_mode": "finite", "total_system_capacity": 9, "abandonment_mode": "unknown"}, {}, "capacity_or_abandonment"),
+    ({"capacity_mode": "unknown"}, {}, "capacity_or_abandonment_unknown"),
+    ({"abandonment_mode": "unknown"}, {}, "capacity_or_abandonment_unknown"),
 ])
 def test_out_of_scope_analyses_are_refused_with_their_code(db_engine, client, setup_change, row_change, code):
     ids = _signed_in(client, db_engine, setup={**SHARED_SETUP, **setup_change},
@@ -172,6 +175,8 @@ def test_out_of_scope_analyses_are_refused_with_their_code(db_engine, client, se
     compat = _compat(client, ids["analysis_id"])
     assert compat["plans"]["current"]["compatible"] is False
     assert code in _codes(compat["plans"]["current"])
+    if code == "capacity_or_abandonment_unknown":  # F12: an unanswered question is not reported as an enabled feature
+        assert "capacity_or_abandonment" not in _codes(compat["plans"]["current"])
     response = _run(client, ids["analysis_id"])
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "not_compatible"
