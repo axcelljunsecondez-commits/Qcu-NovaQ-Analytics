@@ -271,8 +271,8 @@ def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
     overview = workbook.active
     overview.title = "Overview"
     cover, key = model["cover"], model["key_results"]
-    _table(overview, "Plan report", ["Item", "Value"], [
-        ["Report", COVER_LABEL], ["Analysis", cover.get("analysis_name")], ["Lines", cover.get("line_type")],
+    _table(overview, "Full report" if model.get("report") == "full" else "Plan report", ["Item", "Value"], [
+        ["Report", cover.get("label")], ["Analysis", cover.get("analysis_name")], ["Lines", cover.get("line_type")],
         ["Plan", cover.get("plan_name")], ["Generated (UTC)", cover.get("generated_at")],
         ["Total cost now", key.get("cost_now") if key.get("cost_now") is not None else key.get("cost_now_unavailable")],
         ["Total cost with the plan", key.get("cost_plan")], ["Cost basis", key.get("cost_basis")],
@@ -296,6 +296,25 @@ def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
         "Period", "Counters", "Result", "Busy share", "Wait (min)", "Counter cost", "Waiting cost", "Total cost"],
         [[row["time"], row["counters"], row["result"], row["busy"], row["wait_minutes"], row["counter_cost"],
           row["waiting_cost"], row["total_cost"]] for row in search["rows"]])
+    if model.get("report") == "full":
+        simulation = model["simulation"]
+        sheet = workbook.create_sheet("Simulation")
+        _table(sheet, f"Simulation: {simulation['source']}", ["Result", "Value", "Unit"],
+               [[item["label"], item["value"], item["unit"]] for item in simulation["headlines"]])
+        for chart in simulation["charts"]:
+            sheet.append([])
+            sheet.append([chart["title"] + (f" (allowed {chart['limit']}%)" if chart.get("limit") is not None else "")])
+            sheet.append(["Period", chart["unit"]])
+            for point in chart["points"]:
+                sheet.append([point["label"], point["value"]])
+        _table(workbook.create_sheet("Checks"), "Checks", ["Check", "Settings", "Outcome"],
+               [[item["check"], item["settings"], item["outcome"]] for item in model["checks"]])
+        decision = model["decision"]
+        _table(workbook.create_sheet("Decision"), "Decision", ["Item", "Text"],
+               [["Status", decision.get("status")], ["Headline", decision.get("headline")],
+                ["What to do", decision.get("recommendation")]]
+               + [["Reason", line] for line in decision.get("rationale") or []]
+               + [["Not included", line] for line in model.get("not_included") or [] if line])
     _table(workbook.create_sheet("Assumptions"), "Assumptions", ["Setting", "Value"],
            [[name, value if not isinstance(value, (dict, list)) else str(value)] for name, value in model["assumptions"].items()])
     _table(workbook.create_sheet("Provenance"), "Provenance", ["Item", "Value"],
