@@ -196,7 +196,8 @@ def test_overloaded_reduced_candidate_is_infeasible_with_named_lanes():
     assert result["status"] == "INFEASIBLE"
     assert "cashier-east" in result["reason"]
     assert "70%" in result["reason"]
-    assert result["total_cost"] is None
+    # U10 F16: the measured run keeps its cost; feasibility is decided on the aggregate.
+    assert result["total_cost"] == pytest.approx(result["server_cost"] + result["waiting_cost"])
     assert result["total_lambda"] == 12.0
     assert result["customer_conservation"] is True
     assert result["evaluations"] is not None

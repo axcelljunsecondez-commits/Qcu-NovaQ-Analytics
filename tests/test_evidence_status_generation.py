@@ -369,7 +369,8 @@ def test_recorded_legacy_scenario_is_never_current_under_generation_enforcement(
     # RECORDED: scenario 30 (analysis 21, dataset 35) was exported before any token existed.
     context = recorded_context(SCENARIOS[30]["analysis_id"])
     off = es.classify(recorded_scenario(30, repository_policy()), context)
-    assert off.is_current
+    # U10 F16: its v2 plan engine is historical; enforcement adds the missing-token reasons on top.
+    assert off.status is S.HISTORICAL_REQUIRES_RECALCULATION and off.codes == (R.VERSION_HISTORICAL,)
     enforced = replace(repository_policy(), generation_kinds=frozenset({"dataset", "scenario"}))
     result = es.classify(recorded_scenario(30, enforced), context)
     assert result.status is S.MISSING_PROVENANCE

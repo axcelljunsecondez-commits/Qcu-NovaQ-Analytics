@@ -65,11 +65,15 @@ from backend.queueing_engine.simulation.queue_lifecycle import (
 # Engine version stamped on verified Separate-Queue DES optimization snapshots.
 # v2: representative-day candidates are read from one continuous-day DES
 # (9b1f95a4); v1 snapshots hold 24 h per-period figures and are unsupported.
-SEPARATE_DES_ENGINE_VERSION = "novaq-2026-09-separate-des-v2"
 # B13 (spec 2026-10-12-b13-per-date-continuous-day.md, owner-approved Option B): per-date plans whose
 # operating segments lay out a day are judged one continuous day per date. Representative-day plans and
-# per-date plans without segments keep v2, whose results B13 does not change.
-SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION = "novaq-2026-10-separate-des-v3"
+# per-date plans without segments keep the other version, whose results B13 does not change.
+# U10 F16 (spec 2026-10-13-u10-f16-separate-cost-interval.md): every replication's cost counts, so both
+# versions moved on (v2 -> v4, v3 -> v5); plans saved with v2 or v3 are historical.
+SEPARATE_DES_ENGINE_VERSION = "novaq-2026-10-separate-des-v4"
+SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION = "novaq-2026-10-separate-des-v5"
+SEPARATE_DES_V2_ENGINE_VERSION = "novaq-2026-09-separate-des-v2"
+SEPARATE_DES_V3_ENGINE_VERSION = "novaq-2026-10-separate-des-v3"
 
 # Execution labels of a stored selected-plan DES result: the exact ``execution`` strings that
 # backend/api/workflow.py writes for the per-period and the continuous-day runs.
@@ -605,12 +609,8 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
     # INFEASIBLE left selected-plan playback with an empty floor for exactly the
     # busy periods the operator most needs to watch.
     trace_evidence = {"trace_events": trace, "trace_truncated": trace_truncated}
-    if over_target:
-        return {**base, "status": "INFEASIBLE",
-                "reason": f"Simulated utilization exceeds the {ceiling:.0%} ceiling for: {', '.join(over_target)}.",
-                "evaluations": evaluations, "total_cost": None, "total_lambda": total_lambda,
-                "customer_conservation": conserved, "metric_provenance": "simulated",
-                **trace_evidence}
+    # U10 F16: the replication's cost is defined whatever its utilization; the target is a
+    # feasibility rule decided on the aggregate, so an over-target run still reports its cost.
     server_total = 0.0
     waiting_total = 0.0
     for item in evaluations:
@@ -622,6 +622,13 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
             lane_wait = _compute_waiting_cost(
                 item["served"] / horizon, item["Wq"], waiting_cost)
             waiting_total += lane_wait or 0.0
+    if over_target:
+        return {**base, "status": "INFEASIBLE",
+                "reason": f"Simulated utilization exceeds the {ceiling:.0%} ceiling for: {', '.join(over_target)}.",
+                "evaluations": evaluations, "total_cost": server_total + waiting_total,
+                "server_cost": server_total, "waiting_cost": waiting_total, "total_lambda": total_lambda,
+                "customer_conservation": conserved, "metric_provenance": "simulated",
+                **trace_evidence}
     return {**base, "status": "FEASIBLE", "reason": None,
             "evaluations": evaluations,
             "total_lambda": total_lambda,
@@ -1266,13 +1273,16 @@ def index_period_queues(records: list, time_label: str) -> dict[str, dict]:
     return indexed
 
 
-def _summarize_metric(values: list) -> dict | None:
+def _summarize_metric(values: list, floor: float | None = None) -> dict | None:
     """Aggregate one continuous metric across replications.
 
     Returns mean, sample standard deviation, standard error, Student-t 95 %
     interval, and contributing count — or None when no replication produced
     a value. Missing stays missing: never zero-filled. Single-replication
     summaries carry a mean but no dispersion or interval.
+
+    ``floor`` is a value the true mean cannot go below (0 for a cost, U10 F16): the lower
+    bound becomes max(floor, mean - half width), which keeps the interval's coverage exactly.
     """
     present = [float(value) for value in values if _is_number(value)]
     count = len(present)
@@ -1285,8 +1295,9 @@ def _summarize_metric(values: list) -> dict | None:
     sd = statistics.stdev(present)
     se = sd / math.sqrt(count)
     half_width = float(student_t.ppf(0.975, count - 1)) * se
+    lower = mean - half_width if floor is None else max(floor, mean - half_width)
     return {"mean": mean, "sd": sd, "se": se,
-            "ci_lower": mean - half_width, "ci_upper": mean + half_width,
+            "ci_lower": lower, "ci_upper": mean + half_width,
             "n": count}
 
 
@@ -1442,10 +1453,10 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
         "waiting_time": _summarize_metric(rep_waits),
         "max_mean_lane_utilization": max(lane_means) if lane_means else None,
         "costs": {
-            "staffing": _summarize_metric([run.get("server_cost") for run in runs]),
-            "waiting": _summarize_metric([run.get("waiting_cost") for run in runs]),
+            "staffing": _summarize_metric([run.get("server_cost") for run in runs], floor=0.0),
+            "waiting": _summarize_metric([run.get("waiting_cost") for run in runs], floor=0.0),
             "abandonment": None,
-            "total": _summarize_metric([run.get("total_cost") for run in runs]),
+            "total": _summarize_metric([run.get("total_cost") for run in runs], floor=0.0),
         },
         "arrivals": _summarize_metric(rep_arrivals),
         "served": _summarize_metric(rep_served),
@@ -1837,10 +1848,6 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
                   "trace_truncated": day["trace_truncated"]}
         over_target = sorted(item["queue_id"] for item in evaluations if item["active"]
                              and float(item["rho"]) > target + _UTILIZATION_TOLERANCE)
-        if over_target:
-            return {**base, **shared, "status": "INFEASIBLE", "total_cost": None,
-                    "reason": (f"Simulated utilization exceeds the {target:.0%} ceiling for: "
-                               + ", ".join(over_target) + ".")}
         server_total = 0.0
         waiting_total = 0.0
         for item in evaluations:
@@ -1851,6 +1858,11 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
             if item["served"] and item["Wq"] is not None:
                 waiting_total += _compute_waiting_cost(
                     item["served"] / horizon, item["Wq"], waiting_cost) or 0.0
+        if over_target:  # U10 F16: the over-target run keeps its cost; feasibility is the aggregate rule
+            return {**base, **shared, "status": "INFEASIBLE", "total_cost": server_total + waiting_total,
+                    "server_cost": server_total, "waiting_cost": waiting_total,
+                    "reason": (f"Simulated utilization exceeds the {target:.0%} ceiling for: "
+                               + ", ".join(over_target) + ".")}
         return {**base, **shared, "status": "FEASIBLE", "reason": None,
                 "total_cost": server_total + waiting_total,
                 "server_cost": server_total, "waiting_cost": waiting_total, "demand_conserved": True}

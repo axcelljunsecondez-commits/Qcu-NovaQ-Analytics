@@ -17,6 +17,7 @@ from backend.db.models import AnalysisProject, Dataset, Scenario
 from backend.queueing_engine.services.separate_optimization import (
     SEPARATE_DES_ENGINE_VERSION,
     SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION,
+    SEPARATE_DES_V2_ENGINE_VERSION,
 )
 from tests.helpers import create_user, csrf_header, login, make_sessionmaker
 
@@ -87,7 +88,7 @@ def test_per_date_optimization_reports_the_continuous_day_version_and_saves_with
     assert out["engine_version"] == SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION
     assert out["schedule"]["utilization_basis"] == "continuous-day DES"
     assert [p["time"] for p in out["schedule"]["periods"]] == [f"{d} {s['id']} UTC" for d in DATES for s in SEGMENTS]
-    old = _save(client, analysis_id, dataset_id, _settings(analysis_id, dataset_id, rows, SEPARATE_DES_ENGINE_VERSION),
+    old = _save(client, analysis_id, dataset_id, _settings(analysis_id, dataset_id, rows, SEPARATE_DES_V2_ENGINE_VERSION),
                 out["schedule"])
     assert old.status_code == 422
     saved = _save(client, analysis_id, dataset_id, _settings(analysis_id, dataset_id, rows, out["engine_version"]),
@@ -95,7 +96,7 @@ def test_per_date_optimization_reports_the_continuous_day_version_and_saves_with
     assert saved.status_code == 201, saved.text
 
 
-def test_representative_day_plans_keep_version_two(db_engine, client):
+def test_representative_day_plans_keep_the_representative_day_version(db_engine, client):
     analysis_id, dataset_id, rows = _workspace(db_engine, "representative_day")
     login(client, "owner@example.com", "pw")
     out = _optimize(client, analysis_id)
@@ -123,7 +124,7 @@ def test_a_per_date_plan_saved_before_b13_must_be_recalculated(db_engine, client
     analysis_id, dataset_id, rows = _workspace(db_engine, "per_date")
     login(client, "owner@example.com", "pw")
     schedule = _optimize(client, analysis_id)["schedule"]
-    old_id = _insert_plan(db_engine, analysis_id, dataset_id, rows, SEPARATE_DES_ENGINE_VERSION, schedule)
+    old_id = _insert_plan(db_engine, analysis_id, dataset_id, rows, SEPARATE_DES_V2_ENGINE_VERSION, schedule)
     scenario = next(s for s in client.get(f"/analyses/{analysis_id}/scenarios").json()["scenarios"] if s["id"] == old_id)
     assert scenario["evidence_status"] == "HISTORICAL_REQUIRES_RECALCULATION"
     assert any(HISTORICAL_PER_DATE_SNAPSHOT in (reason.get("detail") or "") for reason in scenario["evidence_reasons"])

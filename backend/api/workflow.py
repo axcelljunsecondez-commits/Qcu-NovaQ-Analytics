@@ -66,6 +66,8 @@ from backend.queueing_engine.services.separate_optimization import (
     SELECTED_DES_PER_PERIOD_EXECUTION,
     SEPARATE_DES_ENGINE_VERSION,
     SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION,
+    SEPARATE_DES_V2_ENGINE_VERSION,
+    SEPARATE_DES_V3_ENGINE_VERSION,
     _period_current_active,
     _segment_window,
     date_seed,
@@ -251,6 +253,11 @@ UNSUPPORTED_SEPARATE_SNAPSHOT = "not a supported Separate optimization snapshot"
 HISTORICAL_PER_DATE_SNAPSHOT = (
     "calculated with the earlier per-date method, where each period ran alone for 24 hours; "
     "run Suggested plans again to judge each date as one continuous day")
+# U10 F16: plans saved before every replication's cost was counted (engine v2/v3) are historical.
+HISTORICAL_COST_SNAPSHOT = (
+    "calculated before every simulated repeat's cost was counted in the plan's cost; "
+    "run Suggested plans again")
+_HISTORICAL_SNAPSHOTS = (HISTORICAL_PER_DATE_SNAPSHOT, HISTORICAL_COST_SNAPSHOT)
 
 
 def _separate_schedule_problem(scenario: Scenario, setup: dict[str, Any] | None = None) -> str | None:
@@ -266,9 +273,11 @@ def _separate_schedule_problem(scenario: Scenario, setup: dict[str, Any] | None 
     if calc.get("schema_version") != 2:
         return UNSUPPORTED_SEPARATE_SNAPSHOT
     if calc.get("engine_version") != expected:
-        if (calc.get("engine_version") == SEPARATE_DES_ENGINE_VERSION
+        if (calc.get("engine_version") == SEPARATE_DES_V2_ENGINE_VERSION
                 and expected == SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION):
             return HISTORICAL_PER_DATE_SNAPSHOT
+        if calc.get("engine_version") in (SEPARATE_DES_V2_ENGINE_VERSION, SEPARATE_DES_V3_ENGINE_VERSION):
+            return HISTORICAL_COST_SNAPSHOT
         return UNSUPPORTED_SEPARATE_SNAPSHOT
     schedule = (scenario.results_json or {}).get("schedule")
     if not isinstance(schedule, dict) or schedule.get("overall") != "COMPLETE":
@@ -443,7 +452,7 @@ def _scenario_evidence(
         problem = _separate_schedule_problem(scenario, analysis.queue_setup_json or {})
         if problem is not None:
             code = (ReasonCode.VERSION_UNSUPPORTED if problem == UNSUPPORTED_SEPARATE_SNAPSHOT
-                    else ReasonCode.VERSION_HISTORICAL if problem == HISTORICAL_PER_DATE_SNAPSHOT
+                    else ReasonCode.VERSION_HISTORICAL if problem in _HISTORICAL_SNAPSHOTS
                     else ReasonCode.CALCULATION_UNSUPPORTED)
             fail(code, subject, f"Separate plan is not selectable: {problem}.")
         if resolved is not None:
