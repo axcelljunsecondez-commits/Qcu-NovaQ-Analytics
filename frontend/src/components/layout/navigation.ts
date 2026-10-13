@@ -1,7 +1,7 @@
 // Global navigation model (spec 2026-10-09 §7.3, MASTER §9.1 version 1.1).
 // Insights and Simulation items open the last-used analysis: Analysis results
-// at /results (U6), Queue simulation at /simulation/results (U7a), Reports in
-// the analysis workspace.
+// at /results (U6), Queue simulation at /simulation/results (U7a), Reports at
+// /reports (B8, D33).
 
 export type NavIconName = 'analyses' | 'results' | 'reports' | 'simulation' | 'calculator'
 
@@ -17,10 +17,6 @@ export interface NavGroup {
   items: NavItem[]
 }
 
-function analysisPage(step: string) {
-  return (lastAnalysisId: number | null) => (lastAnalysisId ? `/analyses/${lastAnalysisId}/${step}` : '/analyses')
-}
-
 function analysisStep(...steps: string[]) {
   const pattern = new RegExp(`^/analyses/\\d+/(${steps.join('|')})/?$`)
   return (pathname: string) => pattern.test(pathname)
@@ -32,7 +28,12 @@ const analysisResults: NavItem = {
   target: (lastAnalysisId) => (lastAnalysisId ? `/results?analysis=${lastAnalysisId}` : '/analyses'),
   matches: (pathname) => pathname === '/results' || pathname.startsWith('/results/'),
 }
-const reports: NavItem = { key: 'reports', icon: 'reports', target: analysisPage('reports'), matches: analysisStep('reports') }
+const reports: NavItem = {
+  key: 'reports',
+  icon: 'reports',
+  target: (lastAnalysisId) => (lastAnalysisId ? `/reports?analysis=${lastAnalysisId}` : '/analyses'),
+  matches: (pathname) => pathname === '/reports' || analysisStep('reports')(pathname),
+}
 const queueSimulation: NavItem = {
   key: 'queue_simulation',
   icon: 'simulation',

@@ -265,6 +265,12 @@ def _table(sheet, title: str, headers: Sequence[str], rows: Sequence[Sequence[An
         sheet.append(list(row))
 
 
+def workbook_sheets(model: Mapping[str, Any]) -> list[str]:
+    """The workbook's sheets in order; the Reports page lists exactly these (and the workbook asserts them)."""
+    full = ["Simulation", "Checks", "Decision"] if model.get("report") == "full" else []
+    return ["Overview", "Your data", "Plan", "Formula check", "Plan search", *full, "Assumptions", "Provenance"]
+
+
 def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
     """The plan report's "check the math" workbook, from the report model only."""
     workbook = Workbook()
@@ -319,6 +325,7 @@ def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
            [[name, value if not isinstance(value, (dict, list)) else str(value)] for name, value in model["assumptions"].items()])
     _table(workbook.create_sheet("Provenance"), "Provenance", ["Item", "Value"],
            [[name, value] for name, value in model["provenance"].items()])
+    assert workbook.sheetnames == workbook_sheets(model)
     buffer = io.BytesIO()
     workbook.save(buffer)
     buffer.seek(0)

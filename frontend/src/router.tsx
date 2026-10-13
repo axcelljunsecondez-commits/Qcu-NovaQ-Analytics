@@ -66,6 +66,13 @@ function ResultsRedirect() {
   return <Navigate to={`/results?analysis=${analysisId ?? ''}`} replace />
 }
 
+// Reports moved out of the workspace to /reports?analysis=:id (B8 Reports page, D33).
+// oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
+function ReportsRedirect() {
+  const { analysisId } = useParams()
+  return <Navigate to={`/reports?analysis=${analysisId ?? ''}`} replace />
+}
+
 // The workspace Simulate page became Queue simulation (spec §5, D28); named mode is kept.
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
 function SimulateRedirect() {
@@ -125,10 +132,11 @@ export function createAppRouter() {
                     { path: 'compare', element: <ResultsRedirect /> },
                     { path: 'simulate', element: <SimulateRedirect /> },
                     { path: 'decision', element: <DecisionEndpointPage /> },
-                    { path: 'reports', element: <ReportsPage /> },
+                    { path: 'reports', element: <ReportsRedirect /> },
                   ],
                 },
                 { path: '/results', element: <ResultsPage /> },
+                { path: '/reports', element: <ReportsPage /> },
                 { path: '/simulation', element: <KeepQueryRedirect to="/simulation/results" /> },
                 { path: '/simulation/results', element: <QueueSimulationPage page="results" /> },
                 { path: '/simulation/replay', element: <QueueSimulationPage page="replay" /> },

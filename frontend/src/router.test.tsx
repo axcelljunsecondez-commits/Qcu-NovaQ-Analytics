@@ -49,6 +49,7 @@ describe('canonical route contract', () => {
       '/analyses/:analysisId/simulate',
       '/analyses/:analysisId/decision',
       '/analyses/:analysisId/reports',
+      '/reports',
       '/datasets',
       '/analysis',
       '/account',

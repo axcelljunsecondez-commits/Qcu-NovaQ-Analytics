@@ -90,6 +90,16 @@ def _chart(title: str, labels: Sequence[str], series: Sequence[tuple[str, Sequen
     return drawing
 
 
+def pdf_sections(model: Mapping[str, Any]) -> list[str]:
+    """The PDF's section headings in order; the Reports page lists exactly these, and each is printed as written."""
+    sections = ["Key results: now and with the plan", "By period"]
+    if model.get("breaks"):
+        sections.append("Breaks in the Setup")
+    if model.get("report") == "full":
+        sections += ["Decision", "Simulation key results", "Checks", "What is not included"]
+    return sections
+
+
 def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
     """The plan or full report PDF, from the report model only."""
     styles = _styles()
@@ -148,6 +158,8 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
         story += _full_pages(model, styles)
     else:
         story.append(Paragraph("This is a calculated result, not yet checked by simulation.", styles["body"]))
+    headings = [item.text for item in story if isinstance(item, Paragraph) and item.style is styles["h2"]]
+    assert headings == pdf_sections(model), headings
     buffer = io.BytesIO()
     SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.7 * inch, bottomMargin=0.7 * inch,
                       title="NovaQ full report" if full else "NovaQ plan report").build(story)

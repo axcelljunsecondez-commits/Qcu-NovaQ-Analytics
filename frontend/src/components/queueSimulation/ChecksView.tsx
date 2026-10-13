@@ -177,7 +177,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
               <div><h3 className="section-title">{t('simulation.sep_decision_periods')}</h3><ul>{decision.failed_periods.map((time) => <li key={time}>{time}</li>)}</ul></div>
             )}
             <div className="button-row">
-              {(decision.status === 'conditional' || decision.status === 'adopt') && <Link to={`/analyses/${analysisId}/reports`}>{t('simulation.sep_decision_next_reports')}</Link>}
+              {(decision.status === 'conditional' || decision.status === 'adopt') && <Link to={`/reports?analysis=${analysisId}`}>{t('simulation.sep_decision_next_reports')}</Link>}
               {(decision.status === 'revise' || decision.status === 'insufficient_evidence') && <Link to={`/analyses/${analysisId}/plans`}>{t('simulation.sep_decision_next_compare')}</Link>}
             </div>
           </div>

@@ -176,7 +176,7 @@ Tests: B2 numbers identical to `/analysis/{model}`; 429 by client; tooltips reac
 
 ## Phase 15 — B8 Reports
 
-Status (2026-10-13): split into 15a (report model, plan preview, workbook with Formula check and Plan search; committed `5bb17e6e`), 15b (PDFs and the full report; implemented after `5bb17e6e`, uncommitted) and 15c (Reports page). The shared full report shows the period-by-period evidence the Decision uses.
+Status (2026-10-13): split into 15a (report model, plan preview, workbook with Formula check and Plan search; committed `5bb17e6e`), 15b (PDFs and the full report; committed `2595c8e0`) and 15c (Reports page; implemented after `2595c8e0`, uncommitted; open: previews share the 10-per-minute report limit). The shared full report shows the period-by-period evidence the Decision uses.
 
 Per its spec: PDF summary and Excel calculation workbook, previews derived from the export contract, parity tests per format, formula-check sheet differences within stated tolerance.
 

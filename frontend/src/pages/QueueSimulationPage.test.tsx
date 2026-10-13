@@ -662,7 +662,7 @@ describe('a selected separate-lines plan', () => {
     expect(order).toEqual([...order].sort((a, b) => a - b))
     expect(runSelectedMcMock.mock.calls[0][1]).not.toHaveProperty('failure_threshold')
     expect(await screen.findByText('Decision: CONDITIONAL')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Continue to Reports' })).toHaveAttribute('href', '/analyses/7/reports')
+    expect(screen.getByRole('link', { name: 'Continue to Reports' })).toHaveAttribute('href', '/reports?analysis=7')
     // Each period's lane table scrolls in its own box, so a phone never scrolls the page sideways.
     expect(screen.getByRole('region', { name: 'Period evidence · 08:00' })).toContainElement(screen.getByRole('rowheader', { name: 'east-07' }))
   })

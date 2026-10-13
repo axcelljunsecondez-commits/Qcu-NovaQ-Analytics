@@ -30,8 +30,13 @@ from backend.db.models import AnalysisProject, User
 from backend.db.session import get_db
 from backend.queueing_engine.services.model_explanations import analyze_segments
 from backend.reports.full_report import full_model, separate_full_sections, shared_full_sections
-from backend.reports.plan_report import build_separate_plan_model, build_shared_plan_model, generate_plan_workbook
-from backend.reports.report_pdf import generate_report_pdf
+from backend.reports.plan_report import (
+    build_separate_plan_model,
+    build_shared_plan_model,
+    generate_plan_workbook,
+    workbook_sheets,
+)
+from backend.reports.report_pdf import generate_report_pdf, pdf_sections
 
 router = APIRouter(prefix="/analyses", tags=["plan-reports"])
 EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -70,8 +75,8 @@ def plan_report_preview(
     user: User = Depends(get_current_user),
     _rate_limit: None = Depends(user_rate_limit("report")),
 ) -> dict[str, Any]:
-    """The plan report model; the workbook is rendered from the same model."""
-    return {"model": _plan_model(db, user, own_analysis(db, user, analysis_id))}
+    """The plan report model; the files are rendered from the same model, with the contents listed here."""
+    return _preview(_plan_model(db, user, own_analysis(db, user, analysis_id)))
 
 
 @router.get("/{analysis_id}/reports/plan.xlsx")
@@ -107,6 +112,15 @@ def _full_model(db: Session, user: User, analysis: AnalysisProject) -> dict[str,
     return full_model(plan, sections)
 
 
+def _preview(model: dict[str, Any]) -> dict[str, Any]:
+    contents = {"pdf": pdf_sections(model), "excel": workbook_sheets(model)}
+    # What the full report adds, from the same rules, so the page can mark it "after the checks".
+    full = {**model, "report": "full"}
+    after = {"pdf": [item for item in pdf_sections(full) if item not in contents["pdf"]],
+             "excel": [item for item in workbook_sheets(full) if item not in contents["excel"]]}
+    return {"model": model, "contents": contents, "after_checks": after}
+
+
 def _file(content: bytes, media_type: str, name: str) -> Response:
     return Response(content=content, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
@@ -130,7 +144,7 @@ def full_report_preview(
     _rate_limit: None = Depends(user_rate_limit("report")),
 ) -> dict[str, Any]:
     """The full report model; the PDF and the workbook are rendered from the same model."""
-    return {"model": _full_model(db, user, own_analysis(db, user, analysis_id))}
+    return _preview(_full_model(db, user, own_analysis(db, user, analysis_id)))
 
 
 @router.get("/{analysis_id}/reports/full.pdf")

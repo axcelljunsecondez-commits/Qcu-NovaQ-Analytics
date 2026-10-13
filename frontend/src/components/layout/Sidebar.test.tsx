@@ -70,7 +70,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
     expect(await screen.findByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
-    expect(screen.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/analyses/7/reports')
+    expect(screen.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports?analysis=7')
     expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/simulation/results?analysis=7')
     expect(screen.getByRole('link', { name: 'Quick calculator' })).toHaveAttribute('href', '/tools/calculator')
   })

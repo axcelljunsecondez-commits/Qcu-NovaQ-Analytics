@@ -1,143 +1,86 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useLocation } from 'react-router-dom'
 import { renderWithProviders } from '../test/test-utils'
 import { ReportsPage } from './ReportsPage'
 
-const listDatasetsMock = vi.fn()
-const listScenariosMock = vi.fn()
-const fetchReportMock = vi.fn()
-const fetchSelectedReportMock = vi.fn()
-const fetchSelectedPreviewMock = vi.fn()
-const getWorkflowMock = vi.fn()
+const listAnalysesMock = vi.fn()
 const getAnalysisMock = vi.fn()
+const listAnalysisDatasetsMock = vi.fn()
+const previewMock = vi.fn()
+const fileMock = vi.fn()
+const fetchReportMock = vi.fn()
 const createObjectURLMock = vi.fn()
 const revokeObjectURLMock = vi.fn()
 let clickSpy: ReturnType<typeof vi.spyOn>
 
-vi.mock('../api/datasets', () => ({
-  listDatasets: (...args: unknown[]) => listDatasetsMock(...args),
-  getDataset: vi.fn(),
-  uploadDataset: vi.fn(),
-  deleteDataset: vi.fn(),
-}))
-
-vi.mock('../api/scenarios', () => ({
-  listScenarios: (...args: unknown[]) => listScenariosMock(...args),
-  createScenario: vi.fn(),
+vi.mock('../api/analyses', () => ({
+  listAnalyses: (...args: unknown[]) => listAnalysesMock(...args),
+  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+  listAnalysisDatasets: (...args: unknown[]) => listAnalysisDatasetsMock(...args),
 }))
 
 vi.mock('../api/reports', async () => {
   const actual = await vi.importActual<typeof import('../api/reports')>('../api/reports')
   return {
     ...actual,
+    fetchReportPreview: (...args: unknown[]) => previewMock(...args),
+    fetchReportFile: (...args: unknown[]) => fileMock(...args),
     fetchReport: (...args: unknown[]) => fetchReportMock(...args),
-    fetchSelectedReport: (...args: unknown[]) => fetchSelectedReportMock(...args),
-    fetchSelectedPreview: (...args: unknown[]) => fetchSelectedPreviewMock(...args),
   }
 })
 
-vi.mock('../api/analyses', () => ({
-  getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
-}))
-
-vi.mock('../api/workflow', () => ({
-  getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
-}))
-
 vi.mock('../api/auth', () => ({
-  me: vi.fn(async () => ({
-    user: { id: 1, email: 'a@b.c', role: 'admin', active: true, created_at: '2026-01-01T00:00:00Z' },
-  })),
+  me: vi.fn(async () => ({ user: { id: 1, email: 'a@b.c', role: 'admin', active: true, created_at: '2026-01-01T00:00:00Z' } })),
   login: vi.fn(async () => ({})),
   logout: vi.fn(async () => ({})),
 }))
 
-const dataset = {
-  id: 1,
-  name: 'sample',
-  source_filename: 'sample.csv',
-  source_format: 'csv',
-  row_count: 1,
-  validation: { ok: true, message: 'Input data is valid.' },
-  created_at: '2026-08-01T10:00:00Z',
-  normalized: [{ time: '08:00-09:00', lambda: 30, mu: 12, c: 3 }],
+const analysis = { id: 7, name: 'Main branch', archived_at: null, queue_setup: { queue_structure: 'shared_queue' } }
+const datasets = [
+  { id: 3, name: 'March records', validation: { ok: true } },
+  { id: 4, name: 'Broken upload', validation: { ok: false } },
+]
+const PLAN_CONTENTS = { pdf: ['Key results: now and with the plan', 'By period'],
+  excel: ['Overview', 'Your data', 'Plan', 'Formula check', 'Plan search', 'Assumptions', 'Provenance'] }
+const AFTER = { pdf: ['Decision', 'Simulation key results', 'Checks', 'What is not included'], excel: ['Simulation', 'Checks', 'Decision'] }
+const planPreview = { model: { report: 'plan', line_type: 'shared', cover: { label: '', plan_name: 'Four at eight', analysis_name: 'Main branch' } },
+  contents: PLAN_CONTENTS, after_checks: AFTER }
+const fullPreview = {
+  model: { report: 'full', line_type: 'shared', cover: { label: '', plan_name: 'Four at eight', analysis_name: 'Main branch' },
+    decision: { status: 'adopt', headline: 'Adopt Scenario "Four at eight".', recommendation: '' } },
+  contents: { pdf: [...PLAN_CONTENTS.pdf, ...AFTER.pdf], excel: ['Overview', 'Your data', 'Plan', 'Formula check', 'Plan search',
+    'Simulation', 'Checks', 'Decision', 'Assumptions', 'Provenance'] },
+  after_checks: { pdf: [], excel: [] },
+}
+const refused = (status: number, detail: unknown) => Object.assign(new Error('refused'), { response: { status, data: { detail } } })
+
+function Address() {
+  const location = useLocation()
+  return <output data-testid="address">{location.pathname}{location.search}</output>
 }
 
-const scenario = {
-  id: 1,
-  dataset_id: 1,
-  name: 'Plan A',
-  settings: {},
-  results: { results: [] },
-  created_at: '2026-08-02T10:00:00Z',
-}
-
-const decision = {
-  status: 'adopt',
-  headline: 'Adopt Scenario "Plan A".',
-  recommendation: 'All intervals passed and modeled cost decreases.',
-  rationale: ['Selected Scenario: Plan A (ID 1).'],
-  missing_evidence: [],
-  scenario_id: 1,
-  scenario_name: 'Plan A',
-  dataset_id: 1,
-  evidence_ids: { selection: 2, des: 3, mc: null, validation: 4 },
-  provenance_warning: 'Simulation is decision support, not an observed future outcome.',
-}
-
-function workflow(decisionResult: typeof decision | null) {
-  return {
-    analysis_id: 7,
-    selection: null,
-    scenario: { id: 1, name: 'Plan A', dataset_id: 1, provenance: 'verified_snapshot' },
-    des: null,
-    mc: null,
-    validation: null,
-    decision: decisionResult ? {
-      id: 5,
-      kind: 'workflow_decision',
-      status: 'completed',
-      params: {},
-      result: decisionResult,
-      created_at: '2026-09-13T00:00:00Z',
-      finished_at: '2026-09-13T00:01:00Z',
-    } : null,
-    decision_stale: false,
-  }
-}
-
-function renderAnalysisReports() {
+function renderReports(route = '/reports?analysis=7') {
   return renderWithProviders(
     <Routes>
-      <Route path="/analyses/:analysisId/reports" element={<ReportsPage />} />
+      <Route path="/reports" element={<><ReportsPage /><Address /></>} />
+      <Route path="/analyses" element={<Address />} />
     </Routes>,
-    { route: '/analyses/7/reports' },
+    { route },
   )
 }
 
 beforeEach(() => {
-  listDatasetsMock.mockReset()
-  listScenariosMock.mockReset()
-  fetchReportMock.mockReset()
-  getWorkflowMock.mockReset().mockResolvedValue(workflow(decision))
-  listDatasetsMock.mockResolvedValue({ datasets: [dataset] })
-  listScenariosMock.mockResolvedValue({ scenarios: [scenario] })
-  fetchReportMock.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
-  fetchSelectedReportMock.mockReset().mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
-  fetchSelectedPreviewMock.mockReset()
-  getAnalysisMock.mockReset().mockResolvedValue({
-    analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue', queue_ids: [] } },
-  })
-  createObjectURLMock.mockReset().mockReturnValue('blob:report')
-  revokeObjectURLMock.mockReset()
+  for (const mock of [listAnalysesMock, getAnalysisMock, listAnalysisDatasetsMock, previewMock, fileMock, fetchReportMock]) mock.mockReset()
+  listAnalysesMock.mockResolvedValue({ analyses: [analysis] })
+  getAnalysisMock.mockResolvedValue({ analysis })
+  listAnalysisDatasetsMock.mockResolvedValue({ datasets })
+  fileMock.mockResolvedValue(new Blob(['%PDF']))
+  fetchReportMock.mockResolvedValue(new Blob(['data']))
+  createObjectURLMock.mockReturnValue('blob:report')
+  vi.stubGlobal('URL', { ...URL, createObjectURL: createObjectURLMock, revokeObjectURL: revokeObjectURLMock })
   clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-  vi.stubGlobal('URL', {
-    ...URL,
-    createObjectURL: createObjectURLMock,
-    revokeObjectURL: revokeObjectURLMock,
-  })
 })
 
 afterEach(() => {
@@ -145,226 +88,88 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('ReportsPage', () => {
-  it('previews only the sections and sheets produced by the current exporters', async () => {
-    renderWithProviders(<ReportsPage />, { route: '/reports' })
-    const preview = await screen.findByTestId('report-preview')
-    const pdf = within(preview).getByRole('region', { name: 'PDF sections' })
-    const excel = within(preview).getByRole('region', { name: 'Excel sheets' })
-
-    expect(within(pdf).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      'QCU Queue Analysis Report',
-      'Executive Summary',
-      'Segment Comparison',
-      'Recommendations',
-    ])
-    expect(within(excel).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      'Summary',
-      'Segments',
-      'Recommendations — Included when recommendation evidence is available.',
-    ])
-    expect(within(preview).queryByText(/Simulation Validation|ROI|Methodology|Appendix/i)).not.toBeInTheDocument()
+describe('Reports page (B8, D33)', () => {
+  it('offers only the data report until a plan is chosen', async () => {
+    previewMock.mockRejectedValue(refused(422, { code: 'no_selected_plan', detail: 'Choose a plan in Suggested plans first.' }))
+    renderReports()
+    expect(await screen.findByText('No plan chosen yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
+    expect(screen.queryByTestId('report-card-pdf')).not.toBeInTheDocument()
+    expect(previewMock).toHaveBeenCalledTimes(1)  // no full report is asked for without a plan
+    const data = screen.getByTestId('report-card-data')
+    expect(within(data).getAllByRole('option').map((option) => option.textContent)).toEqual(['March records'])  // processed files only
+    await userEvent.setup().click(within(data).getByRole('button', { name: 'Download data (Excel)' }))
+    await waitFor(() => expect(fetchReportMock).toHaveBeenCalledWith('datasets', 3, 'excel', 7))
   })
 
-  it('shows dataset and scenario source cards with PDF/Excel buttons', async () => {
-    renderWithProviders(<ReportsPage />, { route: '/reports' })
-    const datasetCard = await screen.findByTestId('report-card-datasets')
-    const scenarioCard = await screen.findByTestId('report-card-scenarios')
-    expect(await within(datasetCard).findByRole('option', { name: 'sample' })).toBeInTheDocument()
-    expect(within(scenarioCard).getByRole('option', { name: 'Plan A' })).toBeInTheDocument()
-    expect(within(datasetCard).getByRole('button', { name: 'Download PDF' })).toBeInTheDocument()
-    expect(within(datasetCard).getByRole('button', { name: 'Download Excel' })).toBeInTheDocument()
-    expect(within(scenarioCard).getByRole('button', { name: 'Download PDF' })).toBeInTheDocument()
-    expect(within(scenarioCard).getByRole('button', { name: 'Download Excel' })).toBeInTheDocument()
+  it('says a plan is out of date with the server reason', async () => {
+    previewMock.mockRejectedValue(refused(422, { code: 'plan_not_current', detail: 'Scenario setup changed.' }))
+    renderReports()
+    expect(await screen.findByText('Out of date:')).toBeInTheDocument()
+    expect(screen.getByText('Scenario setup changed.')).toBeInTheDocument()
+    expect(screen.queryByTestId('report-card-excel')).not.toBeInTheDocument()
   })
 
-  it('downloads a dataset PDF as a blob and triggers the anchor download', async () => {
+  it('stamps a calculated plan, lists the file contents and what comes after the checks, and downloads the plan files', async () => {
+    previewMock.mockImplementation(async (_id: number, level: string) => {
+      if (level === 'plan') return planPreview
+      throw refused(404, 'Run selected-plan Monte Carlo before generating the final report.')
+    })
     const user = userEvent.setup()
-    renderWithProviders(<ReportsPage />, { route: '/reports' })
-    const datasetCard = await screen.findByTestId('report-card-datasets')
-    await within(datasetCard).findByRole('option', { name: 'sample' })
-    await user.click(within(datasetCard).getByRole('button', { name: 'Download PDF' }))
-    await waitFor(() => {
-      expect(fetchReportMock).toHaveBeenCalledWith('datasets', 1, 'pdf')
-    })
-    await waitFor(() => {
-      expect(createObjectURLMock).toHaveBeenCalled()
-    })
-    await waitFor(() => {
-      expect(clickSpy).toHaveBeenCalled()
-    })
-    await waitFor(() => {
-      expect(revokeObjectURLMock).toHaveBeenCalled()
-    })
+    renderReports()
+    expect(await screen.findByText('Calculated only · not checked by simulation')).toBeInTheDocument()
+    expect(screen.getByTestId('full-reason')).toHaveTextContent('Run selected-plan Monte Carlo before generating the final report.')
+    const pdf = screen.getByTestId('report-card-pdf')
+    expect(within(pdf).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Key results: now and with the plan', 'By period', 'Decision (after the checks)', 'Simulation key results (after the checks)',
+      'Checks (after the checks)', 'What is not included (after the checks)'])
+    await user.click(within(pdf).getByRole('button', { name: 'Download PDF' }))
+    await waitFor(() => expect(fileMock).toHaveBeenCalledWith(7, 'plan', 'pdf'))
+    await user.click(within(screen.getByTestId('report-card-excel')).getByRole('button', { name: 'Download Excel' }))
+    await waitFor(() => expect(fileMock).toHaveBeenCalledWith(7, 'plan', 'xlsx'))
     expect(await screen.findByText('Report downloaded.')).toBeInTheDocument()
   })
 
-  it('downloads a scenario Excel via the scenario source card', async () => {
-    const user = userEvent.setup()
-    const downloadSpy = vi.spyOn(HTMLAnchorElement.prototype, 'download', 'set')
-    renderWithProviders(<ReportsPage />, { route: '/reports' })
-    const scenarioCard = await screen.findByTestId('report-card-scenarios')
-    await within(scenarioCard).findByRole('option', { name: 'Plan A' })
-    await user.click(within(scenarioCard).getByRole('button', { name: 'Download Excel' }))
-    await waitFor(() => {
-      expect(fetchReportMock).toHaveBeenCalledWith('scenarios', 1, 'excel')
-    })
-    await waitFor(() => {
-      expect(downloadSpy).toHaveBeenCalledWith('novaq_scenarios_1.xlsx')
-    })
-    downloadSpy.mockRestore()
+  it('stamps the full report with the Decision and downloads the full files', async () => {
+    previewMock.mockImplementation(async (_id: number, level: string) => (level === 'plan' ? planPreview : fullPreview))
+    renderReports()
+    expect(await screen.findByText('Checked by simulation · Decision: Adopt')).toBeInTheDocument()
+    expect(screen.getByText('Adopt Scenario "Four at eight".')).toBeInTheDocument()
+    expect(screen.getByText('Plan: Four at eight')).toBeInTheDocument()
+    const excel = screen.getByTestId('report-card-excel')
+    expect(within(excel).getAllByRole('listitem').map((item) => item.textContent)).toContain('Decision')
+    expect(within(excel).queryByText(/after the checks/)).not.toBeInTheDocument()
+    await userEvent.setup().click(within(excel).getByRole('button', { name: 'Download Excel' }))
+    await waitFor(() => expect(fileMock).toHaveBeenCalledWith(7, 'full', 'xlsx'))
   })
 
-  it('shows the empty state when no datasets or scenarios exist', async () => {
-    listDatasetsMock.mockResolvedValue({ datasets: [] })
-    listScenariosMock.mockResolvedValue({ scenarios: [] })
-    renderWithProviders(<ReportsPage />, { route: '/reports' })
-    expect(await screen.findByText('No data available for reports.')).toBeInTheDocument()
+  it('shows a refused download as an alert', async () => {
+    previewMock.mockImplementation(async (_id: number, level: string) => (level === 'plan' ? planPreview : fullPreview))
+    fileMock.mockRejectedValue(refused(422, { code: 'no_current_decision', detail: 'Make the Decision on the Checks and decision page first.' }))
+    renderReports()
+    await userEvent.setup().click(within(await screen.findByTestId('report-card-pdf')).getByRole('button', { name: 'Download PDF' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Make the Decision on the Checks and decision page first.')
   })
 
-  it('blocks an analysis scenario report until a matching Decision exists', async () => {
-    getWorkflowMock.mockResolvedValue(workflow(null))
-    renderAnalysisReports()
-    expect(await screen.findByText(/Generate a Decision before exporting/)).toBeInTheDocument()
-    const card = await screen.findByTestId('report-card-scenarios')
-    expect(within(card).getByRole('button', { name: 'Download PDF' })).toBeDisabled()
-    expect(within(card).getByRole('button', { name: 'Download Excel' })).toBeDisabled()
+  it('shows any other refusal as an error, not as an out-of-date plan', async () => {
+    previewMock.mockRejectedValue(refused(500, 'Internal error'))
+    renderReports()
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText('Out of date:')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('report-stamp')).not.toBeInTheDocument()
   })
 
-  it('does not present or export a stale Decision as current', async () => {
-    getWorkflowMock.mockResolvedValue({ ...workflow(decision), decision_stale: true })
-    renderAnalysisReports()
-    expect(await screen.findByText(/Decision is stale/)).toBeInTheDocument()
-    expect(screen.queryByTestId('report-decision')).not.toBeInTheDocument()
-    const card = await screen.findByTestId('report-card-scenarios')
-    expect(within(card).getByRole('button', { name: 'Download PDF' })).toBeDisabled()
-    expect(within(card).getByRole('button', { name: 'Download Excel' })).toBeDisabled()
+  it('remembers the analysis it shows', async () => {
+    window.localStorage.removeItem('novaq_last_analysis')
+    previewMock.mockResolvedValue(planPreview)
+    renderReports()
+    await waitFor(() => expect(window.localStorage.getItem('novaq_last_analysis')).toBe('7'))
   })
 
-  it('shows and exports the persisted Decision recommendation', async () => {
-    const user = userEvent.setup()
-    renderAnalysisReports()
-    const summary = await screen.findByTestId('report-decision')
-    expect(within(summary).getByText('Adopt Scenario "Plan A".')).toBeInTheDocument()
-    const card = await screen.findByTestId('report-card-scenarios')
-    await user.click(within(card).getByRole('button', { name: 'Download PDF' }))
-    await waitFor(() => expect(fetchReportMock).toHaveBeenCalledWith('scenarios', 1, 'pdf', 7))
-  })
-})
-
-describe('separate full report', () => {
-  function renderSeparateReports() {
-    getAnalysisMock.mockResolvedValue({
-      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['east-07', 'lane-A'] } },
-    })
-    return renderWithProviders(
-      <Routes>
-        <Route path="/analyses/:analysisId/reports" element={<ReportsPage />} />
-      </Routes>,
-      { route: '/analyses/7/reports' },
-    )
-  }
-
-  const previewModel = {
-    overview: {
-      analysis_id: 7, analysis_name: 'East lanes', queue_structure: 'separate_queues',
-      dataset_id: 2, dataset_name: 'lanes.csv', scenario_id: 9,
-      scenario_name: 'Optimal @ 70%', target: 0.7, decision: 'conditional',
-      generated_at: '2026-09-18T00:00:00+00:00',
-    },
-    dataset: { row_count: 2, periods: ['08:00'], queue_ids: ['east-07', 'lane-A'], queue_count: 2 },
-    queue_config: { model: 'one queue_id = one physical queue + one physical single server' },
-    current: {
-      periods: [{
-        time: '08:00',
-        queues: [
-          { queue_id: 'east-07', lambda: 4.0, rho: 0.36, Wq: 0.05, model: 'M/G/1', stable: true },
-          { queue_id: 'lane-A', lambda: 2.0, rho: 0.18, Wq: 0.02, model: 'M/G/1', stable: true },
-        ],
-      }],
-      wait_mean: 0.04, peak_utilization: 0.36, waiting_cost: 25.0,
-    },
-    optimization: { evaluation_method: 'DES_REPLICATIONS', target: 0.7 },
-    comparison_plans: [{ scenario_id: 9, name: 'Optimal @ 70%', target: 0.7, overall: 'COMPLETE' }],
-    selected: { scenario_id: 9, name: 'Optimal @ 70%' },
-    schedule: {
-      periods: [{
-        time: '08:00', current_active_lanes: ['east-07', 'lane-A'],
-        optimal_active_lanes: 1, adjustment: -1, peak_utilization: 0.55,
-        optimum: { active_queue_ids: ['east-07'], inactive_queue_ids: ['lane-A'] },
-      }],
-    },
-    des: { overall_conservation: true, overall_status: 'COMPLETED', periods: [] },
-    mc: { lanes: [] },
-    validation: { verdict: 'pass', periods: [] },
-    decision: {
-      status: 'conditional',
-      headline: 'Consider Scenario "Optimal @ 70%" conditionally.',
-      recommendation: 'All 1 validation checks passed, but modeled savings are unavailable.',
-      rationale: ['Selected Scenario: Optimal @ 70% (ID 9).'],
-      facts: { lane_delta: -1 },
-      failed_periods: [],
-    },
-    staffing_title: 'Selected Staffing Schedule',
-    cost: {
-      current_waiting: 25.0, selected_total: 180.0,
-      current_total: null, savings: null, roi: null,
-    },
-    limitations: ['Each optimized period was simulated independently (period-independent execution).'],
-    provenance: { scenario_id: 9, des_job_id: 10, decision_job_id: 13 },
-  }
-
-  it('renders context, preview sections, and the selected schedule', async () => {
-    fetchSelectedPreviewMock.mockResolvedValue({ model: previewModel })
-    renderSeparateReports()
-    expect(await screen.findByText('Optimal @ 70%')).toBeInTheDocument()
-    expect(screen.getByText('Decision: CONDITIONAL')).toBeInTheDocument()
-    expect(screen.getByRole('rowheader', { name: '08:00' })).toBeInTheDocument()
-    expect(screen.getAllByText(/east-07/).length).toBeGreaterThan(0)
-    expect(fetchReportMock).not.toHaveBeenCalled()
-  })
-
-  it('blocks export with the exact missing stage and keeps buttons disabled', async () => {
-    fetchSelectedPreviewMock.mockRejectedValue({
-      response: { data: { detail: 'Run selected-plan Decision before generating the final report.' } },
-    })
-    renderSeparateReports()
-    expect(await screen.findByText(/Run selected-plan Decision/)).toBeInTheDocument()
-    const card = await screen.findByTestId('report-card-separate')
-    expect(within(card).getByRole('button', { name: 'Download PDF' })).toBeDisabled()
-    expect(within(card).getByRole('button', { name: 'Download Excel' })).toBeDisabled()
-  })
-
-  it('exports PDF and Excel from the previewed chain without shared endpoints', async () => {
-    const user = userEvent.setup()
-    fetchSelectedPreviewMock.mockResolvedValue({ model: previewModel })
-    renderSeparateReports()
-    const card = await screen.findByTestId('report-card-separate')
-    await user.click(within(card).getByRole('button', { name: 'Download PDF' }))
-    await waitFor(() => expect(fetchSelectedReportMock).toHaveBeenCalledWith(7, 'pdf'))
-    await user.click(within(card).getByRole('button', { name: 'Download Excel' }))
-    await waitFor(() => expect(fetchSelectedReportMock).toHaveBeenCalledWith(7, 'excel'))
-    expect(fetchReportMock).not.toHaveBeenCalled()
-  })
-
-  it('shows N/A costs without fabricating savings or ROI', async () => {
-    fetchSelectedPreviewMock.mockResolvedValue({ model: previewModel })
-    renderSeparateReports()
-    await screen.findByTestId('report-card-separate')
-    expect(screen.getAllByText('N/A').length).toBeGreaterThan(0)
-    expect(screen.queryByText(/Savings: ₱/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/ROI: [0-9]/)).not.toBeInTheDocument()
-  })
-
-  it('shows N/A with the backend reason next to savings and ROI', async () => {
-    const reason = "ROI can't be declared: the current cost is calculated with the queueing formula and the plan's cost with simulation, so the two can't be subtracted."
-    const note = 'Note: from 11:00 to 12:00 the cashiers on duty during breaks cannot keep up with demand (pooled 15-minute ρ = 1.01); the break optimizer addresses this.'
-    fetchSelectedPreviewMock.mockResolvedValue({
-      model: { ...previewModel, cost: { ...previewModel.cost, roi_unavailable_reason: reason, break_overload_note: note } },
-    })
-    renderSeparateReports()
-    expect(await screen.findByTestId('separate-roi-reason')).toHaveTextContent(reason)
-    expect(screen.getByTestId('separate-break-note')).toHaveTextContent(note)
-    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(3)
+  it('opens the last analysis when none is in the address', async () => {
+    window.localStorage.setItem('novaq_last_analysis', '7')
+    previewMock.mockResolvedValue(planPreview)
+    renderReports('/reports')
+    await waitFor(() => expect(screen.getAllByTestId('address')[0]).toHaveTextContent('/reports?analysis=7'))
   })
 })

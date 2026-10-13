@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 
 from backend.db.models import Dataset
 from backend.reports.full_report import SHARED_SOURCE
+from backend.reports.report_pdf import generate_report_pdf, pdf_sections
 from tests import test_b13_per_date_day as b13
 from tests.helpers import create_user, csrf_header, login, make_sessionmaker
 
@@ -173,3 +174,25 @@ def test_other_users_cannot_read_any_report_file(db_engine, client):
     login(client, "other@example.com", "pw")
     for path in ("plan.pdf", "full/preview", "full.pdf", "full.xlsx"):
         assert client.get(f"/analyses/{a}/reports/{path}").status_code == 404, path
+
+
+def test_the_listed_contents_are_exactly_the_files_contents(db_engine, client):
+    """Spec §6 test 1: the page lists what the files contain, from the same rules."""
+    a = _shared_chain(client, db_engine)
+    for level in ("plan", "full"):
+        preview = _model(client, a, level).json()
+        contents = preview["contents"]
+        text = pdf_text(client.get(f"/analyses/{a}/reports/{level}.pdf").content)
+        assert all(section in text for section in contents["pdf"]), level
+        workbook = load_workbook(io.BytesIO(client.get(f"/analyses/{a}/reports/{level}.xlsx").content))
+        assert workbook.sheetnames == contents["excel"], level
+    assert "Decision" not in _model(client, a, "plan").json()["contents"]["pdf"]
+    plan_preview, full_preview = _model(client, a, "plan").json(), _model(client, a, "full").json()
+    for kind in ("pdf", "excel"):
+        # The full report has the plan report's parts plus the ones marked "after the checks".
+        assert sorted(plan_preview["contents"][kind] + plan_preview["after_checks"][kind]) == sorted(full_preview["contents"][kind])
+    assert full_preview["after_checks"] == {"pdf": [], "excel": []}
+    # A Setup with breaks adds its section; generate_report_pdf asserts its headings equal pdf_sections.
+    with_breaks = {**full_preview["model"], "breaks": [{"scheduled_start_time": "08:30", "duration_minutes": 15}]}
+    assert pdf_sections(with_breaks) == [*full_preview["contents"]["pdf"][:2], "Breaks in the Setup", *full_preview["contents"]["pdf"][2:]]
+    assert "Breaks in the Setup" in pdf_text(generate_report_pdf(with_breaks).getvalue())
