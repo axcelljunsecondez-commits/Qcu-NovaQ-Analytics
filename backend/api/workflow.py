@@ -1593,6 +1593,21 @@ def _cost_totals(rows: list[dict[str, Any]]) -> tuple[float, float] | None:
     )
 
 
+def _today_overloaded_periods(rows: list[dict[str, Any]]) -> list[str]:
+    """Periods whose missing today cost means today's staffing cannot keep up (spec 2026-10-13).
+
+    Non-empty only when every plan cost is finite and every missing today cost is in a period
+    the optimizer marked ``current_stable`` false (rho >= 1: no finite waiting cost). Any other
+    gap leaves the cost comparison missing.
+    """
+    if not all(_finite_non_negative(row.get("cost_optimal")) for row in rows):
+        return []
+    gaps = [row for row in rows if not _finite_non_negative(row.get("cost_current"))]
+    if not gaps or any(row.get("current_stable") is not False for row in gaps):
+        return []
+    return [str(row.get("time", "")) for row in gaps]
+
+
 def _derive_decision(
     analysis: AnalysisProject,
     scenario: Scenario | None,
@@ -1612,7 +1627,8 @@ def _derive_decision(
 
     rows = _scenario_rows(scenario) if scenario is not None else []
     totals = _cost_totals(rows) if rows else None
-    if scenario is not None and totals is None:
+    overloaded = _today_overloaded_periods(rows) if rows and totals is None else []
+    if scenario is not None and totals is None and not overloaded:
         missing.append("a complete modeled cost comparison")
 
     expected_times = [str(row.get("time", "")) for row in rows]
@@ -1660,7 +1676,7 @@ def _derive_decision(
             ),
         }
 
-    assert scenario is not None and totals is not None and validation is not None
+    assert scenario is not None and (totals is not None or overloaded) and validation is not None
     failure_cap_value = (validation.get("params") or {}).get("mc_failure_rate_cap")
     assert isinstance(failure_cap_value, (int, float)) and not isinstance(
         failure_cap_value, bool
@@ -1680,10 +1696,15 @@ def _derive_decision(
         )
 
     failed = [row for row in validation_rows if not row_passes(row)]
-    current_cost, optimal_cost = totals
-    savings = current_cost - optimal_cost
+    if totals is not None:
+        current_cost: float | None = totals[0]
+        optimal_cost = totals[1]
+        savings: float | None = totals[0] - totals[1]
+    else:  # today's staffing cannot keep up somewhere: no finite today cost, so no saving (spec 2026-10-13)
+        current_cost, savings = None, None
+        optimal_cost = math.fsum(float(row["cost_optimal"]) for row in rows)
     server_delta = sum(int(row["c_optimal"]) - int(row["c_current"]) for row in rows)
-    facts = {
+    facts: dict[str, Any] = {
         "current_modeled_cost": current_cost,
         "selected_modeled_cost": optimal_cost,
         "modeled_savings": savings,
@@ -1692,12 +1713,22 @@ def _derive_decision(
         "failed_intervals": len(failed),
         "failure_rate_cap": failure_cap,
     }
+    if overloaded:
+        facts["today_overloaded_periods"] = overloaded
     if failed:
         status = "revise"
         headline = f'Do not adopt Scenario "{scenario.name}" yet.'
         recommendation = (
             f"Revise and re-test the plan because {len(failed)} of "
             f"{len(validation_rows)} validation intervals did not pass."
+        )
+    elif savings is None:
+        status = "conditional"
+        headline = f'Consider Scenario "{scenario.name}" conditionally.'
+        recommendation = (
+            f"All {len(validation_rows)} validation intervals passed, but the cost change cannot be "
+            f"calculated: in {', '.join(overloaded)}, customers arrive faster than the current staff "
+            "can serve them (ρ ≥ 1), so today's waiting cost has no finite value."
         )
     elif savings >= 0:
         status = "adopt"
@@ -1724,6 +1755,7 @@ def _derive_decision(
                 f"Validation: {len(validation_rows) - len(failed)} of "
                 f"{len(validation_rows)} intervals passed."
             ),
+            *([f"Today's staffing cannot keep up (ρ ≥ 1) in: {', '.join(overloaded)}."] if overloaded else []),
         ],
         "missing_evidence": [],
         "scenario_id": scenario.id,

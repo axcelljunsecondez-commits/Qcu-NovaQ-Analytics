@@ -337,7 +337,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
         <h2 id="legacy-decision-title" className="section-title">{t('decision.plain.heading')}</h2>
         {decision ? (
           <div className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`} role="status">
-            <PlainAnswer plain={plainDecision({ status: decision.status, separate: false, failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence })} />
+            <PlainAnswer plain={plainDecision({ status: decision.status, separate: false, failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence, todayOverloaded: decision.facts?.today_overloaded_periods })} />
             {' '}<span className="badge badge-neutral">{t(`decision.status.${decision.status}`)}</span>
             <details className="decision-details"><summary>{t('decision.plain.details')}</summary><p>{decision.headline}</p>{decision.recommendation && <p>{decision.recommendation}</p>}</details>
           </div>

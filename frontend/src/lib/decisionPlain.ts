@@ -8,6 +8,8 @@ export interface PlainDecisionInput {
   totalCount?: number | null
   missing?: string[]
   inadequatePeriods?: string[]
+  /** Shared: periods where today's staffing cannot keep up, so the saving cannot be calculated. */
+  todayOverloaded?: string[]
 }
 
 export interface PlainDecision {
@@ -25,7 +27,9 @@ export function plainDecision(input: PlainDecisionInput): PlainDecision | null {
     case 'adopt':
       return { key: 'decision.plain.adopt' }
     case 'conditional':
-      return { key: input.separate ? 'decision.plain.conditional_separate' : 'decision.plain.conditional_shared' }
+      if (input.separate) return { key: 'decision.plain.conditional_separate' }
+      if (input.todayOverloaded && input.todayOverloaded.length > 0) return { key: 'decision.plain.conditional_today_overloaded', params: { periods: input.todayOverloaded.join(', ') } }
+      return { key: 'decision.plain.conditional_shared' }
     case 'revise':
       if (input.failedPeriods && input.failedPeriods.length > 0) return { key: 'decision.plain.revise_periods', params: { periods: input.failedPeriods.join(', ') } }
       if (input.failedCount != null && input.totalCount != null) return { key: 'decision.plain.revise_count', params: { failed: input.failedCount, total: input.totalCount } }

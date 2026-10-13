@@ -61,7 +61,7 @@ export interface WorkflowDecision {
   scenario_name: string | null
   dataset_id: number | null
   evidence_ids: Record<string, number | null>
-  facts?: Record<string, number>
+  facts?: Record<string, number | null> & { today_overloaded_periods?: string[] }
   provenance_warning: string
 }
 

@@ -708,6 +708,7 @@
   "decision.plain.adopt": "Yes, go ahead with this plan. It passed every check and costs the same or less.",
   "decision.plain.conditional_shared": "The plan passed every check, but it costs more than today.",
   "decision.plain.conditional_separate": "The plan passed every check, but its cost saving can't be calculated for separate lines. Use it only if you accept the cost.",
+  "decision.plain.conditional_today_overloaded": "The plan passed every check, but its cost saving can't be calculated: today's staff can't keep up in {{periods}}. Use it only if you accept the cost.",
   "decision.plain.revise_periods": "Change the plan first. It did not hold up in: {{periods}}",
   "decision.plain.revise_count": "Change the plan first. It did not hold up in {{failed}} of {{total}} periods.",
   "decision.plain.revise": "Change the plan first.",

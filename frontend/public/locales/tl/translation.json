@@ -708,6 +708,7 @@
   "decision.plain.adopt": "Oo, ituloy ang planong ito. Pumasa ito sa bawat check at pareho o mas mababa ang gastos.",
   "decision.plain.conditional_shared": "Pumasa ang plano sa bawat check, pero mas mahal ito kaysa ngayon.",
   "decision.plain.conditional_separate": "Pumasa ang plano sa bawat check, pero hindi makakalkula ang matitipid para sa hiwalay na mga pila. Gamitin lang ito kung tanggap mo ang gastos.",
+  "decision.plain.conditional_today_overloaded": "Pumasa ang plano sa bawat check, pero hindi makakalkula ang matitipid: hindi nakakasabay ang kasalukuyang staff sa {{periods}}. Gamitin lang ito kung tanggap mo ang gastos.",
   "decision.plain.revise_periods": "Baguhin muna ang plano. Hindi ito tumagal sa: {{periods}}",
   "decision.plain.revise_count": "Baguhin muna ang plano. Hindi ito tumagal sa {{failed}} sa {{total}} na period.",
   "decision.plain.revise": "Baguhin muna ang plano.",

@@ -371,6 +371,20 @@ describe('the legacy shared path', () => {
     await waitFor(() => expect(screen.getByTestId('decision-plain')).toHaveTextContent('Change the plan first. It did not hold up in 1 of 4 periods.'))
   })
 
+  it('says the saving cannot be calculated when today cannot keep up in a period', async () => {
+    const user = userEvent.setup()
+    createDecisionMock.mockResolvedValueOnce({ decision: { status: 'conditional', headline: 'Consider Scenario "Plan A" conditionally.',
+      recommendation: 'All 4 validation intervals passed, but the cost change cannot be calculated.', rationale: [], missing_evidence: [],
+      scenario_id: 3, scenario_name: 'Plan A', dataset_id: 2, evidence_ids: {}, provenance_warning: '',
+      facts: { validation_intervals: 4, failed_intervals: 0, current_modeled_cost: null, modeled_savings: null, today_overloaded_periods: ['segment_3'] } },
+    persisted: true })
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(screen.getByTestId('decision-plain')).toHaveTextContent(
+      "The plan passed every check, but its cost saving can't be calculated: today's staff can't keep up in segment_3. Use it only if you accept the cost."))
+    expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('costs more than today')
+  })
+
   it('says a stored shared Decision is out of date', async () => {
     getWorkflowMock.mockResolvedValue(workflow({ decision: job('workflow_decision', { status: 'adopt' }), decision_stale: true }))
     renderPage('/simulation/checks?analysis=7')
