@@ -1,7 +1,7 @@
 // Analysis results helpers (spec 2026-10-09 §7.7, plan phase U6). Selection and labelling only:
 // every number shown comes from a server response; nothing here adds values up.
 import type { DataDates, DatasetOut } from '../api/types'
-import { utilizationBand, type UtilizationBand } from './utilization'
+import { THRESHOLD_TOLERANCE, utilizationBand, type UtilizationBand } from './utilization'
 
 export type ResultRow = Record<string, unknown>
 
@@ -22,14 +22,20 @@ export function timeOf(row: ResultRow): string {
   return row.time === null || row.time === undefined ? '' : String(row.time)
 }
 
-/** Counters can't keep up: the server marks the row unstable. */
+/**
+ * Counters can't keep up: the server marks the row unstable and its load reaches capacity (rho >= 1).
+ * A row that failed for another reason (an approximation outside its bounds, a calculation that did not
+ * converge) is not overloaded; its level is unknown (OD-N2, large server-count numerics spec 2026-10-12).
+ */
 export function cantKeepUp(row: ResultRow): boolean {
-  return row.stable === false
+  const rho = finiteNumber(row.rho)
+  return row.stable === false && rho !== null && rho >= 1 - THRESHOLD_TOLERANCE
 }
 
 /** NovaQ's fixed busy level for one row, or null when it is unknown (shown as "Unavailable"). */
 export function busyLevel(row: ResultRow): UtilizationBand | null {
   if (cantKeepUp(row)) return 'Unstable'
+  if (row.stable === false) return null
   const rho = finiteNumber(row.rho)
   return rho === null ? null : utilizationBand(rho)
 }

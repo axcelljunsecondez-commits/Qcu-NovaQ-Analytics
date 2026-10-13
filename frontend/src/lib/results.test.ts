@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { busyLevel, dayStrip, formatDataDates, periodWarnings, periodsNeedingAttention } from './results'
 
 describe('busyLevel', () => {
-  it('uses NovaQ fixed levels and treats an unstable row as can\'t keep up', () => {
+  it('uses NovaQ fixed levels and treats an unstable row at or over capacity as can\'t keep up', () => {
     expect(busyLevel({ rho: 0.59, stable: true })).toBe('Lean')
     expect(busyLevel({ rho: 0.8, stable: true })).toBe('Normal')
     expect(busyLevel({ rho: 0.85, stable: true })).toBe('Peak')
     expect(busyLevel({ rho: 0.9, stable: true })).toBe('Critical')
-    expect(busyLevel({ rho: 0.5, stable: false })).toBe('Unstable')
+    expect(busyLevel({ rho: 1.2, stable: false })).toBe('Unstable')
+    expect(busyLevel({ rho: 0.9999999999999999, stable: false })).toBe('Unstable') // 3.15 / (3 x 1.05) is rho = 1
     expect(busyLevel({ rho: null, stable: true })).toBeNull()
+  })
+
+  it('leaves the level unknown for a row that failed below capacity (OD-N2)', () => {
+    // e.g. "M/G/c/K approximation exceeds finite-capacity bounds." at rho 0.49: not overloaded, not calculated
+    expect(busyLevel({ rho: 0.49, stable: false })).toBeNull()
+    expect(busyLevel({ rho: null, stable: false })).toBeNull()
   })
 })
 
@@ -16,9 +23,10 @@ describe('periodsNeedingAttention', () => {
   it('lists can\'t-keep-up periods first and then the highest estimated wait among the rest', () => {
     const result = periodsNeedingAttention([
       { time: '08:00', Wq: 0.2, stable: true },
-      { time: '09:00', Wq: null, stable: false },
+      { time: '09:00', Wq: null, rho: 1.1, stable: false },
       { time: '10:00', Wq: 0.5, stable: true, queue_id: 'B' },
-      { time: '11:00', Wq: 9, stable: false },
+      { time: '11:00', Wq: 9, rho: 1.3, stable: false },
+      { time: '12:00', Wq: null, rho: 0.49, stable: false },
     ])
     expect(result.cantKeepUp.map((item) => item.time)).toEqual(['09:00', '11:00'])
     expect(result.highestWait).toEqual({ time: '10:00', line: 'B', waitHours: 0.5 })
@@ -35,15 +43,22 @@ describe('dayStrip', () => {
       { time: '08:00', queue_id: 'A', rho: 0.5, stable: true },
       { time: '08:00', queue_id: 'B', rho: 0.95, stable: true },
       { time: '07:00', queue_id: 'A', rho: 0.7, stable: true },
-      { time: '07:00', queue_id: 'B', rho: 0.4, stable: false },
+      { time: '07:00', queue_id: 'B', rho: 1.05, stable: false },
       { time: '09:00', queue_id: 'A', rho: 0.92, stable: true },
       { time: '09:00', queue_id: 'B', rho: 0.3, stable: true },
     ])
     expect(strip).toEqual([
       { time: '08:00', level: 'Critical', rho: 0.95, lines: 2 },
-      { time: '07:00', level: 'Unstable', rho: 0.7, lines: 2 },
+      { time: '07:00', level: 'Unstable', rho: 1.05, lines: 2 },
       { time: '09:00', level: 'Critical', rho: 0.92, lines: 2 },
     ])
+  })
+
+  it('does not raise a period to Unstable for a line that failed below capacity (OD-N2)', () => {
+    expect(dayStrip([
+      { time: '07:00', queue_id: 'A', rho: 0.7, stable: true },
+      { time: '07:00', queue_id: 'B', rho: 0.4, stable: false },
+    ])).toEqual([{ time: '07:00', level: 'Normal', rho: 0.7, lines: 2 }])
   })
 })
 
