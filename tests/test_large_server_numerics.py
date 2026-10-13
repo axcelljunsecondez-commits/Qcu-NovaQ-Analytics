@@ -5,8 +5,8 @@ Spec: docs/superpowers/specs/2026-10-12-large-server-count-erlang-numerics.md (O
 when that form overflows; ``mgc`` reports a numerical failure as one instead of "Unstable system".
 
 ``fixtures/erlang_numerics_pin.json`` is the output of the four functions at commit 6093d78a, before the
-change. Every case that computed then computes the same now (``mmck``/``mgck`` bit-identically,
-``mmc``/``mgc`` within rel 1e-12; values below 1e-300 are subnormal and compared absolutely), every truly
+change. Every case that computed then computes the same now (within rel 1e-12; values below 1e-300 are
+subnormal and compared absolutely; ``mmck``/``mgck`` are bit-identical on the Python that wrote the fixture), every truly
 unstable case keeps its exact result, and every case that failed numerically is checked against an exact
 rational oracle. The fixture records the old engine: it was written once, on the unchanged engine, with
 ``python -m tests.test_large_server_numerics --write``, and must not be regenerated after the change.
@@ -139,6 +139,21 @@ def assert_matches_oracle(name: str, args: tuple, result: dict) -> None:
         assert_close(result[key], value, f"{name}{args} {key}")
 
 
+def assert_same_result(new: dict, old: dict, label: object) -> None:
+    """Same keys, equal non-float values, floats within REL_TOL.
+
+    mmck/mgck keep their closed form wherever it ran, but its built-in sum() of floats is compensated from
+    Python 3.12 on, so a fixture written on 3.13 differs from 3.10/3.11 in the last bits (at most 1.3e-14
+    relative, VERIFIED 2026-10-13 by replaying the pre-change engine with plain left-to-right addition).
+    """
+    assert sorted(new) == sorted(old), label
+    for key, value in old.items():
+        if isinstance(value, float):
+            assert math.isclose(new[key], value, rel_tol=REL_TOL, abs_tol=ABS_TOL), (label, key, new[key], value)
+        else:
+            assert new[key] == value, (label, key)
+
+
 def load_of(name: str, args: tuple) -> float:
     lambda_, mu, c = args[:3]
     return lambda_ / (c * mu)
@@ -161,13 +176,10 @@ def test_results_that_computed_before_are_unchanged(name):
         if not old["stable"]:
             continue
         new = run(name, args)
-        if name in ("mmck", "mgck"):
-            assert new == old, (name, args)  # the closed form still runs wherever it did
-            continue
-        assert sorted(new) == sorted(old) and new["stable"] is True and new["error"] is None, (name, args)
-        assert new["rho"] == old["rho"], (name, args)
-        for key in ("L", "Lq", "W", "Wq"):
-            assert math.isclose(new[key], old[key], rel_tol=REL_TOL, abs_tol=ABS_TOL), (name, args, key, new[key], old[key])
+        assert new["stable"] is True and new["error"] is None, (name, args)
+        if name in ("mmc", "mgc"):
+            assert new["rho"] == old["rho"], (name, args)  # lambda / (c * mu), unchanged
+        assert_same_result(new, old, (name, args))
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -178,7 +190,7 @@ def test_truly_unstable_and_invalid_results_are_unchanged(name):
             continue
         if name == "mgc" and load_of(name, args) < 1.0:  # a numerical failure the old mgc called unstable
             continue
-        assert run(name, args) == old, (name, args)
+        assert_same_result(run(name, args), old, (name, args))
 
 
 @pytest.mark.parametrize("name", sorted(CASES))

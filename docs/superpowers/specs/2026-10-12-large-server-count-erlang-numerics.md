@@ -241,7 +241,7 @@ Tests (`tests/test_large_server_numerics.py`, 40 tests, about 60 s):
 
 - **Pin fixture:** `tests/fixtures/erlang_numerics_pin.json` holds 1,393 cases written from the unchanged engine. Of these, 854 computed before, 187 were truly unstable or outside the M/G/c/K bounds, and 352 failed numerically. The 352 include 54 `mgc` cases that the old text called "Unstable system" at ρ < 1.
 - **Pin assertions:**
-  - `mmck`/`mgck` results that computed before are bit-identical;
+  - `mmck`/`mgck` results that computed before are bit-identical on the Python that wrote the fixture (3.13), and within rel 1e-12 on any version (see the correction below);
   - `mmc`/`mgc` match within rel 1e-12 (abs 1e-300), with rho bit-identical;
   - unstable and invalid results are identical;
   - former numerical failures match an exact `Fraction` oracle at rel 1e-12 for ρ ≤ 0.99. For ρ = 0.999999 they are checked for finiteness and Little's law only, because the rounding of ρ is amplified by about 1/(1 − ρ).
@@ -354,3 +354,16 @@ The question was whether any stored plan or scenario holds a result that the old
 - `mgc` and `mgck` are built on these two functions, so they are covered too.
 
 **Conclusion:** no stored result came from the defective region, so no engine version changes. A dataset uploaded later with c >= 144 or a large K is computed by the fixed engine.
+
+## 12. Correction after CI (2026-10-13)
+
+The first CI run of draft PR #29 (run 38351016846, job `test (3.11)`) failed one pin: `mgck(0.3, 1, 1, 0, 21)` returned rho `0.29999999999780325` and blocking `7.322247242122971e-12`, but the fixture holds `0.2999999999978033` and `7.322247242122973e-12`. The other three Python test jobs were cancelled because of that failure; lint, frontend, secret-scan, production-preflight, postgres-integration and stack-integration passed.
+
+**Cause (VERIFIED):**
+
+- The fixture was written on Python 3.13. From Python 3.12 the built-in `sum()` adds floats with compensated summation; before 3.12 it added them left to right.
+- Replaying the pre-change engine (`6093d78a`) with plain left-to-right addition reproduces CI's two values exactly. The new engine gives the same values under that addition.
+- So the engine change is correct. The test's "bit-identical" claim for `mmck`/`mgck` held only on the Python version that wrote the fixture.
+- Across all fixture cases the difference is at most 1.3e-14 relative (1,002 differing `mmck`/`mgck` values), well inside the §4.2 tolerance.
+
+**Fix:** the two pin tests compare float fields with rel 1e-12 (abs 1e-300) and every other field exactly, in one helper `assert_same_result`. No engine code or fixture value changed.
