@@ -51,7 +51,7 @@ import simpy
 
 from backend.data.ingestion import validate_and_normalize
 from backend.queueing_engine.log import get_logger
-from backend.queueing_engine.models import mg1, mm1, mmc
+from backend.queueing_engine.models import mg1, mgc, mm1, mmc
 from backend.queueing_engine.services.model_selection import select_model
 from backend.queueing_engine.simulation.queue_lifecycle import (
     DedicatedQueueLifecycle,
@@ -166,9 +166,52 @@ def simulation_coverage(segment: Mapping) -> tuple[str | None, str | None]:
         row.get("queue_structure"),
     )
     name = selected["name"]
+    if name == "M/G/c":
+        return name, _recorded_service_problem(segment, row.get("mu"), row.get("variance"))
     if name not in ("M/M/1", "M/M/c", "Parallel M/G/1"):
         return name, f"Unsupported simulation model: {name}. DES/Monte Carlo cover M/M/1, M/M/c, and supported separate M/G/1 only."
     return name, None
+
+
+RECORDED_SERVICE_TOLERANCE = 1e-9
+
+
+def recorded_service_samples(segment: Mapping[str, Any]) -> tuple[float, ...] | None:
+    """A shared period's recorded service durations in hours (U10 F2), or None when it has none.
+
+    Only a customer-record upload carries them (``analysis_ingestion``: ``service_time_source``
+    empirical and ``service_samples_hours``). Every value must be a finite positive number.
+    """
+    samples = segment.get("service_samples_hours")
+    if segment.get("service_time_source") != "empirical" or not isinstance(samples, (list, tuple)) or not samples:
+        return None
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in samples):
+        return None
+    values = tuple(float(value) for value in samples)
+    if any(not math.isfinite(value) or value <= 0 for value in values):
+        return None
+    return values
+
+
+def _recorded_service_problem(segment: Mapping[str, Any], mu: Any, variance: Any) -> str | None:
+    """Why an M/G/c segment cannot be simulated, or None.
+
+    The DES draws each service time from the period's recorded durations, so they must be the
+    distribution the plan was calculated with: mean 1/mu and population variance ``variance``.
+    No distribution is assumed when the durations are missing.
+    """
+    samples = recorded_service_samples(segment)
+    if samples is None:
+        return ("Unsupported simulation model: M/G/c. DES/Monte Carlo simulate M/G/c only with the recorded "
+                "service times of a customer-record upload; no service-time distribution is assumed.")
+    mean = math.fsum(samples) / len(samples)
+    spread = math.fsum((value - mean) ** 2 for value in samples) / len(samples)
+    scale = RECORDED_SERVICE_TOLERANCE * mean * mean
+    if (not isinstance(mu, (int, float)) or not isinstance(variance, (int, float))
+            or not math.isclose(mean, 1.0 / float(mu), rel_tol=RECORDED_SERVICE_TOLERANCE)
+            or not math.isclose(spread, float(variance), rel_tol=RECORDED_SERVICE_TOLERANCE, abs_tol=scale)):
+        return "The recorded service times do not match the plan's service rate and variance."
+    return None
 
 
 def _validate_segment(segment: Mapping[str, Any]) -> tuple[str | None, float | None, float | None, int]:
@@ -362,8 +405,13 @@ def _customer_process(
     customer_id: int | None = None,
     server_ids: dict[simpy.events.Event, int] | None = None,
     time_offset: float = 0.0,
+    samples: tuple[float, ...] | None = None,
 ):
-    """Run one customer through the canonical, optionally observed DES lifecycle."""
+    """Run one customer through the canonical, optionally observed DES lifecycle.
+
+    With ``samples`` (M/G/c, U10 F2) the service time is drawn uniformly from the recorded
+    durations, as for separate M/G/1; otherwise it is exponential with rate ``mu``.
+    """
     arrival = env.now
     monitor.record()
 
@@ -401,7 +449,7 @@ def _customer_process(
             result._wait_sum += wait
             result.served += 1
 
-        service_time = _exponential(mu, rng)
+        service_time = rng.choice(samples) if samples else _exponential(mu, rng)
         yield env.timeout(service_time)
         monitor.record()
 
@@ -430,6 +478,7 @@ def _arrival_process(
     segment_id: int = 0,
     server_ids: dict[simpy.events.Event, int] | None = None,
     time_offset: float = 0.0,
+    samples: tuple[float, ...] | None = None,
 ):
     """SimPy generator: generates arrivals for the duration of one segment."""
     while True:
@@ -442,7 +491,7 @@ def _arrival_process(
         customer_id = recorder.next_customer_id() if recorder is not None else None
         env.process(_customer_process(
             env, servers, mu, result, monitor, rng, warmup_end,
-            recorder, segment_id, customer_id, server_ids, time_offset,
+            recorder, segment_id, customer_id, server_ids, time_offset, samples,
         ))
 
 
@@ -526,6 +575,7 @@ def simulate_segment(
         result.status = "NORMAL"
         return result
 
+    samples = recorded_service_samples(segment) if result.selected_model == "M/G/c" else None
     rng = random.Random(seed)
     sim_duration = sim_hours  # environment time unit = hours
     # Adaptive warm-up: ensure at least 30 expected arrivals before measurement begins
@@ -553,12 +603,12 @@ def simulate_segment(
             customer_id = recorder.next_customer_id() if recorder is not None else None
             env.process(_customer_process(
                 env, servers, mu, result, monitor, rng, warmup_end,
-                recorder, segment_id, customer_id, server_ids, time_offset,
+                recorder, segment_id, customer_id, server_ids, time_offset, samples,
             ))
 
     env.process(_arrival_process(
         env, servers, lambda_, mu, sim_duration, result, monitor, rng, warmup_end,
-        recorder, segment_id, server_ids, time_offset,
+        recorder, segment_id, server_ids, time_offset, samples,
     ))
     env.run(until=sim_duration)
 
@@ -1182,6 +1232,10 @@ def mc_simulate_segment(
     def _pick_model(lam: float, m: float, c_: int) -> dict[str, Any]:
         if selected_model == "Parallel M/G/1":
             return mg1(lam, m, float(segment.get("variance", 0.0)))
+        if selected_model == "M/G/c":
+            # A service rate m = mu * f divides every service time by f, so the variance is divided
+            # by f squared (U10 F2). Utilization, the failure criterion, is the M/M/c one.
+            return mgc(lam, m, c_, float(segment["variance"]) * (mu / m) ** 2)
         return mmc(lam, m, c_) if c_ > 1 else mm1(lam, m)
 
     rho_samples = np.empty(num_trials)
@@ -1389,7 +1443,13 @@ def validate_with_simulation(
             "mu": row.get("mu"),
             "c": c_opt,
             **{key: row[key] for key in ("variance", "K", "theta") if key in row and pd.notna(row[key])},
+            # U10 F2: an M/G/c period is simulated with its recorded durations.
+            **({"service_time_source": row["service_time_source"],
+                "service_samples_hours": row["service_samples_hours"]}
+               if isinstance(row.get("service_samples_hours"), list) else {}),
         })
+    # The durations are inputs, not results: they are not stored with the validation.
+    comparison_df = comparison_df.drop(columns=["service_time_source", "service_samples_hours"], errors="ignore")
 
     if not sim_records:
         result = comparison_df.copy()

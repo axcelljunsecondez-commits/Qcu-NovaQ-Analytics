@@ -537,7 +537,27 @@ def scenario_evidence_fields(db: Session, user: User, scenario: Scenario) -> dic
     return _evidence_fields(evidence.status, evidence.reasons)
 
 
-def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[dict[str, Any]]:
+def _attach_recorded_service(segment: dict[str, Any], dataset: Dataset) -> None:
+    """U10 F2: a shared plan period's recorded service durations, from its dataset row with the same label.
+
+    Only customer-record uploads carry them. Nothing is attached when the label is missing or not
+    unique, so the DES then refuses M/G/c instead of assuming a service-time distribution.
+    """
+    matches = [row for row in dataset.normalized_json or []
+               if isinstance(row, dict) and str(row.get("time", "")) == str(segment.get("time", ""))]
+    if len(matches) == 1 and isinstance(matches[0].get("service_samples_hours"), list):
+        segment["service_time_source"] = matches[0].get("service_time_source")
+        segment["service_samples_hours"] = matches[0]["service_samples_hours"]
+
+
+def _is_separate_input(row: dict[str, Any]) -> bool:
+    return row.get("model_id") == "parallel_mg1" or row.get("queue_structure") == "separate_queues"
+
+
+def _segments_for(
+    scenario: Scenario, dataset: Dataset | None = None, *, service_dataset: Dataset | None = None,
+) -> list[dict[str, Any]]:
+    """The plan's model inputs per period with its staffing; ``service_dataset`` only adds shared recorded durations."""
     rows = _scenario_rows(scenario)
     snapshot = (scenario.settings_json or {}).get("calculation") or {}
     source = snapshot.get("input_segments")
@@ -550,7 +570,9 @@ def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[di
         segment = dict(source_row)
         segment["time"] = str(result_row.get("time", source_row.get("time", "Unknown")))
         segment["c"] = int(result_row["c_optimal"])
-        if source_row.get("model_id") == "parallel_mg1" or source_row.get("queue_structure") == "separate_queues":
+        if not _is_separate_input(source_row) and (dataset or service_dataset) is not None:
+            _attach_recorded_service(segment, cast(Dataset, dataset or service_dataset))
+        if _is_separate_input(source_row):
             if dataset is None:
                 raise HTTPException(status_code=422, detail="Parallel M/G/1 DES source Dataset is unavailable.")
             segment_id = str(source_row.get("segment_id", ""))
@@ -583,6 +605,27 @@ def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[di
                 raise HTTPException(status_code=422, detail="Parallel M/G/1 DES requires one dedicated server per queue.")
         segments.append(segment)
     return segments
+
+
+def _validation_rows(scenario: Scenario, dataset: Dataset) -> list[dict[str, Any]]:
+    """U10 F2: each saved plan row with the model inputs it was calculated with.
+
+    Result rows carry no variance, K or theta, so without these the check would simulate every
+    plan as M/M/c. They come from the calculation snapshot, as for the standalone DES.
+    """
+    rows = _scenario_rows(scenario)
+    source = ((scenario.settings_json or {}).get("calculation") or {}).get("input_segments")
+    if not isinstance(source, list) or len(source) != len(rows):
+        raise HTTPException(status_code=422, detail="Scenario calculation inputs are incomplete.")
+    merged: list[dict[str, Any]] = []
+    for source_row, row in zip(source, rows):
+        item = dict(row)
+        if isinstance(source_row, dict):
+            item.update({key: source_row[key] for key in ("variance", "K", "theta") if source_row.get(key) is not None})
+            if not _is_separate_input(source_row):
+                _attach_recorded_service(item, dataset)
+        merged.append(item)
+    return merged
 
 
 def _current_valid_dataset_id(db: Session, user: User, analysis: AnalysisProject) -> int | None:
@@ -1373,7 +1416,7 @@ def run_mc(
     scenario, dataset = _require_selection(db, user, analysis)
     result = {
         "results": mc_simulate_segments(
-            _segments_for(scenario),
+            _segments_for(scenario, service_dataset=dataset),
             num_trials=payload.num_trials,
             failure_threshold=payload.failure_threshold,
             failure_rate_cap=payload.failure_rate_cap,
@@ -1432,7 +1475,7 @@ def run_validation(
     analysis = own_analysis(db, user, analysis_id)
     scenario, dataset = _require_selection(db, user, analysis)
     frame = validate_with_simulation(
-        pd.DataFrame(_scenario_rows(scenario)),
+        pd.DataFrame(_validation_rows(scenario, dataset)),
         des_sim_hours=payload.des_sim_hours,
         mc_trials=payload.mc_trials,
         mc_failure_threshold=payload.mc_failure_threshold,
