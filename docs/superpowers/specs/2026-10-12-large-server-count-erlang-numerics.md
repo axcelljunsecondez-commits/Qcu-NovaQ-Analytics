@@ -1,6 +1,6 @@
 # Large server-count and capacity numerics for M/M/c, M/G/c, M/M/c/K, M/G/c/K
 
-- Status: **OD-N1 APPROVED** by the owner 2026-10-13 (recursion for `mmc`, fallback for `mmck`, `mgc` text), implemented, uncommitted (§8). **OD-N4 APPROVED** by the owner 2026-10-13 (limit of 24,000,000 counter-trials), implemented, uncommitted (§10). OD-N2, OD-N3, OD-N5 and OD-N6 are open.
+- Status: **OD-N1 APPROVED** by the owner 2026-10-13 (recursion for `mmc`, fallback for `mmck`, `mgc` text), implemented, uncommitted (§8). **OD-N4 APPROVED** by the owner 2026-10-13 (limit of 24,000,000 counter-trials), implemented, uncommitted (§10). **OD-N6 RESOLVED** 2026-10-13: no version bump is needed (§11). OD-N2, OD-N3 and OD-N5 are open.
 - Date: 2026-10-12
 - Protected scope: `backend/queueing_engine/models/queue_models.py` (AGENTS.md §5, Protected Mathematics). This document does not authorize a mathematical change.
 - Investigated code: worktree `ux-workflow-audit`, branch `feat/ux-u1-shell`, HEAD `4a4fc58b`. The engine file has no uncommitted changes there (`git diff --stat HEAD -- backend/queueing_engine/` is empty).
@@ -327,3 +327,30 @@ Still open:
 - Validation refused before DES.
 - 422 from `/simulation/mc`, `/simulation/validate` and the workflow Current Monte Carlo route.
 - Mutation check (scratch script, files restored): 6 of 6 mutants killed.
+
+## 11. OD-N6 resolution (2026-10-13): no engine version bump
+
+The question was whether any stored plan or scenario holds a result that the old formulas got wrong. If so, it would need an engine-version stamp to mark it out of date.
+
+**Local database** (VERIFIED, read-only; container `novaq-db-1`, volume `novaq_pgdata`, migration 0004, 5 scenarios and 105 jobs):
+
+- 0 stored results contain "numerical instability" or the M/G/c "Unstable system" text.
+- The largest stored `c` is 5.
+- The largest K is 31 (15 in datasets).
+- The largest λ/μ is 2.58.
+
+**Production** (REPORTED: the owner ran read-only queries in the Supabase SQL editor of the NovaQ production project and shared screenshots):
+
+- 0 scenarios and 0 jobs contain the failure text.
+- 0 dataset rows have c >= 144.
+- The largest K in datasets is NULL (none stored).
+- The largest K in Setups (`total_system_capacity`) is 31.
+- The largest λ/μ is 2.583.
+
+**The old engine on those bounds** (VERIFIED, `queue_models.py` from `6093d78a` loaded from `git show`):
+
+- `mmck`: every c from 1 to 31, every K from c to 31, and offered loads 0 to 2.58 in steps of 0.01 plus 2.5830405391523. That is 128,960 cases, all stable and equal to an exact `Fraction` evaluation (rel 1e-9).
+- `mmc`: 0 numerical failures for c <= 143 at those loads.
+- `mgc` and `mgck` are built on these two functions, so they are covered too.
+
+**Conclusion:** no stored result came from the defective region, so no engine version changes. A dataset uploaded later with c >= 144 or a large K is computed by the fixed engine.
