@@ -367,3 +367,26 @@ The first CI run of draft PR #29 (run 38351016846, job `test (3.11)`) failed one
 - Across all fixture cases the difference is at most 1.3e-14 relative (1,002 differing `mmck`/`mgck` values), well inside the §4.2 tolerance.
 
 **Fix:** the two pin tests compare float fields with rel 1e-12 (abs 1e-300) and every other field exactly, in one helper `assert_same_result`. No engine code or fixture value changed.
+
+## 13. Release record (2026-10-13)
+
+- **W0 (VERIFIED):** `origin/main` was `6093d78a`, an ancestor of the candidate `43a54f78`. The 4 commits touch no frontend or migration files.
+- **W1 (VERIFIED in the dashboards, 09:04 UTC):** everything matched the 2026-10-08 release record.
+  - Render `Qcu-NovaQ-Analytics`: live `491a9d3` with no later deploy events, branch `main`, Auto-Deploy Off, PR Previews Off.
+  - Pages `novaq-frontend`: production branch `main`, automatic deployments Disabled.
+  - `https://novaq.site/api/ready` returned 200 `{"status":"ready"}`.
+- **W2 (VERIFIED):** draft PR #29. The second CI run, on `43a54f78`, passed all 11 jobs: test 3.10/3.11/3.12/3.13, lint, frontend, secret-scan, production-preflight, postgres-integration, stack-integration and docker-build. The first run failed one cross-Python pin (section 12).
+- **W3:** no backup taken, because the release has no migration and changes no stored data.
+- **W4 (REPORTED):** the owner pushed `43a54f78` to `main` as a fast-forward. Claude Code's auto-mode classifier refused the push from this session as a production deploy.
+- **W5 (REPORTED, owner's Render screenshot):** Manual Deploy of `43a54f7`.
+  - Deploy succeeded and went live at 2026-10-13 17:33:27 GMT+8, in 2 min 00 s.
+  - The log shows "Application startup complete", Uvicorn running on port 10000 and "Your service is live".
+  - There were no tracebacks between 17:32 and 17:36.
+- **W6 (REPORTED, owner's screenshots of the production app):**
+  - `novaq.site/api/ready` returned `{"status":"ready"}`.
+  - A logged-in `POST /api/analysis/mgc` with λ = 1, μ = 1, c = 171 and variance 1 returned `stable` true and `error` null. Before this release the same input returned stable false and "Unstable system".
+- **Not done:**
+  - The Pages deploy, which is not needed because no frontend file changed.
+  - A production check of the Monte Carlo 422 refusal.
+  - A timing check of the 24,000,000 limit on Render. The value comes from the local container in section 9.
+- **Rollback, if needed:** Render → Events → Rollback to "Deploy live for 491a9d3".
