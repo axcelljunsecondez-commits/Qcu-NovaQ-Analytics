@@ -37,4 +37,8 @@ MC_FAILURE_RATE_CAP = 0.05
 MC_ARRIVAL_NOISE = 0.20
 MC_SERVICE_NOISE = 0.10
 MC_MAX_TRIALS = 100000
+# Trials x total counters (c summed over segments) per Monte Carlo run, owner-approved 2026-10-13 (OD-N4):
+# the largest measured value whose every run kept a margin under 60 s on a Render-Free-like container
+# (docs/superpowers/specs/2026-10-12-large-server-count-erlang-numerics.md section 9).
+MC_MAX_COUNTER_TRIALS = 24_000_000
 MC_CONFIDENCE_LEVEL = 0.95

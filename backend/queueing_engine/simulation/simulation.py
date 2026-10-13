@@ -1109,9 +1109,35 @@ from backend.queueing_engine.config import (
     MC_DEFAULT_FAILURE_THRESHOLD,
     MC_DEFAULT_TRIALS,
     MC_FAILURE_RATE_CAP,
+    MC_MAX_COUNTER_TRIALS,
     MC_MAX_TRIALS,
     MC_SERVICE_NOISE,
 )
+
+
+class McWorkloadError(Exception):
+    """A Monte Carlo run above MC_MAX_COUNTER_TRIALS, refused before any trial or DES run."""
+
+
+def require_mc_workload_within_limit(segments: list[Any], num_trials: int) -> None:
+    """Refuse a run whose trials x total counters exceed MC_MAX_COUNTER_TRIALS.
+
+    Each segment counts its c as mc_simulate_segment validates it; a segment it would refuse runs no trial
+    and counts 0. The cost of a trial grows with c (the Erlang B recursion in mmc).
+    """
+    counters = sum(
+        c for error, _, _, c in (_validate_segment(segment) for segment in segments if isinstance(segment, Mapping))
+        if error is None
+    )
+    workload = counters * num_trials
+    if workload > MC_MAX_COUNTER_TRIALS:
+        max_trials = MC_MAX_COUNTER_TRIALS // counters
+        advice = (f"Use at most {max_trials:,} trials for these counters." if max_trials >= 1
+                  else "The counters alone exceed the limit.")
+        raise McWorkloadError(
+            f"Monte Carlo run too large: {num_trials:,} trials x {counters:,} counters = {workload:,} "
+            f"counter-trials; the limit is {MC_MAX_COUNTER_TRIALS:,}. {advice}"
+        )
 
 
 def mc_simulate_segment(
@@ -1286,8 +1312,10 @@ def mc_simulate_segments(
     if time_segments is None:
         return []
 
+    segments = list(time_segments)
+    require_mc_workload_within_limit(segments, num_trials)
     results = []
-    for i, seg in enumerate(time_segments):
+    for i, seg in enumerate(segments):
         seg_seed = (seed + i) if seed is not None else None
         results.append(
             mc_simulate_segment(seg, num_trials, failure_threshold, seg_seed, failure_rate_cap)
@@ -1403,6 +1431,7 @@ def validate_with_simulation(
         result["validation_reason"] = "No feasible optimized staffing to validate."
         return result.drop(columns=["_validation_row"])
 
+    require_mc_workload_within_limit(sim_records, mc_trials)  # before DES, so a refused run costs nothing
     des_results = simulate_segments(sim_records, sim_hours=des_sim_hours, seed=seed)
     des_df = pd.DataFrame(des_results)[
         ["time", "rho_sim", "Wq_sim", "max_queue", "status", "selected_model", "simulation_supported", "error", "requested_sim_hours", "effective_sim_hours", "measurement_hours", "warmup_end"]
