@@ -176,11 +176,13 @@ Tests: B2 numbers identical to `/analysis/{model}`; 429 by client; tooltips reac
 
 ## Phase 15 — B8 Reports
 
-Status (2026-10-13): split into 15a (report model, plan preview, workbook with Formula check and Plan search; committed `5bb17e6e`), 15b (PDFs and the full report; committed `2595c8e0`) and 15c (Reports page; implemented after `2595c8e0`, uncommitted; open: previews share the 10-per-minute report limit). The shared full report shows the period-by-period evidence the Decision uses.
+Status (2026-10-13): split into 15a (report model, plan preview, workbook with Formula check and Plan search; committed `5bb17e6e`), 15b (PDFs and the full report; committed `2595c8e0`) and 15c (Reports page; committed `caffa6a1`; open: previews share the 10-per-minute report limit). The shared full report shows the period-by-period evidence the Decision uses.
 
 Per its spec: PDF summary and Excel calculation workbook, previews derived from the export contract, parity tests per format, formula-check sheet differences within stated tolerance.
 
 ## Phase U10 — Final verification
+
+Status (2026-10-13): run on `caffa6a1`; parity and gates passed; walkthrough on the dev stack (Compose deviation) found F1-F16 (`handoff.md`); Help screenshots deferred.
 
 Full gates; browser walkthrough on a local Compose stack with clearly synthetic data covering every path in spec §7 (planning vs review-only upload, older file review, both closing rules, separate-lines breaks, continuous shared preview and standard run, Decision, PDF and Excel); output parity checks for unchanged endpoints; annotated Help screenshots in EN and TL; update `handoff.md` and `memory.md`.
 
