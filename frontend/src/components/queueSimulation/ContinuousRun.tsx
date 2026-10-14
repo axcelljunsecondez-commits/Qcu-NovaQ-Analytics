@@ -20,11 +20,12 @@ import {
 import { fmtDecimal } from '../../lib/format'
 import { clockAt, clockOfMinutes, hoursAt, latestRunIds, rangeText, stateAt, waitingSteps } from '../../lib/continuous'
 import { requestError } from '../../lib/simulationEvidence'
+import { advancePlaybackTime } from '../../lib/simulationPlayback'
 import type { SimulationPageName } from './simulationContext'
 import { HelpLink } from '../ui/HelpLink'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10]
-const SECONDS_AT_1X = 60 // replay speed semantics unchanged (D29 base rate still open): 1× plays the day in 60 s
+const TICK_MILLISECONDS = 100
 
 function useContinuous(analysisId: number) {
   const closing = useQuery({ queryKey: ['closing-policy', analysisId], queryFn: () => getClosingPolicy(analysisId) })
@@ -380,12 +381,11 @@ function ContinuousReplay({ analysisId, shown }: { analysisId: number; shown: Co
 
   useEffect(() => {
     if (!playing || end <= 0) return undefined
-    const step = (end / SECONDS_AT_1X) * speed * 0.1
     const timer = window.setInterval(() => setTime((value) => {
-      const next = Math.min(end, value + step)
+      const next = advancePlaybackTime(value, TICK_MILLISECONDS, end, speed)
       if (next >= end) setPlaying(false)
       return next
-    }), 100)
+    }), TICK_MILLISECONDS)
     return () => window.clearInterval(timer)
   }, [playing, speed, end])
 

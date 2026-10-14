@@ -11,7 +11,6 @@ import {
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
 const MAX_VISIBLE_CUSTOMERS = 8
-const PLAYBACK_SECONDS_AT_1X = 60
 
 function CustomerTokens({ ids, empty }: { ids: number[]; empty: string }) {
   const visible = ids.slice(-MAX_VISIBLE_CUSTOMERS)
@@ -62,7 +61,7 @@ export function LiveSimulationPlayback({ trace }: { trace: SimulationTrace }) {
       const elapsedMilliseconds = Math.max(0, timestamp - previous)
       setSimulationTime((current) => {
         const next = advancePlaybackTime(
-          current, elapsedMilliseconds, traceEnd, speed, PLAYBACK_SECONDS_AT_1X,
+          current, elapsedMilliseconds, traceEnd, speed,
         )
         if (next >= traceEnd) setIsPlaying(false)
         return next

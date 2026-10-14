@@ -274,15 +274,22 @@ export function nextPlaybackTime(trace: SimulationTrace, simulationTime: number)
   return next?.t ?? Math.max(trace.total_hours, simulationTime)
 }
 
+/**
+ * Replay clock (spec 2026-10-09 §7.8, D29): speed is measured in simulated time, not trace length, so 1× means the
+ * same on every run. At 1× one simulated minute passes per real second (a 13-hour day takes about 13 minutes at 1×,
+ * 78 s at 10×). Previously 1× played any trace in 60 s, so a long trace raced by.
+ */
+export const SIMULATED_MINUTES_PER_SECOND_AT_1X = 1
+
 export function advancePlaybackTime(
   simulationTime: number,
   elapsedMilliseconds: number,
   traceEnd: number,
   speed: number,
-  playbackSecondsAt1x = 60,
+  simulatedMinutesPerSecond = SIMULATED_MINUTES_PER_SECOND_AT_1X,
 ): number {
-  if (traceEnd <= 0 || playbackSecondsAt1x <= 0) return 0
-  const hoursPerMillisecond = traceEnd / (playbackSecondsAt1x * 1000)
+  if (traceEnd <= 0 || simulatedMinutesPerSecond <= 0) return 0
+  const hoursPerMillisecond = simulatedMinutesPerSecond / 60 / 1000
   return Math.min(
     traceEnd,
     simulationTime + Math.max(0, elapsedMilliseconds) * hoursPerMillisecond * Math.max(0, speed),

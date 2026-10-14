@@ -15,7 +15,6 @@ import { hasBreakEvents, runTimeFor, wallClock, type ScheduledBreak } from '../.
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
 const ANIMATION_SPEED_LIMIT = 5
 const MAX_VISIBLE_CUSTOMERS = 8
-const PLAYBACK_SECONDS_AT_1X = 60
 
 function LaneTokens({ ids, empty }: { ids: number[]; empty: string }) {
   const visible = ids.slice(-MAX_VISIBLE_CUSTOMERS)
@@ -112,7 +111,7 @@ export function SeparateSimulationPlayback(
       const elapsedMilliseconds = Math.max(0, timestamp - previous)
       setSimulationTime((current) => {
         const next = advancePlaybackTime(
-          current, elapsedMilliseconds, traceEnd, speed, PLAYBACK_SECONDS_AT_1X,
+          current, elapsedMilliseconds, traceEnd, speed,
         )
         if (next >= traceEnd) setIsPlaying(false)
         return next

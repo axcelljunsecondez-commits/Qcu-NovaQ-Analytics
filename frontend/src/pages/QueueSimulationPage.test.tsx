@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes, useLocation } from 'react-router-dom'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { QueueSimulationPage } from './QueueSimulationPage'
@@ -1007,6 +1007,30 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect(state).toHaveTextContent('Served so far: 0')
     await user.selectOptions(within(replay).getByLabelText('Repeated day'), '3')
     await waitFor(() => expect(getContinuousPlaybackMock).toHaveBeenCalledWith(7, 31, 3))
+  })
+
+  it('plays the day on simulated time: one simulated minute per second at 1x, whatever the day length (D29)', async () => {
+    listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
+      setup_matches_current: true, dataset_is_current: true, plan_is_selected: true }] })
+    getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested'))
+    renderPage('/simulation/replay?analysis=7')
+    expect(await screen.findByTestId('continuous-clock')).toHaveTextContent('08:00')
+    const replay = screen.getByRole('region', { name: 'Full-day replay' })
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      fireEvent.click(within(replay).getByRole('button', { name: 'Play' }))
+      act(() => { vi.advanceTimersByTime(3000) })
+      // The day is 2 hours long; the old rule (whole day in 60 s) would show 08:06 here.
+      expect(screen.getByTestId('continuous-clock')).toHaveTextContent('08:03')
+      fireEvent.change(within(replay).getByLabelText('Speed'), { target: { value: '10' } })
+      act(() => { vi.advanceTimersByTime(3000) })
+      expect(screen.getByTestId('continuous-clock')).toHaveTextContent('08:33')
+      act(() => { vi.advanceTimersByTime(60000) })
+      expect(screen.getByTestId('continuous-clock')).toHaveTextContent('10:00')
+      expect(within(replay).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('states the full-day Decision rule and shows the ranges (OD-UX-13)', async () => {
