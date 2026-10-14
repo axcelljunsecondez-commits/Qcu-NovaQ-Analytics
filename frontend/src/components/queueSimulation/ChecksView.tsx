@@ -13,6 +13,8 @@ import {
   runWorkflowMcCurrent,
   runWorkflowValidation,
   runWorkflowValidationCurrent,
+  type CheckVerdict,
+  type FullDayPeriod,
 } from '../../api/workflow'
 import { fmt, fmtDecimal, fmtFrCi, fmtPct, fmtPctDecimal } from '../../lib/format'
 import {
@@ -308,6 +310,9 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   const decision = decisionRun.data?.decision ?? (workflow.decision_stale ? null : workflow.decision?.result ?? null)
   const staleDecision = !decisionRun.data && workflow.decision_stale && workflow.decision !== null && workflow.decision !== undefined
   const running = mcRun.isPending || validationRun.isPending || decisionRun.isPending
+  // OD-UX-13 "Full-day run first": the server names the basis a new Decision will use.
+  const fullDay = workflow.decision_basis === 'full_day_run'
+  const usedRun = decision?.basis === 'full_day_run' ? decision.facts?.full_day_run ?? null : null
 
   function validationProblem(): string | null {
     const trials = Number(validationTrials)
@@ -320,11 +325,12 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   }
 
   async function checkPlan() {
-    const problem = validationProblem()
+    const problem = fullDay ? mcError(settings, t) : validationProblem()
     if (problem) return setError(problem)
     setError(null)
     try {
-      await validationRun.mutateAsync()
+      if (fullDay) await mcRun.mutateAsync()
+      else await validationRun.mutateAsync()
       await decisionRun.mutateAsync()
     } catch {
       // The failing step shows its error.
@@ -337,18 +343,21 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
         <h2 id="legacy-decision-title" className="section-title">{t('decision.plain.heading')}</h2>
         {decision ? (
           <div className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`} role="status">
-            <PlainAnswer plain={plainDecision({ status: decision.status, separate: false, failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence, todayOverloaded: decision.facts?.today_overloaded_periods })} />
+            <PlainAnswer plain={plainDecision({ status: decision.status, separate: false, failedPeriods: decision.facts?.failed_periods, failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence, inadequatePeriods: decision.facts?.insufficient_periods, todayOverloaded: decision.facts?.today_overloaded_periods })} />
             {' '}<span className="badge badge-neutral">{t(`decision.status.${decision.status}`)}</span>
+            {usedRun && <p className="form-hint" data-testid="decision-basis">{t('simulation.basis_full_day', { run: usedRun.id, repeats: usedRun.replications ?? '—', rule: usedRun.closing_policy ? t(`continuous.closing_option_${usedRun.closing_policy}`) : '—' })}</p>}
             <details className="decision-details"><summary>{t('decision.plain.details')}</summary><p>{decision.headline}</p>{decision.recommendation && <p>{decision.recommendation}</p>}</details>
           </div>
         ) : staleDecision ? (
           <div className="alert alert-warn" role="status"><PlainAnswer plain={plainDecision({ status: null, stale: true, separate: false })} /></div>
         ) : <p>{t('simulation.no_decision_yet')}</p>}
+        {fullDay && !usedRun && workflow.full_day_run_id != null && <p className="form-hint" data-testid="decision-next-basis">{t('simulation.basis_next_full_day', { run: workflow.full_day_run_id })}</p>}
+        {decision?.facts?.periods && decision.facts.periods.length > 0 && <FullDayPeriods periods={decision.facts.periods} />}
         <Link to={`/analyses/${analysisId}/decision`}>{t('simulation.open_decision')}</Link>
         <button type="button" className="btn-primary" onClick={() => void checkPlan()} disabled={running}>{running ? t('common.loading') : t('simulation.check_the_plan')}</button>
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </section>
-      <CheckLine name={t('simulation.check_results')} required status={validationRows.length === 0 ? 'not_run' : passed ? 'pass' : 'fail'}>
+      <CheckLine name={t('simulation.check_results')} required={!fullDay} status={validationRows.length === 0 ? 'not_run' : passed ? 'pass' : 'fail'}>
         <p className="form-hint">{t('simulation.validation_saved_scenario')}</p>
         <div className="form-row">
           <div className="form-field"><label htmlFor="validation-hours">{t('simulation.validate_des_hours')}</label><input id="validation-hours" type="number" value={validationHours} onChange={(e) => setValidationHours(e.target.value)} /></div>
@@ -373,12 +382,36 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
           </>
         )}
       </CheckLine>
-      <CheckLine name={t('simulation.check_variations')} required={false} status={mcRows.length > 0 ? 'done' : 'not_run'}>
+      <CheckLine name={t('simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}>
         <p className="form-hint">{t('simulation.variations_label')}</p>
         <McFields settings={settings} planTarget={null} idPrefix="mc" />
         <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
         {mcRows.length > 0 && <McTable rows={mcRows} />}
       </CheckLine>
+    </div>
+  )
+}
+
+const VERDICT_BADGE: Record<CheckVerdict, string> = { pass: 'badge-ok', fail: 'badge-bad', insufficient: 'badge-neutral' }
+
+/** OD-UX-13: each plan period as the stored full-day Decision judged it (nothing recomputed here). */
+function FullDayPeriods({ periods }: { periods: FullDayPeriod[] }) {
+  const { t } = useTranslation()
+  return (
+    <div className="table-scroll" role="region" aria-label={t('simulation.full_day_table_caption')} tabIndex={0} data-testid="full-day-periods">
+      <table>
+        <caption className="sr-only">{t('simulation.full_day_table_caption')}</caption>
+        <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.full_day_busy')}</th><th scope="col">{t('simulation.plan_target')}</th><th scope="col">{t('simulation.variations_failing')}</th><th scope="col">{t('simulation.period_result')}</th></tr></thead>
+        <tbody>{periods.map((period) => (
+          <tr key={period.time}>
+            <th scope="row">{period.time}</th>
+            <td><span className={`badge ${VERDICT_BADGE[period.day_run]}`}>{fmtPct(period.day_run_utilization)}</span></td>
+            <td>{fmtPct(period.target_utilization)}</td>
+            <td><span className={`badge ${VERDICT_BADGE[period.variations]}`}>{fmtPct(period.variations_failure_rate)}</span></td>
+            <td><span className={`badge ${VERDICT_BADGE[period.verdict]}`}>{t(`simulation.verdict.${period.verdict}`)}</span></td>
+          </tr>
+        ))}</tbody>
+      </table>
     </div>
   )
 }

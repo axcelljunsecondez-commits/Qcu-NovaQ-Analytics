@@ -385,6 +385,44 @@ describe('the legacy shared path', () => {
     expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('costs more than today')
   })
 
+  it('checks the plan from the full-day run when the server names that basis (OD-UX-13)', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow({ decision_basis: 'full_day_run', full_day_run_id: 31 }))
+    const periods = [
+      { time: '08:00-09:00', day_run_utilization: 0.91, target_utilization: 0.85, day_run: 'fail', variations_failure_rate: 0.01,
+        variations_failure_cap: 0.05, variations: 'pass', verdict: 'fail' },
+      { time: '09:00-10:00', day_run_utilization: 0.6, target_utilization: 0.85, day_run: 'pass', variations_failure_rate: 0.02,
+        variations_failure_cap: 0.05, variations: 'pass', verdict: 'pass' },
+    ]
+    createDecisionMock.mockResolvedValueOnce({ decision: { status: 'revise', headline: 'Do not adopt Scenario "Plan A" yet.', recommendation: '',
+      rationale: [], missing_evidence: [], scenario_id: 3, scenario_name: 'Plan A', dataset_id: 2, evidence_ids: {}, provenance_warning: '',
+      basis: 'full_day_run', facts: { validation_intervals: 2, failed_intervals: 1, failed_periods: ['08:00-09:00'], insufficient_periods: [],
+        periods, full_day_run: { id: 31, replications: 5, closing_policy: 'DRAIN', service_model: 'exponential' } } }, persisted: true })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('decision-next-basis')).toHaveTextContent('Check the plan runs Many variations, then decides from full-day run 31 of this plan.')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(createDecisionMock).toHaveBeenCalledTimes(1))
+    expect(runMcMock).toHaveBeenCalledTimes(1)
+    expect(runValidationMock).not.toHaveBeenCalled()
+    expect(runMcMock.mock.invocationCallOrder[0]).toBeLessThan(createDecisionMock.mock.invocationCallOrder[0])
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Change the plan first. It did not hold up in: 08:00-09:00')
+    expect(screen.getByTestId('decision-basis')).toHaveTextContent(
+      'This Decision uses full-day run 31 (5 repeated days, closing rule: Finish serving customers already waiting) and Many variations.')
+    const rows = within(screen.getByTestId('full-day-periods')).getAllByRole('row').slice(1)
+    expect(rows.map((row) => row.textContent)).toEqual(['08:00-09:0091%85%1%Did not pass', '09:00-10:0060%85%2%Passed'])
+  })
+
+  it('names the periods a full-day Decision cannot tell yet', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow({ decision_basis: 'full_day_run', full_day_run_id: 31 }))
+    createDecisionMock.mockResolvedValueOnce({ decision: { status: 'insufficient_evidence', headline: 'Insufficient evidence.', recommendation: '',
+      rationale: [], missing_evidence: [], scenario_id: 3, scenario_name: 'Plan A', dataset_id: 2, evidence_ids: {}, provenance_warning: '',
+      basis: 'full_day_run', facts: { failed_periods: [], insufficient_periods: ['09:00-10:00'] } }, persisted: true })
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 09:00-10:00')
+  })
+
   it('says a stored shared Decision is out of date', async () => {
     getWorkflowMock.mockResolvedValue(workflow({ decision: job('workflow_decision', { status: 'adopt' }), decision_stale: true }))
     renderPage('/simulation/checks?analysis=7')
@@ -874,6 +912,16 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect(optimizeSpy).not.toHaveBeenCalled()
   })
 
+  it('reloads the workflow after a full-day run, which changes the Decision basis (OD-UX-13)', async () => {
+    const user = userEvent.setup()
+    createContinuousRunMock.mockResolvedValue(continuousRun(21, 'suggested'))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    await waitFor(() => expect(createContinuousRunMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(getWorkflowMock.mock.invocationCallOrder.some(
+      (order) => order > createContinuousRunMock.mock.invocationCallOrder[0])).toBe(true))
+  })
+
   it('refuses repeated days outside the limits before any request', async () => {
     const user = userEvent.setup()
     getCompatibilityMock.mockResolvedValue(compatibility({ plans: { current: compatiblePlan, suggested: { ...compatiblePlan, expected_customers_per_day: 600 } } }))
@@ -961,12 +1009,13 @@ describe('the continuous full-day run (B4a preview)', () => {
     await waitFor(() => expect(getContinuousPlaybackMock).toHaveBeenCalledWith(7, 31, 3))
   })
 
-  it('makes no Decision from the full-day run and shows its ranges', async () => {
+  it('states the full-day Decision rule and shows the ranges (OD-UX-13)', async () => {
     listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
       setup_matches_current: true, dataset_is_current: true, plan_is_selected: true }] })
     getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested'))
     renderPage('/simulation/checks?analysis=7')
-    expect(await screen.findByTestId('continuous-no-decision')).toHaveTextContent('No Decision is made from the full-day run yet')
+    expect(await screen.findByTestId('continuous-decision-rule')).toHaveTextContent(
+      "a period passes when its average busy share over the repeated days is at or below the plan's target and Many variations holds up")
     const ranges = await screen.findByRole('region', { name: 'Ranges across the repeated days (average, lowest–highest)' })
     expect(ranges).toHaveTextContent('Counter utilization during opening hours62% (50%–70%)')
   })

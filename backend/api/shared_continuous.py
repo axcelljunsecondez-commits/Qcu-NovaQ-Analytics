@@ -254,12 +254,28 @@ def _expected_customers_per_day(periods: list[DemandPeriod]) -> float:
     return math.fsum(p.arrival_rate_per_hour * (p.end_minute - p.start_minute) / 60 for p in periods)
 
 
+def _period_labels(segments: list[StaffingSegment], rows: list[Any], recorded: bool) -> dict[str, str]:
+    """Which plan (or data) period each staffing segment of the run is (OD-UX-13).
+
+    Recorded runs lay the rows on the Setup's segments, whose ids are the rows' labels
+    (``_recorded_timeline``). Estimated runs make one segment per row, in row order
+    (``timeline_from_aggregate_rows``).
+    """
+    labels = [str(row.get("time")) for row in rows if isinstance(row, dict)]
+    if recorded:
+        return {segment.segment_id: segment.segment_id for segment in segments if segment.segment_id in labels}
+    if len(segments) != len(labels):
+        return {}
+    return {segment.segment_id: label for segment, label in zip(segments, labels)}
+
+
 def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> dict[str, Any]:
     """Everything a run of ``plan`` needs, or every reason it cannot run. Runs nothing."""
     setup = analysis.queue_setup_json or {}
     out: dict[str, Any] = {"plan": plan, "dataset": None, "scenario": None, "timeline": None,
                            "expected_customers_per_day": None, "horizon": None, "service_model": None,
-                           "service_samples": None, "service_fallbacks": [], "counter_breaks": []}
+                           "service_samples": None, "service_fallbacks": [], "counter_breaks": [],
+                           "period_labels": {}}
     reasons = _setup_reasons(setup)
     rows: list[Any] | None = None
     if not reasons:
@@ -299,6 +315,7 @@ def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> d
                 else:
                     out["timeline"] = _timeline(rows)
                 if out["timeline"] is not None:
+                    out["period_labels"] = _period_labels(out["timeline"][2], rows, recorded)
                     out["expected_customers_per_day"] = _expected_customers_per_day(out["timeline"][1])
                     horizon = out["timeline"][0]
                     out["horizon"] = {"start_minute": horizon.start_minute, "end_minute": horizon.end_minute}
@@ -507,6 +524,8 @@ def create_continuous_run(
             "expected_customers_per_day": per_day,
             "service_model": assessment["service_model"],
             "counter_breaks": len(assessment["counter_breaks"]),
+            # OD-UX-13: run segment id -> plan period label, for the full-day Decision.
+            "period_labels": assessment["period_labels"],
             # Server keys, written after the request keys so no request value can replace them.
             "api_version": API_VERSION,
             "engine_version": provenance["engine_version"],

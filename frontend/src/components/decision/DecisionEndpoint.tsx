@@ -55,8 +55,9 @@ export function DecisionEndpoint({
             {t(`decision.status.${decision.status}`)}
           </span>
           <h2 className="decision-title" data-testid="decision-plain">{(() => {
-            const plain = plainDecision({ status: decision.status, separate: false, failedCount: decision.facts?.failed_intervals,
-              totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence,
+            const plain = plainDecision({ status: decision.status, separate: false, failedPeriods: decision.facts?.failed_periods,
+              failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals,
+              missing: decision.missing_evidence, inadequatePeriods: decision.facts?.insufficient_periods,
               todayOverloaded: decision.facts?.today_overloaded_periods })
             return plain ? t(plain.key, plain.params) : decision.headline
           })()}</h2>

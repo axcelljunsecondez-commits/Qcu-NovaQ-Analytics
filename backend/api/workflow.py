@@ -91,6 +91,7 @@ from backend.queueing_engine.simulation.simulation import (
     simulate_segments_with_trace,
     validate_with_simulation,
 )
+from backend.queueing_engine.utilization import THRESHOLD_TOLERANCE
 
 router = APIRouter(prefix="/analyses", tags=["workflow"])
 
@@ -1170,8 +1171,9 @@ def _evidence_is_current(
 def _current_evidence(
     db: Session, user: User, analysis: AnalysisProject
 ) -> dict[str, Any]:
-    scenario, selection = _selected_scenario(db, user, analysis)
+    scenario, scenario_dataset, selection = _selected_scenario_and_dataset(db, user, analysis)
     scenario_id = scenario.id if scenario is not None else None
+    full_day = _eligible_full_day_run(db, user, analysis, scenario, scenario_dataset)
     context = _evidence_context(db, user, analysis)
     policy = _current_evidence_policy()
 
@@ -1216,12 +1218,26 @@ def _current_evidence(
         # never clear it.
         decision_stale = scenario_id is not None or not _job_setup_current(raw_decision, analysis)
     if decision is not None:
-        references = (decision.result_json or {}).get("evidence_ids") or {}
-        decision_stale = (
-            references.get("selection") != (selection.id if selection else None)
-            or references.get("des") != (des.id if des else None)
-            or references.get("validation") != (validation.id if validation else None)
-        )
+        stored = decision.result_json or {}
+        references = stored.get("evidence_ids") or {}
+        if stored.get("basis") == FULL_DAY_BASIS:
+            # OD-UX-13: current while its selection, Many variations job and full-day run are today's,
+            # and the run is no newer than the Decision (an id freed by a deletion can be reused).
+            decision_stale = (
+                references.get("selection") != (selection.id if selection else None)
+                or references.get("mc") != (mc.id if mc else None)
+                or full_day is None
+                or references.get("continuous") != full_day.id
+                or full_day.created_at > decision.created_at
+            )
+        else:
+            decision_stale = (
+                references.get("selection") != (selection.id if selection else None)
+                or references.get("des") != (des.id if des else None)
+                or references.get("validation") != (validation.id if validation else None)
+                # "Full-day run first": with an eligible full-day run a new Decision would use it.
+                or full_day is not None
+            )
         if decision_stale:
             decision = None
     return {
@@ -1244,6 +1260,9 @@ def _current_evidence(
         "validation_current": _job_out(validation_current),
         "decision": _job_out(decision),
         "decision_stale": decision_stale,
+        # OD-UX-13: which checks a new Decision uses, so the page runs the right ones.
+        "decision_basis": FULL_DAY_BASIS if full_day is not None else PERIOD_BASIS,
+        "full_day_run_id": full_day.id if full_day is not None else None,
     }
 
 
@@ -1615,6 +1634,177 @@ def _today_overloaded_periods(rows: list[dict[str, Any]]) -> list[str]:
     if not gaps or any(row.get("current_stable") is not False for row in gaps):
         return []
     return [str(row.get("time", "")) for row in gaps]
+
+
+# OD-UX-13 (spec 2026-10-13-od-ux-13-full-day-decision.md): a shared Decision from the full-day run.
+# The kind is backend.api.shared_continuous.JOB_KIND; that module imports this one, so it is named here.
+FULL_DAY_RUN_KIND = "shared_continuous_preview"
+FULL_DAY_BASIS = "full_day_run"
+PERIOD_BASIS = "period_by_period"
+
+
+def _eligible_full_day_run(
+    db: Session, user: User, analysis: AnalysisProject, scenario: Scenario | None, dataset: Dataset | None,
+) -> Job | None:
+    """The latest full-day run of the selected plan on its dataset and the current Setup, if any.
+
+    Its recorded scenario id and generation, dataset id and generation and Setup hash must all be
+    today's; its service model then follows the plan's own data (shared_continuous._assess).
+    """
+    if scenario is None or dataset is None:
+        return None
+    setup_hash = _setup_fingerprint(analysis.queue_setup_json)
+    jobs = db.execute(
+        select(Job)
+        .where(Job.user_id == user.id, Job.kind == FULL_DAY_RUN_KIND, Job.status == "completed")
+        .order_by(Job.id.desc())
+    ).scalars()
+    for job in jobs:
+        params = job.params_json or {}
+        if (params.get("analysis_id") == analysis.id and params.get("plan") == "suggested"
+                and params.get("scenario_id") == scenario.id
+                and params.get("scenario_generation") == scenario.generation
+                and params.get("dataset_id") == dataset.id
+                and params.get("dataset_generation") == dataset.generation
+                and params.get("setup_hash") == setup_hash):
+            return job
+    return None
+
+
+def _full_day_periods(rows: list[dict[str, Any]], run: Job, mc: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Each plan period judged by the day run and by Many variations (OD-UX-13 rule).
+
+    Day run: the mean over the repeats of the period's simulated utilization must be at most the
+    plan's recorded target (the separate-lanes aggregate rule). Many variations: the separate-lanes
+    verdict (unsupported, non-finite or inadequate is insufficient; above the cap fails). A period
+    fails if either part fails, is insufficient if either part is, and passes otherwise.
+    """
+    labels = (run.params_json or {}).get("period_labels") or {}
+    by_label: dict[str, dict[str, Any]] = {}
+    for segment in ((run.result_json or {}).get("period_utilization") or {}).get("segments") or []:
+        label = labels.get(segment.get("segment_id")) if isinstance(segment, dict) else None
+        if isinstance(label, str):
+            by_label[label] = segment
+    mc_rows = {str(row.get("time", "")): row for row in ((mc or {}).get("result") or {}).get("results") or []
+               if isinstance(row, dict)}
+    cap = ((mc or {}).get("params") or {}).get("failure_rate_cap")
+    periods = []
+    for row in rows:
+        label = str(row.get("time", ""))
+        target = (row.get("effective_constraints") or {}).get("target_utilization")
+        mean = ((by_label.get(label) or {}).get("summary") or {}).get("mean")
+        if not _finite_non_negative(mean) or not _finite_non_negative(target):
+            day = "insufficient"
+        else:
+            day = ("fail" if float(cast(int | float, mean)) > float(cast(int | float, target)) + THRESHOLD_TOLERANCE
+                   else "pass")
+        mc_row = mc_rows.get(label) or {}
+        rate = mc_row.get("failure_rate")
+        if (mc_row.get("simulation_supported") is not True or not _finite_non_negative(rate)
+                or mc_row.get("failure_rate_adequate") is not True or not _finite_non_negative(cap)):
+            variations = "insufficient"
+        else:
+            variations = "fail" if float(cast(int | float, rate)) > float(cast(int | float, cap)) else "pass"
+        parts = (day, variations)
+        periods.append({
+            "time": label, "day_run_utilization": mean, "target_utilization": target, "day_run": day,
+            "variations_failure_rate": rate, "variations_failure_cap": cap, "variations": variations,
+            "verdict": "fail" if "fail" in parts else "insufficient" if "insufficient" in parts else "pass",
+        })
+    return periods
+
+
+def _derive_full_day_decision(
+    analysis: AnalysisProject, scenario: Scenario, evidence: dict[str, Any], run: Job,
+) -> dict[str, Any]:
+    """The shared Decision from the full-day run and Many variations (OD-UX-13). Same outcomes and cost rule."""
+    rows = _scenario_rows(scenario)
+    mc = evidence.get("mc")
+    missing: list[str] = []
+    if analysis.setup_status not in {"ready", "ready_for_aggregate"}:
+        missing.append("completed Setup")
+    totals = _cost_totals(rows)
+    overloaded = _today_overloaded_periods(rows) if totals is None else []
+    if totals is None and not overloaded:
+        missing.append("a complete modeled cost comparison")
+    if not ((run.result_json or {}).get("period_utilization") and (run.params_json or {}).get("period_labels")):
+        missing.append("a full-day run with results by period (run the full day again)")
+    if mc is None:
+        missing.append("a completed Many variations run for the selected plan")
+    run_params = run.params_json or {}
+    evidence_ids = {
+        "selection": evidence["selection"]["id"] if evidence.get("selection") else None,
+        "des": None, "mc": mc["id"] if mc else None, "validation": None, "continuous": run.id,
+    }
+    common = {
+        "basis": FULL_DAY_BASIS, "scenario_id": scenario.id, "scenario_name": scenario.name,
+        "dataset_id": scenario.dataset_id, "evidence_ids": evidence_ids,
+        "provenance_warning": (
+            "Analytical estimates and simulated results are decision support, not observed future outcomes."),
+    }
+    if missing:
+        return {
+            "status": "insufficient_evidence",
+            "headline": "Insufficient evidence to make a management recommendation.",
+            "recommendation": "Complete the missing workflow evidence before making an adoption decision.",
+            "rationale": [f"Missing: {item}." for item in missing], "missing_evidence": missing, **common,
+        }
+    periods = _full_day_periods(rows, run, mc)
+    failed = [period["time"] for period in periods if period["verdict"] == "fail"]
+    unsettled = [period["time"] for period in periods if period["verdict"] == "insufficient"]
+    if totals is not None:
+        current_cost: float | None = totals[0]
+        optimal_cost = totals[1]
+        savings: float | None = totals[0] - totals[1]
+    else:
+        current_cost, savings = None, None
+        optimal_cost = math.fsum(float(row["cost_optimal"]) for row in rows)
+    server_delta = sum(int(row["c_optimal"]) - int(row["c_current"]) for row in rows)
+    facts: dict[str, Any] = {
+        "current_modeled_cost": current_cost, "selected_modeled_cost": optimal_cost, "modeled_savings": savings,
+        "server_delta": server_delta, "validation_intervals": len(periods), "failed_intervals": len(failed),
+        "failed_periods": failed, "insufficient_periods": unsettled, "failure_rate_cap": (mc or {}).get("params", {}).get("failure_rate_cap"),
+        "periods": periods, "full_day_run": {
+            "id": run.id, "replications": run_params.get("replications"),
+            "closing_policy": run_params.get("closing_policy"), "service_model": run_params.get("service_model"),
+        },
+    }
+    if overloaded:
+        facts["today_overloaded_periods"] = overloaded
+    total = len(periods)
+    checks = "the full-day run and Many variations"
+    if failed:
+        status, headline = "revise", f'Do not adopt Scenario "{scenario.name}" yet.'
+        recommendation = (f"Revise and re-test the plan because {len(failed)} of {total} periods did not pass "
+                          f"{checks}: {', '.join(failed)}.")
+    elif unsettled:
+        status, headline = "insufficient_evidence", "Insufficient evidence to make a management recommendation."
+        recommendation = f"The checks cannot tell yet for: {', '.join(unsettled)}."
+    elif savings is None:
+        status, headline = "conditional", f'Consider Scenario "{scenario.name}" conditionally.'
+        recommendation = (f"All {total} periods passed {checks}, but the cost change cannot be calculated: in "
+                          f"{', '.join(overloaded)}, customers arrive faster than the current staff can serve them "
+                          "(ρ ≥ 1), so today's waiting cost has no finite value.")
+    elif savings >= 0:
+        status, headline = "adopt", f'Adopt Scenario "{scenario.name}".'
+        recommendation = (f"All {total} periods passed {checks} and modeled cost decreases by "
+                          f"PHP {savings:,.2f} per modeled cycle.")
+    else:
+        status, headline = "conditional", f'Consider Scenario "{scenario.name}" conditionally.'
+        recommendation = (f"All {total} periods passed {checks}, but modeled cost increases by "
+                          f"PHP {abs(savings):,.2f} per modeled cycle.")
+    return {
+        "status": status, "headline": headline, "recommendation": recommendation,
+        "rationale": [
+            f"Selected Scenario: {scenario.name} (ID {scenario.id}).",
+            f"Net server change across intervals: {server_delta:+d}.",
+            (f"Full-day run {run.id}: {run_params.get('replications')} repeats, closing rule "
+             f"{run_params.get('closing_policy')}, {run_params.get('service_model')} service times."),
+            f"Periods: {total - len(failed) - len(unsettled)} of {total} passed.",
+            *([f"Today's staffing cannot keep up (ρ ≥ 1) in: {', '.join(overloaded)}."] if overloaded else []),
+        ],
+        "missing_evidence": [], "facts": facts, **common,
+    }
 
 
 def _derive_decision(
@@ -3315,12 +3505,17 @@ def create_decision(
         result["missing_evidence"] = [missing]
         result["rationale"] = [f"Missing: {missing}."]
         return {"decision": result, "persisted": False}
-    result = _derive_decision(analysis, scenario, evidence)
+    # OD-UX-13 "Full-day run first": an eligible full-day run of the selected plan decides the basis.
+    full_day = _eligible_full_day_run(db, user, analysis, scenario, dataset)
+    if scenario is not None and full_day is not None:
+        result = _derive_full_day_decision(analysis, scenario, evidence, full_day)
+    else:
+        result = {**_derive_decision(analysis, scenario, evidence), "basis": PERIOD_BASIS}
     if scenario is None or dataset is None:
         return {"decision": result, "persisted": False}
     _require_selection_dataset_generation(selection, dataset)
     job = _save_job(
         db, user, "workflow_decision", analysis, scenario,
-        {"evidence_ids": result["evidence_ids"]}, result, settings, dataset,
+        {"evidence_ids": result["evidence_ids"], "basis": result["basis"]}, result, settings, dataset,
     )
     return {"decision": result, "persisted": True, "evidence": _job_out(job)}

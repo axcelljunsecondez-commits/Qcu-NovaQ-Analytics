@@ -420,6 +420,29 @@ def aggregate_replications(
     }
 
 
+PERIOD_UTILIZATION_DEFINITION = (
+    "Per staffing segment and replication: busy server-hours / present server-hours inside the segment "
+    "(utilization_of_present of the replication's segment); undefined when no server was present. Kept "
+    "outside the replication rows, which a playback regenerates and compares (OD-UX-13)."
+)
+
+
+def _period_utilization(staffing_segments: Sequence[StaffingSegment],
+                        period_hours: Sequence[Sequence[tuple[float, float]]]) -> dict[str, Any]:
+    """Each staffing segment's utilization in every replication, and its across-replication summary."""
+    segments = []
+    for position, segment in enumerate(staffing_segments):
+        busy = [hours[position][0] for hours in period_hours]
+        present = [hours[position][1] for hours in period_hours]
+        values = [b / p if p > 0 else None for b, p in zip(busy, present)]
+        segments.append({
+            "segment_id": segment.segment_id, "start_minute": segment.start_minute, "end_minute": segment.end_minute,
+            "busy_server_hours": busy, "present_server_hours": present, "utilization": values,
+            "summary": summarize_metric(values),
+        })
+    return {"definition": PERIOD_UTILIZATION_DEFINITION, "segments": segments}
+
+
 def run_shared_replications(
     horizon: OperatingHorizon,
     demand_periods: Sequence[DemandPeriod],
@@ -462,6 +485,7 @@ def run_shared_replications(
 
     root = np.random.SeedSequence(seed)
     rows: list[dict[str, Any]] = []
+    period_hours: list[list[tuple[float, float]]] = []
     cost_reference: dict[str, Any] = {}
     for index, child in enumerate(root.spawn(replications)):
         result = simulate_shared_replication(
@@ -472,9 +496,12 @@ def run_shared_replications(
         if cost_rates is not None and not cost_reference:
             cost_reference = cost_shared_day(result, cost_rates)
         rows.append(replication_row(result, index, cost_rates, failure_criteria))
+        period_hours.append([(segment["busy_server_hours"], segment["present_server_hours"])
+                             for segment in result["segments"]])
 
     result = {
         "replications": rows,
+        "period_utilization": _period_utilization(staffing_segments, period_hours),
         "summary": aggregate_replications(
             rows, cost_rates=cost_rates, cost_reference=cost_reference, failure_criteria=failure_criteria,
         ),

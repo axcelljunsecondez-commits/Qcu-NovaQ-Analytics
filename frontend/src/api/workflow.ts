@@ -51,6 +51,37 @@ export interface WorkflowValidationCurrentResult {
   provenance: string
 }
 
+export type CheckVerdict = 'pass' | 'fail' | 'insufficient'
+
+/** OD-UX-13: one plan period judged by the full-day run and Many variations (stored by the server). */
+export interface FullDayPeriod {
+  time: string
+  day_run_utilization: number | null
+  target_utilization: number | null
+  day_run: CheckVerdict
+  variations_failure_rate: number | null
+  variations_failure_cap: number | null
+  variations: CheckVerdict
+  verdict: CheckVerdict
+}
+
+export interface DecisionFacts {
+  current_modeled_cost?: number | null
+  selected_modeled_cost?: number | null
+  modeled_savings?: number | null
+  server_delta?: number
+  validation_intervals?: number
+  failed_intervals?: number
+  failure_rate_cap?: number | null
+  today_overloaded_periods?: string[]
+  failed_periods?: string[]
+  insufficient_periods?: string[]
+  periods?: FullDayPeriod[]
+  full_day_run?: { id: number; replications: number | null; closing_policy: string | null; service_model: string | null }
+}
+
+export type DecisionBasis = 'full_day_run' | 'period_by_period'
+
 export interface WorkflowDecision {
   status: 'insufficient_evidence' | 'revise' | 'adopt' | 'conditional'
   headline: string
@@ -61,7 +92,8 @@ export interface WorkflowDecision {
   scenario_name: string | null
   dataset_id: number | null
   evidence_ids: Record<string, number | null>
-  facts?: Record<string, number | null> & { today_overloaded_periods?: string[] }
+  facts?: DecisionFacts
+  basis?: DecisionBasis
   provenance_warning: string
 }
 
@@ -85,6 +117,9 @@ export interface WorkflowEvidence {
   validation_current: WorkflowJob<WorkflowValidationCurrentResult> | null
   decision: WorkflowJob<WorkflowDecision> | null
   decision_stale: boolean
+  /** OD-UX-13: which checks a new shared Decision uses, and the full-day run it would use. */
+  decision_basis?: DecisionBasis
+  full_day_run_id?: number | null
 }
 
 export async function getWorkflow(analysisId: number): Promise<WorkflowEvidence> {

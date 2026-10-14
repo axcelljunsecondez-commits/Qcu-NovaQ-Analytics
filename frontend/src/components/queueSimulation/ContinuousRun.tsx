@@ -125,6 +125,8 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
     onSuccess: () => {
       setError(null)
       void queryClient.invalidateQueries({ queryKey: ['continuous-runs', analysisId] })
+      // OD-UX-13: a new run of the plan changes which run a Decision uses and makes the stored one stale.
+      void queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
     },
     onError: (failure) => setError(requestError(failure, t('errors.server'))),
   })
@@ -453,7 +455,7 @@ function ContinuousChecks({ shown }: { shown: ContinuousRunOut | null }) {
   return (
     <section className="card" aria-label={t('continuous.checks_title')}>
       <h2 className="section-title">{t('continuous.checks_title')}</h2>
-      <p role="status" className="alert alert-warn" data-testid="continuous-no-decision">{t('continuous.no_decision')}</p>
+      <p role="status" className="alert alert-info" data-testid="continuous-decision-rule">{t('continuous.decision_rule')}</p>
       {shown ? (
         <div className="table-scroll" role="region" aria-label={t('continuous.ranges_title')} tabIndex={0}>
           <table>
