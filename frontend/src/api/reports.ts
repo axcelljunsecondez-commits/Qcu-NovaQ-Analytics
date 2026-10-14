@@ -1,4 +1,5 @@
 import { http } from '../lib/http'
+import type { DecisionFacts } from './workflow'
 
 export type ReportKind = 'datasets' | 'scenarios'
 export type ReportFormat = 'pdf' | 'excel'
@@ -47,7 +48,8 @@ export interface ReportPreview {
     report: ReportLevel
     line_type: 'shared' | 'separate'
     cover: { label: string; plan_name: string | null; analysis_name: string | null }
-    decision?: { status: string; headline: string; recommendation: string }
+    decision?: { status: string; headline: string; recommendation: string
+      missing_evidence?: string[] | null; facts?: DecisionFacts | null }
   }
   contents: { pdf: string[]; excel: string[] }
 }

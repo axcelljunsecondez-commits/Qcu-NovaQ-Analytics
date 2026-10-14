@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, listAnalyses, listAnalysisDatasets } from '../api/analyses'
 import {
@@ -14,6 +15,7 @@ import {
 import { ApiState } from '../components/ui/ApiState'
 import { HelpLink } from '../components/ui/HelpLink'
 import { rememberLastAnalysis, resolveLastAnalysis, storedLastAnalysis, subscribeLastAnalysis } from '../lib/lastAnalysis'
+import { plainDecision } from '../lib/decisionPlain'
 import { isProcessed } from '../lib/results'
 
 interface PreviewWithAfter extends ReportPreview {
@@ -24,6 +26,21 @@ type Stamp = 'no_plan' | 'out_of_date' | 'plan' | 'full'
 
 /** The full-level stamp takes the Decision's colour, as on the Decision page: only adopt is green (U10 F9). */
 const DECISION_BADGE: Record<string, string> = { adopt: 'badge-ok', conditional: 'badge-warn', revise: 'badge-bad', insufficient_evidence: 'badge-warn' }
+
+/**
+ * The Decision in the reader's language, from the stored Decision's own fields (as on the Checks and Decision pages);
+ * the server's English headline only when no plain answer applies. Separate-lane facts count line-periods, not
+ * periods, so they are not passed as a period count.
+ */
+function decisionAnswer(model: ReportPreview['model'], t: TFunction): string {
+  const decision = model.decision!
+  const facts = model.line_type === 'shared' ? decision.facts ?? {} : {}
+  const plain = plainDecision({ status: decision.status, separate: model.line_type === 'separate',
+    failedPeriods: facts.failed_periods, failedCount: facts.failed_intervals, totalCount: facts.validation_intervals,
+    missing: decision.missing_evidence ?? undefined, inadequatePeriods: facts.insufficient_periods,
+    todayOverloaded: facts.today_overloaded_periods })
+  return plain ? t(plain.key, plain.params) : decision.headline
+}
 
 /** The reason a report request was refused, as the server wrote it. */
 function refusal(error: unknown): { code: string | null; detail: string | null } {
@@ -149,7 +166,7 @@ export function ReportsPage() {
         {stamp === 'full' && full.data?.model.decision && (
           <>
             <span className={`badge ${DECISION_BADGE[full.data.model.decision.status] ?? 'badge-neutral'}`} data-testid="full-stamp">{t('reports.page.stamp_full', { decision: t(`decision.status.${full.data.model.decision.status}`) })}</span>
-            <p>{full.data.model.decision.headline}</p>
+            <p data-testid="report-decision-plain">{decisionAnswer(full.data.model, t)}</p>
           </>
         )}
         {preview && <p className="form-hint">{t('reports.page.plan_name', { name: preview.model.cover.plan_name })}</p>}

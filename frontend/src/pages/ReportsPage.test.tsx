@@ -61,13 +61,13 @@ function Address() {
   return <output data-testid="address">{location.pathname}{location.search}</output>
 }
 
-function renderReports(route = '/reports?analysis=7') {
+function renderReports(route = '/reports?analysis=7', lang: 'en' | 'tl' = 'en') {
   return renderWithProviders(
     <Routes>
       <Route path="/reports" element={<><ReportsPage /><Address /></>} />
       <Route path="/analyses" element={<Address />} />
     </Routes>,
-    { route },
+    { route, lang },
   )
 }
 
@@ -134,7 +134,7 @@ describe('Reports page (B8, D33)', () => {
     previewMock.mockImplementation(async (_id: number, level: string) => (level === 'plan' ? planPreview : fullPreview))
     renderReports()
     expect(await screen.findByText('Checked by simulation · Decision: Adopt')).toBeInTheDocument()
-    expect(screen.getByText('Adopt Scenario "Four at eight".')).toBeInTheDocument()
+    expect(screen.getByTestId('report-decision-plain')).toHaveTextContent('Yes, go ahead with this plan. It passed every check and costs the same or less.')
     expect(screen.getByText('Plan: Four at eight')).toBeInTheDocument()
     expect(screen.getByTestId('full-stamp')).toHaveClass('badge-ok')
     const excel = screen.getByTestId('report-card-excel')
@@ -151,6 +151,32 @@ describe('Reports page (B8, D33)', () => {
     expect(await screen.findByText('Checked by simulation · Decision: Revise')).toBeInTheDocument()
     expect(screen.getByTestId('full-stamp')).toHaveClass('badge-bad')
     expect(screen.getByTestId('full-stamp')).not.toHaveClass('badge-ok')
+  })
+
+  it("states the Decision in the reader's language from its stored fields, not the server headline", async () => {
+    const withDecision = (decision: Record<string, unknown>, lineType = 'shared') => ({ ...fullPreview,
+      model: { ...fullPreview.model, line_type: lineType, decision: { headline: 'Do not adopt Scenario "Four at eight" yet.', recommendation: '', ...decision } } })
+    const show = async (preview: unknown, lang: 'en' | 'tl' = 'en') => {
+      previewMock.mockImplementation(async (_id: number, level: string) => (level === 'plan' ? planPreview : preview))
+      const view = renderReports('/reports?analysis=7', lang)
+      const text = (await screen.findByTestId('report-decision-plain')).textContent
+      view.unmount()
+      return text
+    }
+    const failed = withDecision({ status: 'revise', missing_evidence: [], facts: { failed_periods: ['segment_1'], failed_intervals: 1, validation_intervals: 4 } })
+    expect(await show(failed)).toBe('Change the plan first. It did not hold up in: segment_1')
+    expect(await show(failed, 'tl')).toBe('Baguhin muna ang plano. Hindi ito tumagal sa: segment_1')
+    // An older shared Decision has only the interval counts.
+    expect(await show(withDecision({ status: 'revise', facts: { failed_intervals: 2, validation_intervals: 12 } })))
+      .toBe('Change the plan first. It did not hold up in 2 of 12 periods.')
+    expect(await show(withDecision({ status: 'insufficient_evidence', missing_evidence: ['completed Setup'], facts: {} })))
+      .toBe('Not enough checks yet. Run: completed Setup')
+    // Separate-lane counts are line-periods, so they are never shown as periods.
+    expect(await show(withDecision({ status: 'revise', facts: { failed_intervals: 2, validation_intervals: 12 } }, 'separate')))
+      .toBe('Change the plan first.')
+    expect(await show(withDecision({ status: 'conditional', facts: { today_overloaded_periods: ['09:00'] } }, 'separate')))
+      .toBe("The plan passed every check, but its cost saving can't be calculated for separate lines. Use it only if you accept the cost.")
+    expect(await show(withDecision({ status: 'something_new', facts: null }))).toBe('Do not adopt Scenario "Four at eight" yet.')
   })
 
   it('shows a refused download as an alert', async () => {
