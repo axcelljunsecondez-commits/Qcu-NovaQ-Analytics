@@ -46,6 +46,7 @@ from backend.api.workflow import router as workflow_router
 from backend.db.session import create_engine_for
 from backend.db.session import get_db as global_get_db
 from backend.operations.migration_status import code_config, required_heads, schema_head_problem
+from backend.queueing_engine.simulation.simulation import McWorkloadError
 
 logger = logging.getLogger("novaq.api")
 EVENT_LOG_FORMAT = "%(asctime)sZ %(levelname)s %(name)s %(message)s"
@@ -310,6 +311,11 @@ def create_app(
             },
             status_code=exc.status_code,
         )
+
+    @app.exception_handler(McWorkloadError)
+    async def mc_workload_error_handler(request: Request, exc: McWorkloadError) -> JSONResponse:
+        # Every Monte Carlo route (simulation and workflow) refuses an oversized run the same way (OD-N4).
+        return JSONResponse({"detail": str(exc)}, status_code=422)
 
     @app.get("/health")
     def health() -> dict[str, str]:

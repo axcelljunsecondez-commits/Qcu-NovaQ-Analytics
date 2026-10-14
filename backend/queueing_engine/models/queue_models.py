@@ -170,18 +170,15 @@ def mmc(lambda_: float, mu: float, c: int) -> dict[str, Any]:
 
     try:
         offered_load = lambda_ / mu
-        tail_term = (offered_load ** c) / (math.factorial(c) * (1.0 - rho))
-        p0_denominator = sum(
-            (offered_load ** n) / math.factorial(n) for n in range(c)
-        ) + tail_term
-        p0 = 1.0 / p0_denominator
+        # Erlang B by its recursion, then Erlang C = B / (1 - rho * (1 - B)). Every term stays in [0, 1],
+        # so a large c cannot overflow as offered_load ** c / c! did
+        # (docs/superpowers/specs/2026-10-12-large-server-count-erlang-numerics.md).
+        erlang_b = 1.0
+        for n in range(1, c + 1):
+            erlang_b = offered_load * erlang_b / (n + offered_load * erlang_b)
+        erlang_c = erlang_b / (1.0 - rho * (1.0 - erlang_b))
 
-        Lq = (
-            p0
-            * (offered_load ** c)
-            * rho
-            / (math.factorial(c) * ((1.0 - rho) ** 2))
-        )
+        Lq = erlang_c * rho / (1.0 - rho)
         Wq = 0.0 if lambda_ == 0 else Lq / lambda_
         W = Wq + (1.0 / mu)
         L = lambda_ * W
@@ -232,10 +229,17 @@ def mgc(lambda_: float, mu: float, c: int, service_variance: float) -> dict[str,
     rho = base.get("rho")
 
     if not base.get("stable", False):
+        # Only a saturated base is unstable; any other M/M/c failure is numerical.
+        if lambda_ >= c * mu or (rho is not None and is_saturated(rho)):
+            return _result(
+                rho=rho,
+                stable=False,
+                error="Unstable system: lambda must be less than c * mu for M/G/c.",
+            )
         return _result(
             rho=rho,
             stable=False,
-            error="Unstable system: lambda must be less than c * mu for M/G/c.",
+            error="M/G/c calculation failed due to numerical instability.",
         )
 
     try:
@@ -257,6 +261,22 @@ def mgc(lambda_: float, mu: float, c: int, service_variance: float) -> dict[str,
 def _is_valid_capacity(value: object) -> bool:
     """Check that a capacity input is a positive integer."""
     return isinstance(value, Integral)
+
+
+def _mmck_scaled_weights(offered_load: float, c: int, K: int) -> list[float]:
+    """M/M/c/K weights a^n/n! (n <= c) and a^n/(c! c^(n-c)) (n > c), divided by the largest, from logarithms."""
+    if offered_load == 0:
+        return [1.0] + [0.0] * K
+    log_load = math.log(offered_load)
+    if not math.isfinite(log_load):
+        raise OverflowError("offered load exceeds the float range")
+    log_c_factorial, log_c = math.lgamma(c + 1), math.log(c)
+    logs = [
+        n * log_load - math.lgamma(n + 1) if n <= c else n * log_load - log_c_factorial - (n - c) * log_c
+        for n in range(K + 1)
+    ]
+    peak = max(logs)
+    return [math.exp(value - peak) for value in logs]
 
 
 def mmck(lambda_: float, mu: float, c: int, K: int) -> dict[str, Any]:
@@ -289,17 +309,25 @@ def mmck(lambda_: float, mu: float, c: int, K: int) -> dict[str, Any]:
 
     try:
         offered_load = lambda_ / mu
-        weights = []
-        for n in range(K + 1):
-            if n <= c:
-                weight = (offered_load ** n) / math.factorial(n)
-            else:
-                weight = (offered_load ** n) / (
-                    math.factorial(c) * (c ** (n - c))
-                )
-            weights.append(weight)
+        try:
+            weights = []
+            for n in range(K + 1):
+                if n <= c:
+                    weight = (offered_load ** n) / math.factorial(n)
+                else:
+                    weight = (offered_load ** n) / (
+                        math.factorial(c) * (c ** (n - c))
+                    )
+                weights.append(weight)
+            total = sum(weights)
+        except OverflowError:
+            total = math.inf
+        if not math.isfinite(total):
+            # The closed form, or its sum, overflowed for a large c or K: use the same weights from logarithms.
+            weights = _mmck_scaled_weights(offered_load, c, K)
+            total = math.fsum(weights)
 
-        p0 = 1.0 / sum(weights)
+        p0 = 1.0 / total
         probabilities = [p0 * weight for weight in weights]
         blocking_probability = probabilities[K]
         effective_lambda = lambda_ * (1.0 - blocking_probability)
