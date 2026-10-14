@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { NewAnalysisPage } from './NewAnalysisPage'
+import { recommend } from '../lib/structureRecommendation'
 
 const createAnalysisMock = vi.fn()
 
@@ -15,7 +16,7 @@ function renderPage() {
   return renderWithProviders(
     <Routes>
       <Route path="/analyses/new" element={<NewAnalysisPage />} />
-      <Route path="/analyses/:analysisId/setup" element={<div>Canonical setup</div>} />
+      <Route path="/analyses/:analysisId/data" element={<div>Canonical setup</div>} />
       <Route path="/analyses/:analysisId/guided-setup" element={<div>Guided chooser</div>} />
     </Routes>,
     { route: '/analyses/new' },
@@ -31,10 +32,12 @@ beforeEach(() => {
 describe('NewAnalysisPage structure selection', () => {
   it('offers exactly two primary structures plus help, no model jargon', async () => {
     renderPage()
-    expect(await screen.findByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /Shared Queue/ })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /Separate Queues/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Help me choose/ })).toBeInTheDocument()
+    expect(await screen.findByRole('radio', { name: /Everyone waits in one line/ })).toBeChecked()
+    expect(screen.getAllByRole('radio', { name: /line/ })).toHaveLength(2)
+    expect(screen.getByRole('radio', { name: /Each counter has its own line/ })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /one shared line/ })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /three separate lines/ })).toBeInTheDocument()
+    expect(screen.getByText('Not sure which one? Answer two questions')).toBeInTheDocument()
     expect(screen.queryByText(/Single server/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/M\/M\/1|M\/M\/c|M\/G\/c|Parallel M\/G\/1/)).not.toBeInTheDocument()
   })
@@ -55,7 +58,7 @@ describe('NewAnalysisPage structure selection', () => {
     const user = userEvent.setup()
     renderPage()
     await user.type(await screen.findByLabelText('Analysis name'), 'separate shop')
-    await user.click(screen.getByRole('radio', { name: /Separate Queues/ }))
+    await user.click(screen.getByRole('radio', { name: /Each counter has its own line/ }))
     expect(screen.getByRole('button', { name: 'Continue to queue setup' })).toBeDisabled()
     await user.type(screen.getByLabelText('Queue ID 1'), 'cashier_a')
     await user.click(screen.getByRole('button', { name: 'Add queue' }))
@@ -72,18 +75,47 @@ describe('NewAnalysisPage structure selection', () => {
     )
   })
 
-  it('help path creates an unknown-structure analysis bound for guided setup', async () => {
+  it('can still create an analysis with the structure decided later', async () => {
     const user = userEvent.setup()
     createAnalysisMock.mockResolvedValue({
       analysis: { id: 12, queue_setup: { queue_structure: 'unknown' } },
     })
     renderPage()
     await user.type(await screen.findByLabelText('Analysis name'), 'unsure shop')
-    await user.click(screen.getByRole('button', { name: /Help me choose/ }))
+    await user.click(screen.getByText('Not sure which one? Answer two questions'))
+    await user.click(within(screen.getByRole('group', { name: /one common waiting line/ })).getByRole('radio', { name: "I'm not sure" }))
+    await user.click(within(screen.getByRole('group', { name: /its own line/ })).getByRole('radio', { name: "I'm not sure" }))
+    await user.click(screen.getByRole('button', { name: 'Create and decide later' }))
     await waitFor(() => expect(createAnalysisMock).toHaveBeenCalled())
     expect(createAnalysisMock.mock.calls[0][0]).toEqual(
       expect.objectContaining({ queue_setup: expect.objectContaining({ queue_structure: 'unknown' }) }),
     )
-    expect(await screen.findByText('Guided chooser')).toBeInTheDocument()
+    expect(await screen.findByText('Canonical setup')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['yes', null, 'Everyone waits in one line'],
+    ['no', 'yes', 'Each counter has its own line'],
+    ['unsure', 'yes', 'Each counter has its own line'],
+    ['no', 'no', null],
+    ['no', 'unsure', null],
+    ['unsure', 'unsure', null],
+  ] as const)('inline helper answers %s / %s the same way as Guided setup', async (q1, q2, expected) => {
+    expect(recommend(q1, q2)).toBe(expected === null ? null : expected.startsWith('Everyone') ? 'shared_queue' : 'separate_queues')
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByText('Not sure which one? Answer two questions'))
+    const label = { yes: 'Yes', no: 'No', unsure: "I'm not sure" }
+    await user.click(within(screen.getByRole('group', { name: /one common waiting line/ })).getByRole('radio', { name: label[q1] }))
+    if (q2) await user.click(within(screen.getByRole('group', { name: /its own line/ })).getByRole('radio', { name: label[q2] }))
+    if (expected) {
+      expect(screen.getByRole('status')).toHaveTextContent(`Recommended structure: ${expected}`)
+      await user.click(screen.getByRole('button', { name: 'Use this' }))
+      expect(screen.getByRole('radio', { name: new RegExp(expected) })).toBeChecked()
+    } else {
+      expect(screen.getByRole('status')).toHaveTextContent('do not point to one structure')
+      expect(screen.queryByRole('button', { name: 'Use this' })).not.toBeInTheDocument()
+    }
+    expect(createAnalysisMock).not.toHaveBeenCalled()
   })
 })

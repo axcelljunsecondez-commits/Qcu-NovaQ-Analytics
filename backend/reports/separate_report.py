@@ -175,13 +175,16 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
     truncated_any = any(p["trace"].get("truncated") is True for p in des_periods)
 
     # The optimizer marks a schedule whose candidates came from one continuous
-    # operating day per replication (representative-day basis, finding K).
+    # operating day per replication (representative-day basis, finding K; per-date
+    # data with operating segments, B13: each date is its own day from empty).
     continuous_day = schedule.get("utilization_basis") == "continuous-day DES"
     operating_day_hours = _finite_or_none(analysis.get("operating_day_hours"))
     if continuous_day:
         execution_limitation = (
             "Each optimization replication simulated the whole operating day as one continuous "
-            "run; queues and breaks carried across period boundaries, and each period's "
+            "run (with one period per calendar date, each date as its own day starting empty); "
+            "queues and "
+            "breaks carried across period boundaries within a day, and each period's "
             "utilization, waits and waiting cost come from that period's part of the day.")
     else:
         execution_limitation = (
@@ -257,8 +260,9 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
                               "handling of ties.",
             "arrival_method": "single conserved Poisson stream at total lambda",
             "service_sampling": "empirical per-lane resampling",
-            "execution": ("continuous operating day per replication; queues and breaks "
-                          "carry across periods" if continuous_day
+            "execution": ("continuous operating day per replication (each date on its own with one "
+                          "period per calendar date); queues and breaks carry across periods within a day"
+                          if continuous_day
                           else "period-independent; no cross-period carryover"),
         },
         "comparison_plans": [

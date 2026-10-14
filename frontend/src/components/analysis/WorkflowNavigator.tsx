@@ -1,6 +1,6 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { analysisWorkflow } from '../../lib/workflow'
+import { analysisWorkflow, workflowStepHref } from '../../lib/workflow'
 
 export function WorkflowNavigator() {
   const { t } = useTranslation()
@@ -23,7 +23,7 @@ export function WorkflowNavigator() {
       <ol className="workflow-stepper">
         {analysisWorkflow.map(([path, label], stepIndex) => (
           <li key={path} className={stepIndex === index ? 'active' : undefined}>
-            <Link to={`/analyses/${analysisId}/${path}`} aria-current={stepIndex === index ? 'step' : undefined}>
+            <Link to={workflowStepHref(path, analysisId)} aria-current={stepIndex === index ? 'step' : undefined}>
               <span aria-hidden="true">{stepIndex + 1}</span>
               {t(label)}
             </Link>
@@ -32,12 +32,12 @@ export function WorkflowNavigator() {
       </ol>
       <div className="workflow-footer-actions">
         {previous && (
-          <Link className="btn-ghost" to={`/analyses/${analysisId}/${previous[0]}`}>
+          <Link className="btn-ghost" to={workflowStepHref(previous[0], analysisId)}>
             {t('workflow.back', { step: t(previous[1]) })}
           </Link>
         )}
         {next ? (
-          <Link className="btn-primary" to={`/analyses/${analysisId}/${next[0]}`}>
+          <Link className="btn-primary" to={workflowStepHref(next[0], analysisId)}>
             {t('workflow.next', { step: t(next[1]) })}
           </Link>
         ) : (

@@ -17,9 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.api.analyses import _to_out as analysis_out
-from backend.api.analyses import own_analysis
+from backend.api.analyses import own_analysis, reviewable_dataset
 from backend.api.analysis_schemas import QueueSetup, setup_status
-from backend.api.current_dataset import resolve_current_dataset
+from backend.api.current_dataset import is_for_planning, resolve_current_dataset
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.evidence_status import (
     GENERATION_KINDS,
@@ -65,18 +65,25 @@ from backend.queueing_engine.services.separate_optimization import (
     SELECTED_DES_CONTINUOUS_DAY_EXECUTION,
     SELECTED_DES_PER_PERIOD_EXECUTION,
     SEPARATE_DES_ENGINE_VERSION,
+    SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION,
+    SEPARATE_DES_V2_ENGINE_VERSION,
+    SEPARATE_DES_V3_ENGINE_VERSION,
     _period_current_active,
     _segment_window,
+    date_seed,
     des_day_start_minutes,
     evaluate_candidate_with_des,
     full_coverage_min_lanes,
     index_period_queues,
     optimize_separate_schedule,
+    per_date_continuous,
+    per_date_days,
     period_des_breaks,
     prune_separate_schedule,
     replication_seeds,
     resolve_des_breaks,
     run_routing_day_des,
+    separate_engine_version,
     validate_des_replication_config,
 )
 from backend.queueing_engine.simulation.simulation import (
@@ -84,6 +91,7 @@ from backend.queueing_engine.simulation.simulation import (
     simulate_segments_with_trace,
     validate_with_simulation,
 )
+from backend.queueing_engine.utilization import THRESHOLD_TOLERANCE
 
 router = APIRouter(prefix="/analyses", tags=["workflow"])
 
@@ -241,18 +249,36 @@ def _operationally_complete(rows: list[dict[str, Any]]) -> bool:
 
 
 UNSUPPORTED_SEPARATE_SNAPSHOT = "not a supported Separate optimization snapshot"
+# B13 (OD-B13-1 Option B): a per-date plan saved before B13 was judged with each period run alone for
+# 24 hours. It is historical and must be recalculated; representative-day plans keep their version.
+HISTORICAL_PER_DATE_SNAPSHOT = (
+    "calculated with the earlier per-date method, where each period ran alone for 24 hours; "
+    "run Suggested plans again to judge each date as one continuous day")
+# U10 F16: plans saved before every replication's cost was counted (engine v2/v3) are historical.
+HISTORICAL_COST_SNAPSHOT = (
+    "calculated before every simulated repeat's cost was counted in the plan's cost; "
+    "run Suggested plans again")
+_HISTORICAL_SNAPSHOTS = (HISTORICAL_PER_DATE_SNAPSHOT, HISTORICAL_COST_SNAPSHOT)
 
 
-def _separate_schedule_problem(scenario: Scenario) -> str | None:
+def _separate_schedule_problem(scenario: Scenario, setup: dict[str, Any] | None = None) -> str | None:
     """Return None when a saved Separate plan is complete and selectable.
 
     Requires a supported schema-v2 snapshot, a COMPLETE schedule, and every
     period OPTIMAL with an estimated optimum lane count. Anything else is
-    reported as a reason instead of becoming selectable.
+    reported as a reason instead of becoming selectable. ``setup`` is the analysis's Setup, which
+    names the engine version a plan for it must carry (B13); without it the v2 rule applies.
     """
     calc = (scenario.settings_json or {}).get("calculation") or {}
-    if (calc.get("schema_version") != 2
-            or calc.get("engine_version") != SEPARATE_DES_ENGINE_VERSION):
+    expected = separate_engine_version(setup) if setup is not None else SEPARATE_DES_ENGINE_VERSION
+    if calc.get("schema_version") != 2:
+        return UNSUPPORTED_SEPARATE_SNAPSHOT
+    if calc.get("engine_version") != expected:
+        if (calc.get("engine_version") == SEPARATE_DES_V2_ENGINE_VERSION
+                and expected == SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION):
+            return HISTORICAL_PER_DATE_SNAPSHOT
+        if calc.get("engine_version") in (SEPARATE_DES_V2_ENGINE_VERSION, SEPARATE_DES_V3_ENGINE_VERSION):
+            return HISTORICAL_COST_SNAPSHOT
         return UNSUPPORTED_SEPARATE_SNAPSHOT
     schedule = (scenario.results_json or {}).get("schedule")
     if not isinstance(schedule, dict) or schedule.get("overall") != "COMPLETE":
@@ -424,9 +450,10 @@ def _scenario_evidence(
     resolved = dataset if not failures else None
     snapshot = (scenario.settings_json or {}).get("calculation") or {}
     if snapshot.get("schema_version") == 2:
-        problem = _separate_schedule_problem(scenario)
+        problem = _separate_schedule_problem(scenario, analysis.queue_setup_json or {})
         if problem is not None:
             code = (ReasonCode.VERSION_UNSUPPORTED if problem == UNSUPPORTED_SEPARATE_SNAPSHOT
+                    else ReasonCode.VERSION_HISTORICAL if problem in _HISTORICAL_SNAPSHOTS
                     else ReasonCode.CALCULATION_UNSUPPORTED)
             fail(code, subject, f"Separate plan is not selectable: {problem}.")
         if resolved is not None:
@@ -520,7 +547,27 @@ def scenario_evidence_fields(db: Session, user: User, scenario: Scenario) -> dic
     return _evidence_fields(evidence.status, evidence.reasons)
 
 
-def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[dict[str, Any]]:
+def _attach_recorded_service(segment: dict[str, Any], dataset: Dataset) -> None:
+    """U10 F2: a shared plan period's recorded service durations, from its dataset row with the same label.
+
+    Only customer-record uploads carry them. Nothing is attached when the label is missing or not
+    unique, so the DES then refuses M/G/c instead of assuming a service-time distribution.
+    """
+    matches = [row for row in dataset.normalized_json or []
+               if isinstance(row, dict) and str(row.get("time", "")) == str(segment.get("time", ""))]
+    if len(matches) == 1 and isinstance(matches[0].get("service_samples_hours"), list):
+        segment["service_time_source"] = matches[0].get("service_time_source")
+        segment["service_samples_hours"] = matches[0]["service_samples_hours"]
+
+
+def _is_separate_input(row: dict[str, Any]) -> bool:
+    return row.get("model_id") == "parallel_mg1" or row.get("queue_structure") == "separate_queues"
+
+
+def _segments_for(
+    scenario: Scenario, dataset: Dataset | None = None, *, service_dataset: Dataset | None = None,
+) -> list[dict[str, Any]]:
+    """The plan's model inputs per period with its staffing; ``service_dataset`` only adds shared recorded durations."""
     rows = _scenario_rows(scenario)
     snapshot = (scenario.settings_json or {}).get("calculation") or {}
     source = snapshot.get("input_segments")
@@ -533,7 +580,9 @@ def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[di
         segment = dict(source_row)
         segment["time"] = str(result_row.get("time", source_row.get("time", "Unknown")))
         segment["c"] = int(result_row["c_optimal"])
-        if source_row.get("model_id") == "parallel_mg1" or source_row.get("queue_structure") == "separate_queues":
+        if not _is_separate_input(source_row) and (dataset or service_dataset) is not None:
+            _attach_recorded_service(segment, cast(Dataset, dataset or service_dataset))
+        if _is_separate_input(source_row):
             if dataset is None:
                 raise HTTPException(status_code=422, detail="Parallel M/G/1 DES source Dataset is unavailable.")
             segment_id = str(source_row.get("segment_id", ""))
@@ -566,6 +615,27 @@ def _segments_for(scenario: Scenario, dataset: Dataset | None = None) -> list[di
                 raise HTTPException(status_code=422, detail="Parallel M/G/1 DES requires one dedicated server per queue.")
         segments.append(segment)
     return segments
+
+
+def _validation_rows(scenario: Scenario, dataset: Dataset) -> list[dict[str, Any]]:
+    """U10 F2: each saved plan row with the model inputs it was calculated with.
+
+    Result rows carry no variance, K or theta, so without these the check would simulate every
+    plan as M/M/c. They come from the calculation snapshot, as for the standalone DES.
+    """
+    rows = _scenario_rows(scenario)
+    source = ((scenario.settings_json or {}).get("calculation") or {}).get("input_segments")
+    if not isinstance(source, list) or len(source) != len(rows):
+        raise HTTPException(status_code=422, detail="Scenario calculation inputs are incomplete.")
+    merged: list[dict[str, Any]] = []
+    for source_row, row in zip(source, rows):
+        item = dict(row)
+        if isinstance(source_row, dict):
+            item.update({key: source_row[key] for key in ("variance", "K", "theta") if source_row.get(key) is not None})
+            if not _is_separate_input(source_row):
+                _attach_recorded_service(item, dataset)
+        merged.append(item)
+    return merged
 
 
 def _current_valid_dataset_id(db: Session, user: User, analysis: AnalysisProject) -> int | None:
@@ -1101,8 +1171,9 @@ def _evidence_is_current(
 def _current_evidence(
     db: Session, user: User, analysis: AnalysisProject
 ) -> dict[str, Any]:
-    scenario, selection = _selected_scenario(db, user, analysis)
+    scenario, scenario_dataset, selection = _selected_scenario_and_dataset(db, user, analysis)
     scenario_id = scenario.id if scenario is not None else None
+    full_day = _eligible_full_day_run(db, user, analysis, scenario, scenario_dataset)
     context = _evidence_context(db, user, analysis)
     policy = _current_evidence_policy()
 
@@ -1147,12 +1218,26 @@ def _current_evidence(
         # never clear it.
         decision_stale = scenario_id is not None or not _job_setup_current(raw_decision, analysis)
     if decision is not None:
-        references = (decision.result_json or {}).get("evidence_ids") or {}
-        decision_stale = (
-            references.get("selection") != (selection.id if selection else None)
-            or references.get("des") != (des.id if des else None)
-            or references.get("validation") != (validation.id if validation else None)
-        )
+        stored = decision.result_json or {}
+        references = stored.get("evidence_ids") or {}
+        if stored.get("basis") == FULL_DAY_BASIS:
+            # OD-UX-13: current while its selection, Many variations job and full-day run are today's,
+            # and the run is no newer than the Decision (an id freed by a deletion can be reused).
+            decision_stale = (
+                references.get("selection") != (selection.id if selection else None)
+                or references.get("mc") != (mc.id if mc else None)
+                or full_day is None
+                or references.get("continuous") != full_day.id
+                or full_day.created_at > decision.created_at
+            )
+        else:
+            decision_stale = (
+                references.get("selection") != (selection.id if selection else None)
+                or references.get("des") != (des.id if des else None)
+                or references.get("validation") != (validation.id if validation else None)
+                # "Full-day run first": with an eligible full-day run a new Decision would use it.
+                or full_day is not None
+            )
         if decision_stale:
             decision = None
     return {
@@ -1175,6 +1260,9 @@ def _current_evidence(
         "validation_current": _job_out(validation_current),
         "decision": _job_out(decision),
         "decision_stale": decision_stale,
+        # OD-UX-13: which checks a new Decision uses, so the page runs the right ones.
+        "decision_basis": FULL_DAY_BASIS if full_day is not None else PERIOD_BASIS,
+        "full_day_run_id": full_day.id if full_day is not None else None,
     }
 
 
@@ -1301,6 +1389,7 @@ def run_des(
         carryover=payload.carryover,
         queue_setup=analysis.queue_setup_json,
     )
+    result["summary"] = _run_summary(result)
     job = _save_job(
         db, user, "workflow_des", analysis, scenario,
         payload.model_dump(), result, settings, dataset,
@@ -1332,6 +1421,7 @@ def run_des_current(
         queue_setup=analysis.queue_setup_json,
     )
     result["provenance"] = "CURRENT"
+    result["summary"] = _run_summary(result)
     job = _save_job(
         db, user, "workflow_des_current", analysis, None,
         payload.model_dump(), result, settings, dataset,
@@ -1354,7 +1444,7 @@ def run_mc(
     scenario, dataset = _require_selection(db, user, analysis)
     result = {
         "results": mc_simulate_segments(
-            _segments_for(scenario),
+            _segments_for(scenario, service_dataset=dataset),
             num_trials=payload.num_trials,
             failure_threshold=payload.failure_threshold,
             failure_rate_cap=payload.failure_rate_cap,
@@ -1413,7 +1503,7 @@ def run_validation(
     analysis = own_analysis(db, user, analysis_id)
     scenario, dataset = _require_selection(db, user, analysis)
     frame = validate_with_simulation(
-        pd.DataFrame(_scenario_rows(scenario)),
+        pd.DataFrame(_validation_rows(scenario, dataset)),
         des_sim_hours=payload.des_sim_hours,
         mc_trials=payload.mc_trials,
         mc_failure_threshold=payload.mc_failure_threshold,
@@ -1531,6 +1621,192 @@ def _cost_totals(rows: list[dict[str, Any]]) -> tuple[float, float] | None:
     )
 
 
+def _today_overloaded_periods(rows: list[dict[str, Any]]) -> list[str]:
+    """Periods whose missing today cost means today's staffing cannot keep up (spec 2026-10-13).
+
+    Non-empty only when every plan cost is finite and every missing today cost is in a period
+    the optimizer marked ``current_stable`` false (rho >= 1: no finite waiting cost). Any other
+    gap leaves the cost comparison missing.
+    """
+    if not all(_finite_non_negative(row.get("cost_optimal")) for row in rows):
+        return []
+    gaps = [row for row in rows if not _finite_non_negative(row.get("cost_current"))]
+    if not gaps or any(row.get("current_stable") is not False for row in gaps):
+        return []
+    return [str(row.get("time", "")) for row in gaps]
+
+
+# OD-UX-13 (spec 2026-10-13-od-ux-13-full-day-decision.md): a shared Decision from the full-day run.
+# The kind is backend.api.shared_continuous.JOB_KIND; that module imports this one, so it is named here.
+FULL_DAY_RUN_KIND = "shared_continuous_preview"
+FULL_DAY_BASIS = "full_day_run"
+PERIOD_BASIS = "period_by_period"
+
+
+def _eligible_full_day_run(
+    db: Session, user: User, analysis: AnalysisProject, scenario: Scenario | None, dataset: Dataset | None,
+) -> Job | None:
+    """The latest full-day run of the selected plan on its dataset and the current Setup, if any.
+
+    Its recorded scenario id and generation, dataset id and generation and Setup hash must all be
+    today's; its service model then follows the plan's own data (shared_continuous._assess).
+    """
+    if scenario is None or dataset is None:
+        return None
+    setup_hash = _setup_fingerprint(analysis.queue_setup_json)
+    jobs = db.execute(
+        select(Job)
+        .where(Job.user_id == user.id, Job.kind == FULL_DAY_RUN_KIND, Job.status == "completed")
+        .order_by(Job.id.desc())
+    ).scalars()
+    for job in jobs:
+        params = job.params_json or {}
+        if (params.get("analysis_id") == analysis.id and params.get("plan") == "suggested"
+                and params.get("scenario_id") == scenario.id
+                and params.get("scenario_generation") == scenario.generation
+                and params.get("dataset_id") == dataset.id
+                and params.get("dataset_generation") == dataset.generation
+                and params.get("setup_hash") == setup_hash):
+            return job
+    return None
+
+
+def _full_day_periods(rows: list[dict[str, Any]], run: Job, mc: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Each plan period judged by the day run and by Many variations (OD-UX-13 rule).
+
+    Day run: the mean over the repeats of the period's simulated utilization must be at most the
+    plan's recorded target (the separate-lanes aggregate rule). Many variations: the separate-lanes
+    verdict (unsupported, non-finite or inadequate is insufficient; above the cap fails). A period
+    fails if either part fails, is insufficient if either part is, and passes otherwise.
+    """
+    labels = (run.params_json or {}).get("period_labels") or {}
+    by_label: dict[str, dict[str, Any]] = {}
+    for segment in ((run.result_json or {}).get("period_utilization") or {}).get("segments") or []:
+        label = labels.get(segment.get("segment_id")) if isinstance(segment, dict) else None
+        if isinstance(label, str):
+            by_label[label] = segment
+    mc_rows = {str(row.get("time", "")): row for row in ((mc or {}).get("result") or {}).get("results") or []
+               if isinstance(row, dict)}
+    cap = ((mc or {}).get("params") or {}).get("failure_rate_cap")
+    periods = []
+    for row in rows:
+        label = str(row.get("time", ""))
+        target = (row.get("effective_constraints") or {}).get("target_utilization")
+        mean = ((by_label.get(label) or {}).get("summary") or {}).get("mean")
+        if not _finite_non_negative(mean) or not _finite_non_negative(target):
+            day = "insufficient"
+        else:
+            day = ("fail" if float(cast(int | float, mean)) > float(cast(int | float, target)) + THRESHOLD_TOLERANCE
+                   else "pass")
+        mc_row = mc_rows.get(label) or {}
+        rate = mc_row.get("failure_rate")
+        if (mc_row.get("simulation_supported") is not True or not _finite_non_negative(rate)
+                or mc_row.get("failure_rate_adequate") is not True or not _finite_non_negative(cap)):
+            variations = "insufficient"
+        else:
+            variations = "fail" if float(cast(int | float, rate)) > float(cast(int | float, cap)) else "pass"
+        parts = (day, variations)
+        periods.append({
+            "time": label, "day_run_utilization": mean, "target_utilization": target, "day_run": day,
+            "variations_failure_rate": rate, "variations_failure_cap": cap, "variations": variations,
+            "verdict": "fail" if "fail" in parts else "insufficient" if "insufficient" in parts else "pass",
+        })
+    return periods
+
+
+def _derive_full_day_decision(
+    analysis: AnalysisProject, scenario: Scenario, evidence: dict[str, Any], run: Job,
+) -> dict[str, Any]:
+    """The shared Decision from the full-day run and Many variations (OD-UX-13). Same outcomes and cost rule."""
+    rows = _scenario_rows(scenario)
+    mc = evidence.get("mc")
+    missing: list[str] = []
+    if analysis.setup_status not in {"ready", "ready_for_aggregate"}:
+        missing.append("completed Setup")
+    totals = _cost_totals(rows)
+    overloaded = _today_overloaded_periods(rows) if totals is None else []
+    if totals is None and not overloaded:
+        missing.append("a complete modeled cost comparison")
+    if not ((run.result_json or {}).get("period_utilization") and (run.params_json or {}).get("period_labels")):
+        missing.append("a full-day run with results by period (run the full day again)")
+    if mc is None:
+        missing.append("a completed Many variations run for the selected plan")
+    run_params = run.params_json or {}
+    evidence_ids = {
+        "selection": evidence["selection"]["id"] if evidence.get("selection") else None,
+        "des": None, "mc": mc["id"] if mc else None, "validation": None, "continuous": run.id,
+    }
+    common = {
+        "basis": FULL_DAY_BASIS, "scenario_id": scenario.id, "scenario_name": scenario.name,
+        "dataset_id": scenario.dataset_id, "evidence_ids": evidence_ids,
+        "provenance_warning": (
+            "Analytical estimates and simulated results are decision support, not observed future outcomes."),
+    }
+    if missing:
+        return {
+            "status": "insufficient_evidence",
+            "headline": "Insufficient evidence to make a management recommendation.",
+            "recommendation": "Complete the missing workflow evidence before making an adoption decision.",
+            "rationale": [f"Missing: {item}." for item in missing], "missing_evidence": missing, **common,
+        }
+    periods = _full_day_periods(rows, run, mc)
+    failed = [period["time"] for period in periods if period["verdict"] == "fail"]
+    unsettled = [period["time"] for period in periods if period["verdict"] == "insufficient"]
+    if totals is not None:
+        current_cost: float | None = totals[0]
+        optimal_cost = totals[1]
+        savings: float | None = totals[0] - totals[1]
+    else:
+        current_cost, savings = None, None
+        optimal_cost = math.fsum(float(row["cost_optimal"]) for row in rows)
+    server_delta = sum(int(row["c_optimal"]) - int(row["c_current"]) for row in rows)
+    facts: dict[str, Any] = {
+        "current_modeled_cost": current_cost, "selected_modeled_cost": optimal_cost, "modeled_savings": savings,
+        "server_delta": server_delta, "validation_intervals": len(periods), "failed_intervals": len(failed),
+        "failed_periods": failed, "insufficient_periods": unsettled, "failure_rate_cap": (mc or {}).get("params", {}).get("failure_rate_cap"),
+        "periods": periods, "full_day_run": {
+            "id": run.id, "replications": run_params.get("replications"),
+            "closing_policy": run_params.get("closing_policy"), "service_model": run_params.get("service_model"),
+        },
+    }
+    if overloaded:
+        facts["today_overloaded_periods"] = overloaded
+    total = len(periods)
+    checks = "the full-day run and Many variations"
+    if failed:
+        status, headline = "revise", f'Do not adopt Scenario "{scenario.name}" yet.'
+        recommendation = (f"Revise and re-test the plan because {len(failed)} of {total} periods did not pass "
+                          f"{checks}: {', '.join(failed)}.")
+    elif unsettled:
+        status, headline = "insufficient_evidence", "Insufficient evidence to make a management recommendation."
+        recommendation = f"The checks cannot tell yet for: {', '.join(unsettled)}."
+    elif savings is None:
+        status, headline = "conditional", f'Consider Scenario "{scenario.name}" conditionally.'
+        recommendation = (f"All {total} periods passed {checks}, but the cost change cannot be calculated: in "
+                          f"{', '.join(overloaded)}, customers arrive faster than the current staff can serve them "
+                          "(ρ ≥ 1), so today's waiting cost has no finite value.")
+    elif savings >= 0:
+        status, headline = "adopt", f'Adopt Scenario "{scenario.name}".'
+        recommendation = (f"All {total} periods passed {checks} and modeled cost decreases by "
+                          f"PHP {savings:,.2f} per modeled cycle.")
+    else:
+        status, headline = "conditional", f'Consider Scenario "{scenario.name}" conditionally.'
+        recommendation = (f"All {total} periods passed {checks}, but modeled cost increases by "
+                          f"PHP {abs(savings):,.2f} per modeled cycle.")
+    return {
+        "status": status, "headline": headline, "recommendation": recommendation,
+        "rationale": [
+            f"Selected Scenario: {scenario.name} (ID {scenario.id}).",
+            f"Net server change across intervals: {server_delta:+d}.",
+            (f"Full-day run {run.id}: {run_params.get('replications')} repeats, closing rule "
+             f"{run_params.get('closing_policy')}, {run_params.get('service_model')} service times."),
+            f"Periods: {total - len(failed) - len(unsettled)} of {total} passed.",
+            *([f"Today's staffing cannot keep up (ρ ≥ 1) in: {', '.join(overloaded)}."] if overloaded else []),
+        ],
+        "missing_evidence": [], "facts": facts, **common,
+    }
+
+
 def _derive_decision(
     analysis: AnalysisProject,
     scenario: Scenario | None,
@@ -1550,7 +1826,8 @@ def _derive_decision(
 
     rows = _scenario_rows(scenario) if scenario is not None else []
     totals = _cost_totals(rows) if rows else None
-    if scenario is not None and totals is None:
+    overloaded = _today_overloaded_periods(rows) if rows and totals is None else []
+    if scenario is not None and totals is None and not overloaded:
         missing.append("a complete modeled cost comparison")
 
     expected_times = [str(row.get("time", "")) for row in rows]
@@ -1598,7 +1875,7 @@ def _derive_decision(
             ),
         }
 
-    assert scenario is not None and totals is not None and validation is not None
+    assert scenario is not None and (totals is not None or overloaded) and validation is not None
     failure_cap_value = (validation.get("params") or {}).get("mc_failure_rate_cap")
     assert isinstance(failure_cap_value, (int, float)) and not isinstance(
         failure_cap_value, bool
@@ -1618,10 +1895,15 @@ def _derive_decision(
         )
 
     failed = [row for row in validation_rows if not row_passes(row)]
-    current_cost, optimal_cost = totals
-    savings = current_cost - optimal_cost
+    if totals is not None:
+        current_cost: float | None = totals[0]
+        optimal_cost = totals[1]
+        savings: float | None = totals[0] - totals[1]
+    else:  # today's staffing cannot keep up somewhere: no finite today cost, so no saving (spec 2026-10-13)
+        current_cost, savings = None, None
+        optimal_cost = math.fsum(float(row["cost_optimal"]) for row in rows)
     server_delta = sum(int(row["c_optimal"]) - int(row["c_current"]) for row in rows)
-    facts = {
+    facts: dict[str, Any] = {
         "current_modeled_cost": current_cost,
         "selected_modeled_cost": optimal_cost,
         "modeled_savings": savings,
@@ -1630,12 +1912,22 @@ def _derive_decision(
         "failed_intervals": len(failed),
         "failure_rate_cap": failure_cap,
     }
+    if overloaded:
+        facts["today_overloaded_periods"] = overloaded
     if failed:
         status = "revise"
         headline = f'Do not adopt Scenario "{scenario.name}" yet.'
         recommendation = (
             f"Revise and re-test the plan because {len(failed)} of "
             f"{len(validation_rows)} validation intervals did not pass."
+        )
+    elif savings is None:
+        status = "conditional"
+        headline = f'Consider Scenario "{scenario.name}" conditionally.'
+        recommendation = (
+            f"All {len(validation_rows)} validation intervals passed, but the cost change cannot be "
+            f"calculated: in {', '.join(overloaded)}, customers arrive faster than the current staff "
+            "can serve them (ρ ≥ 1), so today's waiting cost has no finite value."
         )
     elif savings >= 0:
         status = "adopt"
@@ -1662,6 +1954,7 @@ def _derive_decision(
                 f"Validation: {len(validation_rows) - len(failed)} of "
                 f"{len(validation_rows)} intervals passed."
             ),
+            *([f"Today's staffing cannot keep up (ρ ≥ 1) in: {', '.join(overloaded)}."] if overloaded else []),
         ],
         "missing_evidence": [],
         "scenario_id": scenario.id,
@@ -1705,6 +1998,8 @@ def run_separate_optimize(
         dataset = db.get(Dataset, payload.dataset_id)
         if dataset is None or dataset.user_id != user.id or dataset.analysis_id != analysis.id:
             raise HTTPException(status_code=404, detail="Dataset not found in this Analysis.")
+        if not is_for_planning(dataset):
+            raise HTTPException(status_code=422, detail={"code": "dataset_not_for_planning"})
     else:
         dataset = _current_dataset(db, user, analysis)
     records = dataset.normalized_json or []
@@ -1731,7 +2026,8 @@ def run_separate_optimize(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"schedule": prune_separate_schedule(schedule)}
+    # B13: the engine version a plan saved from this schedule must carry (additive response field).
+    return {"schedule": prune_separate_schedule(schedule), "engine_version": separate_engine_version(setup)}
 
 
 @router.post(
@@ -1758,6 +2054,8 @@ def run_separate_break_optimize(
         dataset = db.get(Dataset, payload.dataset_id)
         if dataset is None or dataset.user_id != user.id or dataset.analysis_id != analysis.id:
             raise HTTPException(status_code=404, detail="Dataset not found in this Analysis.")
+        if not is_for_planning(dataset):
+            raise HTTPException(status_code=422, detail={"code": "dataset_not_for_planning"})
     else:
         dataset = _current_dataset(db, user, analysis)
     records = dataset.normalized_json or []
@@ -1847,6 +2145,73 @@ def _json_number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _wait_and_line(rows: list[dict[str, Any]]) -> tuple[float | None, int | None]:
+    """Served-weighted mean wait (hours) and the longest line over simulation rows.
+
+    The wait is unknown (None) when any row that served customers has no finite wait; rows that
+    served nobody carry no wait and are left out. Never zero-filled.
+    """
+    weighted: list[float] = []
+    served_total = 0.0
+    unknown = False
+    longest: int | None = None
+    for row in rows:
+        line = row.get("max_queue")
+        if isinstance(line, (int, float)) and not isinstance(line, bool) and math.isfinite(line):
+            longest = int(line) if longest is None else max(longest, int(line))
+        served = row.get("served")
+        if not isinstance(served, (int, float)) or isinstance(served, bool) or served <= 0:
+            continue
+        wait = _json_number(row.get("Wq_sim"))
+        if wait is None:
+            unknown = True
+            continue
+        weighted.append(wait * served)
+        served_total += served
+    wait_hours = None if unknown or served_total == 0 else math.fsum(weighted) / served_total
+    return wait_hours, longest
+
+
+def _run_summary(result: dict[str, Any]) -> dict[str, Any]:
+    """Day and per-period totals for a stored DES run, added up on the server (B12 pattern).
+
+    A continuous day (one execution over the operating hours) reports customers; a run that
+    simulates each period on its own for ``sim_hours`` reports only the served-weighted wait and
+    the longest line, because adding its customer counts would not describe one day.
+    """
+    continuous = "admitted" in result and "in_system_at_close" in result
+    if isinstance(result.get("periods"), list):
+        groups = [(str(p.get("time")), [r for r in p.get("results") or [] if isinstance(r, dict)])
+                  for p in result["periods"] if isinstance(p, dict)]
+    else:
+        groups = []
+        for row in result.get("results") or []:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("time"))
+            if not groups or groups[-1][0] != label:
+                groups.append((label, []))
+            groups[-1][1].append(row)
+    periods = []
+    for label, rows in groups:
+        wait_hours, longest = _wait_and_line(rows)
+        periods.append({
+            "time": label, "average_wait_hours": wait_hours, "longest_line": longest,
+            "arrivals": _sum_all(r.get("arrivals") for r in rows) if continuous else None,
+            "served": _sum_all(r.get("served") for r in rows) if continuous else None,
+        })
+    wait_hours, longest = _wait_and_line([r for _, rows in groups for r in rows])
+    return {
+        "basis": "continuous_day" if continuous else "per_period",
+        "average_wait_hours": wait_hours,
+        "longest_line": longest,
+        "arrivals": result.get("admitted") if continuous else None,
+        "served": result.get("served") if continuous else None,
+        "in_system_at_close": result.get("in_system_at_close") if continuous else None,
+        "periods": periods,
+    }
 
 
 def _sum_all(values: Any) -> float | None:
@@ -1943,12 +2308,19 @@ def _observed_wait_summary(
 @router.get("/{analysis_id}/workflow/observed-wait")
 def observed_wait(
     analysis_id: int,
+    dataset_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Modeled vs observed Current wait per period (read-only presentation)."""
+    """Modeled vs observed wait per period (read-only presentation).
+
+    B3: ``dataset_id`` reads any processed file of the analysis; omitted, the current planning file.
+    """
     analysis = own_analysis(db, user, analysis_id)
-    dataset = _current_dataset(db, user, analysis)
+    if dataset_id is not None:
+        dataset = reviewable_dataset(db, user, analysis, dataset_id)
+    else:
+        dataset = _current_dataset(db, user, analysis)
     validation = dataset.validation_report_json or {}
     frame, _, _ = analyze_segments(
         dataset.normalized_json or [], analysis.queue_setup_json or {}, validation)
@@ -2029,7 +2401,7 @@ def separate_comparison(
         schedule = (scenario.results_json or {}).get("schedule") or {}
         setup_problem = _scenario_setup_problem(scenario, analysis)
         stale = scenario.dataset_id != dataset.id or setup_problem is not None
-        problem = _separate_schedule_problem(scenario)
+        problem = _separate_schedule_problem(scenario, analysis.queue_setup_json or {})
         if setup_problem is not None:
             problem = setup_problem
         if scenario.dataset_id != dataset.id:
@@ -2244,7 +2616,8 @@ def _run_selected_plan_des(plan: dict[str, Any], seed: int | None,
     Representative-day analyses run one continuous day instead
     (``_run_selected_plan_day_des``) with the same output shape.
     """
-    if execute is None and (plan.get("setup") or {}).get("event_period_basis") == "representative_day":
+    setup = plan.get("setup") or {}
+    if execute is None and (setup.get("event_period_basis") == "representative_day" or per_date_continuous(setup)):
         return _run_selected_plan_day_des(plan, seed)
     executor = execute or evaluate_candidate_with_des
     scenario = plan["scenario"]
@@ -2408,6 +2781,7 @@ def run_selected_des(
         plan = _require_selected_separate_plan(db, user, analysis)
         result = _run_selected_plan_des(plan, payload.seed)
         _attach_mean_routed_loads(plan, payload.seed, payload.load_replications, result)
+        result["summary"] = _run_summary(result)
     except SelectedPlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     scenario = plan["scenario"]
@@ -2456,98 +2830,125 @@ def _attach_mean_routed_loads(plan: dict[str, Any], seed: int | None, count: int
 
 
 def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[str, Any]:
-    """Execute the selected representative-day plan as one continuous day.
+    """Execute the selected plan as one continuous day, or one continuous day per date (B13).
 
     Periods map to their configured operating segments on the DES clock
     (origin = earliest segment start); each period activates its persisted
     optimum lanes; breaks come from the setup at their wall-clock offsets.
     Lane rows keep the period-independent output shape; costs are not
     computed in this mode and stay null.
+
+    A representative day is one run. A per-date plan with operating segments runs each calendar
+    date as its own day from empty with its own seed (``date_seed``; ``per_date_days`` groups the periods and
+    refuses a date it cannot lay out); each period's ``start_hours`` is on its own date's clock, the
+    day totals are added up on the server and listed per date in ``days``.
     """
     scenario = plan["scenario"]
     setup = plan.get("setup") or {}
     records = plan["dataset"].normalized_json or []
+    per_date = per_date_continuous(setup)
+    labels = [str(p.get("time")) for p in plan["schedule"].get("periods") or []]
     try:
         des_breaks = resolve_des_breaks(setup)
         origin = des_day_start_minutes(setup)
         windows_by_key = {key: (low, high) for key, low, high in
                           (_segment_window(seg) for seg in setup.get("segments") or []
                            if isinstance(seg, dict))}
+        groups = (per_date_days(setup, labels, {label: list(index_period_queues(records, label).values())
+                                                for label in labels})
+                  if per_date else [("", [(label, label) for label in labels])])
     except ValueError as exc:
         raise SelectedPlanError(str(exc)) from exc
     if origin is None:
         raise SelectedPlanError("A representative day needs configured operating segments.")
-    windows: list[dict[str, Any]] = []
-    for sched_period in plan["schedule"].get("periods") or []:
-        label = str(sched_period.get("time"))
-        if label not in windows_by_key:
-            raise SelectedPlanError(f"Period {label} does not match a configured operating segment.")
-        low, high = windows_by_key[label]
-        queues = {}
-        for queue_id, row in index_period_queues(records, label).items():
-            scaled = dict(row)
-            scaled["lambda"] = float(row.get("lambda") or 0.0) * plan["multiplier"]
-            queues[queue_id] = scaled
-        windows.append({
-            "time": label, "start_hours": (low - origin) / 60.0, "end_hours": (high - origin) / 60.0,
-            "active_queue_ids": [str(q) for q in ((sched_period.get("optimum") or {})
-                                                  .get("active_queue_ids") or [])],
-            "queues_by_id": queues,
-        })
+    optimum = {str(p.get("time")): [str(q) for q in ((p.get("optimum") or {}).get("active_queue_ids") or [])]
+               for p in plan["schedule"].get("periods") or []}
     tie_order = [str(q) for q in setup.get("queue_ids", [])]
-    try:
-        day = run_routing_day_des(windows, tie_order=tie_order, seed=seed,
-                                  max_events=plan["max_events"], breaks=des_breaks)
-    except ValueError as exc:
-        raise SelectedPlanError(str(exc)) from exc
-    conserved = day["customer_conservation"] is True
-    periods_out = []
-    for window, period in zip(sorted(windows, key=lambda w: w["start_hours"]), day["periods"]):
-        label = period["time"]
-        lane_rows = []
-        for lane in period["lanes"]:
-            if not lane["active"] and not lane["arrivals"]:
-                continue
-            lane_rows.append({
-                "time": label, "queue_id": lane["queue_id"], "server_id": lane["server_id"],
-                "lambda": _json_number(lane["lambda"]),
-                "lambda_routed": _json_number(lane["lambda_routed_sim"]),
-                "mu": None, "c": 1, "arrivals": lane["arrivals"], "served": lane["served"],
-                "waiting": None, "in_service": None, "abandoned": None,
-                "Wq_sim": _json_number(lane["Wq"]), "rho_sim": _json_number(lane["rho"]),
-                "max_queue": lane["max_queue"], "active": bool(lane["active"]),
-                "simulation_supported": True, "error": None,
-                "metric_provenance": "simulated", "customer_conservation": conserved,
+    periods_out: list[dict[str, Any]] = []
+    days_out: list[dict[str, Any]] = []
+    admitted_total = served_total = 0
+    at_close_total: int | None = 0
+    conserved = True
+    simulated_hours = 0.0
+    for date_index, (date, items) in enumerate(groups):
+        windows: list[dict[str, Any]] = []
+        for label, key in sorted(items, key=lambda item: windows_by_key.get(item[1], (0.0,))[0]) if per_date else items:
+            if key not in windows_by_key:
+                raise SelectedPlanError(f"Period {label} does not match a configured operating segment.")
+            low, high = windows_by_key[key]
+            queues = {}
+            for queue_id, row in index_period_queues(records, label).items():
+                scaled = dict(row)
+                scaled["lambda"] = float(row.get("lambda") or 0.0) * plan["multiplier"]
+                queues[queue_id] = scaled
+            windows.append({
+                "time": label, "start_hours": (low - origin) / 60.0, "end_hours": (high - origin) / 60.0,
+                "active_queue_ids": optimum[label],
+                "queues_by_id": queues,
             })
-        events = [e for e in day["trace_events"] if e.get("segment_id") == label]
-        periods_out.append({
-            "time": label,
-            "active_queue_ids": window["active_queue_ids"],
-            "inactive_queue_ids": [q for q in tie_order if q not in window["active_queue_ids"]],
-            "evaluation_status": "FEASIBLE" if conserved else "ERROR",
-            "conservation": conserved,
-            "duration_hours": period["duration_hours"],
-            "total_lambda": _json_number(sum(float(r["lambda"] or 0.0) for r in lane_rows)),
-            "total_cost": None, "server_cost": None, "waiting_cost": None,
-            "results": lane_rows,
-            "trace": {
-                "results": lane_rows, "trace": events,
-                "trace_hours": period["duration_hours"], "total_hours": day["day_hours"],
-                "event_count": len(events), "truncated": bool(day["trace_truncated"]),
-                "abandonment_supported": False,
-                "segments": [{"segment_id": f"{label}:{r['queue_id']}", "time": label,
-                              "queue_id": r["queue_id"], "lambda": r["lambda"], "mu": None, "c": 1,
-                              "selected_model": "Parallel M/G/1 (routing)",
-                              "simulation_supported": True, "error": None,
-                              "queue_structure": "separate", "initial_queue_depth": None,
-                              "final_queue_depth": None, "server_id": r["server_id"]}
-                             for r in lane_rows],
-            },
-        })
-    return {
+        try:
+            day = run_routing_day_des(windows, tie_order=tie_order, seed=date_seed(seed, date_index),
+                                      max_events=plan["max_events"], breaks=des_breaks)
+        except ValueError as exc:
+            raise SelectedPlanError(str(exc)) from exc
+        day_conserved = day["customer_conservation"] is True
+        conserved = conserved and day_conserved
+        simulated_hours += day["day_hours"]
+        admitted_total += day["admitted"]
+        served_total += day["served"]
+        at_close = day.get("in_system_at_close")
+        at_close_total = None if at_close is None or at_close_total is None else at_close_total + at_close
+        if per_date:
+            days_out.append({"date": date, "admitted": day["admitted"], "served": day["served"],
+                             "in_system_at_close": at_close, "customer_conservation": day_conserved,
+                             "day_hours": day["day_hours"]})
+        for window, period in zip(sorted(windows, key=lambda w: w["start_hours"]), day["periods"]):
+            label = period["time"]
+            lane_rows = []
+            for lane in period["lanes"]:
+                if not lane["active"] and not lane["arrivals"]:
+                    continue
+                lane_rows.append({
+                    "time": label, "queue_id": lane["queue_id"], "server_id": lane["server_id"],
+                    "lambda": _json_number(lane["lambda"]),
+                    "lambda_routed": _json_number(lane["lambda_routed_sim"]),
+                    "mu": None, "c": 1, "arrivals": lane["arrivals"], "served": lane["served"],
+                    "waiting": None, "in_service": None, "abandoned": None,
+                    "Wq_sim": _json_number(lane["Wq"]), "rho_sim": _json_number(lane["rho"]),
+                    "max_queue": lane["max_queue"], "active": bool(lane["active"]),
+                    "simulation_supported": True, "error": None,
+                    "metric_provenance": "simulated", "customer_conservation": day_conserved,
+                })
+            events = [e for e in day["trace_events"] if e.get("segment_id") == label]
+            periods_out.append({
+                "time": label,
+                "active_queue_ids": window["active_queue_ids"],
+                "inactive_queue_ids": [q for q in tie_order if q not in window["active_queue_ids"]],
+                "evaluation_status": "FEASIBLE" if day_conserved else "ERROR",
+                "conservation": day_conserved,
+                "start_hours": period["start_hours"],
+                "duration_hours": period["duration_hours"],
+                "total_lambda": _json_number(sum(float(r["lambda"] or 0.0) for r in lane_rows)),
+                "total_cost": None, "server_cost": None, "waiting_cost": None,
+                "results": lane_rows,
+                "trace": {
+                    "results": lane_rows, "trace": events,
+                    "trace_hours": period["duration_hours"], "total_hours": day["day_hours"],
+                    "event_count": len(events), "truncated": bool(day["trace_truncated"]),
+                    "abandonment_supported": False,
+                    "segments": [{"segment_id": f"{label}:{r['queue_id']}", "time": label,
+                                  "queue_id": r["queue_id"], "lambda": r["lambda"], "mu": None, "c": 1,
+                                  "selected_model": "Parallel M/G/1 (routing)",
+                                  "simulation_supported": True, "error": None,
+                                  "queue_structure": "separate", "initial_queue_depth": None,
+                                  "final_queue_depth": None, "server_id": r["server_id"]}
+                                 for r in lane_rows],
+                },
+            })
+    result: dict[str, Any] = {
         "provenance": "SELECTED",
         "engine_version": ENGINE_VERSION,
-        "execution": "selected-plan continuous-day routing DES (queues and breaks carry across periods)",
+        "execution": SELECTED_DES_CONTINUOUS_DAY_EXECUTION,
         "arrival_method": "Poisson stream per period at the period's total lambda",
         "routing_policy": "shortest system size with seeded fair ties",
         "service_sampling_method": "empirical per-lane resampling for the arrival period",
@@ -2556,14 +2957,18 @@ def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[s
         "dataset_id": scenario.dataset_id,
         "target_utilization": plan["target"],
         "seed": seed,
-        "duration_hours": day["day_hours"],
+        "duration_hours": simulated_hours,
         "max_events": plan["max_events"],
         "periods": periods_out,
-        "admitted": day["admitted"],
-        "served": day["served"],
+        "admitted": admitted_total,
+        "served": served_total,
+        "in_system_at_close": at_close_total,
         "overall_conservation": conserved,
         "overall_status": "COMPLETED" if conserved else "ERROR",
     }
+    if per_date:
+        result["days"] = days_out
+    return result
 
 
 def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -3100,12 +3505,17 @@ def create_decision(
         result["missing_evidence"] = [missing]
         result["rationale"] = [f"Missing: {missing}."]
         return {"decision": result, "persisted": False}
-    result = _derive_decision(analysis, scenario, evidence)
+    # OD-UX-13 "Full-day run first": an eligible full-day run of the selected plan decides the basis.
+    full_day = _eligible_full_day_run(db, user, analysis, scenario, dataset)
+    if scenario is not None and full_day is not None:
+        result = _derive_full_day_decision(analysis, scenario, evidence, full_day)
+    else:
+        result = {**_derive_decision(analysis, scenario, evidence), "basis": PERIOD_BASIS}
     if scenario is None or dataset is None:
         return {"decision": result, "persisted": False}
     _require_selection_dataset_generation(selection, dataset)
     job = _save_job(
         db, user, "workflow_decision", analysis, scenario,
-        {"evidence_ids": result["evidence_ids"]}, result, settings, dataset,
+        {"evidence_ids": result["evidence_ids"], "basis": result["basis"]}, result, settings, dataset,
     )
     return {"decision": result, "persisted": True, "evidence": _job_out(job)}

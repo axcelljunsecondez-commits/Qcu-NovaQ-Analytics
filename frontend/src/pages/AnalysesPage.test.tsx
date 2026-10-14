@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { AnalysesPage } from './AnalysesPage'
@@ -48,7 +48,8 @@ describe('AnalysesPage', () => {
   it('shows the guided empty state', async () => {
     listMock.mockResolvedValue({ analyses: [] })
     renderWithProviders(<AnalysesPage />, { route: '/analyses' })
-    expect(await screen.findByText('You do not have any Analyses yet.')).toBeInTheDocument()
+    expect(await screen.findByText('You have no analyses yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'How to start an analysis' })).toHaveAttribute('href', '/help')
     expect(screen.getByRole('link', { name: 'Create your first Analysis' })).toHaveAttribute(
       'href',
       '/analyses/new',
@@ -62,9 +63,13 @@ describe('AnalysesPage', () => {
     expect(await screen.findByText('North checkout')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute(
       'href',
-      '/analyses/7/setup',
+      '/analyses/7/data',
     )
     await user.click(screen.getByRole('button', { name: 'Archive' }))
+    expect(archiveMock).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('alertdialog', { name: 'Archive “North checkout”?' })
+    expect(dialog).toHaveTextContent('cannot take new uploads')
+    await user.click(within(dialog).getByRole('button', { name: 'Archive' }))
     expect(archiveMock.mock.calls[0][0]).toBe(7)
   })
 
@@ -93,7 +98,7 @@ describe('AnalysesPage', () => {
     renderWithProviders(<AnalysesPage />, { route: '/analyses' })
     expect(await screen.findByText('North checkout')).toBeInTheDocument()
     const badges = screen.getAllByTestId('analysis-structure-badge')
-    expect(badges.map((badge) => badge.textContent)).toEqual(['One shared queue', 'Separate queues'])
+    expect(badges.map((badge) => badge.textContent)).toEqual(['Everyone waits in one line', 'Each counter has its own line'])
   })
 
   it('filters analyses by queue structure', async () => {
@@ -104,10 +109,10 @@ describe('AnalysesPage', () => {
     ] })
     renderWithProviders(<AnalysesPage />, { route: '/analyses' })
     expect(await screen.findByText('North checkout')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Separate queues' }))
+    await user.click(screen.getByRole('button', { name: 'Separate lines' }))
     expect(screen.queryByText('North checkout')).not.toBeInTheDocument()
     expect(screen.getByText('South lines')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Shared queue' }))
+    await user.click(screen.getByRole('button', { name: 'One shared line' }))
     expect(screen.getByText('North checkout')).toBeInTheDocument()
     expect(screen.queryByText('South lines')).not.toBeInTheDocument()
   })
@@ -120,6 +125,6 @@ describe('AnalysesPage', () => {
     renderWithProviders(<AnalysesPage />, { route: '/analyses?structure=separate_queues' })
     expect(await screen.findByText('South lines')).toBeInTheDocument()
     expect(screen.queryByText('North checkout')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Separate queues' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Separate lines' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

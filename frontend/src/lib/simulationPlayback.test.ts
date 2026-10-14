@@ -89,6 +89,12 @@ describe('simulation playback state', () => {
   it('changes playback timing without changing the event timeline', () => {
     expect(advancePlaybackTime(0, 1000, 1, 1)).toBeCloseTo(1 / 60)
     expect(advancePlaybackTime(0, 1000, 1, 10)).toBeCloseTo(1 / 6)
+    // Simulated time, not trace length (D29): a 13-hour trace advances one simulated minute per second at 1x too.
+    expect(advancePlaybackTime(0, 1000, 13, 1)).toBeCloseTo(1 / 60)
+    expect(advancePlaybackTime(0, 1000, 13, 0.25)).toBeCloseTo(1 / 240)
+    expect(advancePlaybackTime(12.99, 60_000, 13, 10)).toBe(13)
+    expect(advancePlaybackTime(0, 1000, 13, 1, 2)).toBeCloseTo(2 / 60)
+    expect(advancePlaybackTime(1, -50, 13, 1)).toBe(1)
     expect(trace.trace.map((event) => event.t)).toEqual([0.1, 0.1, 0.2, 0.4, 0.4, 0.6])
   })
 })

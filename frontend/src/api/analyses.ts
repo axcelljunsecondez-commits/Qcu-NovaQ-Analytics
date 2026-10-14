@@ -1,6 +1,6 @@
 import { http } from '../lib/http'
 import { downloadReport } from './reports'
-import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, DatasetPreviewOut, QueueSetup } from './types'
+import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, DatasetPreviewOut, DatasetPurpose, QueueSetup } from './types'
 
 export interface AnalysisInput {
   name: string
@@ -42,11 +42,16 @@ export async function listAnalysisDatasets(id: number): Promise<{ datasets: Data
 export async function uploadAnalysisDataset(
   id: number,
   file: File,
-  options: { applySetup?: boolean } = {},
+  options: { applySetup?: boolean; purpose?: DatasetPurpose } = {},
 ): Promise<{ dataset: DatasetOut }> {
   const body = new FormData()
   body.append('file', file)
-  const config = options.applySetup ? { params: { apply_setup: true } } : undefined
+  // B10: an omitted purpose is a planning file on the server.
+  const params = {
+    ...(options.applySetup ? { apply_setup: true } : {}),
+    ...(options.purpose === 'review' ? { purpose: 'review' } : {}),
+  }
+  const config = Object.keys(params).length > 0 ? { params } : undefined
   const { data } = await http.post<{ dataset: DatasetOut }>(`/analyses/${id}/datasets`, body, config)
   return data
 }
@@ -63,8 +68,12 @@ export async function downloadSetupWorkbook(id: number): Promise<void> {
   downloadReport(res.data as Blob, `novaq_setup_${id}.xlsx`)
 }
 
-export async function getAnalysisCurrent(id: number): Promise<AnalysisCurrentOut> {
-  const { data } = await http.get<AnalysisCurrentOut>(`/analyses/${id}/current`)
+// B3: datasetId reads any processed file of the analysis (read-only); omitted, the planning file.
+export async function getAnalysisCurrent(id: number, datasetId?: number): Promise<AnalysisCurrentOut> {
+  const url = `/analyses/${id}/current`
+  const { data } = datasetId === undefined
+    ? await http.get<AnalysisCurrentOut>(url)
+    : await http.get<AnalysisCurrentOut>(url, { params: { dataset_id: datasetId } })
   return data
 }
 

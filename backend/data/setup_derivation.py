@@ -305,8 +305,12 @@ def derive_setup(sheets: dict[str, pd.DataFrame | None], saved_setup: dict | Non
         "queue_ids": queue_ids,
         "breaks": [{"queue_id": row["queue_id"], "scheduled_start_time": _iso(row["_start"]),
                     "duration_minutes": row["_minutes"], "break_name": row["break_name"]} for row in placed],
+        # A saved representative day is kept for a one-date file (U10 F3): with one observed date it pools that
+        # date alone, and switching back to per date would turn off the full-day run and break suggestions.
         "event_period_basis": (EventPeriodBasis.representative_day.value
-                               if arrivals.dt.date.nunique() > 1 else EventPeriodBasis.per_date.value),
+                               if arrivals.dt.date.nunique() > 1
+                               or saved.event_period_basis == EventPeriodBasis.representative_day
+                               else EventPeriodBasis.per_date.value),
     }
     try:
         setup = QueueSetup.model_validate(candidate)

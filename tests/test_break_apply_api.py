@@ -155,7 +155,7 @@ def test_apply_reports_placement_failure_as_422(db_engine, client):
                                             "setup_hash": setup_fingerprint(per_date),
                                             "dataset_id": _dataset_id(db_engine, analysis_id)})
     assert response.status_code == 422
-    assert response.json()["detail"] == "Break optimization requires the representative day basis."
+    assert response.json()["detail"] == "Break optimization requires the representative day basis. Choose Representative day under Customer data periods in Data and setup, then upload the file again."
 
 
 def test_apply_request_bounds_and_auth(db_engine, client):

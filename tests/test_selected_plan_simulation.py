@@ -7,6 +7,8 @@ scenario-scoped evidence jobs, and never reoptimizes or mutates scenarios.
 """
 from __future__ import annotations
 
+import pytest
+
 from backend.api.scenarios import setup_fingerprint
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.queueing_engine.services.separate_optimization import (
@@ -207,7 +209,9 @@ def test_selected_des_infeasible_period_still_returns_playback_trace(db_engine, 
     result = response.json()["evidence"]["result"]
     (period,) = result["periods"]
     assert period["evaluation_status"] == "INFEASIBLE"
-    assert period["total_cost"] is None
+    # U10 F16: the over-target period is still costed from its measured run.
+    assert period["total_cost"] == pytest.approx(period["server_cost"] + period["waiting_cost"])
+    assert period["total_cost"] > 0
     by_lane = {row["queue_id"]: row for row in period["results"]}
     assert by_lane["east-07"]["rho_sim"] > 0.70
     trace = period["trace"]

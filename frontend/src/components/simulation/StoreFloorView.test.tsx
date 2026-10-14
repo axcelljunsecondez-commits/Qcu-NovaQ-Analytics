@@ -118,7 +118,7 @@ describe('StoreFloorView', () => {
 
     // Q3 produces no trace events at all; it must still appear as a real lane.
     expect(screen.getByTestId('lane-Q3')).toBeInTheDocument()
-    expect(screen.getByTestId('server-server:Q3')).toHaveTextContent('Idle')
+    expect(screen.getByTestId('server-server:Q3')).toHaveTextContent('Available')
   })
 
   it('marks a lane closed only when the caller supplies inactive queues', async () => {

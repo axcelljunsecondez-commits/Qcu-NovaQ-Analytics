@@ -199,6 +199,7 @@ def test_valid_authenticated_session_remains_usable(signed_client, db_engine):
         ("GET", "/reports/missing", "rate_limit_report"),
         ("POST", "/analysis", "rate_limit_compute"),
         ("POST", "/admin/missing", "rate_limit_admin"),
+        ("POST", "/public/calculator/mmc", "rate_limit_guest_compute"),
     ],
 )
 def test_other_resource_buckets_use_signed_ip(signed_client, method, path, limit):

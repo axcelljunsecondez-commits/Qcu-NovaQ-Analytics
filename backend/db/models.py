@@ -5,7 +5,18 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -102,6 +113,12 @@ class AnalysisProject(Base):
     """User-owned workspace that isolates analytical inputs and saved results."""
 
     __tablename__ = "analysis_projects"
+    __table_args__ = (
+        CheckConstraint(
+            "shared_closing_policy IS NULL OR shared_closing_policy IN ('DRAIN', 'HARD_CUTOFF')",
+            name="ck_analysis_projects_shared_closing_policy",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -112,6 +129,9 @@ class AnalysisProject(Base):
         JSON().with_variant(JSONB(), "postgresql"), default=dict
     )
     setup_status: Mapped[str] = mapped_column(String(32), default="incomplete")
+    # B4a (migration 0007): the closing rule for the continuous shared-line run, outside the Setup
+    # fingerprint. Null until the owner chooses; the engine has no default.
+    shared_closing_policy: Mapped[str | None] = mapped_column(String(16), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -143,7 +163,10 @@ class Dataset(Base):
     """Uploaded-and-normalized workload dataset owned by a user."""
 
     __tablename__ = "datasets"
-    __table_args__ = (UniqueConstraint("generation", name="uq_datasets_generation"),)
+    __table_args__ = (
+        UniqueConstraint("generation", name="uq_datasets_generation"),
+        CheckConstraint("purpose IN ('planning', 'review')", name="ck_datasets_purpose"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -163,6 +186,9 @@ class Dataset(Base):
     # Set once at insert. Migration 0005 also installs a database default, and the database refuses
     # any change to the token and any reissue of it (generation_registry, below).
     generation: Mapped[str] = mapped_column(String(32), default=new_generation)
+    # B10 (migration 0006): what the upload is for, fixed at upload. Only planning files can become
+    # the analysis's current dataset; every dataset that existed before B10 is planning.
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False, default="planning", server_default="planning")
 
     user: Mapped[User] = relationship(back_populates="datasets")
     analysis: Mapped[AnalysisProject | None] = relationship(back_populates="datasets")

@@ -20,10 +20,10 @@ from backend.db.models import AnalysisProject, Dataset, Scenario, User
 from backend.db.session import get_db
 from backend.queueing_engine.services.optimization import unstable_current_reason
 from backend.queueing_engine.services.separate_optimization import (
-    SEPARATE_DES_ENGINE_VERSION,
     full_coverage_min_lanes,
     optimize_separate_schedule,
     prune_separate_schedule,
+    separate_engine_version,
     validate_des_replication_config,
 )
 
@@ -163,7 +163,8 @@ def _verify_separate_calculation(payload: ScenarioIn, dataset=None, analysis=Non
     snapshot = payload.settings.get("calculation")
     if not isinstance(snapshot, dict):
         raise ValueError("Unknown calculation schema or engine version")
-    if snapshot.get("engine_version") != SEPARATE_DES_ENGINE_VERSION:
+    setup = (analysis.queue_setup_json or {}) if analysis is not None else {}
+    if snapshot.get("engine_version") != separate_engine_version(setup):
         raise ValueError("Unknown calculation schema or engine version")
     if not isinstance(snapshot.get("calculated_at"), str):
         raise ValueError("Calculation time must be an ISO timestamp")
@@ -181,7 +182,6 @@ def _verify_separate_calculation(payload: ScenarioIn, dataset=None, analysis=Non
         raise ValueError("Separate optimization snapshot requires its dataset.")
     if snapshot.get("dataset_row_count") != len(dataset.normalized_json or []):
         raise ValueError("Dataset changed since the optimization run.")
-    setup = (analysis.queue_setup_json or {}) if analysis is not None else {}
     if setup.get("queue_structure") != "separate_queues":
         raise ValueError("Separate optimization requires a separate_queues analysis.")
     des_settings = validate_des_replication_config(options.get("des") or {})
@@ -272,9 +272,22 @@ def _verify_calculation(payload: ScenarioIn, dataset=None, analysis=None) -> Non
                 "effective_constraints",
                 "effective_costs",
                 "explanation",
+                "candidates",
             }
             legacy = {"results": [{k: v for k, v in row.items() if k not in added} for row in expected["results"]]}
-            if _same_result(payload.results, legacy):
+            # B8's additive candidates may or may not travel with a legacy payload; both compare equal.
+            with_candidates = {"results": [{k: v for k, v in row.items() if k not in added or k == "candidates"}
+                                           for row in expected["results"]]}
+            if _same_result(payload.results, legacy) or _same_result(payload.results, with_candidates):
+                return
+        rows = payload.results.get("results") if isinstance(payload.results, dict) else None
+        if isinstance(rows, list) and rows and all(isinstance(row, dict) and "candidates" not in row for row in rows):
+            # B8: a page loaded before the additive optimizer candidates existed sends results without them.
+            # Compare without them; the saved results below are the server's, candidates included.
+            without = {**expected, "results": [{k: v for k, v in row.items() if k != "candidates"}
+                                               for row in expected["results"]]}
+            if _same_result(payload.results, without):
+                payload.results = expected
                 return
         if not _same_result(payload.results, expected):
             raise ValueError("Results do not match the calculation inputs")

@@ -147,7 +147,11 @@ def test_every_replication_matches_an_independent_recomputation(config, policy):
 def test_retained_rows_hold_no_events_or_customer_rows():
     result = run_shared_replications(*OVERLOAD, replications=3, seed=1, closing_policy=DRAIN)
     assert "trace" not in result and all("customers" not in row and "trace" not in row for row in result["replications"])
-    assert set(result) == {"replications", "summary", "provenance"}
+    # OD-UX-13 adds per-period server-hours only: numbers per segment, still no events or customers.
+    assert set(result) == {"replications", "summary", "provenance", "period_utilization"}
+    assert all(set(segment) == {"segment_id", "start_minute", "end_minute", "busy_server_hours",
+                                "present_server_hours", "utilization", "summary"}
+               for segment in result["period_utilization"]["segments"])
 
 
 # ── Seeds and streams ────────────────────────────────────────────────────────

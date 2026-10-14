@@ -87,7 +87,7 @@ describe('setup semantic contracts', () => {
     renderWithProviders(
       <Routes>
         <Route path="/analyses/:analysisId/guided-setup" element={<GuidedSetupPage />} />
-        <Route path="/analyses/:analysisId/setup" element={<div>Canonical setup</div>} />
+        <Route path="/analyses/:analysisId/data" element={<div>Canonical setup</div>} />
       </Routes>,
       { route: '/analyses/7/guided-setup' },
     )
@@ -114,7 +114,7 @@ describe('setup semantic contracts', () => {
     renderWithProviders(
       <Routes>
         <Route path="/analyses/:analysisId/guided-setup" element={<GuidedSetupPage />} />
-        <Route path="/analyses/:analysisId/setup" element={<div>Canonical setup</div>} />
+        <Route path="/analyses/:analysisId/data" element={<div>Canonical setup</div>} />
       </Routes>,
       { route: '/analyses/7/guided-setup' },
     )
@@ -349,6 +349,7 @@ describe('separate server break schedule', () => {
     renderSeparateSetup()
     const basis = await screen.findByLabelText('Customer data periods')
     expect(basis).toHaveValue('per_date')
+    expect(screen.getByRole('link', { name: 'Help: Advanced settings' })).toHaveAttribute('href', '/help/data#advanced')
     await user.selectOptions(basis, 'representative_day')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
@@ -356,9 +357,65 @@ describe('separate server break schedule', () => {
     }))
   })
 
-  it('offers no representative-day basis for shared queues', async () => {
+  it('lets a shared line set time segments and the representative-day basis, without counter lists', async () => {
+    // B4b addendum (owner-approved 2026-10-12).
+    const user = userEvent.setup()
     getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
-      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [],
+      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [], fixed_server_count: 2, staffing_varies_by_period: true,
+    } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+    const basis = await screen.findByLabelText('Customer data periods')
+    await user.selectOptions(basis, 'representative_day')
+    await user.click(screen.getByRole('button', { name: 'Add time segment' }))
+    expect(screen.getByLabelText('Start time')).toHaveValue('07:00')
+    expect(screen.queryByRole('checkbox', { name: /cashier/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
+      queue_setup: expect.objectContaining({
+        event_period_basis: 'representative_day',
+        segments: [expect.objectContaining({ start_time: '07:00', end_time: '08:00', active_queue_ids: null })],
+      }),
+    }))
+  })
+
+  it('saves counter breaks for a shared line and refuses one without minutes (B4c)', async () => {
+    const user = userEvent.setup()
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
+      ...separateSetup, queue_structure: 'shared_queue', queue_ids: [], fixed_server_count: 2,
+    } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,
+      { route: '/analyses/7/setup' },
+    )
+    expect(await screen.findByTestId('counter-breaks')).toHaveTextContent('Suggested counters do not account for breaks.')
+    await user.click(screen.getByRole('button', { name: 'Add counter break' }))
+    await user.type(screen.getByLabelText('Break 1 start'), '12:00')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/Each counter break needs a start time/)).toBeInTheDocument()
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText('Break 1 minutes'), '0')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+    await user.clear(screen.getByLabelText('Break 1 minutes'))
+    await user.type(screen.getByLabelText('Break 1 minutes'), '30')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledWith(7, {
+      queue_setup: expect.objectContaining({ counter_breaks: [{ scheduled_start_time: '12:00', duration_minutes: 30 }] }),
+    }))
+  })
+
+  it('shows no counter breaks for separate lines', async () => {
+    renderSeparateSetup()
+    await screen.findByLabelText('Customer data periods')
+    expect(screen.queryByTestId('counter-breaks')).not.toBeInTheDocument()
+  })
+
+  it('offers no representative-day basis for a single server', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysis, queue_setup: {
+      ...separateSetup, queue_structure: 'single_server', queue_ids: [],
     } } })
     renderWithProviders(
       <Routes><Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} /></Routes>,

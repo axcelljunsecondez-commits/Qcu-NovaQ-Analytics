@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Link, Route, Routes } from 'react-router-dom'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient } from '@tanstack/react-query'
 import { renderWithProviders } from '../test/test-utils'
 import { queryClient as appQueryClient } from '../lib/queryClient'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
 import { OptimizePage } from './OptimizePage'
-import { SimulationPage } from './SimulationPage'
+import { QueueSimulationPage } from './QueueSimulationPage'
 import { DecisionEndpointPage } from '../components/analysis/DecisionEndpointPage'
 
 // Every workflow job records the Setup it was computed for, and the server stops serving it once
@@ -60,6 +60,7 @@ vi.mock('../api/optimization', () => ({
 
 vi.mock('../api/analyses', () => ({
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+  listAnalyses: vi.fn(async () => ({ analyses: [] })),
   getAnalysisCurrent: (...args: unknown[]) => getAnalysisCurrentMock(...args),
   listAnalysisDatasets: (...args: unknown[]) => listAnalysisDatasetsMock(...args),
   patchAnalysis: (...args: unknown[]) => patchAnalysisMock(...args),
@@ -278,20 +279,20 @@ function watchForText(texts: string[]) {
   }
 }
 
-// Text that only a stored Current run can put on the Simulate page.
+// Text that only a stored Current run can put on Queue simulation's Checks page.
 const CURRENT_EVIDENCE_TEXT = [
   'CURRENT configuration',
-  'Discrete-event simulation results by interval',
   'Monte Carlo simulation results by interval',
   'Simulation validation passed.',
 ]
+const SIMULATION_CHECKS = '/simulation/checks?analysis=7&plan=current'
 
 function Nav() {
   return (
     <nav>
       <Link to="/analyses/7/setup">Open Setup</Link>
       <Link to="/analyses/7/optimize">Open Optimize</Link>
-      <Link to="/analyses/7/simulate">Open Simulate</Link>
+      <Link to={SIMULATION_CHECKS}>Open Simulate</Link>
       <Link to="/analyses/7/decision">Open Decision</Link>
     </nav>
   )
@@ -307,7 +308,7 @@ function renderApp(route: string) {
       <Routes>
         <Route path="/analyses/:analysisId/setup" element={<AnalysisSetupPage />} />
         <Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} />
-        <Route path="/analyses/:analysisId/simulate" element={<SimulationPage />} />
+        <Route path="/simulation/checks" element={<QueueSimulationPage page="checks" />} />
         <Route path="/analyses/:analysisId/decision" element={<DecisionEndpointPage />} />
       </Routes>
     </>,
@@ -329,6 +330,7 @@ async function applyBreaksOnOptimize(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('link', { name: 'Open Optimize' }))
   await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
   await user.click(await screen.findByRole('button', { name: 'Apply to Setup' }))
+  await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Apply to Setup' }))
   expect(await screen.findByText('Setup updated with the proposed breaks. Rerun the workflow from Current.')).toBeInTheDocument()
   expect(server.setupVersion).toBe(versionBefore + 1)
 }
@@ -375,7 +377,7 @@ afterEach(() => {
 describe('Setup changes and cached workflow evidence', () => {
   it('never shows the previous Setup\'s Current runs on Simulate after a Setup save', async () => {
     const user = userEvent.setup()
-    renderApp('/analyses/7/simulate')
+    renderApp(SIMULATION_CHECKS)
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
     expect(screen.getByText('Simulation validation passed.')).toBeInTheDocument()
 
@@ -417,7 +419,7 @@ describe('Setup changes and cached workflow evidence', () => {
 
   it('never flashes the previous Setup\'s Current runs on Simulate while the workflow refetches after a break apply', async () => {
     const user = userEvent.setup()
-    renderApp('/analyses/7/simulate')
+    renderApp(SIMULATION_CHECKS)
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
 
     await applyBreaksOnOptimize(user)

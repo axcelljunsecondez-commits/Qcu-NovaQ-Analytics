@@ -5,15 +5,16 @@ import { MetricCard } from '../ui/MetricCard'
 import { StoreFloorView } from './StoreFloorView'
 import {
   advancePlaybackTime,
+  counterState,
   deriveSeparateLaneSnapshots,
   formatSimulationTime,
   nextPlaybackTime,
 } from '../../lib/simulationPlayback'
+import { hasBreakEvents, runTimeFor, wallClock, type ScheduledBreak } from '../../lib/replay'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
 const ANIMATION_SPEED_LIMIT = 5
 const MAX_VISIBLE_CUSTOMERS = 8
-const PLAYBACK_SECONDS_AT_1X = 60
 
 function LaneTokens({ ids, empty }: { ids: number[]; empty: string }) {
   const visible = ids.slice(-MAX_VISIBLE_CUSTOMERS)
@@ -29,13 +30,29 @@ function LaneTokens({ ids, empty }: { ids: number[]; empty: string }) {
   )
 }
 
+export interface SeparatePlaybackProps {
+  trace: SimulationTrace
+  /** Lanes not staffed; a function lets a full-day replay follow each period's staffing. */
+  inactiveQueueIds?: string[] | ((hours: number) => string[])
+  /** Header label for a merged full-day trace (its hours), instead of the first period's label. */
+  periodLabel?: string | null
+  /** Store-clock minutes at run time 0; enables "HH:MM" and "Go to time". */
+  originMinutes?: number | null
+  /** Breaks from the setup, shown on their own row (never as counter states). */
+  scheduled?: ScheduledBreak[]
+  initialTime?: number
+  onTimeChange?: (hours: number) => void
+}
+
 export function SeparateSimulationPlayback(
-  { trace, inactiveQueueIds }: { trace: SimulationTrace; inactiveQueueIds?: string[] },
+  { trace, inactiveQueueIds, periodLabel = null, originMinutes = null, scheduled = [], initialTime = 0, onTimeChange }: SeparatePlaybackProps,
 ) {
   const { t } = useTranslation()
   const [isPlaying, setIsPlaying] = useState(false)
   const [floorLayout, setFloorLayout] = useState<'store' | 'diagram'>('store')
-  const [simulationTime, setSimulationTime] = useState(0)
+  const [simulationTime, setSimulationTime] = useState(initialTime)
+  const [goTo, setGoTo] = useState('')
+  const [goToError, setGoToError] = useState(false)
   const [speed, setSpeed] = useState(1)
   const frameRef = useRef<number | null>(null)
   const lastFrameRef = useRef<number | null>(null)
@@ -57,6 +74,30 @@ export function SeparateSimulationPlayback(
   const totalAbandoned = lanes.reduce((sum, lane) => sum + lane.abandonedCustomerIds.length, 0)
   const accounted = totalWaiting + totalServing + totalServed + totalAbandoned
   const accountingMatches = totalArrived === accounted
+  const closedNow = typeof inactiveQueueIds === 'function' ? inactiveQueueIds(simulationTime) : (inactiveQueueIds ?? [])
+  const closedSet = new Set(closedNow.map(String))
+  const runLanes = new Set(lanes.map((lane) => lane.queueId))
+  const relevantBreaks = scheduled.filter((item) => runLanes.has(item.queueId))
+  // D26: break states only from the run's events; scheduled breaks without them are disclosed.
+  const breakStateUnavailable = relevantBreaks.length > 0 && !hasBreakEvents(trace)
+  const clock = (hours: number) => (originMinutes === null ? formatSimulationTime(hours) : wallClock(originMinutes, hours))
+  const lastReportedRef = useRef(simulationTime)
+  useEffect(() => {
+    if (!onTimeChange || isPlaying || lastReportedRef.current === simulationTime) return
+    lastReportedRef.current = simulationTime
+    onTimeChange(simulationTime)
+  }, [isPlaying, onTimeChange, simulationTime])
+
+  function goToTime() {
+    const target = originMinutes === null ? null : runTimeFor(originMinutes, goTo.trim())
+    if (target === null || target > traceEnd) {
+      setGoToError(true)
+      return
+    }
+    setGoToError(false)
+    setIsPlaying(false)
+    setSimulationTime(target)
+  }
 
   useEffect(() => {
     if (!isPlaying || traceEnd <= 0) {
@@ -70,7 +111,7 @@ export function SeparateSimulationPlayback(
       const elapsedMilliseconds = Math.max(0, timestamp - previous)
       setSimulationTime((current) => {
         const next = advancePlaybackTime(
-          current, elapsedMilliseconds, traceEnd, speed, PLAYBACK_SECONDS_AT_1X,
+          current, elapsedMilliseconds, traceEnd, speed,
         )
         if (next >= traceEnd) setIsPlaying(false)
         return next
@@ -129,20 +170,27 @@ export function SeparateSimulationPlayback(
       <section className="card live-floor">
         <header className="live-floor-header">
           <div>
-            <div className="live-floor-eyebrow">{segment.time} · {segment.selected_model ?? '—'}</div>
+            <div className="live-floor-eyebrow" data-testid="replay-period">{periodLabel ?? segment.time} · {segment.selected_model ?? '—'}</div>
             <h3 className="section-title">{t('simulation.playback_view_separate')}</h3>
             <p className="form-hint">
               {t('simulation.live_event_progress', { current: processedCount, total: trace.event_count })}
             </p>
           </div>
           <div className="live-clock" aria-live="polite">
-            <span>{t('simulation.live_simulation_time')}</span>
-            <strong>{formatSimulationTime(simulationTime)}</strong>
+            <span>{t(originMinutes === null ? 'simulation.live_simulation_time' : 'simulation.replay_clock')}</span>
+            <strong data-testid="replay-clock">{clock(simulationTime)}</strong>
           </div>
           <span className={`badge ${trace.truncated ? 'badge-warn' : 'badge-ok'}`}>
             {trace.truncated ? t('simulation.live_truncated') : t('simulation.live_complete')}
           </span>
         </header>
+
+        {trace.truncated && trace.trace.length > 0 && (
+          <div className="alert alert-warn" role="status" data-testid="replay-cut-short">
+            {t('simulation.replay_cut_short', { time: clock(trace.trace.at(-1)?.t ?? 0) })}
+          </div>
+        )}
+        {breakStateUnavailable && <div className="alert alert-info" role="status">{t('simulation.break_state_unavailable')}</div>}
 
         {segment.error && <div className="alert alert-warn">{segment.error}</div>}
 
@@ -152,13 +200,14 @@ export function SeparateSimulationPlayback(
             simulationTime={simulationTime}
             showAbandonment={showAbandonment}
             animate={speed < ANIMATION_SPEED_LIMIT}
-            inactiveQueueIds={inactiveQueueIds}
+            inactiveQueueIds={closedNow}
           />
         ) : (
         <div className="live-flow">
           {lanes.map((lane) => {
             const servingEntries = Object.entries(lane.servingByServer)
             const servingCount = servingEntries.length
+            const state = counterState(lane, closedSet.has(lane.queueId))
             return (
               <section
                 className="live-stage separate-lane"
@@ -183,9 +232,8 @@ export function SeparateSimulationPlayback(
                     >
                       <div className="live-server-heading">
                         <strong>{String(lane.serverId ?? lane.queueId)}</strong>
-                        <span className="badge badge-neutral">{t('simulation.live_idle')}</span>
+                        <span className="badge badge-neutral">{t(`simulation.state_${state}`)}</span>
                       </div>
-                      <span className="live-empty">{t('simulation.live_server_available')}</span>
                     </article>
                   ) : (
                     servingEntries.map(([serverKey, customerId]) => (
@@ -196,7 +244,7 @@ export function SeparateSimulationPlayback(
                       >
                         <div className="live-server-heading">
                           <strong>{serverKey}</strong>
-                          <span className="badge badge-ok">{t('simulation.live_serving')}</span>
+                          <span className="badge badge-ok">{t(`simulation.state_${state}`)}</span>
                         </div>
                         <span className="live-customer live-customer-serving" data-testid={`customer-${customerId}`}>
                           #{customerId}
@@ -269,6 +317,14 @@ export function SeparateSimulationPlayback(
               }}
             />
           </div>
+          {originMinutes !== null && (
+            <div className="replay-goto">
+              <label htmlFor="replay-goto">{t('simulation.replay_go_to')}</label>
+              <input id="replay-goto" type="time" value={goTo} onChange={(event) => setGoTo(event.target.value)} aria-invalid={goToError} />
+              <button type="button" className="btn-secondary" onClick={goToTime}>{t('simulation.replay_go')}</button>
+              {goToError && <span className="form-error" role="alert">{t('simulation.replay_go_invalid')}</span>}
+            </div>
+          )}
           <div className="store-view-toggle">
             <label htmlFor="separate-layout">{t('simulation.store_layout')}</label>
             <select
@@ -287,6 +343,30 @@ export function SeparateSimulationPlayback(
             </select>
           </div>
         </div>
+        {relevantBreaks.length > 0 && (
+          <div className="replay-timeline" role="group" aria-label={t('simulation.scheduled_breaks')}>
+            <span className="live-stage-label">{t('simulation.scheduled_breaks')}</span>
+            <div className="replay-timeline-row" aria-hidden="true">
+              {relevantBreaks.map((item, index) => (
+                <span
+                  key={`${item.queueId}-${index}`}
+                  className="replay-break-marker"
+                  style={{
+                    left: `${traceEnd > 0 ? Math.min(100, Math.max(0, item.startHours) / traceEnd * 100) : 0}%`,
+                    width: `${traceEnd > 0 ? Math.max(0.5, (item.endHours - item.startHours) / traceEnd * 100) : 0}%`,
+                  }}
+                />
+              ))}
+            </div>
+            <ul className="replay-break-list">
+              {relevantBreaks.map((item, index) => (
+                <li key={`${item.queueId}-list-${index}`}>
+                  {t('simulation.scheduled_break_item', { lane: item.queueId, start: clock(item.startHours), end: clock(item.endHours) })}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <p className="form-hint live-truth-note">{t('simulation.live_real_trace')}</p>
       </section>
     </div>

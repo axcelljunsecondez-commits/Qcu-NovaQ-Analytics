@@ -110,6 +110,20 @@ def _safe_int(value) -> int | None:
     return None
 
 
+class OptimizationCandidate(BaseModel):
+    """One counter count the optimizer tried (B8, OD-B8-3 A): its cost, or the limits it failed."""
+
+    servers: int
+    feasible: bool
+    failed_limits: list[str]
+    rho: float | None
+    Wq: float | None
+    server_cost: float | None
+    waiting_cost: float | None
+    abandonment_cost: float | None
+    total_cost: float | None
+
+
 class OptimizationOut(BaseModel):
     feasibility_status: str = "INVALID_INPUT"
     constraints_passed: bool = False
@@ -150,6 +164,8 @@ class OptimizationOut(BaseModel):
     optimized_stable: bool
     recommendation: str
     warning: str | None
+    # Additive (B8): every counter count tried. None only for invalid inputs, where nothing was tried.
+    candidates: list[OptimizationCandidate] | None = None
 
     model_config = ConfigDict(populate_by_name=True, allow_inf_nan=False)
 
@@ -184,6 +200,7 @@ def _to_out(result: dict) -> dict:
         optimized_stable=bool(result.get("optimized_stable", False)),
         recommendation=str(result.get("recommendation", "")),
         warning=result.get("warning"),
+        candidates=result.get("candidates"),
     ).model_dump()
 
 

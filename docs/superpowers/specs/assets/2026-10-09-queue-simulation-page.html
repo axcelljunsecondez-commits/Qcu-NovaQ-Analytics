@@ -1,0 +1,660 @@
+<title>NovaQ Queue Simulation Page</title>
+<style>
+/* Layout: review toolbar on top; full-size page mockup on the left; numbered spec notes on the right (stack below on narrow screens). Tokens follow NovaQ MASTER (navy/gold, Inter/system). */
+:root{
+  --canvas:#F4F8FC; --surface:#FFFFFF; --subtle:#EDF2F8; --side:#08213F; --side-fg:#C9D6E5; --side-hi:#FFFFFF;
+  --fg:#0A2345; --fg2:#52647A; --border:#DCE6F0; --ctl:#6B7C90;
+  --gold:#E8A838; --gold-fg:#0A2345; --link:#185E86; --focus:#1D63A8;
+  --cur:#2563EB; --cur-bg:#EFF6FF; --opt:#7C3AED; --opt-bg:#F5F3FF;
+  --warn-bg:#FFF4D6; --warn:#8A4B00; --info-bg:#EEF7FF; --info:#185E86; --ok-bg:#EAF8F1; --ok:#087A4E; --bad-bg:#FFF0F3; --bad:#B4233A;
+  --skel:#D5DEE9; --person:#E8A838;
+  --font:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'Cascadia Mono','Consolas',monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --canvas:#0B1120; --surface:#162032; --subtle:#1E293B; --side:#070D18; --side-fg:#B0BDCC; --side-hi:#FFFFFF;
+  --fg:#E2E8F0; --fg2:#B0BDCC; --border:#2B3B52; --ctl:#7890A8;
+  --gold:#F0B84C; --gold-fg:#071729; --link:#7CCCF0; --focus:#F0B84C;
+  --cur:#60A5FA; --cur-bg:#102A43; --opt:#C084FC; --opt-bg:#2B1B3D;
+  --warn-bg:#33270F; --warn:#F3C76B; --info-bg:#102C3B; --info:#7CCCF0; --ok-bg:#0E2F25; --ok:#66E3A4; --bad-bg:#3A1620; --bad:#FF8A9C;
+  --skel:#33445E; --person:#F0B84C; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#0B1120; --surface:#162032; --subtle:#1E293B; --side:#070D18; --side-fg:#B0BDCC; --side-hi:#FFFFFF;
+  --fg:#E2E8F0; --fg2:#B0BDCC; --border:#2B3B52; --ctl:#7890A8;
+  --gold:#F0B84C; --gold-fg:#071729; --link:#7CCCF0; --focus:#F0B84C;
+  --cur:#60A5FA; --cur-bg:#102A43; --opt:#C084FC; --opt-bg:#2B1B3D;
+  --warn-bg:#33270F; --warn:#F3C76B; --info-bg:#102C3B; --info:#7CCCF0; --ok-bg:#0E2F25; --ok:#66E3A4; --bad-bg:#3A1620; --bad:#FF8A9C;
+  --skel:#33445E; --person:#F0B84C; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--canvas);color:var(--fg);font:15px/1.5 var(--font);padding-inline:16px;padding-block:0 48px;margin:0}
+h1,h2,h3,h4{margin:0;line-height:1.2;text-wrap:balance}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:4px}
+button{font:inherit;cursor:pointer}
+.wrap{max-width:1400px;margin:0 auto}
+/* review toolbar */
+.review{padding-block:24px 16px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.review .eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2);font-weight:600}
+.review h1{font-size:1.7rem}
+.review p{margin:0;color:var(--fg2);max-width:80ch}
+.toolbar{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+.tgroup{display:flex;flex-direction:column;gap:4px}
+.tgroup>span{font-size:12px;font-weight:600;color:var(--fg2);letter-spacing:.04em;text-transform:uppercase}
+.tbtns{display:flex;flex-wrap:wrap;border:1px solid var(--ctl);border-radius:8px;overflow:hidden}
+.tbtns button{border:0;border-right:1px solid var(--border);background:var(--surface);color:var(--fg);padding:6px 10px;font-size:13.5px}
+.tbtns button:last-child{border-right:0}
+.tbtns button[aria-pressed="true"]{background:var(--fg);color:var(--canvas);font-weight:700}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn)}
+/* stage */
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+@media (max-width:1100px){.stage{grid-template-columns:minmax(0,1fr)}}
+.notes{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;gap:10px}
+@media (max-width:1100px){.notes{position:static;max-height:none}}
+.note{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13.5px;display:flex;flex-direction:column;gap:4px}
+.note h4{font-size:14px;display:flex;gap:8px;align-items:center}
+.note p{margin:0;color:var(--fg2)}
+.note code{font:12px var(--mono);color:var(--fg);overflow-wrap:anywhere}
+.note.warn{border-color:var(--warn)}
+.co{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--gold);color:var(--gold-fg);font:700 11px var(--font);flex:none;vertical-align:middle}
+/* app mock */
+.app{display:grid;grid-template-columns:200px minmax(0,1fr);border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--canvas);min-width:0}
+@media (max-width:700px){.app{grid-template-columns:minmax(0,1fr)}.side{display:none}}
+.side{background:var(--side);color:var(--side-fg);padding:14px 10px;display:flex;flex-direction:column;gap:2px;font-size:14px}
+.side .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 4px}
+.side .logo{color:var(--side-hi);font-weight:800;font-size:18px}
+.side .logo em{color:var(--gold);font-style:normal}
+.side .g{font-size:11px;letter-spacing:.1em;opacity:.7;margin:10px 6px 2px}
+.side .it{padding:7px 8px;border-radius:6px}
+.side .it.on{background:rgba(255,255,255,.12);box-shadow:inset 3px 0 0 var(--gold);color:var(--side-hi);font-weight:600}
+.side .acct{margin-top:auto;border-top:1px solid rgba(255,255,255,.15);padding:10px 6px 0;display:flex;gap:8px;align-items:center;font-size:13px}
+.av{width:26px;height:26px;border-radius:50%;background:var(--gold);color:var(--gold-fg);display:grid;place-items:center;font-weight:800;font-size:11px;flex:none}
+.ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.main{min-width:0;display:flex;flex-direction:column}
+.apphead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--fg2)}
+.content{padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.ph{display:flex;flex-direction:column;gap:12px}
+.ph h2{font-size:1.75rem}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.sel{border:1px solid var(--ctl);border-radius:8px;padding:7px 10px;background:var(--surface);font-size:14px;color:var(--fg)}
+.seg{display:inline-flex;border:1px solid var(--ctl);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-right:1px solid var(--border);background:var(--surface);color:var(--fg);padding:7px 12px;font-size:14px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{background:var(--link);color:var(--surface);font-weight:700}
+.vsep{width:1px;height:26px;background:var(--border)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.step{border-left:4px solid var(--border)}
+.card.step.done{border-left-color:var(--ok)}
+.card.step.locked{opacity:.85;border-style:dashed;border-left-style:solid}
+.runbar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;font-size:14px}
+.runbar strong{color:var(--fg)}
+.lnk{color:var(--link);text-decoration:underline;background:none;border:0;padding:0;font-size:inherit}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.n{background:var(--subtle);color:var(--fg2)}
+.chip.w{background:var(--warn-bg);color:var(--warn)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}
+.chip.sim{background:var(--opt-bg);color:var(--opt)}
+.chip.e{background:var(--cur-bg);color:var(--cur)}
+.chip.info{background:var(--info-bg);color:var(--info)}
+.alert{border-radius:10px;padding:12px 14px;font-size:14px;display:flex;flex-direction:column;gap:6px}
+.alert.w{background:var(--warn-bg);color:var(--warn)}
+.alert.bad{background:var(--bad-bg);color:var(--bad)}
+.alert.info{background:var(--info-bg);color:var(--info)}
+.alert .fg{color:var(--fg)}
+.sh{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.sh h3{font-size:1.15rem;display:flex;gap:8px;align-items:center}
+.muted{color:var(--fg2);font-size:14px;margin:0}
+.small{font-size:12.5px;color:var(--fg2)}
+.btn{white-space:nowrap;flex:none;border:1px solid var(--ctl);background:var(--surface);color:var(--fg);border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600}
+.btn.p{background:var(--gold);color:var(--gold-fg);border-color:transparent}
+.btn[disabled]{background:var(--subtle);color:var(--fg2);border-color:var(--border);cursor:not-allowed}
+details.adv{border:1px solid var(--border);border-radius:8px;padding:8px 12px;background:var(--canvas)}
+details.adv summary{cursor:pointer;font-weight:600;font-size:14px}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-top:10px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.field label{font-weight:600}
+.field input,.field select{border:1px solid var(--ctl);border-radius:6px;padding:6px 8px;font-size:15px;background:var(--surface);color:var(--fg)}
+.field .hint{font-size:12px;color:var(--fg2)}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--fg2);font-weight:600;background:var(--canvas)}
+td.num{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+th.cur{color:var(--cur)} th.opt{color:var(--opt)}
+td.mean{color:var(--fg2);font-size:12.5px}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.chart{border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.chart h4{font-size:14px}
+.mc{width:100%;height:auto;display:block}
+.mc .ax{stroke:var(--ctl);stroke-width:1}
+.mc .gr{stroke:var(--border);stroke-width:1;stroke-dasharray:3 3}
+.mc .lc{fill:none;stroke:var(--cur);stroke-width:2}
+.mc .lo{fill:none;stroke:var(--opt);stroke-width:2;stroke-dasharray:5 3}
+.mc .bc{fill:var(--cur)} .mc .bo{fill:var(--opt)} .mc .bn{fill:var(--skel)} .mc .bbusy{fill:var(--cur)}
+.mc .brk{fill:var(--opt-bg)} .mc .lim{stroke:var(--warn);stroke-width:1.5;stroke-dasharray:4 3} .mc .ci{stroke:var(--fg);stroke-width:1.2}
+.mc text{fill:var(--fg2);font:500 9px var(--font)}
+.key{font-size:12px;color:var(--fg2);display:inline-flex;align-items:center;gap:5px;margin-right:10px}
+.key::before{content:"";width:14px;height:3px;border-radius:2px;display:inline-block}
+.key.c::before{background:var(--cur)} .key.o::before{background:repeating-linear-gradient(90deg,var(--opt) 0 4px,transparent 4px 6px)}
+.key.n::before{background:var(--skel);height:9px} .key.b::before{background:var(--opt-bg);height:9px;border:1px solid var(--opt)}
+.ph-note{font-size:12px;color:var(--fg2);font-style:italic}
+.empty{border:1px dashed var(--ctl);border-radius:10px;padding:18px;text-align:center;color:var(--fg2);font-size:14px}
+/* replay */
+.counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:560px){.counts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.count{border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center}
+.count .l{font-size:13px;color:var(--fg2)}
+.count .v{font-size:1.6rem;font-weight:800;font-variant-numeric:tabular-nums}
+.clockrow{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:baseline;justify-content:space-between}
+.clock{font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.floor{border:1px solid var(--border);border-radius:12px;background:var(--canvas);padding:14px;display:grid;grid-template-columns:90px minmax(0,1fr) minmax(0,1fr) 90px;gap:12px;align-items:center}
+@media (max-width:700px){.floor{grid-template-columns:minmax(0,1fr)}}
+.zone{display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center}
+.zone .zt{font-size:12px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.06em}
+.zone .zv{font-size:1.4rem;font-weight:800}
+.lines{display:flex;flex-direction:column;gap:8px}
+.lane{border:1px dashed var(--ctl);border-radius:999px;padding:6px 12px;display:flex;align-items:center;gap:6px;min-height:34px;background:var(--surface)}
+.lane .ln{font-size:12px;color:var(--fg2);min-width:58px}
+.pd{width:12px;height:12px;border-radius:50%;background:var(--person);display:inline-block}
+.ctrs{display:flex;flex-direction:column;gap:8px}
+.ctr{border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--surface);display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:14px;font-weight:600}
+.st{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.st.serving{background:var(--cur-bg);color:var(--cur)}
+.st.finishing{background:var(--warn-bg);color:var(--warn)}
+.st.onbreak{background:var(--opt-bg);color:var(--opt)}
+.st.available{background:var(--ok-bg);color:var(--ok)}
+.st.closed{background:var(--subtle);color:var(--fg2);border:1px dashed var(--ctl)}
+.accounting{background:var(--subtle);border-radius:8px;padding:8px 12px;font-size:14px}
+.timeline{display:flex;flex-direction:column;gap:4px}
+.track{position:relative;height:10px;border-radius:5px;background:var(--skel)}
+.track .prog{position:absolute;left:0;top:0;bottom:0;width:53%;background:var(--link);border-radius:5px}
+.track .pb{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--surface)}
+.ticks{position:relative;height:16px;font-size:11px;color:var(--fg2)}
+.ticks span{position:absolute;transform:translateX(-50%)}
+.brow{position:relative;height:20px;font-size:11.5px;color:var(--fg2)}
+.brow .sb{position:absolute;top:4px;height:10px;border-radius:3px;background:repeating-linear-gradient(45deg,var(--opt) 0 2px,transparent 2px 5px);border:1px solid var(--opt)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.legend{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--fg2)}
+.sub2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.kbox{border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:3px}
+.kbox .l{font-size:12.5px;color:var(--fg2)}
+.kbox .v{font-size:1.2rem;font-weight:800;font-variant-numeric:tabular-nums}
+.kbox .h{font-size:12px;color:var(--fg2)}
+.decision{border:2px solid var(--ok);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.decision .q{font-size:12.5px;color:var(--fg2);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.decision .a{font-size:1.25rem;font-weight:800;color:var(--ok)}
+.footer{font-size:12.5px;color:var(--fg2);border-top:1px solid var(--border);padding-top:10px;display:flex;flex-wrap:wrap;gap:6px 16px}
+.footer code{font:12px var(--mono)}
+.pagenav{display:inline-flex;gap:4px;border-bottom:2px solid var(--border)}
+.pagenav button{border:0;background:none;color:var(--fg2);padding:7px 12px;font-size:14px;font-weight:600;border-bottom:3px solid transparent;margin-bottom:-2px}
+.pagenav button[aria-current="page"]{color:var(--link);border-bottom-color:var(--link)}
+.mstage{position:relative;height:170px;border:1px solid var(--border);border-radius:12px;background:var(--canvas);overflow:hidden}
+.mlbl{position:absolute;top:4px;font-size:11px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.06em}
+.mlane{position:absolute;left:20%;width:38%;top:44%;height:18%;border:1px dashed var(--ctl);border-radius:999px}
+.mdesk{position:absolute;left:66%;width:12%;height:18%;border:1px solid var(--ctl);border-radius:8px;background:var(--surface)}
+.mdot{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--person);box-shadow:0 0 0 2px var(--surface);transition-property:transform,opacity;transition-timing-function:cubic-bezier(.4,0,.2,1);will-change:transform}
+.mdot.serving{background:var(--cur)}
+@media (prefers-reduced-motion:reduce){.mdot{transition:none!important}}
+.advmini{position:relative}
+.advmini summary{cursor:pointer;font-size:13.5px;font-weight:600;color:var(--link);list-style:none;display:inline-flex;gap:6px;align-items:center}
+.advmini[open] .fields{position:absolute;right:0;top:30px;z-index:5;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;width:min(420px,80vw);box-shadow:0 8px 24px rgba(8,33,63,.18)}
+.prevchip{border:0;cursor:pointer}
+.hcards{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.hcards{grid-template-columns:repeat(2,minmax(0,1fr))}.hcards>.co{display:none}}
+.hcard{border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.hcard .l{font-size:13px;color:var(--fg2);font-weight:600}
+.hcard .h{font-size:12px;color:var(--fg2)}
+.cmpv{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;font-weight:800;font-variant-numeric:tabular-nums}
+.cmpv .cv{color:var(--cur);font-size:1.05rem}
+.cmpv .ov{color:var(--opt);font-size:1.35rem}
+.charts.two{grid-template-columns:auto repeat(2,minmax(0,1fr))}
+@media (max-width:900px){.charts.two{grid-template-columns:minmax(0,1fr)}.charts.two>.co{display:none}}
+details.more{border:1px solid var(--border);border-radius:10px;padding:10px 14px;background:var(--canvas)}
+details.more>summary{cursor:pointer;font-weight:700;font-size:15px}
+.checklist{display:flex;flex-direction:column;gap:8px}
+details.chk{border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+details.chk>summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;list-style:none}
+details.chk>summary::-webkit-details-marker{display:none}
+.cname{font-weight:700;min-width:150px}
+.tagreq{font-size:12px;color:var(--fg)}
+.tagopt{font-size:12px;color:var(--fg2)}
+.dlink{margin-left:auto;font-size:13px;color:var(--link);text-decoration:underline}
+details.chk[open] .dlink::after{content:" ▲"}
+.chkbody{padding:0 12px 12px;display:flex;flex-direction:column;gap:10px}
+.decision.none{border-color:var(--border)}
+.decision .a2{font-size:1.15rem;font-weight:800;color:var(--fg)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+<header class="review">
+  <span class="eyebrow">NovaQ redesign · full page specification · proposed, not built</span>
+  <h1>Queue simulation page</h1>
+  <p>Queue simulation is three short pages: <strong>Key results</strong>, <strong>Replay</strong>, and <strong>Checks and decision</strong>. They share one header and one run bar. Use the page links inside the mockup to move between them. Use the review controls to switch line type and page state; the app's own controls (plan switch, Key results / Replay, Advanced) also work. Numbered markers match the notes on the right. Numbers are blank on purpose; chart shapes are placeholders, not results.</p>
+  <div class="toolbar" role="group" aria-label="Review controls">
+    <div class="tgroup"><span>Line type</span><div class="tbtns" data-ctl="line">
+      <button type="button" data-v="shared" aria-pressed="true">One shared line</button>
+      <button type="button" data-v="separate" aria-pressed="false">Separate lines</button>
+    </div></div>
+    <div class="tgroup"><span>Page state</span><div class="tbtns" data-ctl="state">
+      <button type="button" data-v="ready" aria-pressed="false">Ready, not run</button>
+      <button type="button" data-v="running" aria-pressed="false">Running</button>
+      <button type="button" data-v="done" aria-pressed="true">Done</button>
+      <button type="button" data-v="outofdate" aria-pressed="false">Out of date</button>
+      <button type="button" data-v="noclosing" aria-pressed="false">Closing rule not set</button>
+      <button type="button" data-v="notcompat" aria-pressed="false">Not supported</button>
+    </div></div>
+    <span class="tag">Wireframe · not real results</span>
+  </div>
+</header>
+
+<div class="stage">
+<div class="app" id="app" data-line="shared" data-state="done" data-view="key" data-plan="suggested">
+  <nav class="side" aria-label="Sidebar (mockup)">
+    <div class="top"><span class="logo">Nova<em>Q</em></span><svg class="ico" viewBox="0 0 24 24" aria-label="Hide sidebar"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></div>
+    <span class="g">WORKSPACE</span><span class="it">My analyses</span>
+    <span class="g">INSIGHTS</span><span class="it">Analysis results</span>
+    <span class="g">SIMULATION</span><span class="it on">Queue simulation</span>
+    <span class="g">TOOLS</span><span class="it">Quick calculator</span>
+    <div class="acct"><span class="av">YU</span><span>you@example.com</span></div>
+  </nav>
+
+  <div class="main">
+    <div class="apphead"><span>NovaQ / Simulation / <strong style="color:var(--fg)">Queue simulation</strong></span><span class="row"><span>☀</span><span>?</span></span></div>
+    <div class="content">
+
+      <!-- 1 page header -->
+      <div class="ph">
+        <div class="sh"><h2><span class="co">1</span> Queue simulation</h2><button type="button" class="lnk">Help: reading the simulation</button></div>
+        <div class="row">
+          <span class="sel" data-line-text="shared">Analysis: Main branch checkout ▾</span>
+          <span class="sel" data-line-text="separate" hidden>Analysis: Pharmacy counters ▾</span>
+          <span class="seg" role="group" aria-label="Which run"><button type="button" data-plan="current" aria-pressed="false">Current</button><button type="button" data-plan="suggested" aria-pressed="true">Suggested plan</button></span>
+          <span class="vsep" aria-hidden="true"></span>
+          <nav class="pagenav" aria-label="Simulation pages"><button type="button" data-view="key" aria-current="page">Key results</button><button type="button" data-view="replay">Replay</button><button type="button" data-view="checks">Checks and decision</button></nav>
+          <span class="co">2</span>
+        </div>
+      </div>
+
+      <!-- 3 run bar (merged) -->
+      <div class="runbar">
+        <span><span class="co">3</span> <strong>Operating hours:</strong> 05:00–18:00 · <strong>At closing time:</strong> <span data-hide-state="noclosing">Finish serving remaining customers</span><span data-show="noclosing" hidden><em>not chosen yet</em></span> · <button type="button" class="lnk">Change</button></span>
+        <span class="row">
+          <span class="chip ok" data-show="done">Done · Oct 10, 09:40</span>
+          <span class="chip n" data-show="ready" hidden>Not run</span>
+          <span class="chip n" data-show="running" hidden>Running…</span>
+          <span class="chip w" data-show="outofdate" hidden>Out of date</span>
+          <span class="chip w" data-show="noclosing" hidden>Choose closing rule</span>
+          <span class="chip bad" data-show="notcompat" hidden>Cannot run</span>
+          <button type="button" class="chip info prevchip" data-line="shared" aria-expanded="false" aria-controls="prevexp">Preview · what does this mean?</button>
+          <button type="button" class="btn p" data-runbtn>▶ Run full operation</button>
+          <details class="advmini"><summary><span class="co">6</span> Advanced</summary>
+            <div class="fields">
+              <div class="field"><label for="seed1">Random seed</label><input id="seed1" placeholder="blank = new each run"><span class="hint">Use the same seed to repeat a run exactly.</span></div>
+              <div class="field"><label for="ev1">Replay detail limit</label><input id="ev1" placeholder="set in the B4a spec"><span class="hint">Longest replay kept. The summary always covers the whole run.</span></div>
+            </div>
+          </details>
+        </span>
+      </div>
+      <div class="small" data-show="done outofdate" style="margin-top:-8px"><span class="co">5</span> One continuous run · closing rule used: Finish serving · seed 1048 · <span data-plan-label>Suggested plan: Plan – Oct 10</span></div>
+      <div class="alert info" id="prevexp" hidden><span class="fg">This preview uses a simple service-time assumption. The standard version, which uses the service times from your customer records, is not available yet. Treat these results as a first look.</span></div>
+
+      <!-- 4 messages by state -->
+      <div class="alert w" data-show="noclosing" hidden role="alert">
+        <strong><span class="co">4</span> Choose what happens at closing time before running.</strong>
+        <span class="fg">○ Finish serving customers already waiting or checking out</span>
+        <span class="fg">○ Stop service at closing; people still waiting are not served</span>
+        <span class="row"><button type="button" class="btn">Save choice</button><span class="small">Saved for this analysis. Past runs keep the rule they used.</span></span>
+      </div>
+      <div class="alert bad" data-show="notcompat" hidden role="alert">
+        <strong><span class="co">4</span> This simulation does not yet support customers leaving the queue, which is enabled in your setup.</strong>
+        <span class="fg">Nothing was run. Turn off "Customers leaving" in Data and setup to run without it, or wait for that feature.</span>
+        <span class="row"><button type="button" class="btn">Open Data and setup</button></span>
+      </div>
+      <div class="alert w" data-show="outofdate" hidden role="status">
+        <strong><span class="co">4</span> Out of date: your data or setup changed after this run (Oct 10, 09:40).</strong>
+        <span class="fg">The results below are from before the change. Run again to update them.</span>
+      </div>
+      <div class="alert info" data-show="running" hidden role="status">
+        <strong><span class="co">4</span> Running the whole day for the suggested plan…</strong>
+        <span class="fg">This can take a while for a long day. Keep this page open until it finishes.</span>
+      </div>
+
+      <!-- PAGE: KEY RESULTS -->
+      <section class="card" data-view-panel="key" aria-label="Key results page" style="display:flex;flex-direction:column;gap:14px">
+        <div class="sh"><h3><span class="co">P1</span> Key results</h3><span class="row"><span class="chip sim">From a simulation</span><span class="small">/simulation/results</span></span></div>
+        <div class="empty" data-show="ready noclosing notcompat running" hidden>No run yet. Press <strong>Run full operation</strong> to see the day's key results.</div>
+        <div data-show="done outofdate" style="display:flex;flex-direction:column;gap:14px">
+          <div class="hcards"><span class="co" style="align-self:center">7</span>
+            <div class="hcard"><span class="l">Average wait in line</span><span class="cmpv"><span class="cv">— min</span><span aria-hidden="true">→</span><span class="ov">— min</span></span><span class="h">Customers who started service</span></div>
+            <div class="hcard"><span class="l">Longest line</span><span class="cmpv"><span class="cv">— people</span><span aria-hidden="true">→</span><span class="ov">— people</span></span><span class="h">Most waiting at one moment</span></div>
+            <div class="hcard"><span class="l">Customers served</span><span class="cmpv"><span class="cv">— of —</span><span aria-hidden="true">→</span><span class="ov">— of —</span></span><span class="h">Started service, out of arrivals</span></div>
+            <div class="hcard"><span class="l">Not served at closing</span><span class="cmpv"><span class="cv">—</span><span aria-hidden="true">→</span><span class="ov">—</span></span><span class="h">Depends on the closing rule</span></div>
+          </div>
+          <div class="small"><span class="key c">Current</span> → <span class="key o">Suggested plan</span> · a side that has not been run says "Not run yet"</div>
+          <div class="charts two"><span class="co">8</span>
+            <div class="chart"><h4>People waiting through the day</h4>
+                <svg class="mc" viewBox="0 0 300 110" role="img" aria-label="Placeholder shape: people waiting through the day"><line class="ax" x1="26" y1="90" x2="294" y2="90"/><line class="ax" x1="26" y1="8" x2="26" y2="90"/><line class="gr" x1="26" y1="48" x2="294" y2="48"/><rect class="brk" x="150" y="8" width="12" height="82"/><path class="lc" d="M26 88 H56 V80 H80 V72 H104 V56 H128 V38 H150 V22 H174 V32 H198 V52 H222 V66 H246 V78 H270 V86 H294"/><path class="lo" d="M26 88 H56 V86 H80 V82 H104 V74 H128 V66 H150 V60 H174 V64 H198 V72 H222 V80 H246 V84 H270 V88 H294"/><text x="26" y="104">05:00</text><text x="146" y="104">11:30</text><text x="266" y="104">18:00</text></svg>
+                <div><span class="key c">Current</span><span class="key o">Suggested</span><span class="key b">Scheduled break</span></div><span class="ph-note">Placeholder shape</span></div>
+            <div class="chart"><h4>Average wait by period</h4>
+                <svg class="mc" viewBox="0 0 300 110" role="img" aria-label="Placeholder shape: average wait by period"><line class="ax" x1="26" y1="90" x2="294" y2="90"/><line class="ax" x1="26" y1="8" x2="26" y2="90"/>
+                <rect class="bc" x="34" y="80" width="8" height="10"/><rect class="bo" x="42" y="84" width="8" height="6"/><rect class="bc" x="56" y="74" width="8" height="16"/><rect class="bo" x="64" y="82" width="8" height="8"/><rect class="bc" x="78" y="66" width="8" height="24"/><rect class="bo" x="86" y="78" width="8" height="12"/><rect class="bc" x="100" y="52" width="8" height="38"/><rect class="bo" x="108" y="72" width="8" height="18"/><rect class="bc" x="122" y="36" width="8" height="54"/><rect class="bo" x="130" y="64" width="8" height="26"/><rect class="bc" x="144" y="24" width="8" height="66"/><rect class="bo" x="152" y="60" width="8" height="30"/><rect class="bc" x="166" y="34" width="8" height="56"/><rect class="bo" x="174" y="64" width="8" height="26"/><rect class="bc" x="188" y="50" width="8" height="40"/><rect class="bo" x="196" y="72" width="8" height="18"/><rect class="bc" x="210" y="64" width="8" height="26"/><rect class="bo" x="218" y="78" width="8" height="12"/><rect class="bc" x="232" y="74" width="8" height="16"/><rect class="bo" x="240" y="82" width="8" height="8"/><rect class="bc" x="254" y="80" width="8" height="10"/><rect class="bo" x="262" y="84" width="8" height="6"/>
+                <text x="26" y="104">05:00</text><text x="266" y="104">18:00</text></svg>
+                <div><span class="key c">Current</span><span class="key o">Suggested</span></div><span class="small">Minutes, among customers who started service in that period.</span></div>
+          </div>
+          <details class="more">
+            <summary><span class="co">9</span> More results</summary>
+            <div style="display:flex;flex-direction:column;gap:14px;margin-top:12px">
+              <div class="tw"><table>
+                <thead><tr><th>Key result</th><th class="cur">Current</th><th class="opt">Suggested plan</th><th>What it means</th></tr></thead>
+                <tbody>
+                  <tr><td>Customers who had to wait</td><td class="num">— of —</td><td class="num">— of —</td><td class="mean">Customers whose service did not start right away.</td></tr>
+                  <tr><td>Average line length</td><td class="num">— people</td><td class="num">— people</td><td class="mean">Line length averaged over the operating hours.</td></tr>
+                  <tr><td>Service finished at</td><td class="num">—:—</td><td class="num">—:—</td><td class="mean">When the last counter closed, and how long after closing.</td></tr>
+                  <tr><td>Counter time used</td><td class="num">— of — h</td><td class="num">— of — h</td><td class="mean">Hours counters were busy, out of hours they were open.</td></tr>
+                </tbody>
+              </table></div>
+              <div class="charts">
+                <div class="chart"><h4>Customers arriving vs starting service</h4>
+                <svg class="mc" viewBox="0 0 300 110" role="img" aria-label="Placeholder shape: arriving vs starting service by period"><line class="ax" x1="26" y1="90" x2="294" y2="90"/><line class="ax" x1="26" y1="8" x2="26" y2="90"/>
+                <rect class="bn" x="34" y="78" width="16" height="12"/><rect class="bn" x="56" y="70" width="16" height="20"/><rect class="bn" x="78" y="60" width="16" height="30"/><rect class="bn" x="100" y="48" width="16" height="42"/><rect class="bn" x="122" y="36" width="16" height="54"/><rect class="bn" x="144" y="28" width="16" height="62"/><rect class="bn" x="166" y="34" width="16" height="56"/><rect class="bn" x="188" y="46" width="16" height="44"/><rect class="bn" x="210" y="58" width="16" height="32"/><rect class="bn" x="232" y="68" width="16" height="22"/><rect class="bn" x="254" y="76" width="16" height="14"/>
+                <polyline class="lc" points="42,78 64,70 86,61 108,50 130,42 152,38 174,34 196,42 218,54 240,66 262,75"/><text x="26" y="104">05:00</text><text x="266" y="104">18:00</text></svg>
+                <div><span class="key n">Arrived</span><span class="key c">Started service</span></div><span class="small">When the line falls behind, the two pull apart.</span></div>
+                <div class="chart"><h4>Counters open vs busy</h4>
+                <svg class="mc" viewBox="0 0 300 110" role="img" aria-label="Placeholder shape: counters open and busy by period"><line class="ax" x1="26" y1="90" x2="294" y2="90"/><line class="ax" x1="26" y1="8" x2="26" y2="90"/>
+                <rect class="bn" x="34" y="58" width="16" height="32"/><rect class="bbusy" x="34" y="72" width="16" height="18"/><rect class="bn" x="56" y="58" width="16" height="32"/><rect class="bbusy" x="56" y="66" width="16" height="24"/><rect class="bn" x="78" y="42" width="16" height="48"/><rect class="bbusy" x="78" y="54" width="16" height="36"/><rect class="bn" x="100" y="42" width="16" height="48"/><rect class="bbusy" x="100" y="46" width="16" height="44"/><rect class="bn" x="122" y="26" width="16" height="64"/><rect class="bbusy" x="122" y="32" width="16" height="58"/><rect class="bn" x="144" y="26" width="16" height="64"/><rect class="bbusy" x="144" y="28" width="16" height="62"/><rect class="bn" x="166" y="26" width="16" height="64"/><rect class="bbusy" x="166" y="34" width="16" height="56"/><rect class="bn" x="188" y="42" width="16" height="48"/><rect class="bbusy" x="188" y="52" width="16" height="38"/><rect class="bn" x="210" y="42" width="16" height="48"/><rect class="bbusy" x="210" y="60" width="16" height="30"/><rect class="bn" x="232" y="58" width="16" height="32"/><rect class="bbusy" x="232" y="70" width="16" height="20"/><rect class="bn" x="254" y="58" width="16" height="32"/><rect class="bbusy" x="254" y="74" width="16" height="16"/>
+                <text x="26" y="104">05:00</text><text x="266" y="104">18:00</text></svg>
+                <div><span class="key n">Open</span><span class="key c">Busy</span></div><span class="small">Average counters open and busy in each period.</span></div>
+              </div>
+              <h4 style="font-size:15px">By period</h4>
+              <div class="tw"><table>
+              <thead><tr><th>Period</th><th>Arrived</th><th>Started service</th><th>Average wait</th><th>Longest line</th><th>Counters open</th><th>Busy share</th></tr></thead>
+              <tbody>
+                <tr><td>05:00–06:00</td><td class="num">—</td><td class="num">—</td><td class="num">— min</td><td class="num">—</td><td class="num">—</td><td class="num">— %</td></tr>
+                <tr><td>06:00–07:00</td><td class="num">—</td><td class="num">—</td><td class="num">— min</td><td class="num">—</td><td class="num">—</td><td class="num">— %</td></tr>
+                <tr><td>…</td><td colspan="6" class="mean">One row per period, 1 to 24 periods</td></tr>
+                <tr><td>After closing</td><td colspan="6" class="mean">Started service after closing: — · Finished after closing: — · Counter hours after closing: — (the engine reports only these for after closing)</td></tr>
+              </tbody>
+            </table></div>
+              <div data-line="separate" hidden style="display:flex;flex-direction:column;gap:10px">
+                <h4 style="font-size:15px"><span class="co">10</span> By counter</h4>
+                <div class="tw"><table>
+                <thead><tr><th>Counter</th><th>Customers served</th><th>Average wait</th><th>Busy share</th><th>Longest line</th></tr></thead>
+                <tbody>
+                  <tr><td>Counter 1</td><td class="num">—</td><td class="num">— min</td><td class="num">— %</td><td class="num">—</td></tr>
+                  <tr><td>Counter 2</td><td class="num">—</td><td class="num">— min</td><td class="num">— %</td><td class="num">—</td></tr>
+                  <tr><td>Counter 3</td><td class="num">—</td><td class="num">— min</td><td class="num">— %</td><td class="num">—</td></tr>
+                </tbody>
+              </table></div>
+                <p class="small">Busy share is not a performance score for the person at the counter.</p>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- PAGE: REPLAY -->
+      <section class="card" data-view-panel="replay" hidden aria-label="Replay page" style="flex-direction:column;gap:14px">
+        <div class="sh"><h3><span class="co">P2</span> Replay</h3><span class="small">/simulation/replay · <a class="lnk" href="#" onclick="return false">Open full screen</a></span></div>
+          <div class="empty" data-show="ready noclosing notcompat running" hidden>No run yet. Press <strong>Run full operation</strong> to watch the day.</div>
+          <div data-show="done outofdate" style="display:flex;flex-direction:column;gap:14px">
+            <div class="counts"><div class="count"><div class="l">Arrived</div><div class="v">—</div></div><div class="count"><div class="l">Waiting</div><div class="v">—</div></div><div class="count"><div class="l">Being served</div><div class="v">—</div></div><div class="count"><div class="l">Finished</div><div class="v">—</div></div></div>
+            <div class="clockrow"><span class="clock">11:57</span><span class="row"><span class="small">Period 11:00–12:00 · Counters open: 3</span><span class="chip sim">From a simulation</span></span></div>
+
+            <div class="floor" aria-label="Store floor (mockup)">
+              <div class="zone"><span class="zt">Arriving</span><span class="zv">—</span><span>→</span></div>
+              <div class="lines">
+                <div data-line="shared" class="lane"><span class="ln">One line</span><span class="pd"></span><span class="pd"></span><span class="pd"></span><span class="pd"></span><span class="pd"></span></div>
+                <div data-line="separate" hidden class="lines">
+                  <div class="lane"><span class="ln">Line 1</span><span class="pd"></span><span class="pd"></span><span class="pd"></span></div>
+                  <div class="lane"><span class="ln">Line 2</span><span class="pd"></span></div>
+                  <div class="lane"><span class="ln">Line 3</span><span class="small">closed</span></div>
+                </div>
+              </div>
+              <div class="ctrs">
+                <div class="ctr"><span>Counter 1</span><span class="st serving">Serving</span></div>
+                <div class="ctr"><span>Counter 2</span><span class="st finishing" data-line="separate" hidden>Finishing customers before break</span><span class="st available" data-line="shared">Available</span></div>
+                <div class="ctr"><span>Counter 3</span><span class="st closed">Closed / not staffed</span></div>
+              </div>
+              <div class="zone"><span class="zt">Finished</span><span class="zv">—</span><span>→</span></div>
+            </div>
+
+            <div class="motion card" style="padding:12px;gap:10px" aria-label="Motion demo">
+              <div class="sh"><h4 style="font-size:15px"><span class="co">M</span> How customers move</h4><span class="chip w">Demo with made-up customers · not a result</span></div>
+              <p class="small">Each dot is one customer. Dots glide: in from the left, along the line, to a free counter, then out to the right. The line closes up smoothly when someone leaves it. Try the speeds.</p>
+              <div class="mstage" id="mstage" aria-hidden="true">
+                <span class="mlbl" style="left:2%">Arriving</span><span class="mlbl" style="left:24%">Line</span><span class="mlbl" style="left:64%">Counters</span><span class="mlbl" style="left:88%">Finished</span>
+                <span class="mlane"></span>
+                <span class="mdesk" style="top:14%"></span><span class="mdesk" style="top:42%"></span><span class="mdesk" style="top:70%"></span>
+              </div>
+              <div class="controls">
+                <button type="button" class="btn p" id="mplay">⏸ Pause</button>
+                <label class="small" for="mspeed">Speed</label>
+                <select id="mspeed" class="sel"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select>
+                <span class="small" id="minfo"></span>
+              </div>
+            </div>
+            <div class="row"><span class="co">11</span><span class="legend"><span class="st available">Available</span><span class="st serving">Serving</span><span class="st finishing">Finishing customers before break</span><span class="st onbreak">On break</span><span class="st closed">Closed / not staffed</span></span></div>
+            <p class="small" data-line="shared">Standard shared line: break states appear after break modeling is added. Until then counters show only Available, Serving, Closed.</p>
+            <div class="accounting">Arrived = waiting + being served + finished: — = — + — + —</div>
+
+            <div class="timeline">
+              <div class="track"><span class="prog"></span><span class="pb" style="left:7.7%"></span><span class="pb" style="left:15.4%"></span><span class="pb" style="left:23.1%"></span><span class="pb" style="left:30.8%"></span><span class="pb" style="left:38.5%"></span><span class="pb" style="left:46.2%"></span><span class="pb" style="left:53.8%"></span><span class="pb" style="left:61.5%"></span><span class="pb" style="left:69.2%"></span><span class="pb" style="left:76.9%"></span><span class="pb" style="left:84.6%"></span><span class="pb" style="left:92.3%"></span></div>
+              <div class="ticks"><span style="left:0%;transform:none">05:00</span><span style="left:23.1%">08:00</span><span style="left:46.2%">11:00</span><span style="left:69.2%">14:00</span><span style="left:100%;transform:translateX(-100%)">18:00</span></div>
+              <div class="brow"><span class="sb" style="left:53.8%;width:2.6%"></span><span style="position:absolute;left:57.5%;top:2px">Scheduled break · Counter 2 · 12:00–12:20 (from your setup)</span></div>
+            </div>
+            <div class="controls"><span class="co">12</span>
+              <button type="button" class="btn">⏮ Restart</button><button type="button" class="btn p">⏸ Pause</button><button type="button" class="btn">Next event</button>
+              <label class="small" for="spd">Speed</label><select id="spd" class="sel"><option>0.25×</option><option>0.5×</option><option selected>1×</option><option>2×</option><option>5×</option><option>10×</option></select><span class="small">1× = 1 simulated minute per second</span>
+              <label class="small" for="goto">Go to time</label><input id="goto" type="time" value="12:00" class="sel" style="width:auto"><button type="button" class="btn">Go</button>
+            </div>
+            <p class="small">If the replay is cut short: "The replay stops at 15:42. The summary still covers the whole run."</p>
+            <details class="adv"><summary>Event list (text version of the replay)</summary>
+              <div class="tw" style="margin-top:8px"><table><thead><tr><th>Time</th><th>What happened</th><th>Customer</th><th>Counter</th></tr></thead><tbody>
+                <tr><td>11:56:40</td><td>Arrived</td><td>#—</td><td>—</td></tr>
+                <tr><td>11:57:00</td><td data-line="separate" hidden>Counter 2 finishing customers before break</td><td data-line="shared">Started service</td><td>—</td><td>—</td></tr>
+                <tr><td>…</td><td colspan="3" class="mean">Every event of the run, in time order</td></tr>
+              </tbody></table></div>
+            </details>
+          </div>
+      </section>
+
+      <!-- PAGE: CHECKS AND DECISION -->
+      <div data-view-panel="checks" hidden style="flex-direction:column;gap:16px">
+      <div class="sh"><h3 style="font-size:1.15rem"><span class="co">P3</span> Checks and decision</h3><span class="small">/simulation/checks</span></div>
+
+      <!-- DECISION FIRST -->
+      <section class="card" aria-labelledby="dech">
+        <h3 id="dech" class="sr"><span class="co">14</span> Decision</h3>
+        <div data-line="separate" hidden style="display:flex;flex-direction:column;gap:10px">
+          <div data-dec="none" class="decision none">
+            <span class="q"><span class="co">14</span> Should we use this plan?</span>
+            <span class="a2">No decision yet.</span>
+            <span class="muted">Check the plan first. It runs Many variations and the Results check on the latest replay, then shows the decision here.</span>
+            <div class="row"><button type="button" class="btn p" data-checkplan>Check the plan</button><span class="small">Uses the settings under each check's "details".</span></div>
+          </div>
+          <div data-dec="made" class="decision" hidden>
+            <span class="q"><span class="co">14</span> Should we use this plan?</span>
+            <span class="a">The plan passed every check, but its cost saving can't be calculated for separate lines.</span>
+            <span class="muted">Use it only if you accept the cost. This is the best possible outcome for separate lines, because NovaQ has no comparable cost for today's setup. Details come from the saved decision.</span>
+            <div class="row"><button type="button" class="btn p">Download report</button><button type="button" class="btn" data-checkplan>Check again</button><span class="small">PDF summary or Excel calculations</span></div>
+          </div>
+        </div>
+        <div data-line="shared" style="display:flex;flex-direction:column;gap:8px">
+          <div class="decision none"><span class="q"><span class="co">14</span> Should we use this plan?</span><span class="a2">A decision is not available for the continuous run yet.</span><span class="muted">It needs an approved pass or fail rule for this simulation. You can still download the results.</span><div class="row"><button type="button" class="btn">Download results</button></div></div>
+        </div>
+      </section>
+
+      <!-- CHECK LINES -->
+      <section class="card" aria-labelledby="chkh">
+        <h3 id="chkh" style="font-size:1.05rem"><span class="co">13</span> Checks</h3>
+        <div data-line="separate" hidden class="checklist">
+          <details class="chk">
+            <summary><span class="cname">Replay of the day</span><span class="chip ok" data-show="done">Done</span><span class="chip n" data-show="ready running noclosing notcompat" hidden>Not run</span><span class="chip w" data-show="outofdate" hidden>Out of date</span><span class="tagreq">Required for the decision</span><span class="dlink">details</span></summary>
+            <div class="chkbody"><p class="muted">The simulation run from the run bar. Its key results are on the Key results page.</p></div>
+          </details>
+          <details class="chk">
+            <summary><span class="cname">Many variations</span><span class="chip n">Not run</span><span class="tagreq">Required for the decision (the Results check uses it)</span><span class="dlink">details</span></summary>
+            <div class="chkbody">
+              <p class="muted">Recalculates each period and counter many times (default 2,000) around the operating point measured in the replay, with the arrival rate and service speed varied. A variation fails when a counter is busier than this plan's target (for example 70%). The plan holds up when no more than the allowed share (default 5%) fails.</p>
+              <div class="row"><button type="button" class="btn">Run variations</button></div>
+              <div class="kgrid">
+                <div class="kbox"><span class="l">Variations that failed</span><span class="v">— %</span><span class="h">Range — to — % (95%)</span></div>
+                <div class="kbox"><span class="l">Allowed</span><span class="v">up to 5%</span><span class="h">Saved with this check</span></div>
+                <div class="kbox"><span class="l">Periods to watch</span><span class="v">—</span><span class="h">Above the allowed share</span></div>
+                <div class="kbox"><span class="l">Result</span><span class="v">—</span><span class="h">Holds up / Does not hold up / Not enough variations to tell</span></div>
+              </div>
+              <div class="chart"><h4>Variations that failed, by period</h4>
+              <svg class="mc" viewBox="0 0 300 100" role="img" aria-label="Placeholder shape: share failing by period with ranges and allowed limit"><line class="ax" x1="26" y1="82" x2="294" y2="82"/><line class="ax" x1="26" y1="8" x2="26" y2="82"/><line class="lim" x1="26" y1="58" x2="294" y2="58"/><text x="246" y="54">allowed</text>
+              <rect class="bo" x="40" y="76" width="12" height="6"/><line class="ci" x1="46" y1="70" x2="46" y2="82"/><rect class="bo" x="66" y="72" width="12" height="10"/><line class="ci" x1="72" y1="66" x2="72" y2="78"/><rect class="bo" x="92" y="66" width="12" height="16"/><line class="ci" x1="98" y1="60" x2="98" y2="72"/><rect class="bo" x="118" y="52" width="12" height="30"/><line class="ci" x1="124" y1="46" x2="124" y2="58"/><rect class="bo" x="144" y="44" width="12" height="38"/><line class="ci" x1="150" y1="38" x2="150" y2="50"/><rect class="bo" x="170" y="56" width="12" height="26"/><line class="ci" x1="176" y1="50" x2="176" y2="62"/><rect class="bo" x="196" y="66" width="12" height="16"/><line class="ci" x1="202" y1="60" x2="202" y2="72"/><rect class="bo" x="222" y="74" width="12" height="8"/><line class="ci" x1="228" y1="68" x2="228" y2="80"/><text x="26" y="96">05:00</text><text x="266" y="96">18:00</text></svg>
+              <span class="ph-note">Placeholder shape · Calculated estimate (many variations)</span></div>
+              <details class="adv"><summary>Settings</summary><div class="fields">
+                <div class="field"><label for="tr">Variations</label><input id="tr" value="2000"><span class="hint">Default 2,000 · up to 100,000</span></div>
+                <div class="field"><label for="bl">Busy limit</label><input id="bl" placeholder="this plan's target"><span class="hint">Blank = this plan's target</span></div>
+                <div class="field"><label for="al">Allowed share failing</label><input id="al" value="5%"><span class="hint">Default 5%</span></div>
+                <div class="field"><label for="sd2">Random seed</label><input id="sd2" placeholder="blank = new each run"></div>
+              </div></details>
+            </div>
+          </details>
+          <details class="chk">
+            <summary><span class="cname">Results check</span><span class="chip n" data-chk="req">Not run</span><span class="tagreq">Required for the decision</span><span class="dlink">details</span></summary>
+            <div class="chkbody">
+              <p class="muted">Checks every period and counter of the plan using the saved replay and the saved variations. It has no settings of its own and needs both to be up to date.</p>
+              <div class="kgrid">
+                <div class="kbox"><span class="l">Periods checked</span><span class="v">— of —</span></div>
+                <div class="kbox"><span class="l">Passed</span><span class="v">—</span></div>
+                <div class="kbox"><span class="l">Did not pass</span><span class="v">—</span></div>
+                <div class="kbox"><span class="l">Not enough data</span><span class="v">—</span></div>
+              </div>
+              <p class="small">"Passed" appears only from the saved check, using the settings it was run with.</p>
+            </div>
+          </details>
+        </div>
+        <div data-line="shared" class="checklist">
+          <details class="chk">
+            <summary><span class="cname">Repeat the day</span><span class="chip n">Not run</span><span class="tagopt">Optional · ranges only</span><span class="dlink">details</span></summary>
+            <div class="chkbody">
+              <p class="muted">Runs the same day again several times with different random customers, to show how much the results can change. No pass or fail rule is approved for this simulation yet.</p>
+              <div class="row"><button type="button" class="btn">Repeat the day</button></div>
+              <div class="kgrid">
+                <div class="kbox"><span class="l">Average wait in line</span><span class="v">— min</span><span class="h">Range — to — min</span></div>
+                <div class="kbox"><span class="l">Longest line</span><span class="v">— people</span><span class="h">Range — to —</span></div>
+                <div class="kbox"><span class="l">Not served at closing</span><span class="v">—</span><span class="h">Range — to —</span></div>
+                <div class="kbox"><span class="l">Service finished at</span><span class="v">—:—</span><span class="h">Range —:— to —:—</span></div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+      </div>
+
+      <div class="footer"><span class="co">15</span><span>Run details: engine <code>novaq-shared-continuous-des-v2</code> (shared) · seed 1048 · run Oct 10, 09:40 · closing rule Finish serving · settings saved with the run</span></div>
+    </div>
+  </div>
+</div>
+
+<aside class="notes" aria-label="Spec notes">
+  <div class="note"><h4><span class="co">1</span>Page header</h4><p>One h1. Help link opens the "Reading the simulation" guide. The analysis selector opens the last-used analysis.</p></div>
+  <div class="note"><h4><span class="co">2</span>Plan switch and page links</h4><p><b>Current | Suggested plan</b> picks the run. <b>Key results · Replay · Checks and decision</b> are three separate pages (real routes: <code>/simulation/results</code>, <code>/simulation/replay</code>, <code>/simulation/checks</code>), so each page stays short. Key results opens first. All three use the same run. Suggested needs a selected plan; without one it is disabled with "Choose a plan in Suggested plans first."</p></div>
+  <div class="note"><h4><span class="co">P1</span>Key results page</h4><p>All the key results: Day summary (Current vs Suggested), four charts that show the difference, by period, and by counter for separate lines.</p></div>
+  <div class="note"><h4><span class="co">P2</span>Replay page</h4><p>The moving simulation only: counts, clock, floor, counter states, timeline, controls, event list. "Open full screen" gives the replay the whole window.</p></div>
+  <div class="note"><h4><span class="co">P3</span>Checks and decision page</h4><p>Check different possibilities, then the Decision, then Download report.</p></div>
+  <div class="note"><h4><span class="co">3</span>Run bar (one row)</h4><p>One row: operating hours, closing rule with Change, status, the "Preview · what does this mean?" chip (opens a short explanation), <b>Run full operation</b>, and Advanced. The run label sits on one line below it. Operating hours from setup; "At closing time" is the rule saved for this analysis. The engine badge says which simulation runs: one shared line uses the continuous run (Preview until the version with your recorded service times exists); separate lines use the existing continuous day run.</p></div>
+  <div class="note warn"><h4><span class="co">4</span>Messages by state</h4><p>Closing rule not set: choose first, nothing preselected. Not supported: names the setting (customers leaving, waiting-space limit), nothing runs. Out of date: old results stay visible, labelled. Running: polite status, result saved even if the user leaves.</p></div>
+  <div class="note"><h4><span class="co">5</span>Run label (on all three pages)</h4><p>"One continuous run · closing rule used · seed · which plan". The run bar is on every page, so a manager can run from wherever they are. One start runs the configured operating hours as one continuous run. Customers keep their identity, place in line, waiting time and unfinished service across period changes. Status: Not run / Running / Done with date / Out of date.</p></div>
+  <div class="note"><h4><span class="co">6</span>Advanced settings</h4><p>Hidden by default. Seed (blank = new each run) and the replay detail limit (value decided in the B4a spec). Defaults are labelled as defaults. Saved results always show the settings they used.</p></div>
+  <div class="note"><h4><span class="co">7</span>Headline cards</h4><p>Four cards, Current → Suggested: average wait, longest line, customers served, not served at closing. The other four rows are under More results. All eight come from the run's totals: <code>mean_wait_hours</code>, <code>waited_count</code>/<code>service_starts</code>, <code>max_queue</code>, <code>time_average_queue</code>, <code>service_starts</code>/<code>arrivals</code>, <code>unserved_customer_count</code>, <code>last_server_release_hours</code> + <code>overrun_hours</code>, <code>busy_server_hours</code>/<code>present_server_hours</code>. Hours shown as minutes. No percentages computed in the browser.</p></div>
+  <div class="note"><h4><span class="co">8</span>Two charts up front</h4><p>People waiting through the day and average wait by period are shown first; arriving vs starting service and counters open vs busy are under More results. From the same run. People waiting is counted from the replay's own events only when the replay is complete; if the replay was cut short, the chart uses the per-period average line length instead and says so. Scheduled breaks are a separate band. Current and Suggested differ by colour and solid vs dashed line, never red vs green. Every chart has a table version.</p></div>
+  <div class="note"><h4><span class="co">9</span>More results (closed by default)</h4><p>The other four summary rows, two charts, the by-period table and (separate lines) the by-counter table. By period: One row per period (1–24), from the run's per-period results (<code>segments[]</code>): arrivals, service starts, average wait, longest line, counters scheduled, busy share. "After closing" shows only what the engine reports for after closing: services started, completions, counter hours (<code>closing.*</code>).</p></div>
+  <div class="note"><h4><span class="co">10</span>By counter (separate lines)</h4><p>From the continuous day run per counter: served, average wait, busy share, longest line. Not a performance score.</p></div>
+  <div class="note"><h4><span class="co">M</span>Smooth customer movement</h4><p>Speeds 0.25×, 0.5×, 1×, 2×, 5×, 10×. 1× = 1 simulated minute per real second (a 13-hour day plays in about 13 minutes; 10× in about 78 seconds). Each customer dot glides between arriving, its place in line, its counter and finished (transform only, eased). Glide time stays between about 0.2 and 0.9 seconds at every speed, so dots never teleport or streak. The line closes up smoothly. Counts and clock always come from the events at that moment; the glide is only how the dot travels there. Paused when the browser tab is hidden. Reduced motion: dots jump without gliding.</p></div>
+  <div class="note"><h4><span class="co">11</span>Counter states</h4><p>Only from simulation events. Separate lines: <code>draining_start</code> → Finishing customers before break (starts 3 minutes before the scheduled break), <code>break_start</code> → On break, <code>break_end</code> → Available. Closed / not staffed from the plan. Never inferred from an idle counter or fewer open counters. Standard shared line has no break states until break modeling is added.</p></div>
+  <div class="note"><h4><span class="co">12</span>Replay controls</h4><p>Restart, Play/Pause, Next event, speed 0.25×–10×, Go to time. Timeline shows period boundaries and scheduled breaks on their own row. Counts satisfy arrived = waiting + being served + finished at every moment. Reduced motion: no dot animation; counts and clock still update.</p></div>
+  <div class="note warn"><h4><span class="co">13</span>Checks (one line each)</h4><p>Each check is one line: name, status, required or optional, and "details" that opens its numbers, chart and settings. Separate lines: Replay of the day → Many variations → Results check, all required; the Results check refuses to run without saved variations for the latest replay (<code>workflow.py:2800-2810</code>) and the busy limit defaults to the plan&#39;s target (<code>workflow.py:146-149</code>). Standard shared line (legacy run): the Results check runs its own simulation and variations (<code>simulation.py:1354-1374</code>), so a separate Many variations run is optional there. <b>Separate lines (exists today):</b> "Many variations" recalculates each period 2,000 times (arrivals ±20%, service ±10%); a variation fails when counters are busy over 75%; holds up when at most 5% fail; range is a 95% interval. "Results check" runs simulation + variations on the plan. <b>One shared line (continuous):</b> repeats the whole day with new random customers and shows ranges only, because no pass/fail rule is approved for this simulation.</p></div>
+  <div class="note warn"><h4><span class="co">14</span>Decision first</h4><p>The page opens with "Should we use this plan?". Outcomes come only from the saved decision: Yes, go ahead (one shared line, passed and costs the same or less) · Passed but costs more (one shared line) · Passed but saving can't be calculated (separate lines; their best outcome) · Change the plan first (with failed periods) · Not enough checks yet (with what is missing) · Out of date. Before any check: "No decision yet" and <b>Check the plan</b>, which runs Many variations, then the Results check, then asks the server for the decision (three existing requests for separate lines). After: the plain outcome from the saved decision, Download report, Check again. One shared line (continuous): not available until a pass/fail rule is approved. That is a new owner decision.</p></div>
+  <div class="note"><h4><span class="co">15</span>Run details</h4><p>Engine version, seed, run time, closing rule and settings, so any run can be repeated exactly.</p></div>
+</aside>
+</div>
+</div>
+
+<script>
+(function(){
+  var app=document.getElementById('app');
+  function apply(){
+    var line=app.dataset.line,state=app.dataset.state,view=app.dataset.view;
+    document.querySelectorAll('#app [data-line]:not(#app)').forEach(function(el){
+      if(el.tagName==='BUTTON')return;
+      el.hidden=el.getAttribute('data-line')!==line;
+    });
+    document.querySelectorAll('#app [data-line-text]').forEach(function(el){el.hidden=el.getAttribute('data-line-text')!==line});
+    document.querySelectorAll('#app [data-show]').forEach(function(el){
+      var ok=el.getAttribute('data-show').split(' ').indexOf(state)>-1;
+      var lineOk=!el.hasAttribute('data-line')||el.getAttribute('data-line')===line;
+      el.hidden=!(ok&&lineOk);
+    });
+    document.querySelectorAll('#app [data-hide-state]').forEach(function(el){el.hidden=el.getAttribute('data-hide-state')===state});
+    document.querySelectorAll('#app [data-view-panel]').forEach(function(el){
+      var on=el.getAttribute('data-view-panel')===view;el.hidden=!on;if(on)el.style.display='flex';
+    });
+    document.querySelectorAll('#app button[data-view]').forEach(function(b){if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+    document.querySelectorAll('#app button[data-plan]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.plan===app.dataset.plan))});
+    var lbl=document.querySelector('[data-plan-label]');
+    if(lbl)lbl.textContent=app.dataset.plan==='suggested'?'Suggested plan: Plan – Oct 10':'Current setup';
+    var run=document.querySelector('[data-runbtn]');
+    run.disabled=(state==='noclosing'||state==='notcompat'||state==='running');
+    run.textContent=state==='running'?'Running…':(state==='done'||state==='outofdate'?'▶ Run again':'▶ Run full operation');
+  }
+  document.querySelectorAll('.tbtns').forEach(function(group){
+    group.addEventListener('click',function(e){
+      var b=e.target.closest('button');if(!b)return;
+      group.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});
+      app.dataset[group.getAttribute('data-ctl')]=b.getAttribute('data-v');apply();
+    });
+  });
+  app.addEventListener('click',function(e){
+    var b=e.target.closest('button');if(!b)return;
+    if(b.dataset.view){app.dataset.view=b.dataset.view;apply()}
+    else if(b.dataset.plan){app.dataset.plan=b.dataset.plan;apply()}
+  });
+  var tabs=[].slice.call(document.querySelectorAll('#app button[role="tab"]'));
+  tabs.forEach(function(t,i){t.addEventListener('keydown',function(e){
+    var n=null;if(e.key==='ArrowRight')n=(i+1)%tabs.length;if(e.key==='ArrowLeft')n=(i-1+tabs.length)%tabs.length;
+    if(n===null)return;e.preventDefault();tabs[n].focus();tabs[n].click();
+  })});
+
+  var pc=document.querySelector('.prevchip'),pe=document.getElementById('prevexp');
+  if(pc)pc.addEventListener('click',function(){var o=pe.hidden;pe.hidden=!o;pc.setAttribute('aria-expanded',String(o))});
+  document.querySelectorAll('[data-checkplan]').forEach(function(b){b.addEventListener('click',function(){
+    document.querySelector('[data-dec="none"]').hidden=true;document.querySelector('[data-dec="made"]').hidden=false;
+    var c=document.querySelector('[data-chk="req"]');c.textContent='Saved · Oct 10, 10:05';c.className='chip ok';
+  })});
+  apply();
+})();
+(function(){
+  var stage=document.getElementById('mstage');if(!stage)return;
+  var playBtn=document.getElementById('mplay'),sel=document.getElementById('mspeed'),info=document.getElementById('minfo');
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var W=function(){return stage.clientWidth},H=function(){return stage.clientHeight};
+  var line=[],desks=[null,null,null],playing=true,speed=1,simMin=0,last=null,nextArr=0,id=0;
+  var deskY=[0.23,0.51,0.79];
+  /* Made-up demo stream, NOT a NovaQ result: arrivals every ~1.6 simulated minutes, service ~4 minutes. */
+  function glide(){return Math.round(Math.min(900,Math.max(220,650/Math.sqrt(speed))))}
+  function place(el,x,y,o){el.style.transitionDuration=reduce?'0ms':glide()+'ms';el.style.transform='translate('+x+'px,'+y+'px)';el.style.opacity=o==null?1:o}
+  function layoutLine(){var x0=W()*0.56,step=18;line.forEach(function(c,i){place(c.el,Math.max(W()*0.22,x0-i*step),H()*0.53)})}
+  function arrive(){var el=document.createElement('span');el.className='mdot';el.style.transitionDuration='0ms';el.style.transform='translate(-20px,'+(H()*0.53)+'px)';stage.appendChild(el);
+    var c={el:el,id:++id};line.push(c);requestAnimationFrame(function(){requestAnimationFrame(layoutLine)})}
+  function startService(){for(var d=0;d<3;d++){if(!desks[d]&&line.length){var c=line.shift();c.done=simMin+2.5+((c.id*37)%30)/10;desks[d]=c;c.el.classList.add('serving');place(c.el,W()*0.72,H()*deskY[d]);}}layoutLine()}
+  function finish(){for(var d=0;d<3;d++){var c=desks[d];if(c&&simMin>=c.done){desks[d]=null;c.el.classList.remove('serving');place(c.el,W()+30,H()*deskY[d],0);(function(el){setTimeout(function(){el.remove()},glide()+50)})(c.el)}}}
+  function tick(ts){if(stage.offsetParent===null){last=null;requestAnimationFrame(tick);return}if(last==null)last=ts;var dt=Math.min(100,ts-last);last=ts;
+    if(playing&&!document.hidden){simMin+=dt/1000*speed; /* 1x = 1 simulated minute per second */
+      while(simMin>=nextArr){if(line.length<12)arrive();nextArr+=1.2+((id*53)%9)/10}
+      finish();startService();
+      var h=5+Math.floor(simMin/60),m=Math.floor(simMin%60);info.textContent='Demo clock '+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' · glide '+glide()+' ms';}
+    requestAnimationFrame(tick)}
+  playBtn.addEventListener('click',function(){playing=!playing;playBtn.textContent=playing?'⏸ Pause':'▶ Play';last=null});
+  sel.addEventListener('change',function(){speed=Number(sel.value)});
+  requestAnimationFrame(tick);
+})();
+</script>

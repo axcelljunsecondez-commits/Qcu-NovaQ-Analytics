@@ -6,22 +6,15 @@ import { getAnalysis, patchAnalysis } from '../api/analyses'
 import type { QueueSetup } from '../api/types'
 import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { ApiState } from '../components/ui/ApiState'
+import { answered as hasAnswers, recommend, type Answer, type RecommendedStructure } from '../lib/structureRecommendation'
 
-type Answer = 'yes' | 'no' | 'unsure'
-type Structure = 'shared_queue' | 'separate_queues'
+type Structure = RecommendedStructure
 
 const OPTIONS: Array<{ value: Answer; labelKey: string }> = [
   { value: 'yes', labelKey: 'guided.yes' },
   { value: 'no', labelKey: 'guided.no' },
   { value: 'unsure', labelKey: 'guided.unsure' },
 ]
-
-/** Advisory only: Q1 Yes decides shared; otherwise Q2 Yes decides separate. */
-function recommend(q1: Answer | null, q2: Answer | null): Structure | null {
-  if (q1 === 'yes') return 'shared_queue'
-  if (q1 !== null && q2 === 'yes') return 'separate_queues'
-  return null
-}
 
 export function GuidedSetupPage() {
   const { t } = useTranslation()
@@ -48,7 +41,7 @@ export function GuidedSetupPage() {
       await queryClient.invalidateQueries({ queryKey: ['analysis', id] })
       // A Setup change can make saved scenarios stale: drop their cached evidence status (4d).
       void queryClient.resetQueries({ queryKey: ['scenarios', id] })
-      navigate(`/analyses/${id}/setup`, { replace: true })
+      navigate(`/analyses/${id}/data`, { replace: true })
     },
     onError: () => setError(t('errors.server')),
   })
@@ -70,14 +63,14 @@ export function GuidedSetupPage() {
         <div className="card">
           <p role="status">{t('guided.already_set')}</p>
           <p className="form-hint">
-            <Link to={`/analyses/${id}/setup`}>{t('guided.back_to_setup')}</Link>
+            <Link to={`/analyses/${id}/data`}>{t('guided.back_to_setup')}</Link>
           </p>
         </div>
       </div>
     )
   }
 
-  const answered = q1 !== null && (q1 === 'yes' || q2 !== null)
+  const answered = hasAnswers(q1, q2)
   const recommendation = answered ? recommend(q1, q2) : null
   const trimmedIds = queueIds.map((queueId) => queueId.trim())
   const idsValid = trimmedIds.length > 0
@@ -197,7 +190,7 @@ export function GuidedSetupPage() {
         )}
         {error && <div role="alert" className="alert alert-error">{error}</div>}
         <p className="form-hint">
-          <Link to={`/analyses/${id}/setup`}>{t('guided.back_to_setup')}</Link>
+          <Link to={`/analyses/${id}/data`}>{t('guided.back_to_setup')}</Link>
         </p>
       </div>
     </div>

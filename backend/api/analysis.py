@@ -72,10 +72,15 @@ def _run_model(name: str, payload: AnalysisRequest) -> dict:
     return erlang_a(payload.lambda_, payload.mu, cast(int, payload.c), cast(float, payload.theta))
 
 
+def model_response(model: str, payload: AnalysisRequest) -> dict:
+    """The response of one explicit analytical model, shared by this route and the guest calculator (B2)."""
+    return {**_run_model(model, payload), "metric_provenance": "analytical", "selected_model": model, "model_selection_reason": "Explicit model requested by the user."}
+
+
 @router.post("/{model}")
 def analyze(
     model: str,
     payload: AnalysisRequest,
     _user=Depends(get_current_user),
 ) -> dict:
-    return {**_run_model(model, payload), "metric_provenance": "analytical", "selected_model": model, "model_selection_reason": "Explicit model requested by the user."}
+    return model_response(model, payload)

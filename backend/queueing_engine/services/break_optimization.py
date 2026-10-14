@@ -297,7 +297,8 @@ def slot_inputs_from_setup(setup: dict, records: list) -> tuple[list[dict], dict
     if setup.get("queue_structure") != "separate_queues":
         raise ValueError("Break optimization is available for separate queues.")
     if setup.get("event_period_basis") != "representative_day":
-        raise ValueError("Break optimization requires the representative day basis.")
+        raise ValueError("Break optimization requires the representative day basis. Choose Representative day under "
+                         "Customer data periods in Data and setup, then upload the file again.")
     if not setup.get("breaks"):
         raise ValueError("This Analysis has no configured breaks to move.")
     segments = [seg for seg in setup.get("segments") or [] if isinstance(seg, dict)]

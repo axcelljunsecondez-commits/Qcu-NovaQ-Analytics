@@ -63,6 +63,9 @@ def _rule(method: str, path: str, settings) -> tuple[str, int] | None:
         or path.startswith("/simulation/")
     ):
         return "compute", settings.rate_limit_compute
+    if method == "POST" and (path == "/public/calculator" or path.startswith("/public/calculator/")):
+        # B2: guests have no account, so they are keyed by client (verified IP behind the Pages bridge).
+        return "guest_compute", settings.rate_limit_guest_compute
     if method in {"POST", "PATCH", "DELETE"} and path.startswith("/admin/"):
         return "admin", settings.rate_limit_admin
     return None

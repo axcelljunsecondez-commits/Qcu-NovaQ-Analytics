@@ -12,6 +12,9 @@ import { getAnalysis } from '../api/analyses'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
 import { applySeparateBreaks, optimizeSeparate, optimizeSeparateBreaks, type BreakOptimizeResult } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
+import { selectWorkflowScenario } from '../api/workflow'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { currentDatasetId, isForPlanning } from '../lib/datasets'
 import type { DatasetOut, OptimizationOut, SegmentRow, SeparateSchedule } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
 import { generateOptimizationInsights } from '../lib/insights'
@@ -26,6 +29,7 @@ import { utilizationBand } from '../lib/utilization'
 import { ApiState } from '../components/ui/ApiState'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
+import { HelpLink } from '../components/ui/HelpLink'
 
 interface GoalPreset {
   id: string
@@ -291,6 +295,7 @@ function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
   const [result, setResult] = useState<BreakOptimizeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const rho = (value: number | null) => (value === null ? t('optimize.breaks_nobody_working') : fmtDecimal(value))
   const change = result?.des.comparison.paired_wait_change ?? null
 
@@ -312,13 +317,10 @@ function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
     }
   }
 
+  // The moves are listed in an accessible dialog (spec §10) before anything is applied.
   async function applyBreaks() {
     if (!result) return
-    const lines = result.moves.map((move) => t('optimize.breaks_apply_move', {
-      cashier: move.queue_id, label: breakLabel(move.label, t), from: move.from, to: move.to,
-    }))
-    const message = [t('optimize.breaks_apply_confirm_title'), ...lines, '', t('optimize.breaks_apply_confirm_warning')]
-    if (!window.confirm(message.join('\n'))) return
+    setConfirming(false)
     setError(null)
     setApplying(true)
     try {
@@ -374,7 +376,7 @@ function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
           <p role="status"><strong>{t(result.status === 'improved' ? 'optimize.breaks_status_improved' : 'optimize.breaks_status_no_improvement')}</strong></p>
           {result.moves.length > 0 && (
             <div className="form-row" style={{ gap: '12px', alignItems: 'center' }}>
-              <button type="button" disabled={applying || !onLatest} onClick={() => void applyBreaks()}>
+              <button type="button" disabled={applying || !onLatest} onClick={() => setConfirming(true)}>
                 {applying ? t('optimize.breaks_apply_running') : t('optimize.breaks_apply')}
               </button>
               {!onLatest && <p className="form-hint">{t('optimize.breaks_apply_latest_only')}</p>}
@@ -481,7 +483,20 @@ function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
           )}
           <p className="form-hint">{t('optimize.breaks_des_better', { better: result.des.comparison.proposed_better_runs, runs: result.des.comparison.runs })}</p>
           <p className="form-hint">{t('optimize.breaks_des_note')}</p>
+          <p className="form-hint">{t('plans.breaks_local_note')}</p>
         </div>
+      )}
+      {confirming && result && (
+        <ConfirmDialog
+          title={t('optimize.breaks_apply_confirm_title')}
+          message={[...result.moves.map((move) => t('optimize.breaks_apply_move', {
+            cashier: move.queue_id, label: breakLabel(move.label, t), from: move.from, to: move.to,
+          })), t('optimize.breaks_apply_confirm_warning')].join(' ')}
+          confirmLabel={t('optimize.breaks_apply')}
+          cancelLabel={t('common.cancel')}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void applyBreaks()}
+        />
       )}
     </div>
   )
@@ -491,7 +506,16 @@ export function OptimizePage() {
   const { t } = useTranslation()
   const analysisParam = useParams().analysisId
   const analysisId = analysisParam ? Number(analysisParam) : undefined
-  const [datasetId, setDatasetId] = useState('')
+  const [pickedDatasetId, setDatasetId] = useState<string | null>(null)
+  const datasets = useQuery({
+    queryKey: ['datasets', analysisId],
+    queryFn: () => listDatasets(analysisId),
+  })
+  // U10 F11: the current planning file is chosen until the user picks one ("—" is a pick too).
+  const planningFiles = (datasets.data?.datasets ?? []).filter(isForPlanning)
+  const defaultDatasetId = currentDatasetId(datasets.data?.datasets)
+  const datasetId = pickedDatasetId !== null ? pickedDatasetId
+    : defaultDatasetId !== null && planningFiles.some((d: DatasetOut) => d.id === defaultDatasetId) ? String(defaultDatasetId) : ''
   const queryClient = useQueryClient()
   const [options, setOptions] = useState<OptimizeOptions>(DEFAULT_OPTIONS)
   const [multiplier, setMultiplier] = useState('')
@@ -504,13 +528,16 @@ export function OptimizePage() {
   const [saving, setSaving] = useState(false)
   const [scenarioName, setScenarioName] = useState('')
   const [saved, setSaved] = useState(false)
+  // "Use this plan" (spec §7.6, D4): save, then select for simulation; a refused selection leaves the plan saved.
+  const [used, setUsed] = useState(false)
+  const [selectionProblem, setSelectionProblem] = useState<string | null>(null)
   const [availableCashiers, setAvailableCashiers] = useState('')
   const [sepTarget, setSepTarget] = useState(0.70)
   const [schedule, setSchedule] = useState<SeparateSchedule | null>(null)
   const [sepSnapshot, setSepSnapshot] = useState<{
     signature: string; datasetId: string; rowCount: number; target: number;
     serverCost: number | undefined; waitingCost: number | undefined;
-    factor: number; minLanes: number; calculatedAt: string;
+    factor: number; minLanes: number; calculatedAt: string; engineVersion: string;
   } | null>(null)
   const sepSignature = JSON.stringify({
     datasetId, sepTarget,
@@ -519,13 +546,9 @@ export function OptimizePage() {
   })
   const sepStale = sepSnapshot !== null && sepSnapshot.signature !== sepSignature
 
-  const datasets = useQuery({
-    queryKey: ['datasets', analysisId],
-    queryFn: () => listDatasets(analysisId),
-  })
   // The server applies break proposals only when made on this dataset (latest successfully processed).
   const latestValidDatasetId = (datasets.data?.datasets ?? [])
-    .filter((d: DatasetOut) => d.validation?.ok)
+    .filter((d: DatasetOut) => d.validation?.ok && isForPlanning(d))
     .reduce<number | null>((latest, d) => (latest === null || d.id > latest ? d.id : latest), null)
   const analysis = useQuery({
     queryKey: ['analysis', analysisId],
@@ -577,6 +600,7 @@ export function OptimizePage() {
         signature: sepSignature, datasetId, rowCount, target: sepTarget,
         serverCost: options.server_cost_per_hr, waitingCost: options.customer_waiting_cost,
         factor, minLanes: separateQueueCount, calculatedAt: new Date().toISOString(),
+        engineVersion: out.engine_version,
       })
       setScenarioName((prev) => prev || `Optimal @ ${Math.round(sepTarget * 100)}%`)
     } catch (err) {
@@ -620,14 +644,27 @@ export function OptimizePage() {
     await run(dataset, factor)
   }
 
-  async function handleSave() {
+  async function selectSavedPlan(scenarioId: number | string) {
+    try {
+      await selectWorkflowScenario(analysisId!, Number(scenarioId))
+      void queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
+      void queryClient.invalidateQueries({ queryKey: ['separate-comparison', analysisId] })
+      setUsed(true)
+    } catch (err) {
+      setSelectionProblem(messageOf(err, t('errors.server')))
+    }
+  }
+
+  async function handleSave(use = false) {
     if (!rows?.length || !snapshot || stale || running || !scenarioName.trim()) {
       return
     }
     setSaving(true)
     setSaved(false)
+    setUsed(false)
+    setSelectionProblem(null)
     try {
-      await createScenario({
+      const created = await createScenario({
         name: scenarioName.trim(),
         analysis_id: analysisId,
         dataset_id: snapshot.datasetId ? Number(snapshot.datasetId) : null,
@@ -640,6 +677,7 @@ export function OptimizePage() {
       })
       void queryClient.invalidateQueries({ queryKey: ['scenarios', analysisId] })
       setSaved(true)
+      if (use) await selectSavedPlan(created.scenario.id)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       setError(typeof detail === 'string' ? detail : t('errors.server'))
@@ -648,7 +686,7 @@ export function OptimizePage() {
     }
   }
 
-  async function handleSaveSeparate() {
+  async function handleSaveSeparate(use = false) {
     if (
       !schedule || schedule.overall !== 'COMPLETE' || !sepSnapshot || sepStale ||
       running || saving || !scenarioName.trim()
@@ -657,6 +695,8 @@ export function OptimizePage() {
     }
     setSaving(true)
     setSaved(false)
+    setUsed(false)
+    setSelectionProblem(null)
     try {
       const target = schedule.target_utilization
       const inputOptions = {
@@ -668,7 +708,7 @@ export function OptimizePage() {
         lambda_multiplier: sepSnapshot.factor,
         des: { ...schedule.des },
       }
-      await createScenario({
+      const created = await createScenario({
         name: scenarioName.trim(),
         analysis_id: analysisId,
         dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
@@ -676,7 +716,7 @@ export function OptimizePage() {
           ...inputOptions,
           calculation: {
             schema_version: 2,
-            engine_version: 'novaq-2026-09-separate-des-v2',
+            engine_version: sepSnapshot.engineVersion,
             analysis_id: analysisId,
             dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
             dataset_row_count: sepSnapshot.rowCount,
@@ -688,6 +728,7 @@ export function OptimizePage() {
       })
       void queryClient.invalidateQueries({ queryKey: ['scenarios', analysisId] })
       setSaved(true)
+      if (use) await selectSavedPlan(created.scenario.id)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       setError(typeof detail === 'string' ? detail : t('errors.server'))
@@ -718,11 +759,14 @@ export function OptimizePage() {
       <div className="topbar">
         <div>
           <div className="topbar-eyebrow">{t(isSeparateStaffing ? 'optimize.staffing_eyebrow' : 'optimize.eyebrow')}</div>
-          <h1 className="page-title">{t(isSeparateStaffing ? 'optimize.staffing_title' : 'optimize.title')}</h1>
+          <div className="title-row"><h1 className="page-title">{t(isSeparateStaffing ? 'optimize.staffing_title' : 'optimize.title')}</h1><HelpLink topic="plans" /></div>
           <p className="page-caption">{t(isSeparateStaffing ? 'optimize.staffing_description' : 'optimize.description')}</p>
         </div>
       </div>
 
+      {(analysis.data?.analysis.queue_setup.counter_breaks?.length ?? 0) > 0 && (
+        <p className="form-hint" data-testid="counter-breaks-note">{t('optimize.counter_breaks_note')}</p>
+      )}
       {stale && <div role="alert" className="alert alert-warn">{t('integrity.stale')}</div>}
       {rows && !comparisonComplete(rows) && <div role="alert" className="alert alert-warn">{t('integrity.incomplete')}</div>}
       {rows && !staffingSummaryAvailable && (
@@ -820,7 +864,7 @@ export function OptimizePage() {
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
                 >
                   <option value="">—</option>
-                  {datasets.data?.datasets.map((d: DatasetOut) => (
+                  {datasets.data?.datasets.filter(isForPlanning).map((d: DatasetOut) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
                     </option>
@@ -833,6 +877,11 @@ export function OptimizePage() {
           {/* Advanced Settings */}
           <div className="card" style={{ padding: '18px' }}>
             <h3 className="section-title">{t('optimize.advanced_settings')}</h3>
+            <p className="form-hint">{t('plans.defaults_note', {
+              target: fmtPctDecimal(DEFAULT_OPTIONS.target_utilization ?? 0),
+              serverCost: DEFAULT_OPTIONS.server_cost_per_hr,
+              waitingCost: DEFAULT_OPTIONS.customer_waiting_cost,
+            })}</p>
             {isSeparateStaffing && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div className="form-field">
@@ -1164,15 +1213,25 @@ export function OptimizePage() {
                 </div>
                 <button
                   type="button"
-                  onClick={handleSave}
+                  onClick={() => void handleSave(true)}
                   disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}
-                  style={{ padding: '8px 16px', background: 'var(--primary)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: saving || running || stale ? 'not-allowed' : 'pointer', height: '35px' }}
                 >
-                  {t('common.save')}
+                  {t('plans.use_this_plan')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => void handleSave()}
+                  disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}
+                >
+                  {t('plans.save_without_using')}
                 </button>
               </div>
+              <p className="form-hint">{t('plans.shared_estimate_note')}</p>
               {!stale && rows.length > 0 && !comparisonComplete(rows) && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px' }}>{t('system.save_incomplete')}</p>}
-              {saved && !stale && <div className="alert alert-success" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
+              {saved && !stale && !used && !selectionProblem && <div className="alert alert-success" role="status" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
+              {used && !stale && <div className="alert alert-success" role="status" style={{ marginTop: '8px' }}>{t('plans.used')}</div>}
+              {selectionProblem && <div className="alert alert-warn" role="alert" style={{ marginTop: '8px' }}>{t('plans.saved_not_used', { reason: selectionProblem })}</div>}
             </div>
           )}
 
@@ -1195,15 +1254,25 @@ export function OptimizePage() {
                 </div>
                 <button
                   type="button"
-                  onClick={handleSaveSeparate}
+                  onClick={() => void handleSaveSeparate(true)}
                   disabled={saving || running || sepStale || !sepSnapshot || schedule.overall !== 'COMPLETE' || !scenarioName.trim()}
-                  style={{ padding: '8px 16px', background: 'var(--primary)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: saving || running || sepStale ? 'not-allowed' : 'pointer', height: '35px' }}
                 >
-                  {t('common.save')}
+                  {t('plans.use_this_plan')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => void handleSaveSeparate()}
+                  disabled={saving || running || sepStale || !sepSnapshot || schedule.overall !== 'COMPLETE' || !scenarioName.trim()}
+                >
+                  {t('plans.save_without_using')}
                 </button>
               </div>
+              <p className="form-hint">{t('plans.separate_estimate_note')}</p>
               {sepStale && <div role="alert" className="alert alert-warn" style={{ marginTop: '8px' }}>{t('integrity.stale')}</div>}
-              {saved && !sepStale && <div className="alert alert-success" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
+              {saved && !sepStale && !used && !selectionProblem && <div className="alert alert-success" role="status" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
+              {used && !sepStale && <div className="alert alert-success" role="status" style={{ marginTop: '8px' }}>{t('plans.used')}</div>}
+              {selectionProblem && <div className="alert alert-warn" role="alert" style={{ marginTop: '8px' }}>{t('plans.saved_not_used', { reason: selectionProblem })}</div>}
             </div>
           )}
         </div>
@@ -1221,7 +1290,7 @@ export function OptimizePage() {
       {warnings.some((w) => w.feasibility_status === 'INVALID_INPUT') && (
         <div className="alert alert-warn" style={{ marginTop: '12px' }}>
           {t('optimize.blocked_continue_simulate')}{' '}
-          <Link to={`/analyses/${analysisId}/simulate`}>{t('nav.simulate')}</Link>
+          <Link to={`/simulation/results?analysis=${analysisId}&plan=suggested`}>{t('nav.queue_simulation')}</Link>
         </div>
       )}
 

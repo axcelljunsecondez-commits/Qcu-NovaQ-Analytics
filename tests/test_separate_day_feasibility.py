@@ -40,6 +40,34 @@ def _records():
              "service_samples_hours": SAMPLES} for label in LABELS for queue_id in ("a", "b")]
 
 
+DATES = ("2026-09-08", "2026-09-09")
+
+
+def _per_date_records(dates=DATES[:1], lam=4.5):
+    """Records as per-date ingestion writes them: one period per date and segment, labelled by date."""
+    return [{"time": f"{date} {label} UTC", "segment_id": label, "queue_id": queue_id, "lambda": lam, "mu": 10.0,
+             "c": 1, "service_samples_hours": SAMPLES} for date in dates for label in LABELS for queue_id in ("a", "b")]
+
+
+def _date_day_lanes(setup, records, date, seeds, active=("a", "b")):
+    """Per (period, lane) values of one date's continuous day run alone, from empty."""
+    origin = sep.des_day_start_minutes(setup)
+    windows = []
+    for segment in setup["segments"]:
+        key, low, high = sep._segment_window(segment)
+        label = f"{date} {key} UTC"
+        windows.append({"time": label, "start_hours": (low - origin) / 60, "end_hours": (high - origin) / 60,
+                        "active_queue_ids": list(active), "queues_by_id": sep.index_period_queues(records, label)})
+    out: dict[tuple[str, str], list[dict]] = {}
+    for seed in seeds:
+        day = sep.run_routing_day_des(windows, tie_order=list(setup["queue_ids"]), seed=seed,
+                                      max_events=200000, breaks=sep.resolve_des_breaks(setup))
+        for period in day["periods"]:
+            for lane in period["lanes"]:
+                out.setdefault((period["time"], lane["queue_id"]), []).append(lane)
+    return out
+
+
 def _day_lanes(setup, records, windows_active, seeds):
     """Per (period, lane) values from the continuous-day DES, the way Validation runs it."""
     origin = sep.des_day_start_minutes(setup)
@@ -94,12 +122,32 @@ def test_period_cost_uses_the_period_hour_with_the_existing_formula():
     assert period["optimum"]["near_target_noise"] in (True, False)
 
 
-def test_per_date_basis_keeps_the_24_hour_candidate_runs():
-    schedule = _schedule(_setup("per_date"))
-    assert "utilization_basis" not in schedule
-    period = next(p for p in schedule["periods"] if p["time"] == "11:00")
-    assert period["overall"] == "OPTIMAL"
-    assert period["candidates"][0]["candidate_utilization"] < 0.55
+def test_per_date_break_hour_is_judged_on_its_own_continuous_day():
+    # B13 (replaces the K1 pin): the per-date break hour is judged inside its date's continuous day.
+    setup, records = _setup("per_date"), _per_date_records()
+    schedule = _schedule(setup, records)
+    assert schedule["utilization_basis"] == "continuous-day DES"
+    period = next(p for p in schedule["periods"] if p["time"] == "2026-09-08 11:00 UTC")
+    day = _date_day_lanes(setup, records, "2026-09-08", sep.replication_seeds(42, 8))
+    expected = mean(min(1.0, lane["rho"]) for lane in day[("2026-09-08 11:00 UTC", "a")])
+    assert period["candidates"][0]["candidate_utilization"] == pytest.approx(expected)
+    assert period["candidates"][0]["candidate_utilization"] > 0.70
+    assert period["overall"] == "INFEASIBLE"
+
+
+def test_each_date_is_its_own_day_from_empty():
+    setup = _no_break_setup("per_date")
+    records = _per_date_records(DATES[:1], lam=4.5) + _per_date_records(DATES[1:], lam=8.0)
+    schedule = _schedule(setup, records, target=0.90)
+    seeds = sep.replication_seeds(42, 8)
+    lanes = {date: _date_day_lanes(setup, records, date, [sep.date_seed(seed, index) for seed in seeds])
+             for index, date in enumerate(DATES)}
+    assert [p["time"] for p in schedule["periods"]] == [f"{date} {label} UTC" for date in DATES for label in LABELS]
+    for period in schedule["periods"]:
+        date = period["time"][:10]
+        expected = max(mean(min(1.0, lane["rho"]) for lane in lanes[date][(period["time"], queue_id)])
+                       for queue_id in ("a", "b"))
+        assert period["candidates"][0]["candidate_utilization"] == pytest.approx(expected), period["time"]
 
 
 def test_novamart_optimizer_peaks_match_the_continuous_day():
@@ -160,13 +208,54 @@ def test_representative_day_with_a_malformed_segment_end_is_rejected():
     _assert_rejected(_schedule(setup), "invalid start or end time")
 
 
-def test_per_date_basis_with_unmatched_labels_is_unchanged():
+def test_per_date_segments_renamed_after_upload_are_rejected_not_run_for_24_hours(monkeypatch):
+    # B13 rule 5 (replaces the K1 pin): a date that cannot be laid out is refused, never run as 24 h periods.
     setup = _no_break_setup("per_date")
     setup["segments"] = [{**segment, "id": f"renamed-{segment['id']}"} for segment in setup["segments"]]
-    schedule = _schedule(setup)
+    per_period_calls = []
+    monkeypatch.setattr(sep, "evaluate_candidate_with_des", lambda *a, **k: per_period_calls.append(1))
+    _assert_rejected(_schedule(setup, _per_date_records()), "2026-09-08", "renamed-10:00")
+    assert per_period_calls == []
+
+
+def test_dates_with_equal_inputs_are_independent_samples():
+    setup = _no_break_setup("per_date")
+    schedule = _schedule(setup, _per_date_records(DATES), target=0.90)
+    by_date = {date: [p["candidates"][0]["candidate_utilization"] for p in schedule["periods"] if p["time"].startswith(date)]
+               for date in DATES}
+    assert by_date[DATES[0]] != by_date[DATES[1]]
+    # The first date keeps the replication seeds, so one date alone is the same day as before.
+    alone = _schedule(setup, _per_date_records(DATES[:1]), target=0.90)
+    assert [p["candidates"][0]["candidate_utilization"] for p in alone["periods"]] == by_date[DATES[0]]
+
+
+def test_a_date_without_records_for_a_segment_is_refused_naming_both():
+    # OD-B13-2: NovaQ cannot tell whether the store was open and empty, so the date is not simulated.
+    records = _per_date_records(DATES)
+    records = [row for row in records if row["time"] != "2026-09-09 12:00 UTC"]
+    _assert_rejected(_schedule(_no_break_setup("per_date"), records), "2026-09-09", "12:00")
+
+
+def test_per_date_labels_without_a_date_are_refused():
+    _assert_rejected(_schedule(_no_break_setup("per_date"), _records()), "cannot read the date")
+
+
+def test_per_date_without_operating_segments_keeps_the_period_runs():
+    # OD-B13-3: no segments, no day to lay out: today's method stays (with the run-bar notice).
+    setup = {**_no_break_setup("per_date"), "segments": []}
+    records = [{**row, "segment_id": row["time"].replace(" UTC", "")} for row in _per_date_records()]
+    schedule = _schedule(setup, records, target=0.90)
     assert schedule["overall"] != "INVALID_INPUT"
-    assert [p["time"] for p in schedule["periods"]] == list(LABELS)
     assert "utilization_basis" not in schedule
+    assert sep.separate_engine_version(setup) == sep.SEPARATE_DES_ENGINE_VERSION
+
+
+def test_engine_version_names_the_method():
+    assert sep.separate_engine_version(_setup()) == sep.SEPARATE_DES_ENGINE_VERSION
+    assert sep.separate_engine_version(_setup("per_date")) == sep.SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION
+    # A Setup that records no period basis is never guessed to be per-date.
+    unrecorded = {key: value for key, value in _setup().items() if key != "event_period_basis"}
+    assert sep.separate_engine_version(unrecorded) == sep.SEPARATE_DES_ENGINE_VERSION
 
 
 

@@ -30,11 +30,14 @@ from backend.api.email_delivery import build_email_sender
 from backend.api.google_auth import OfficialGoogleTokenVerifier
 from backend.api.onboarding import router as onboarding_router
 from backend.api.optimization import router as optimization_router
+from backend.api.plan_reports import router as plan_reports_router
 from backend.api.proxy_assertion import NonceReplayCache, ProxyAssertionMiddleware
+from backend.api.public_calculator import router as public_calculator_router
 from backend.api.rate_limit import FixedWindowLimiter, ResourceLimitMiddleware
 from backend.api.reports import router as reports_router
 from backend.api.scenarios import router as scenarios_router
 from backend.api.settings import Settings
+from backend.api.shared_continuous import router as continuous_shared_router
 from backend.api.shared_named import router as named_shared_router
 from backend.api.simulation import router as simulation_router
 from backend.api.templates import router as templates_router
@@ -338,6 +341,8 @@ def create_app(
     app.include_router(onboarding_router)
     app.include_router(datasets_router)
     app.include_router(analysis_router)
+    app.include_router(public_calculator_router)
+    app.include_router(plan_reports_router)
     app.include_router(analyses_router)
     app.include_router(optimization_router)
     app.include_router(simulation_router)
@@ -346,6 +351,7 @@ def create_app(
     app.include_router(templates_router)
     app.include_router(workflow_router)
     app.include_router(named_shared_router)
+    app.include_router(continuous_shared_router)
 
     return app
 
