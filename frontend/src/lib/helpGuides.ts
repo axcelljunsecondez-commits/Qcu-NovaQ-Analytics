@@ -16,6 +16,32 @@ export const HELP_GUIDES = [
 
 export type HelpTopic = (typeof HELP_GUIDES)[number]['topic']
 
+export type HelpLanguage = 'en' | 'tl'
+
+export interface HelpFigure {
+  /** Numbered outlines in the picture, listed in help.guide.<topic>.figure_mark_<n>. */
+  marks: number
+  /** Captured width and height in pixels, per language. */
+  size: Record<HelpLanguage, readonly [number, number]>
+}
+
+// Annotated screenshots (plan U10): public/help-images/<lang>/<topic>.webp, taken by
+// scripts/help-screenshots.mjs from a scratch app with clearly synthetic data. Problems has none:
+// it covers several screens.
+export const HELP_FIGURES: Partial<Record<HelpTopic, HelpFigure>> = {
+  start: { marks: 3, size: { en: [1080, 787], tl: [1080, 808] } },
+  data: { marks: 3, size: { en: [1080, 695], tl: [1080, 737] } },
+  results: { marks: 3, size: { en: [1080, 666], tl: [1080, 730] } },
+  plans: { marks: 3, size: { en: [1080, 922], tl: [1080, 1004] } },
+  simulation: { marks: 4, size: { en: [1080, 777], tl: [1080, 830] } },
+  checks: { marks: 3, size: { en: [1080, 572], tl: [1080, 614] } },
+  downloads: { marks: 4, size: { en: [1080, 981], tl: [1080, 1002] } },
+}
+
+export function helpFigureSrc(topic: HelpTopic, language: HelpLanguage): string {
+  return `/help-images/${language}/${topic}.webp`
+}
+
 export function isHelpTopic(value: string | undefined): value is HelpTopic {
   return HELP_GUIDES.some((guide) => guide.topic === value)
 }

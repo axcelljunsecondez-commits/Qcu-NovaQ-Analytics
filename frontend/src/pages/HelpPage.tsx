@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { HELP_GUIDES, isHelpTopic, searchHelp } from '../lib/helpGuides'
+import { HELP_FIGURES, HELP_GUIDES, helpFigureSrc, isHelpTopic, searchHelp } from '../lib/helpGuides'
 
 // Help center (spec 2026-10-09 §7.11, plan U8): search over the guides in the current language,
 // one page per guide at /help/:topic, and #section anchors for the "?" links on other screens.
@@ -68,10 +68,12 @@ function HelpIndex() {
 }
 
 function HelpGuide({ topic }: { topic: (typeof HELP_GUIDES)[number]['topic'] }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const location = useLocation()
   const guide = HELP_GUIDES.find((item) => item.topic === topic)!
   const base = `help.guide.${topic}`
+  const figure = HELP_FIGURES[topic]
+  const language = i18n.language === 'tl' ? 'tl' : 'en'
 
   useEffect(() => {
     // Deep links such as /help/simulation#closing open at that section.
@@ -93,6 +95,20 @@ function HelpGuide({ topic }: { topic: (typeof HELP_GUIDES)[number]['topic'] }) 
           <dt>{t('help.next_step')}</dt><dd>{t(`${base}.next`)}</dd>
         </dl>
       </section>
+      {figure && (
+        <figure className="card help-figure">
+          <img src={helpFigureSrc(topic, language)} alt={t(`${base}.figure_alt`)}
+            width={figure.size[language][0]} height={figure.size[language][1]} loading="lazy" />
+          <figcaption>
+            <p className="form-hint">{t('help.figure_note')}</p>
+            <ol>
+              {Array.from({ length: figure.marks }, (_, index) => (
+                <li key={index}>{t(`${base}.figure_mark_${index + 1}`)}</li>
+              ))}
+            </ol>
+          </figcaption>
+        </figure>
+      )}
       {guide.sections.map((section) => (
         <section key={section} id={section} className="card" aria-labelledby={`help-${section}-title`}>
           <h2 id={`help-${section}-title`} className="card-title">{t(`${base}.${section}.title`)}</h2>

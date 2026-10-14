@@ -3797,6 +3797,23 @@ th {
   scroll-margin-top: var(--space-md);
 }
 
+.help-figure {
+  margin: 0;
+}
+
+.help-figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.help-figure ol {
+  margin: var(--space-sm) 0 0;
+  padding-left: 1.25rem;
+}
+
 .login-checks {
   padding: 0;
   list-style: none;
