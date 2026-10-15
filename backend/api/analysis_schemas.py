@@ -100,6 +100,23 @@ class QueueBreak(BaseModel):
         return data
 
 
+class CounterBreak(BaseModel):
+    """One break on a shared line, taken by whichever counter is free first (B4c addendum, 2026-10-12)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scheduled_start_time: datetime_time
+    duration_minutes: int = Field(gt=0, le=1440)
+    break_name: str | None = Field(default=None, max_length=50)
+
+    @model_serializer(mode="wrap")
+    def _omit_missing_name(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        if data.get("break_name") is None:
+            data.pop("break_name", None)
+        return data
+
+
 class QueueSetup(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -115,6 +132,16 @@ class QueueSetup(BaseModel):
     queue_ids: list[str] = Field(default_factory=list)
     breaks: list[QueueBreak] = Field(default_factory=list)
     event_period_basis: EventPeriodBasis = EventPeriodBasis.per_date
+    counter_breaks: list[CounterBreak] = Field(default_factory=list, max_length=200)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_counter_breaks(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # A Setup without counter breaks serializes exactly as before the field existed, so its
+        # fingerprint, and the evidence calculated for it, do not change.
+        data = handler(self)
+        if not data.get("counter_breaks"):
+            data.pop("counter_breaks", None)
+        return data
 
     @model_validator(mode="after")
     def validate_dependencies(self, info: ValidationInfo) -> QueueSetup:
@@ -144,13 +171,15 @@ class QueueSetup(BaseModel):
         if self.queue_structure == QueueStructure.separate_queues and not self.queue_ids:
             raise ValueError("Separate-queue analysis requires at least one configured queue ID.")
         configured = set(self.queue_ids)
-        if (
-            self.event_period_basis == EventPeriodBasis.representative_day
-            and self.queue_structure != QueueStructure.separate_queues
+        # Shared lines may use it too (B4b addendum, owner-approved 2026-10-12): ingestion pools them the same way.
+        if self.event_period_basis == EventPeriodBasis.representative_day and self.queue_structure not in (
+            QueueStructure.separate_queues, QueueStructure.shared_queue,
         ):
-            raise ValueError("The representative day basis is only supported for separate queues.")
+            raise ValueError("The representative day basis is only supported for shared or separate queues.")
         if self.breaks and self.queue_structure != QueueStructure.separate_queues:
             raise ValueError("Server break schedules are only supported for separate queues.")
+        if self.counter_breaks and self.queue_structure != QueueStructure.shared_queue:
+            raise ValueError("Counter breaks are only supported for one shared line; separate lines use breaks.")
         for entry in self.breaks:
             queue_id = entry.queue_id.strip()
             if not queue_id:

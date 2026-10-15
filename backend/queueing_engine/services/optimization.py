@@ -306,9 +306,18 @@ def optimize_segment(
     current_rho = current_metrics.get("rho")
 
     rejected: set[str] = set()
+    # B8 (OD-B8-3 A): every counter count tried, with its cost or the limits it failed. Additive output.
+    tried: list[dict] = []
+
+    def _finite(value):
+        return float(value) if _is_number(value) and math.isfinite(float(value)) else None
 
     def _eval_cost(c):
         m = _queue_metrics(lambda_, mu, c, variance, capacity, theta)
+        row = {"servers": c, "feasible": False, "failed_limits": [], "rho": _finite(m.get("rho")),
+               "Wq": _finite(m.get("Wq")), "server_cost": None, "waiting_cost": None,
+               "abandonment_cost": None, "total_cost": None}
+        tried.append(row)
         reasons = []
         if not m.get("stable"):
             reasons.append("model_stability")
@@ -320,13 +329,16 @@ def optimize_segment(
             reasons.append("max_wait_minutes")
         if reasons:
             rejected.update(reasons)
+            row["failed_limits"] = reasons
             return float("inf")
         sc = c * cost_per_server
         wc = _compute_waiting_cost(lambda_, m.get("Wq"), customer_waiting_cost)
         ac = _compute_abandonment_cost(lambda_, abandonment_rate, cost_per_abandonment)
         if wc is None:
             rejected.add("analytical_metrics")
+            row["failed_limits"] = ["analytical_metrics"]
             return float("inf")
+        row.update(feasible=True, server_cost=sc, waiting_cost=wc, abandonment_cost=ac, total_cost=sc + wc + ac)
         return sc + wc + ac
 
     selection = select_model(lambda_, mu, current_c, variance, capacity, theta)
@@ -385,6 +397,7 @@ def optimize_segment(
             "recommendation": rec_override or ("Unable to find a stable staffing plan." if c_val is None else _format_recommendation(time_label, current_c, c_val)),
             "warning": ("No feasible staffing plan satisfies the utilization and server/capacity bounds."
                         if c_val is None else current_metrics.get("error") or ""),
+            "candidates": tried,
         }
 
     if optimal_c is None:

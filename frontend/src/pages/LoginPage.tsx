@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { GoogleSignInButton } from '../auth/GoogleSignInButton'
 import { apiErrorCode } from '../auth/fragmentToken'
+import { continueAfterSignIn, pendingIntent } from '../auth/intent'
+import { LanguageSelect } from '../components/layout/LanguageSelect'
 import { useAuth } from '../auth/useAuth'
 
 function CheckIcon() {
@@ -18,16 +20,21 @@ export function LoginPage() {
   const { login, isLoading, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [loginComplete, setLoginComplete] = useState(false)
-  const from = (location.state as { from?: string } | null)?.from ?? '/analyses'
+  // Intent (spec §7.2): RequireAuth's `from`, Home's `?next=`, or the registration round trip.
+  const from = (location.state as { from?: string } | null)?.from
+  const next = searchParams.get('next')
+  const intent = pendingIntent(from, next)
+  const registerLink = intent ? `/register?next=${encodeURIComponent(intent)}` : '/register'
 
   useEffect(() => {
-    if (loginComplete && user) navigate(from, { replace: true })
-  }, [loginComplete, user, from, navigate])
+    if (loginComplete && user) navigate(continueAfterSignIn(from, next), { replace: true })
+  }, [loginComplete, user, from, next, navigate])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -79,11 +86,15 @@ export function LoginPage() {
 
       <main className="login-auth" id="login-form">
         <div className="login-card">
-          <div className="login-mobile-logo">Nova<b>Q</b></div>
+          <div className="login-card-top">
+            <div className="login-mobile-logo">Nova<b>Q</b></div>
+            <LanguageSelect />
+          </div>
           <h2>{t('login.title')}</h2>
           <p className="sub">{t('login.subtitle')}</p>
 
-          <GoogleSignInButton onSuccess={() => navigate(from, { replace: true })} />
+          {/* Like password sign-in, wait until the signed-in user is known before leaving this page. */}
+          <GoogleSignInButton onSuccess={() => setLoginComplete(true)} />
           <div className="auth-divider"><span>{t('auth.or')}</span></div>
 
           <form onSubmit={handleSubmit}>
@@ -103,7 +114,7 @@ export function LoginPage() {
             <button type="submit" disabled={submitting || isLoading} className="button-full">{t('login.submit')}</button>
           </form>
 
-          <div className="login-new">{t('auth.no_account')} <Link to="/register">{t('auth.register')}</Link></div>
+          <div className="login-new">{t('auth.no_account')} <Link to={registerLink}>{t('auth.register')}</Link></div>
           <div className="login-badge"><strong>{t('login.secure_title')}</strong> {t('login.secure_desc')}</div>
         </div>
       </main>

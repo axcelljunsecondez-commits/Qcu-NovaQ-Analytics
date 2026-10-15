@@ -1,0 +1,374 @@
+<title>NovaQ Reports Page</title>
+<style>
+/* Layout: review toolbar; one of three views (Reports page / PDF pages / Excel workbook) on the left; spec notes on the right. Tokens follow NovaQ MASTER. */
+:root{
+  --canvas:#F4F8FC; --surface:#FFFFFF; --subtle:#EDF2F8; --side:#08213F; --side-fg:#C9D6E5; --side-hi:#FFFFFF;
+  --fg:#0A2345; --fg2:#52647A; --border:#DCE6F0; --ctl:#6B7C90;
+  --gold:#E8A838; --gold-fg:#0A2345; --link:#185E86; --focus:#1D63A8;
+  --cur:#2563EB; --cur-bg:#EFF6FF; --opt:#7C3AED; --opt-bg:#F5F3FF;
+  --warn-bg:#FFF4D6; --warn:#8A4B00; --info-bg:#EEF7FF; --info:#185E86; --ok-bg:#EAF8F1; --ok:#087A4E; --bad-bg:#FFF0F3; --bad:#B4233A;
+  --skel:#D5DEE9; --paper:#FFFFFF; --paper-fg:#0A2345; --xl:#107C41; --xl-bg:#E8F3EC; --grid:#D9DEE5;
+  --font:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'Cascadia Mono','Consolas',monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --canvas:#0B1120; --surface:#162032; --subtle:#1E293B; --side:#070D18; --side-fg:#B0BDCC; --side-hi:#FFFFFF;
+  --fg:#E2E8F0; --fg2:#B0BDCC; --border:#2B3B52; --ctl:#7890A8;
+  --gold:#F0B84C; --gold-fg:#071729; --link:#7CCCF0; --focus:#F0B84C;
+  --cur:#60A5FA; --cur-bg:#102A43; --opt:#C084FC; --opt-bg:#2B1B3D;
+  --warn-bg:#33270F; --warn:#F3C76B; --info-bg:#102C3B; --info:#7CCCF0; --ok-bg:#0E2F25; --ok:#66E3A4; --bad-bg:#3A1620; --bad:#FF8A9C;
+  --skel:#33445E; --paper:#F8FAFC; --paper-fg:#0A2345; --xl:#5BC28A; --xl-bg:#13291D; --grid:#2B3B52; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#0B1120; --surface:#162032; --subtle:#1E293B; --side:#070D18; --side-fg:#B0BDCC; --side-hi:#FFFFFF;
+  --fg:#E2E8F0; --fg2:#B0BDCC; --border:#2B3B52; --ctl:#7890A8;
+  --gold:#F0B84C; --gold-fg:#071729; --link:#7CCCF0; --focus:#F0B84C;
+  --cur:#60A5FA; --cur-bg:#102A43; --opt:#C084FC; --opt-bg:#2B1B3D;
+  --warn-bg:#33270F; --warn:#F3C76B; --info-bg:#102C3B; --info:#7CCCF0; --ok-bg:#0E2F25; --ok:#66E3A4; --bad-bg:#3A1620; --bad:#FF8A9C;
+  --skel:#33445E; --paper:#F8FAFC; --paper-fg:#0A2345; --xl:#5BC28A; --xl-bg:#13291D; --grid:#2B3B52; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--canvas);color:var(--fg);font:15px/1.5 var(--font);padding-inline:16px;padding-block:0 48px;margin:0}
+h1,h2,h3,h4{margin:0;line-height:1.2;text-wrap:balance}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:4px}
+button{font:inherit;cursor:pointer}
+.wrap{max-width:1400px;margin:0 auto}
+.review{padding-block:24px 16px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.review .eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2);font-weight:600}
+.review h1{font-size:1.7rem}
+.review p{margin:0;color:var(--fg2);max-width:85ch}
+.toolbar{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+.tgroup{display:flex;flex-direction:column;gap:4px}
+.tgroup>span{font-size:12px;font-weight:600;color:var(--fg2);letter-spacing:.04em;text-transform:uppercase}
+.tbtns{display:flex;flex-wrap:wrap;border:1px solid var(--ctl);border-radius:8px;overflow:hidden}
+.tbtns button{border:0;border-right:1px solid var(--border);background:var(--surface);color:var(--fg);padding:6px 10px;font-size:13.5px}
+.tbtns button:last-child{border-right:0}
+.tbtns button[aria-pressed="true"]{background:var(--fg);color:var(--canvas);font-weight:700}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn)}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+@media (max-width:1100px){.stage{grid-template-columns:minmax(0,1fr)}}
+.notes{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;gap:10px}
+@media (max-width:1100px){.notes{position:static;max-height:none}}
+.note{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13.5px;display:flex;flex-direction:column;gap:4px}
+.note h4{font-size:14px;display:flex;gap:8px;align-items:center}
+.note p{margin:0;color:var(--fg2)}
+.note code{font:12px var(--mono);color:var(--fg);overflow-wrap:anywhere}
+.note.warn{border-color:var(--warn)}
+.co{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--gold);color:var(--gold-fg);font:700 11px var(--font);flex:none;vertical-align:middle}
+/* app shell */
+.app{display:grid;grid-template-columns:200px minmax(0,1fr);border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--canvas)}
+@media (max-width:700px){.app{grid-template-columns:minmax(0,1fr)}.side{display:none}}
+.side{background:var(--side);color:var(--side-fg);padding:14px 10px;display:flex;flex-direction:column;gap:2px;font-size:14px}
+.side .logo{color:var(--side-hi);font-weight:800;font-size:18px;padding:0 4px 10px}
+.side .logo em{color:var(--gold);font-style:normal}
+.side .g{font-size:11px;letter-spacing:.1em;opacity:.7;margin:10px 6px 2px}
+.side .it{padding:7px 8px;border-radius:6px}
+.side .it.on{background:rgba(255,255,255,.12);box-shadow:inset 3px 0 0 var(--gold);color:var(--side-hi);font-weight:600}
+.side .new{font-size:10px;background:var(--gold);color:var(--gold-fg);border-radius:999px;padding:0 6px;margin-left:6px;font-weight:700}
+.side .acct{margin-top:auto;border-top:1px solid rgba(255,255,255,.15);padding:10px 6px 0;display:flex;gap:8px;align-items:center;font-size:13px}
+.av{width:26px;height:26px;border-radius:50%;background:var(--gold);color:var(--gold-fg);display:grid;place-items:center;font-weight:800;font-size:11px;flex:none}
+.main{min-width:0;display:flex;flex-direction:column}
+.apphead{padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--fg2)}
+.content{padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.sel{border:1px solid var(--ctl);border-radius:8px;padding:7px 10px;background:var(--surface);font-size:14px;color:var(--fg)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.sh{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.muted{color:var(--fg2);font-size:14px;margin:0}
+.small{font-size:12.5px;color:var(--fg2)}
+.btn{white-space:nowrap;flex:none;border:1px solid var(--ctl);background:var(--surface);color:var(--fg);border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600}
+.btn.primary{background:var(--gold);color:var(--gold-fg);border-color:transparent}
+.btn[disabled]{background:var(--subtle);color:var(--fg2);border-color:var(--border);cursor:not-allowed}
+.lnk{color:var(--link);text-decoration:underline;background:none;border:0;padding:0;font-size:inherit}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok)} .chip.n{background:var(--subtle);color:var(--fg2)} .chip.w{background:var(--warn-bg);color:var(--warn)}
+.chip.info{background:var(--info-bg);color:var(--info)} .chip.sim{background:var(--opt-bg);color:var(--opt)}
+.stamp{border:2px dashed var(--warn);color:var(--warn);background:var(--warn-bg);border-radius:10px;padding:10px 14px;font-weight:800;display:flex;flex-direction:column;gap:2px}
+.stamp.full{border-color:var(--ok);color:var(--ok);background:var(--ok-bg)}
+.stamp small{font-weight:500;color:var(--fg)}
+.alert{border-radius:10px;padding:12px 14px;font-size:14px;display:flex;flex-direction:column;gap:6px}
+.alert.w{background:var(--warn-bg);color:var(--warn)} .alert.info{background:var(--info-bg);color:var(--info)}
+.alert .fg{color:var(--fg)}
+.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.plist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.plist li{display:flex;gap:8px;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:5px}
+.plist .st{font-size:12px;font-weight:700;white-space:nowrap}
+.plist .st.yes{color:var(--ok)} .plist .st.later{color:var(--fg2)}
+/* PDF pages */
+.pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.page{background:var(--paper);color:var(--paper-fg);border:1px solid var(--border);border-radius:4px;box-shadow:0 2px 10px rgba(8,33,63,.12);aspect-ratio:1/1.414;padding:22px 20px;display:flex;flex-direction:column;gap:10px;font-size:11px;position:relative;overflow:hidden}
+.page .pn{position:absolute;bottom:8px;right:12px;font-size:9px;color:#52647A}
+.page h3{font-size:15px;color:#0A2345}
+.page h4{font-size:12px;color:#0A2345}
+.page .lbl{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#52647A;font-weight:700}
+.page .pstamp{border:2px dashed #8A4B00;color:#8A4B00;background:#FFF4D6;border-radius:6px;padding:6px 8px;font-weight:800;font-size:11px}
+.page .pstamp.full{border-color:#087A4E;color:#087A4E;background:#EAF8F1}
+.page table{width:100%;border-collapse:collapse;font-size:9.5px}
+.page th,.page td{border-bottom:1px solid #DCE6F0;padding:3px 4px;text-align:left}
+.page th{color:#52647A;font-weight:700}
+.page .kp{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.page .kp div{border:1px solid #DCE6F0;border-radius:6px;padding:6px}
+.page .kp b{display:block;font-size:13px;font-variant-numeric:tabular-nums}
+.page .bars{display:flex;align-items:flex-end;gap:3px;height:60px;border-bottom:1px solid #6B7C90}
+.page .bars i{flex:1;display:block;border-radius:2px 2px 0 0}
+.page .bars i.c{background:#2563EB} .page .bars i.o{background:#7C3AED}
+.page .notrun{border:1px solid #DCE6F0;border-radius:6px;padding:8px;background:#F1F5F9;color:#52647A}
+.page .dec{border:2px solid #087A4E;border-radius:8px;padding:8px}
+.page .dec b{font-size:13px;color:#087A4E}
+.page .muted2{color:#52647A}
+/* Excel */
+.xl{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)}
+.xlbar{background:var(--xl);color:#fff;padding:6px 12px;font-size:13px;font-weight:700;display:flex;justify-content:space-between}
+.xlgrid{overflow-x:auto}
+.xlgrid table{border-collapse:collapse;font-size:12.5px;min-width:100%}
+.xlgrid th,.xlgrid td{border:1px solid var(--grid);padding:4px 8px;white-space:nowrap;text-align:left}
+.xlgrid th{background:var(--subtle);color:var(--fg2);font-weight:600}
+.xlgrid td.rn,.xlgrid th.rn{background:var(--subtle);color:var(--fg2);text-align:center;width:34px}
+.xlgrid td.hd{font-weight:700;background:var(--xl-bg)}
+.xlgrid td.f{font-family:var(--mono);font-size:11.5px;color:var(--xl)}
+.xlgrid td.num{font-variant-numeric:tabular-nums;text-align:right}
+.xltabs{display:flex;flex-wrap:wrap;gap:2px;border-top:1px solid var(--border);padding:4px;background:var(--subtle)}
+.xltabs button{border:1px solid var(--border);background:var(--surface);color:var(--fg);padding:4px 10px;font-size:12.5px;border-radius:0 0 6px 6px}
+.xltabs button[aria-selected="true"]{border-top:3px solid var(--xl);font-weight:700}
+.xltabs button.l2{color:var(--opt)}
+.xldesc{padding:10px 12px;font-size:13.5px;color:var(--fg2);border-bottom:1px solid var(--border)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+<header class="review">
+  <span class="eyebrow">NovaQ redesign · Reports · proposed, not built</span>
+  <h1>Reports page, PDF and Excel</h1>
+  <p>The new Reports page and sample pages of the two report files. Switch the view, the report level and the line type. Numbers are blank on purpose, except one Excel example row whose values were computed with NovaQ's engine and checked against the spreadsheet formula.</p>
+  <div class="toolbar" role="group" aria-label="Review controls">
+    <div class="tgroup"><span>View</span><div class="tbtns" data-ctl="view">
+      <button type="button" data-v="page" aria-pressed="true">Reports page</button>
+      <button type="button" data-v="pdf" aria-pressed="false">PDF pages</button>
+      <button type="button" data-v="excel" aria-pressed="false">Excel workbook</button>
+    </div></div>
+    <div class="tgroup"><span>Report level</span><div class="tbtns" data-ctl="level">
+      <button type="button" data-v="none" aria-pressed="false">No plan yet</button>
+      <button type="button" data-v="plan" aria-pressed="true">Plan report</button>
+      <button type="button" data-v="full" aria-pressed="false">Full report</button>
+      <button type="button" data-v="stale" aria-pressed="false">Out of date</button>
+    </div></div>
+    <div class="tgroup"><span>Line type</span><div class="tbtns" data-ctl="line">
+      <button type="button" data-v="shared" aria-pressed="true">One shared line</button>
+      <button type="button" data-v="separate" aria-pressed="false">Separate lines</button>
+    </div></div>
+    <span class="tag">Wireframe · not real results</span>
+  </div>
+</header>
+
+<div class="stage">
+<div id="mock" data-view="page" data-level="plan" data-line="shared">
+
+  <!-- ===== REPORTS PAGE ===== -->
+  <div class="app" data-v-view="page">
+    <nav class="side" aria-label="Sidebar (mockup)">
+      <span class="logo">Nova<em>Q</em></span>
+      <span class="g">WORKSPACE</span><span class="it">My analyses</span>
+      <span class="g">INSIGHTS</span><span class="it">Analysis results</span><span class="it on">Reports<span class="new">new</span></span>
+      <span class="g">SIMULATION</span><span class="it">Queue simulation</span>
+      <span class="g">TOOLS</span><span class="it">Quick calculator</span>
+      <div class="acct"><span class="av">YU</span><span>you@example.com</span></div>
+    </nav>
+    <div class="main">
+      <div class="apphead">NovaQ / Insights / <strong style="color:var(--fg)">Reports</strong></div>
+      <div class="content">
+        <div class="sh"><h2 style="font-size:1.75rem"><span class="co">1</span> Reports</h2><button type="button" class="lnk">Help: what is in each report</button></div>
+        <div class="row">
+          <span class="sel">Analysis: <span data-t-line="shared">Main branch checkout</span><span data-t-line="separate" hidden>Pharmacy counters</span> ▾</span>
+          <span class="sel" data-show-level="plan full stale">Plan: Plan – Oct 10 ▾</span>
+        </div>
+
+        <div class="alert info" data-show-level="none" role="status"><strong><span class="co">2</span> No plan chosen yet.</strong><span class="fg">Choose a plan in Suggested plans to make a plan report. You can still download your data below.</span><span class="row"><button type="button" class="btn">Go to Suggested plans</button></span></div>
+        <div class="alert w" data-show-level="stale" role="status"><strong><span class="co">2</span> Out of date: your data or setup changed after this plan or its checks.</strong><span class="fg">The report would describe old results. Update the plan or run the checks again first.</span></div>
+
+        <div class="stamp" data-show-level="plan"><span><span class="co">3</span> Calculated only · not checked by simulation</span><small>This report shows the calculated plan. Run the checks in Queue simulation to add the simulation results and the decision.</small></div>
+        <div class="stamp full" data-show-level="full"><span><span class="co">3</span> Checked by simulation · Decision: <span data-t-line="shared">Yes, go ahead with this plan</span><span data-t-line="separate" hidden>Passed every check, but the saving can't be calculated</span></span><small>Decision saved Oct 10, 10:05. The report includes the simulation results and the checks.</small></div>
+
+        <div class="cols2" data-show-level="plan full stale">
+          <section class="card" aria-labelledby="pdfh">
+            <div class="sh"><h3 id="pdfh"><span class="co">4</span> PDF summary</h3><span class="chip info">For managers</span></div>
+            <p class="muted">Plain words and tables. No formulas.</p>
+            <ul class="plist">
+              <li><span>Cover and level stamp</span><span class="st yes">✓ included</span></li>
+              <li><span>Key results: now vs plan</span><span class="st yes">✓ included</span></li>
+              <li><span>Periods table<span data-t-line="separate" hidden> and break times</span></span><span class="st yes">✓ included</span></li>
+              <li><span>Charts, each with its table</span><span class="st yes">✓ included</span></li>
+              <li><span>Decision in plain words</span><span class="st yes" data-show-level="full">✓ included</span><span class="st later" data-show-level="plan stale">after the checks</span></li>
+              <li><span>Simulation key results</span><span class="st yes" data-show-level="full">✓ included</span><span class="st later" data-show-level="plan stale">after the checks</span></li>
+              <li><span>Checks summary</span><span class="st yes" data-show-level="full">✓ included</span><span class="st later" data-show-level="plan stale">after the checks</span></li>
+              <li><span>What is not included</span><span class="st yes">✓ included</span></li>
+            </ul>
+            <div class="row"><button type="button" class="btn primary" data-dl>Download PDF</button><button type="button" class="lnk" data-goto="pdf">See sample pages</button></div>
+          </section>
+          <section class="card" aria-labelledby="xlh">
+            <div class="sh"><h3 id="xlh"><span class="co">5</span> Excel calculations</h3><span class="chip info">For checking the math</span></div>
+            <p class="muted">Every input and step, with Excel formulas where Excel can recompute NovaQ's result.</p>
+            <ul class="plist">
+              <li><span>Read me · Inputs · Model choice</span><span class="st yes">✓ included</span></li>
+              <li><span>Formula check</span><span class="st yes">✓ included</span></li>
+              <li><span>Plan search · Costs</span><span class="st yes">✓ included</span></li>
+              <li><span>Simulation · Many variations</span><span class="st yes" data-show-level="full">✓ included</span><span class="st later" data-show-level="plan stale">after the checks</span></li>
+              <li><span>Results check and decision</span><span class="st yes" data-show-level="full">✓ included</span><span class="st later" data-show-level="plan stale">after the checks</span></li>
+              <li><span>Not recalculable in Excel</span><span class="st yes">✓ included</span></li>
+            </ul>
+            <div class="row"><button type="button" class="btn primary" data-dl>Download Excel</button><button type="button" class="lnk" data-goto="excel">See the sheets</button></div>
+          </section>
+        </div>
+
+        <section class="card" aria-labelledby="dataonly">
+          <div class="sh"><h3 id="dataonly" style="font-size:1.05rem"><span class="co">6</span> Your data only</h3><span class="small">Always available</span></div>
+          <p class="muted">The uploaded data as NovaQ read it, without any plan or results.</p>
+          <div class="row"><span class="sel">File: march_records.xlsx ▾</span><button type="button" class="btn">Download data (Excel)</button><button type="button" class="btn">Download data (PDF)</button></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PDF PAGES ===== -->
+  <div data-v-view="pdf" hidden>
+    <div class="alert info" data-show-level="none stale" style="margin-bottom:12px"><span class="fg">No plan report can be made in this state. Pick "Plan report" or "Full report" above to see the pages.</span></div>
+    <div class="pages" data-show-level="plan full">
+      <div class="page"><span class="lbl">NovaQ report</span><h3>Main branch checkout</h3>
+        <div class="pstamp" data-show-level="plan">Calculated only · not checked by simulation</div>
+        <div class="pstamp full" data-show-level="full">Checked by simulation · Decision: <span data-t-line="shared">Yes, go ahead with this plan</span><span data-t-line="separate" hidden>Passed every check, saving can't be calculated</span></div>
+        <table><tr><th>Data file</th><td>march_records.xlsx</td></tr><tr><th>Data covers</th><td>Mar 1 – Mar 31, 2026</td></tr><tr><th>Plan</th><td>Plan – Oct 10</td></tr><tr><th>Line type</th><td data-t-line="shared">Everyone waits in one line</td><td data-t-line="separate" hidden>Each counter has its own line</td></tr><tr><th>Made on</th><td>Oct 10, 2026</td></tr></table>
+        <h4>In this report</h4><p class="muted2">1 Key results · 2 Periods · 3 Charts · <span data-show-level="full">4 Simulation · 5 Checks and decision · </span>What is not included</p>
+        <span class="pn">Page 1 · cover</span></div>
+      <div class="page"><span class="lbl">1 · Key results</span><h3>Now vs the plan</h3>
+        <div class="kp"><div>Average wait<b>— → — min</b></div><div>Busiest period<b>11:00–12:00</b></div><div>Needs attention<b>12:00–13:00</b></div><div>Counters in the busiest hour<b>— → —</b></div></div>
+        <table><tr><th>Cost</th><th>Now</th><th>Plan</th></tr><tr><td>Staff and waiting cost, analysed day</td><td data-t-line="shared">₱ —</td><td data-t-line="separate" hidden>Not available for separate lines</td><td>₱ —</td></tr></table>
+        <p class="muted2">Calculated estimates from your data and NovaQ's queue model. Wait times in minutes.</p>
+        <span class="pn">Page 2</span></div>
+      <div class="page"><span class="lbl">2 · Periods</span><h3>Period by period</h3>
+        <table><tr><th>Period</th><th>Customers / h</th><th>Counters</th><th>Est. wait (min)</th><th>Busy level</th></tr>
+          <tr><td>05:00</td><td>—</td><td>— → —</td><td>— → —</td><td>Lean → Lean</td></tr>
+          <tr><td>11:00</td><td>—</td><td>— → —</td><td>— → —</td><td>Critical → Normal</td></tr>
+          <tr><td>12:00</td><td>—</td><td>— → —</td><td>can't keep up → —</td><td>Can't keep up → Peak</td></tr>
+          <tr><td>…</td><td colspan="4">one row per period</td></tr></table>
+        <div data-t-line="separate" hidden><h4>Break times</h4><table><tr><th>Counter</th><th>Break</th><th>Now</th><th>Suggested</th></tr><tr><td>Counter 2</td><td>Lunch</td><td>12:00</td><td>13:30</td></tr></table></div>
+        <p class="muted2">Busy levels are NovaQ's fixed labels (Lean under 60%, Normal 60–80%, Peak 80–90%, Critical 90–100%), not a target for your store.</p>
+        <span class="pn">Page 3</span></div>
+      <div class="page"><span class="lbl">3 · Charts</span><h3>Counters and wait by period</h3>
+        <div class="bars"><i class="c" style="height:30%"></i><i class="o" style="height:30%"></i><i class="c" style="height:60%"></i><i class="o" style="height:80%"></i><i class="c" style="height:60%"></i><i class="o" style="height:80%"></i><i class="c" style="height:40%"></i><i class="o" style="height:40%"></i></div>
+        <p class="muted2">Blue = now, purple = plan. Table version below each chart.</p>
+        <div class="bars"><i class="c" style="height:20%"></i><i class="o" style="height:15%"></i><i class="c" style="height:90%"></i><i class="o" style="height:35%"></i><i class="c" style="height:70%"></i><i class="o" style="height:30%"></i></div>
+        <p class="muted2">Estimated wait by period (minutes). Placeholder shapes.</p>
+        <span class="pn">Page 4</span></div>
+      <div class="page" data-show-level="plan"><span class="lbl">4 · Simulation checks</span><h3>Not run yet</h3>
+        <div class="notrun">The plan has not been checked by simulation. This report shows calculated results only. Run the checks in Queue simulation to add the simulation results and the decision.</div>
+        <h4>What is not included</h4><p class="muted2">Simulation results · checks · decision. Overnight periods are not supported.</p>
+        <span class="pn">Page 5</span></div>
+      <div class="page" data-show-level="full"><span class="lbl">4 · Simulation</span><h3>Simulation key results</h3>
+        <div class="kp"><div>Average wait<b>— → — min</b></div><div>Longest line<b>— → —</b></div><div>Customers served<b>— of — → — of —</b></div><div>Not served at closing<b>— → —</b></div></div>
+        <div class="bars"><i class="c" style="height:20%"></i><i class="o" style="height:15%"></i><i class="c" style="height:80%"></i><i class="o" style="height:45%"></i><i class="c" style="height:50%"></i><i class="o" style="height:30%"></i></div>
+        <p class="muted2">From one simulation run of the whole day · closing rule: Finish serving · seed 1048.</p>
+        <span class="pn">Page 5</span></div>
+      <div class="page" data-show-level="full"><span class="lbl">5 · Checks and decision</span><h3>Should we use this plan?</h3>
+        <div class="dec"><b data-t-line="shared">Yes, go ahead with this plan.</b><b data-t-line="separate" hidden>Passed every check, but the saving can't be calculated.</b><p class="muted2">Reason from the saved decision, in plain words.</p></div>
+        <table><tr><th>Check</th><th>Result</th><th>Settings</th></tr><tr><td>Replay of the day</td><td>Done</td><td>seed 1048</td></tr><tr><td>Many variations</td><td>Holds up</td><td>2,000 · limit <span data-t-line="shared">75%</span><span data-t-line="separate" hidden>plan target</span> · 5%</td></tr><tr><td>Results check</td><td>Passed — of —</td><td>saved settings</td></tr></table>
+        <h4>What is not included</h4><p class="muted2">Customers leaving the line · waiting-space limits · overnight periods.</p>
+        <span class="pn">Page 6</span></div>
+    </div>
+  </div>
+
+  <!-- ===== EXCEL ===== -->
+  <div data-v-view="excel" hidden>
+    <div class="alert info" data-show-level="none stale" style="margin-bottom:12px"><span class="fg">No calculation workbook can be made in this state. Pick "Plan report" or "Full report" above.</span></div>
+    <div class="xl" data-show-level="plan full">
+      <div class="xlbar"><span>novaq_main_branch_checkout_calculations.xlsx</span><span data-show-level="plan">Plan level</span><span data-show-level="full">Full level</span></div>
+      <div class="xldesc" id="xldesc"></div>
+      <div class="xlgrid" id="xlgrid"></div>
+      <div class="xltabs" role="tablist" aria-label="Sheets" id="xltabs"></div>
+    </div>
+  </div>
+</div>
+
+<aside class="notes" aria-label="Spec notes">
+  <div class="note"><h4><span class="co">1</span>Reports page</h4><p>New sidebar item under Insights. Address <code>/reports?analysis=:id</code>. Also opened from "Download report" on Analysis results and Queue simulation.</p></div>
+  <div class="note"><h4><span class="co">2</span>States</h4><p>No plan yet: only the data report. Out of date: no plan or full report until the plan or checks are updated. Levels come from saved results (a selected, current plan; a current Decision), never from pages visited.</p></div>
+  <div class="note"><h4><span class="co">3</span>Level stamp</h4><p>"Calculated only · not checked by simulation" (plan report) or "Checked by simulation · Decision: …" (full report). The same stamp is printed on the PDF cover and the Excel Read me.</p></div>
+  <div class="note"><h4><span class="co">4</span>PDF summary</h4><p>For managers and supervisors. The list shows exactly the sections the file will have; it is generated from the same rules as the file, so the preview and file always match. Parts that need the checks say "after the checks".</p></div>
+  <div class="note"><h4><span class="co">5</span>Excel calculations</h4><p>For technical readers. Formula check recomputes each period with live Excel formulas where Excel can do it reliably and puts NovaQ's value and the difference beside it.</p></div>
+  <div class="note"><h4><span class="co">6</span>Data only</h4><p>Today's dataset report, kept: the uploaded data as NovaQ read it.</p></div>
+  <div class="note warn"><h4><span class="co">F</span>Formula check, verified example</h4><p>λ 40/h, μ 15/h, 3 counters. The step formulas (a = λ/μ, ρ = a/c, Erlang C waiting probability, Wq = P(wait)/(cμ − λ)) were recomputed in Python exactly as the cells would and match NovaQ's <code>mmc</code>: Wq 9.5701 min, difference 6.7e-15 min. Not yet opened in Excel itself. <code>SEQUENCE()</code> needs Excel 2021 or Microsoft 365; older Excel needs a helper table (open question).</p></div>
+  <div class="note warn"><h4><span class="co">B8</span>Backend work</h4><p>All of this changes protected exports and needs the B8 spec with file-versus-preview tests. VERIFIED today: shared report has no simulation part; separate report needs the full chain; all Excel cells are typed values.</p></div>
+</aside>
+</div>
+</div>
+
+<script>
+(function(){
+  var mock=document.getElementById('mock');
+  var SHEETS=[
+    {n:'Read me',l:1,d:'What each sheet holds, the level stamp, units (waits in minutes; rates per hour), and how to check one row.',
+     rows:[['','A','B'],['1','Level','Calculated only · not checked by simulation'],['2','Units','Rates per hour · waits in minutes (hours × 60)'],['3','How to check','Go to Formula check: column K should equal column L; M shows the difference']]},
+    {n:'Inputs',l:1,d:'Every value NovaQ used, per period (and counter for separate lines), with where it came from.',
+     rows:[['','A','B','C','D','E'],['1','Period','Customers / h (λ)','Served per counter / h (μ)','Counters (c)','Source'],['2','11:00–12:00','—','—','—','From your data']]},
+    {n:'Model choice',l:1,d:'Which formula NovaQ used for each period and why (from NovaQ’s central model choice).',
+     rows:[['','A','B','C'],['1','Period','Model','Why'],['2','11:00–12:00','—','—']]},
+    {n:'Formula check',l:1,d:'Live Excel formulas recompute each period. Example row: λ 40, μ 15, c 3 (values computed with NovaQ’s engine; the formula steps were checked in Python, not yet in Excel).',
+     formula:true},
+    {n:'Plan search',l:1,d:'Each counter number tried per period, its estimated wait and cost, and why it was kept or rejected (needs the optimizer to return every option; to confirm in B8).',
+     rows:[['','A','B','C','D','E'],['1','Period','Counters tried','Est. wait (min)','Cost','Kept?'],['2','11:00–12:00','—','—','—','—']]},
+    {n:'Costs',l:1,d:'Cost per period with the rates and assumptions used. Separate lines: today’s total cost is not available, with the reason.',
+     rows:[['','A','B','C'],['1','Item','Now','Plan'],['2','Staff cost','—','—'],['3','Waiting cost','—','—']]},
+    {n:'Simulation',l:2,d:'Settings, seed, engine version, and results per period (and per counter) from the simulation run.',
+     rows:[['','A','B','C','D'],['1','Period','Arrived','Average wait (min)','Longest line'],['2','11:00–12:00','—','—','—']]},
+    {n:'Many variations',l:2,d:'Variation settings (count, busy limit, allowed share, seed) and the failing share with its range per period.',
+     rows:[['','A','B','C','D'],['1','Period','Failing share','Range','Allowed'],['2','11:00–12:00','—','— to —','—']]},
+    {n:'Results check and decision',l:2,d:'The rule applied, the values it compared, and the saved decision with its reasons.',
+     rows:[['','A','B'],['1','Decision','—'],['2','Reason','—']]},
+    {n:'Not recalculable in Excel',l:1,d:'What can only be re-run in NovaQ (simulations, some models) and how: seed, settings and engine version.',
+     rows:[['','A','B'],['1','Item','How to repeat'],['2','Simulation run','NovaQ, seed 1048, same settings']]}
+  ];
+  var current='Formula check';
+  function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+  function formulaTable(){
+    var h=['','A','B','C','D','E','F','G','H','I','J','K','L','M'];
+    var r1=['1','Period','λ / h','μ / h','c','a = λ/μ','ρ = a/c','Σ a^k/k! (k<c)','a^c/c!/(1−ρ)','P(wait)','Wq (h)','Wq Excel (min)','Wq NovaQ (min)','Difference'];
+    var r2=['2','Example','40','15','3','=B2/C2','=E2/D2','=SUM(E2^SEQUENCE(D2,1,0)/FACT(SEQUENCE(D2,1,0)))','=E2^D2/FACT(D2)/(1-F2)','=H2/(G2+H2)','=I2/(D2*C2-B2)','=J2*60','9.5701','=K2-L2'];
+    var r3=['3','shows','40','15','3','2.6667','0.8889','7.2222','28.4444','0.7975','0.1595','9.5701','9.5701','0.0000'];
+    var out='<table><thead><tr>'+h.map(function(x,i){return '<th'+(i===0?' class="rn"':'')+'>'+x+'</th>'}).join('')+'</tr></thead><tbody>';
+    [r1,r2,r3].forEach(function(r,ri){out+='<tr>'+r.map(function(x,i){var c=i===0?'rn':(ri===0?'hd':(ri===1&&String(x).charAt(0)==='='?'f':(i>1?'num':'')));return '<td class="'+c+'">'+esc(x)+'</td>'}).join('')+'</tr>'});
+    return out+'</tbody></table>';
+  }
+  function plainTable(rows){
+    var out='<table><thead><tr>'+rows[0].map(function(x,i){return '<th'+(i===0?' class="rn"':'')+'>'+esc(x)+'</th>'}).join('')+'</tr></thead><tbody>';
+    rows.slice(1).forEach(function(r,ri){out+='<tr>'+r.map(function(x,i){return '<td class="'+(i===0?'rn':(ri===0?'hd':''))+'">'+esc(x)+'</td>'}).join('')+'</tr>'});
+    return out+'</tbody></table>';
+  }
+  function renderXl(){
+    var lvl=mock.dataset.level==='full'?2:1;
+    var list=SHEETS.filter(function(s){return s.l<=lvl});
+    if(!list.some(function(s){return s.n===current}))current='Formula check';
+    var tabs=document.getElementById('xltabs');
+    tabs.innerHTML=list.map(function(s){return '<button type="button" role="tab" class="'+(s.l===2?'l2':'')+'" aria-selected="'+(s.n===current)+'" data-sheet="'+esc(s.n)+'">'+esc(s.n)+'</button>'}).join('');
+    var sh=SHEETS.filter(function(s){return s.n===current})[0];
+    document.getElementById('xldesc').textContent=sh.d;
+    var g=document.getElementById('xlgrid');
+    g.innerHTML=sh.formula?formulaTable():plainTable(sh.rows);
+    if(current==='Read me'){var c=g.querySelector('tbody tr td:nth-child(3)');if(c&&lvl===2)c.textContent='Checked by simulation · Decision: see Results check and decision'}
+  }
+  function apply(){
+    var v=mock.dataset.view,l=mock.dataset.level,line=mock.dataset.line;
+    document.querySelectorAll('[data-v-view]').forEach(function(el){el.hidden=el.getAttribute('data-v-view')!==v});
+    document.querySelectorAll('[data-show-level]').forEach(function(el){el.hidden=el.getAttribute('data-show-level').split(' ').indexOf(l)<0});
+    document.querySelectorAll('[data-t-line]').forEach(function(el){el.hidden=el.getAttribute('data-t-line')!==line});
+    document.querySelectorAll('[data-dl]').forEach(function(b){b.disabled=(l==='stale'||l==='none')});
+    renderXl();
+  }
+  document.querySelectorAll('.tbtns').forEach(function(group){
+    group.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;
+      group.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});
+      mock.dataset[group.getAttribute('data-ctl')]=b.getAttribute('data-v');apply();});
+  });
+  document.getElementById('xltabs').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;current=b.getAttribute('data-sheet');renderXl()});
+  document.querySelectorAll('[data-goto]').forEach(function(b){b.addEventListener('click',function(){
+    var v=b.getAttribute('data-goto');mock.dataset.view=v;
+    document.querySelectorAll('.tbtns[data-ctl="view"] button').forEach(function(x){x.setAttribute('aria-pressed',String(x.getAttribute('data-v')===v))});apply();window.scrollTo({top:0})})});
+  apply();
+})();
+</script>

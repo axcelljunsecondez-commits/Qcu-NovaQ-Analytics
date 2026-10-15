@@ -366,12 +366,14 @@ SHARED_QUEUE_ENHANCEMENT_MODULES = {
     "shared_integrated.py", "shared_employee_states.py", "shared_named_des.py", "shared_named_replications.py",
     "shared_named_playback.py", "shared_named_attribution.py", "shared_named_cost.py",
 }
-# The one API adapter allowed to import them (named API/UI first-slice spec, A6). Exempt by exact path.
+# The API adapters allowed to import them, exempt by exact path: the named run (named API/UI first-slice
+# spec, A6) and the continuous shared-line preview (B4a spec section 5, owner-approved 2026-10-09).
 NAMED_API_ADAPTER = "backend/api/shared_named.py"
+CONTINUOUS_API_ADAPTER = "backend/api/shared_continuous.py"
 
 
 def test_no_existing_module_depends_on_the_new_foundation():
-    # Only the new shared-queue enhancement modules, and the one named API adapter, may use them; legacy code must not.
+    # Only the new shared-queue enhancement modules and the two API adapters may use them; legacy code must not.
     names = [name.removesuffix(".py") for name in SHARED_QUEUE_ENHANCEMENT_MODULES]
     importers = [
         path.relative_to(REPO_ROOT).as_posix()
@@ -379,4 +381,4 @@ def test_no_existing_module_depends_on_the_new_foundation():
         if any(name in path.read_text(encoding="utf-8") for name in names)
         and path.name not in SHARED_QUEUE_ENHANCEMENT_MODULES
     ]
-    assert importers == [NAMED_API_ADAPTER]
+    assert sorted(importers) == [CONTINUOUS_API_ADAPTER, NAMED_API_ADAPTER]

@@ -709,18 +709,24 @@ def parse_time(text: str) -> datetime:
 
 
 def repository_policy() -> EvidencePolicy:
-    """Version knowledge of this commit: no v3 plan engine, no Current DES accounting marker."""
+    """Version knowledge of this commit: plan engines v4/v5 current and v2/v3 historical (U10 F16,
+    ``workflow._separate_schedule_problem``), no Current DES accounting marker."""
     from backend.api.workflow import ENGINE_VERSION, WORKFLOW_KINDS
     from backend.queueing_engine.services.separate_optimization import (
         SELECTED_DES_CONTINUOUS_DAY_EXECUTION,
         SELECTED_DES_PER_PERIOD_EXECUTION,
         SEPARATE_DES_ENGINE_VERSION,
+        SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION,
+        SEPARATE_DES_V2_ENGINE_VERSION,
+        SEPARATE_DES_V3_ENGINE_VERSION,
     )
 
     return EvidencePolicy(
         scenario_schema=VersionFamily.of("scenario schema", current={"1", "2"}),
-        separate_plan_engine=VersionFamily.of("separate plan engine", current={SEPARATE_DES_ENGINE_VERSION},
-                                              unsupported={"novaq-2026-09-separate-des-v1"}),
+        separate_plan_engine=VersionFamily.of(
+            "separate plan engine", current={SEPARATE_DES_ENGINE_VERSION, SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION},
+            historical={SEPARATE_DES_V2_ENGINE_VERSION, SEPARATE_DES_V3_ENGINE_VERSION},
+            unsupported={"novaq-2026-09-separate-des-v1"}),
         # The schema-1 save gate accepts exactly these (backend/api/scenarios.py _verify_calculation).
         schema1_engine=VersionFamily.of("schema-1 engine",
                                         current={"novaq-2026-09-integrity-v1", "novaq-2026-09-system-v2"}),
@@ -733,11 +739,18 @@ def repository_policy() -> EvidencePolicy:
 
 
 def proposed_v3_policy() -> EvidencePolicy:
-    """PROPOSED spec M1, supplied explicitly: today's plan engine becomes historical."""
-    from backend.queueing_engine.services.separate_optimization import SEPARATE_DES_ENGINE_VERSION
+    """PROPOSED spec M1, supplied explicitly: today's plan engines become historical."""
+    from backend.queueing_engine.services.separate_optimization import (
+        SEPARATE_DES_ENGINE_VERSION,
+        SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION,
+        SEPARATE_DES_V2_ENGINE_VERSION,
+        SEPARATE_DES_V3_ENGINE_VERSION,
+    )
 
     return replace(repository_policy(), separate_plan_engine=VersionFamily.of(
-        "separate plan engine", current={PROPOSED_V3}, historical={SEPARATE_DES_ENGINE_VERSION},
+        "separate plan engine", current={PROPOSED_V3},
+        historical={SEPARATE_DES_ENGINE_VERSION, SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION,
+                    SEPARATE_DES_V2_ENGINE_VERSION, SEPARATE_DES_V3_ENGINE_VERSION},
         unsupported={"novaq-2026-09-separate-des-v1"}))
 
 
@@ -835,20 +848,23 @@ def test_recorded_fixture_holds_only_the_documented_records_and_fields():
 
 def test_recorded_scenario_30_is_identified_only_by_its_engine_string():
     # RECORDED. Scenario 30 was priced before D1 (Milestone 5 replay), but the only recorded
-    # identity is its engine string, which today equals the current constant. The classifier
-    # reads no cost summary, so under today's version knowledge it cannot and does not flag it.
-    from backend.queueing_engine.services.separate_optimization import SEPARATE_DES_ENGINE_VERSION
+    # identity is its engine string. The classifier reads no cost summary: the engine string alone
+    # decides. Since U10 F16 the v2 engine is historical (its plan costs left out over-target
+    # replications), so the record is historical for its engine only: dataset 35 and the Setup are
+    # still current.
+    from backend.queueing_engine.services.separate_optimization import SEPARATE_DES_V2_ENGINE_VERSION
 
     stored = copy.deepcopy(SCENARIOS[30])
     calculation = SCENARIOS[30]["settings"]["calculation"]
-    assert calculation["engine_version"] == SEPARATE_DES_ENGINE_VERSION
+    assert calculation["engine_version"] == SEPARATE_DES_V2_ENGINE_VERSION
     assert set(calculation) == {"schema_version", "engine_version", "setup_hash"}
     context = recorded_context(21)
     assert context.current_dataset_id == 35 and calculation["setup_hash"] == context.setup_fingerprint
     today = es.classify(recorded_scenario(30, repository_policy()), context)
-    assert today.status is S.CURRENT and today.reasons == ()
-    # Once a new engine version is established (PROPOSED M1), the same record is historical,
-    # for its engine only: dataset 35 and the Setup are still current.
+    assert today.status is S.HISTORICAL_REQUIRES_RECALCULATION
+    assert today.codes == (R.VERSION_HISTORICAL,)
+    assert today.reasons[0].subject == "separate plan engine"
+    # A further engine version (PROPOSED M1) keeps it historical, for the same single reason.
     proposed = es.classify(recorded_scenario(30, proposed_v3_policy()), context)
     assert proposed.status is S.HISTORICAL_REQUIRES_RECALCULATION
     assert proposed.codes == (R.VERSION_HISTORICAL,)

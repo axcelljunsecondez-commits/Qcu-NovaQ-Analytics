@@ -201,14 +201,14 @@ def test_production_refuses_a_database_with_no_recorded_revision(revision_db, mo
     assert _refusal(_app(revision_db, "production", monkeypatch)) == _mismatch([])
 
 
-@pytest.mark.parametrize("recorded", [["0006"], ["ffffffffffff"]], ids=["newer", "unknown"])
+@pytest.mark.parametrize("recorded", [["0099"], ["ffffffffffff"]], ids=["newer", "unknown"])
 def test_production_refuses_an_unknown_or_newer_revision(revision_db, monkeypatch, recorded):
     revision_db.upgrade("head")
     revision_db.set_revisions(*recorded)
     assert _refusal(_app(revision_db, "production", monkeypatch)) == _mismatch(recorded)
 
 
-@pytest.mark.parametrize("extra", [PREVIOUS, "0006"], ids=["with-previous", "with-newer"])
+@pytest.mark.parametrize("extra", [PREVIOUS, "0099"], ids=["with-previous", "with-newer"])
 def test_production_refuses_extra_recorded_heads(revision_db, monkeypatch, extra):
     """A superset of the code's heads is not the code's heads (D1)."""
     revision_db.upgrade("head")
@@ -293,11 +293,11 @@ def test_ready_reads_the_revision_again_on_every_call(revision_db, monkeypatch):
     revision_db.upgrade("head")
     with TestClient(_app(revision_db, "production", monkeypatch)) as client:
         assert _ready(client) == (200, {"status": "ready"})
-        for recorded in ([PREVIOUS], [], ["0006"], [*CODE_HEADS, "0006"]):
+        for recorded in ([PREVIOUS], [], ["0099"], [*CODE_HEADS, "0099"]):
             revision_db.set_revisions(*recorded)                  # SYNTHETIC: changed under the process
             status, body = _ready(client)
             assert (status, body) == (503, {"detail": SCHEMA_NOT_AT_REVISION}), recorded
-            assert not any(revision in str(body) for revision in [*CODE_HEADS, PREVIOUS, "0006"])
+            assert not any(revision in str(body) for revision in [*CODE_HEADS, PREVIOUS, "0099"])
             revision_db.set_revisions(*CODE_HEADS)
             assert _ready(client) == (200, {"status": "ready"})
         revision_db.drop_revision_table()

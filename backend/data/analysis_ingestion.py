@@ -11,6 +11,7 @@ from backend.api.analysis_schemas import (
     QueueSetup,
     QueueStructure,
 )
+from backend.data.data_dates import arrival_dates
 from backend.data.ingestion import (
     REQUIRED_COLUMNS,
     normalize_header_aliases,
@@ -355,6 +356,8 @@ def normalize_analysis_input(
     return event_records, {
         **pooling,
         "schema": kind,
+        # B11: the dates this file covers, kept so Analysis results can say "Data covers".
+        "data_dates": arrival_dates(parsed["arrival_time"]),
         "field_provenance": fields,
         "derived_fields": {
             "waiting_time": "service_start - arrival_time",

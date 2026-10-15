@@ -19,3 +19,12 @@ export const runAnalysis = async (
   const res = await http.post<AnalysisOut>(`/analysis/${model}`, body)
   return res.data
 }
+
+/** B2 guest calculator: the same models and numbers as runAnalysis, without an account (spec §11). */
+export const runGuestCalculator = async (
+  model: AnalysisModel,
+  body: AnalysisRequest,
+): Promise<AnalysisOut> => {
+  const res = await http.post<AnalysisOut>(`/public/calculator/${model}`, body)
+  return res.data
+}

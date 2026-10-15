@@ -121,6 +121,7 @@ export function DatasetsPage() {
                   <th scope="col">{t('datasets.rows')}</th>
                   <th scope="col">{t('dashboard.last_upload')}</th>
                   <th scope="col">{t('datasets.status')}</th>
+                  <th scope="col">{t('datasets.purpose')}</th>
                   <th scope="col"><span className="sr-only">{t('common.actions')}</span></th>
                 </tr>
               </thead>
@@ -136,6 +137,7 @@ export function DatasetsPage() {
                         {d.validation.ok ? t('dashboard.valid') : t('dashboard.invalid')}
                       </span>
                     </td>
+                    <td>{t(d.purpose === 'review' ? 'datasets.purpose_review' : d.is_current ? 'datasets.purpose_planning_current' : 'datasets.purpose_planning')}</td>
                     <td>
                       <button type="button" className="btn-ghost" onClick={() => handleDelete(d.id)}>
                         {t('datasets.delete')}

@@ -1,12 +1,17 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { register, resendVerification } from '../api/auth'
+import { rememberIntent } from '../auth/intent'
+import { LanguageSelect } from '../components/layout/LanguageSelect'
 
 export function RegisterPage() {
   const { t } = useTranslation()
   const [params] = useSearchParams()
   const resend = params.get('mode') === 'resend'
+  const next = params.get('next')
+  // Kept for this browser tab so sign-in after email verification continues to it.
+  useEffect(() => rememberIntent(next), [next])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -35,6 +40,7 @@ export function RegisterPage() {
 
   return (
     <div className="login-page"><div className="card login-card">
+      <LanguageSelect />
       <h1 className="login-title">{t(resend ? 'auth.resend_title' : 'auth.register_title')}</h1>
       {sent ? <div className="alert alert-ok">{t('auth.verification_sent')}</div> : (
         <form onSubmit={submit}>

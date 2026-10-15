@@ -45,6 +45,11 @@ vi.mock('../api/scenarios', () => ({
   deleteScenario: vi.fn(),
 }))
 
+const selectWorkflowScenarioMock = vi.fn()
+vi.mock('../api/workflow', () => ({
+  selectWorkflowScenario: (...args: unknown[]) => selectWorkflowScenarioMock(...args),
+}))
+
 vi.mock('../api/analyses', () => ({
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
   patchAnalysis: vi.fn(),
@@ -109,6 +114,7 @@ beforeEach(() => {
   optimizeSeparateBreaksMock.mockReset()
   applySeparateBreaksMock.mockReset()
   createScenarioMock.mockReset()
+  selectWorkflowScenarioMock.mockReset()
   listScenariosMock.mockReset()
   getAnalysisMock.mockReset()
   listDatasetsMock.mockResolvedValue({ datasets: [dataset] })
@@ -130,7 +136,8 @@ describe('calculation integrity', () => {
     await screen.findByText('401.31')
     await user.type(screen.getByLabelText('Scenario name'), 'stale plan')
     await user.selectOptions(screen.getByLabelText('Source dataset'), '')
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save without using' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Use this plan' })).toBeDisabled()
     expect(screen.getByRole('alert')).toHaveTextContent('Inputs changed')
   })
 
@@ -145,7 +152,7 @@ describe('calculation integrity', () => {
     await user.type(screen.getByLabelText('λ multiplier'), '1.5')
     await user.click(screen.getByRole('button', { name: 'Run what-if' }))
     await user.type(screen.getByLabelText('Scenario name'), 'what if')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save without using' }))
     expect(createScenarioMock).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({
       calculation: expect.objectContaining({ what_if_multiplier: 1.5, input_segments: [expect.objectContaining({ lambda: 45 })] }),
     }) }))
@@ -165,8 +172,8 @@ describe('calculation integrity', () => {
     expect(screen.queryByText('0 cashiers')).not.toBeInTheDocument()
     expect(screen.queryByText(/→ null/)).not.toBeInTheDocument()
     await user.type(screen.getByLabelText('Scenario name'), 'Incomplete plan')
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(screen.getByRole('button', { name: 'Save without using' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Save without using' }))
     expect(await screen.findByText('Scenario saved.')).toBeInTheDocument()
     expect(createScenarioMock).toHaveBeenCalledWith(expect.objectContaining({
       results: { results: [expect.objectContaining({ c_optimal: null, optimized_stable: false })] },
@@ -428,7 +435,7 @@ describe('OptimizePage', () => {
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     await screen.findByText('Add 1 server at 08:00-09:00.')
     await user.type(screen.getByLabelText('Scenario name'), 'plan A')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save without using' }))
     await waitFor(() => {
       expect(createScenarioMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -518,6 +525,28 @@ describe('OptimizePage', () => {
   })
 })
 
+describe('counter breaks (B4c)', () => {
+  it('says that suggested counters do not account for the counter breaks in the Setup', async () => {
+    getAnalysisMock.mockResolvedValue({ analysis: { id: 7, queue_setup: { queue_structure: 'shared_queue', queue_ids: [],
+      counter_breaks: [{ scheduled_start_time: '12:00:00', duration_minutes: 30 }] } } })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} /></Routes>,
+      { route: '/analyses/7/optimize' },
+    )
+    expect(await screen.findByTestId('counter-breaks-note')).toHaveTextContent('Suggested counters do not account for the counter breaks in the Setup.')
+  })
+
+  it('says nothing about breaks when the Setup has none', async () => {
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/optimize" element={<OptimizePage />} /></Routes>,
+      { route: '/analyses/7/optimize' },
+    )
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(getAnalysisMock).toHaveBeenCalled())
+    expect(screen.queryByTestId('counter-breaks-note')).not.toBeInTheDocument()
+  })
+})
+
 describe('separate staffing optimization', () => {
   function renderSeparate() {
     getAnalysisMock.mockResolvedValue({
@@ -544,6 +573,7 @@ describe('separate staffing optimization', () => {
   })
 
   const completeSchedule = {
+    engine_version: 'novaq-2026-09-separate-des-v2',
     schedule: {
       overall: 'COMPLETE',
       reason: null,
@@ -620,7 +650,7 @@ describe('separate staffing optimization', () => {
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     expect(await screen.findByText(/cannot claim an optimum/)).toBeInTheDocument()
     await user.type(screen.getByLabelText('Scenario name'), 'blocked plan')
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save without using' })).toBeDisabled()
     expect(createScenarioMock).not.toHaveBeenCalled()
   })
 
@@ -648,9 +678,10 @@ describe('separate staffing optimization', () => {
     expect(screen.queryByText('0 cashiers')).not.toBeInTheDocument()
   })
 
-  it('saves a verified snapshot when the schedule is complete', async () => {
+  it('saves a verified snapshot when the schedule is complete, with the engine version the server reported', async () => {
     const user = userEvent.setup()
-    optimizeSeparateMock.mockResolvedValue(completeSchedule)
+    // B13: a per-date plan is calculated with the continuous-day version; the page never hardcodes it.
+    optimizeSeparateMock.mockResolvedValue({ ...completeSchedule, engine_version: 'novaq-2026-10-separate-des-v3' })
     createScenarioMock.mockResolvedValue({ scenario: { id: 9 } })
     renderSeparate()
     await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
@@ -659,11 +690,11 @@ describe('separate staffing optimization', () => {
     await screen.findByText('Estimated Optimal Plan')
     const nameInput = screen.getByLabelText('Scenario name') as HTMLInputElement
     expect(nameInput.value).toBe('Optimal @ 70%')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save without using' }))
     expect(createScenarioMock).toHaveBeenCalledTimes(1)
     const payload = createScenarioMock.mock.calls[0][0]
     expect(payload.settings.calculation.schema_version).toBe(2)
-    expect(payload.settings.calculation.engine_version).toBe('novaq-2026-09-separate-des-v2')
+    expect(payload.settings.calculation.engine_version).toBe('novaq-2026-10-separate-des-v3')
     expect(payload.results.schedule.overall).toBe('COMPLETE')
   })
 
@@ -679,7 +710,7 @@ describe('separate staffing optimization', () => {
     expect(optimizeSeparateMock).toHaveBeenCalledWith(
       7, 1, expect.objectContaining({ min_active_lanes: 2 }),
     )
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save without using' }))
     const payload = createScenarioMock.mock.calls[0][0]
     expect(payload.settings.min_active_lanes).toBe(2)
     expect(payload.settings.calculation.options.min_active_lanes).toBe(2)
@@ -812,7 +843,6 @@ describe('break schedule optimizer', () => {
 
   it('confirms with the list of moves, applies, invalidates analysis and drops workflow evidence', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     optimizeSeparateBreaksMock.mockResolvedValue(result)
     applySeparateBreaksMock.mockResolvedValue({ analysis: { id: 7 }, moves_applied: 1 })
     const { queryClient } = renderAt('separate_queues')
@@ -821,10 +851,13 @@ describe('break schedule optimizer', () => {
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
     await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
     await user.click(await screen.findByRole('button', applyButton))
-    const message = confirm.mock.calls[0][0] as string
-    expect(message).toContain('c2 · Break 1: 10:00 → 11:00')
-    expect(message).not.toContain('c1 ·')
-    expect(message).toContain('This replaces the break times in Setup. Earlier Current, Simulation and Decision results will need to be rerun.')
+    const dialog = screen.getByRole('alertdialog')
+    expect(applySeparateBreaksMock).not.toHaveBeenCalled()
+    expect(dialog).toHaveTextContent('c2 · Break 1: 10:00 → 11:00')
+    expect(dialog).not.toHaveTextContent('c1 ·')
+    expect(dialog).toHaveTextContent('This replaces the break times in Setup. Earlier Current, Simulation and Decision results will need to be rerun.')
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    await user.click(within(dialog).getByRole('button', applyButton))
     await waitFor(() => expect(applySeparateBreaksMock).toHaveBeenCalledWith(
       7, { target_rho: 0.85, max_shift_minutes: 120, setup_hash: 'hash-1', dataset_id: 1 },
     ))
@@ -837,12 +870,10 @@ describe('break schedule optimizer', () => {
     expect(queryClient.getQueryData(['workflow', 7])).toBeUndefined()
     expect(queryClient.getQueryData(['workflow', 8])).toEqual({ des_current: { params: { dataset_id: 5 } } })
     expect(screen.queryByRole('button', applyButton)).not.toBeInTheDocument()
-    confirm.mockRestore()
   })
 
   it('drops the cached scenario statuses of this analysis once breaks are applied', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     optimizeSeparateBreaksMock.mockResolvedValue(result)
     applySeparateBreaksMock.mockResolvedValue({ analysis: { id: 7 }, moves_applied: 1 })
     const { queryClient } = renderAt('separate_queues')
@@ -850,10 +881,10 @@ describe('break schedule optimizer', () => {
     queryClient.setQueryData(['scenarios', 8], { scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
     await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
     await user.click(await screen.findByRole('button', applyButton))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', applyButton))
     await waitFor(() => expect(applySeparateBreaksMock).toHaveBeenCalled())
     await waitFor(() => expect(queryClient.getQueryData(['scenarios', 7])).toBeUndefined())
     expect(queryClient.getQueryData(['scenarios', 8])).toEqual({ scenarios: [{ id: 2, evidence_status: 'CURRENT' }] })
-    confirm.mockRestore()
   })
 
   it('disables Apply with a note when the proposal is not on the latest dataset', async () => {
@@ -871,29 +902,31 @@ describe('break schedule optimizer', () => {
     expect(screen.getByText('Apply is available for proposals made on the latest dataset.')).toBeInTheDocument()
   })
 
-  it('does not apply when the confirmation is cancelled', async () => {
+  it('does not apply when the confirmation is cancelled, by button or Escape', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     optimizeSeparateBreaksMock.mockResolvedValue(result)
     renderAt('separate_queues')
     await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
     await user.click(await screen.findByRole('button', applyButton))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', applyButton))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(applySeparateBreaksMock).not.toHaveBeenCalled()
-    confirm.mockRestore()
   })
 
   it('shows the server message when the Setup changed (409)', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const stale = 'Setup changed since this proposal was made. Run the break optimizer again.'
     optimizeSeparateBreaksMock.mockResolvedValue(result)
     applySeparateBreaksMock.mockRejectedValue({ response: { status: 409, data: { detail: stale } } })
     renderAt('separate_queues')
     await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
     await user.click(await screen.findByRole('button', applyButton))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', applyButton))
     expect(await screen.findByRole('alert')).toHaveTextContent(stale)
     expect(screen.queryByText('Setup updated with the proposed breaks. Rerun the workflow from Current.')).not.toBeInTheDocument()
-    confirm.mockRestore()
   })
 })
 
@@ -954,5 +987,178 @@ describe('staffing plan near-target warning', () => {
   it('shows no warning when the flag is null', async () => {
     await runWith(null)
     expect(screen.queryByText(warning)).not.toBeInTheDocument()
+  })
+})
+
+describe('Use this plan (spec §7.6, D4)', () => {
+  function renderPlans(structure: 'shared_queue' | 'separate_queues' = 'shared_queue') {
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: structure, queue_ids: structure === 'separate_queues' ? ['lane-a', 'lane-b'] : [] } },
+    })
+    return renderWithProviders(
+      <Routes>
+        <Route path="/analyses/:analysisId/plans" element={<OptimizePage />} />
+      </Routes>,
+      { route: '/analyses/7/plans' },
+    )
+  }
+
+  async function optimizeShared(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await screen.findByText('Add 1 server at 08:00-09:00.')
+    await user.type(screen.getByLabelText('Scenario name'), 'plan A')
+  }
+
+  function withoutTimestamp(payload: { settings: { calculation: Record<string, unknown> } }) {
+    return { ...payload, settings: { ...payload.settings, calculation: { ...payload.settings.calculation, calculated_at: 'x' } } }
+  }
+
+  it('saves exactly what Save without using saves, then selects the saved plan', async () => {
+    createScenarioMock.mockResolvedValue({ scenario: { id: 41 } })
+    selectWorkflowScenarioMock.mockResolvedValue({ selection: { id: 1 } })
+    const user = userEvent.setup()
+    const first = renderPlans()
+    await optimizeShared(user)
+    await user.click(screen.getByRole('button', { name: 'Save without using' }))
+    await waitFor(() => expect(createScenarioMock).toHaveBeenCalledTimes(1))
+    expect(selectWorkflowScenarioMock).not.toHaveBeenCalled()
+    first.unmount()
+
+    const { queryClient } = renderPlans()
+    queryClient.setQueryData(['workflow', 7], { selection: null })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    await optimizeShared(user)
+    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 41))
+    expect(createScenarioMock).toHaveBeenCalledTimes(2)
+    expect(withoutTimestamp(createScenarioMock.mock.calls[1][0])).toEqual(withoutTimestamp(createScenarioMock.mock.calls[0][0]))
+    expect(createScenarioMock.mock.invocationCallOrder[1]).toBeLessThan(selectWorkflowScenarioMock.mock.invocationCallOrder[0])
+    expect(await screen.findByText('Plan saved and selected. Queue simulation will use this plan.')).toBeInTheDocument()
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workflow', 7] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['scenarios', 7] })
+    expect(screen.getByText('This plan has the lowest modeled cost among the options that meet your limits. It is an estimate, not a guarantee.')).toBeInTheDocument()
+  })
+
+  it('keeps the plan saved and says why when the selection is refused', async () => {
+    createScenarioMock.mockResolvedValue({ scenario: { id: 42 } })
+    selectWorkflowScenarioMock.mockRejectedValue({ response: { status: 409, data: { detail: 'Scenario provenance is not verified.' } } })
+    const user = userEvent.setup()
+    renderPlans()
+    await optimizeShared(user)
+    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The plan was saved but not selected: Scenario provenance is not verified.')
+    expect(alert).toHaveTextContent('You can select it in Analysis results.')
+    expect(createScenarioMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Plan saved and selected. Queue simulation will use this plan.')).not.toBeInTheDocument()
+  })
+
+  it('does not select anything when saving fails', async () => {
+    createScenarioMock.mockRejectedValue({ response: { status: 422, data: { detail: 'Scenario calculation inputs are incomplete.' } } })
+    const user = userEvent.setup()
+    renderPlans()
+    await optimizeShared(user)
+    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    expect(await screen.findByText('Scenario calculation inputs are incomplete.')).toBeInTheDocument()
+    expect(selectWorkflowScenarioMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the defaults as assumptions you can change', async () => {
+    renderPlans()
+    expect(await screen.findByRole('heading', { name: 'Assumptions and limits' })).toBeInTheDocument()
+    expect(await screen.findByText(/Assumptions you can change\. NovaQ starts from these defaults: busy-share target 70%, counter cost 87 per hour, waiting cost 100 per customer-hour of waiting\./)).toBeVisible()
+  })
+
+  it('uses a separate-lines plan the same way, with the simulation estimate note', async () => {
+    optimizeSeparateMock.mockResolvedValue({
+      engine_version: 'novaq-2026-09-separate-des-v2',
+      schedule: {
+        overall: 'COMPLETE', reason: null, target_utilization: 0.7, evaluation_method: 'DES_REPLICATIONS',
+        des: { replications: 5, base_seed: 42, duration_hours: 24, max_events: 10000 },
+        periods: [],
+      },
+    })
+    createScenarioMock.mockResolvedValue({ scenario: { id: 43 } })
+    selectWorkflowScenarioMock.mockResolvedValue({ selection: { id: 2 } })
+    const user = userEvent.setup()
+    renderPlans('separate_queues')
+    await screen.findByRole('option', { name: 'sample' }, { timeout: 5000 })
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this plan' }))
+    await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 43))
+    expect(createScenarioMock.mock.calls[0][0].settings.calculation.engine_version).toBe('novaq-2026-09-separate-des-v2')
+    expect(await screen.findByText('Plan saved and selected. Queue simulation will use this plan.')).toBeInTheDocument()
+    expect(screen.getByText('This plan has the lowest average cost found by simulation among the options that meet your limits. It is an estimate, not a guarantee.')).toBeInTheDocument()
+  })
+})
+
+describe('Suggested plans use planning files only (B10, OD-B10-3)', () => {
+  it('lists planning files and leaves review-only files out', async () => {
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 3, name: 'review copy', purpose: 'review', is_current: false },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: true },
+    ] })
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    expect(await screen.findByRole('option', { name: 'sample' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'review copy' })).not.toBeInTheDocument()
+  })
+
+  it('starts on the current planning file, never on a review file, and keeps what the user picks (U10 F11)', async () => {
+    const user = userEvent.setup()
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 6, name: 'newest review', purpose: 'review', is_current: false },
+      { ...dataset, id: 2, name: 'older plan file', purpose: 'planning', is_current: false },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: true },
+    ] })
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('1')
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '2')
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('2')
+    await user.selectOptions(screen.getByLabelText('Source dataset'), '')
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('')
+  })
+
+  it('chooses nothing when the current file is not a planning file', async () => {
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 6, name: 'review', purpose: 'review', is_current: true },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: false },
+    ] })
+    const user = userEvent.setup()
+    renderWithProviders(<OptimizePage />, { route: '/optimize' })
+    await screen.findByRole('option', { name: 'sample' })
+    expect(screen.getByLabelText('Source dataset')).toHaveValue('')
+    // Nothing is optimized behind an empty-looking choice: the review file is never used.
+    await user.click(screen.getByRole('button', { name: 'Optimize' }))
+    expect(await screen.findByText('Select a dataset first.')).toBeInTheDocument()
+    expect(optimizeBatchMock).not.toHaveBeenCalled()
+  })
+
+  it('offers break apply on the planning file even when a newer review file exists', async () => {
+    const user = userEvent.setup()
+    listDatasetsMock.mockResolvedValue({ datasets: [
+      { ...dataset, id: 5, name: 'review copy', purpose: 'review', is_current: false },
+      { ...dataset, id: 1, name: 'sample', purpose: 'planning', is_current: true },
+    ] })
+    getAnalysisMock.mockResolvedValue({
+      analysis: { id: 7, queue_setup: { queue_structure: 'separate_queues', queue_ids: ['c1', 'c2'] } },
+    })
+    optimizeSeparateBreaksMock.mockResolvedValue({
+      status: 'improved', target_rho: 0.85, max_shift_minutes: 120, all_below_target: true,
+      current_breaks: [], proposed_breaks: [], moves: [{ queue_id: 'c2', label: 'Break 1', from: '10:00', to: '11:00', duration_minutes: 30 }],
+      slots: [], peak_rho: { before: 0.9, after: 0.8 }, slots_above_target: { before: 1, after: 0 }, staffing_gaps: [],
+      des: { seeds: [], current: { summary: {}, replications: [], periods: [] }, proposed: { summary: {}, replications: [], periods: [] },
+        comparison: { mean_wait_change_minutes: 0, proposed_better_runs: 0, runs: 0 } },
+      notes: [], setup_hash: 'h', dataset_id: 1,
+    })
+    renderWithProviders(
+      <Routes><Route path="/analyses/:analysisId/plans" element={<OptimizePage />} /></Routes>,
+      { route: '/analyses/7/plans' },
+    )
+    await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
+    expect(await screen.findByRole('button', { name: 'Apply to Setup' })).toBeEnabled()
   })
 })

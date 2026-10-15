@@ -49,8 +49,8 @@ export async function optimizeSeparate(
   analysisId: number,
   datasetId: number,
   options: SeparateOptimizeOptions = {},
-): Promise<{ schedule: SeparateSchedule }> {
-  const { data } = await http.post<{ schedule: SeparateSchedule }>(
+): Promise<{ schedule: SeparateSchedule; engine_version: string }> {
+  const { data } = await http.post<{ schedule: SeparateSchedule; engine_version: string }>(
     `/analyses/${analysisId}/workflow/optimize/separate`,
     { dataset_id: datasetId, ...options },
   )

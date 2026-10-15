@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from numbers import Integral
 from typing import Any, NoReturn
 
@@ -27,8 +27,12 @@ from backend.queueing_engine.services.shared_segments import (
     StaffingSegment,
 )
 from backend.queueing_engine.simulation.shared_continuous_des import (
+    BREAK_COMPLETED,
+    BREAKS_SUFFIX,
     ENGINE_VERSION,
     HARD_CUTOFF,
+    RECORDED_ENGINE_VERSION,
+    CounterBreak,
     simulate_shared_replication,
 )
 from backend.queueing_engine.simulation.shared_replications import replication_row
@@ -50,9 +54,16 @@ EVENT_TYPES = {
     "capacity_change": "A staffing segment starts; accepting servers now equal its schedule.",
     "closing": "The closing policy is applied at the closing time.",
     "unserved_at_close": "A customer still waiting leaves unserved at closing.",
+    "break_due": "A counter break becomes due and waits for a free counter (B4c).",
+    "break_start": "A free counter starts a due break.",
+    "break_end": (
+        "A break ends: completed (the counter accepts customers again), staffing_change or "
+        "truncated_by_closing (the counter closes)."
+    ),
+    "break_cancelled_at_closing": "A due break that had not started is cancelled at closing.",
 }
 
-IDLE, BUSY, DRAINING, CLOSED = "IDLE", "BUSY", "DRAINING", "CLOSED"
+IDLE, BUSY, DRAINING, CLOSED, ON_BREAK = "IDLE", "BUSY", "DRAINING", "CLOSED", "ON_BREAK"
 _FINISHED_DRAIN = "DRAINING_FINISHED"  # a draining server between its service_end and drain_complete
 _TOLERANCE = {"rel": 1e-9, "abs": 1e-12}
 
@@ -85,13 +96,14 @@ def replay_events(result: dict[str, Any], staffing_segments: Sequence[StaffingSe
     closed_phase = False
     last = 0.0
     states = []
+    waiting_breaks = 0
 
     def fail(seq: int, message: str) -> NoReturn:
         raise PlaybackConsistencyError(f"Event {seq}: {message}")
 
     def set_state(server_id: int, state: str, customer_id: int | None, at: float) -> None:
         previous = servers.get(server_id)
-        if previous is not None and previous[0] in (IDLE, BUSY, DRAINING) and at > previous[2]:
+        if previous is not None and previous[0] in (IDLE, BUSY, DRAINING, ON_BREAK) and at > previous[2]:
             intervals[server_id].append(
                 {"state": previous[0], "customer_id": previous[1], "start": previous[2], "end": at}
             )
@@ -114,7 +126,7 @@ def replay_events(result: dict[str, Any], staffing_segments: Sequence[StaffingSe
             integrals[f"present_{suffix}"] += present * elapsed
         last = at
         if closed_phase and kind in ("arrival", "capacity_change", "server_open", "server_drain_start",
-                                     "server_reactivate", "closing"):
+                                     "server_reactivate", "closing", "break_due", "break_start"):
             fail(seq, f"{kind} after closing")
         if closed_phase and event["segment_id"] is not None:
             fail(seq, "an event after closing names a staffing segment")
@@ -135,6 +147,8 @@ def replay_events(result: dict[str, Any], staffing_segments: Sequence[StaffingSe
                 fail(seq, "service must start on an idle accepting server")
             if closed_phase and policy == HARD_CUTOFF:
                 fail(seq, "no service may start after a hard cutoff")
+            if waiting_breaks and not closed_phase:
+                fail(seq, "a free counter takes a waiting break before a waiting customer")
             queue.popleft()
             customers[customer_id].update(service_start_hours=at, server_id=server_id)
             set_state(server_id, BUSY, customer_id, at)
@@ -165,9 +179,27 @@ def replay_events(result: dict[str, Any], staffing_segments: Sequence[StaffingSe
                 fail(seq, "only a draining server can be reactivated")
             set_state(server_id, BUSY, state[1], at)
         elif kind == "capacity_change":
-            accepting = sum(1 for item in servers.values() if item[0] in (IDLE, BUSY))
+            # Counters on break count as staffed (B4c); without breaks these are the accepting counters.
+            accepting = sum(1 for item in servers.values() if item[0] in (IDLE, BUSY, ON_BREAK))
             if accepting != scheduled[event["segment_id"]]:
                 fail(seq, "accepting servers differ from the segment's schedule")
+        elif kind == "break_due":
+            waiting_breaks += 1
+        elif kind == "break_start":
+            if waiting_breaks == 0:
+                fail(seq, "a break starts with no break due")
+            if state is None or state[0] != IDLE:
+                fail(seq, "a break starts only on a free accepting counter")
+            waiting_breaks -= 1
+            set_state(server_id, ON_BREAK, None, at)
+        elif kind == "break_end":
+            if state is None or state[0] != ON_BREAK:
+                fail(seq, "only a counter on break can end a break")
+            set_state(server_id, IDLE if event.get("reason") == BREAK_COMPLETED else CLOSED, None, at)
+        elif kind == "break_cancelled_at_closing":
+            if not closed_phase or waiting_breaks == 0:
+                fail(seq, "only a due break can be cancelled, and only at closing")
+            waiting_breaks -= 1
         elif kind == "closing":
             if at != end:
                 fail(seq, "closing must happen at the horizon end")
@@ -188,11 +220,15 @@ def replay_events(result: dict[str, Any], staffing_segments: Sequence[StaffingSe
             "servers_idle_after": sum(1 for item in servers.values() if item[0] == IDLE),
             "servers_busy_after": sum(1 for item in servers.values() if item[0] == BUSY),
             "servers_draining_after": sum(1 for item in servers.values() if item[0] == DRAINING),
+            "servers_on_break_after": sum(1 for item in servers.values() if item[0] == ON_BREAK),
+            "breaks_waiting_after": waiting_breaks,
             "server_state_after": servers[server_id][0] if server_id is not None else None,
         })
 
     if not closed_phase:
         raise PlaybackConsistencyError("The trace has no closing event.")
+    if waiting_breaks:
+        raise PlaybackConsistencyError("A due break was neither started nor cancelled.")
     if queue or any(item[0] != CLOSED for item in servers.values()):
         raise PlaybackConsistencyError("The run ends with a customer waiting or a server open.")
     if any(row["status"] is None for row in customers.values()):
@@ -259,6 +295,7 @@ def build_playback(
     ] + _check_against_engine(result, replay, row)
     events = [
         {"seq": seq, **{key: event[key] for key in ("t", "type", "segment_id", "customer_id", "server_id")},
+         **{key: event[key] for key in ("break_id", "scheduled_start_hours", "reason") if key in event},
          **state}
         for seq, (event, state) in enumerate(zip(result["trace"], replay["states"]))
     ]
@@ -311,6 +348,8 @@ def prepare_shared_playback(
     root_entropy: int,
     replication_index: int,
     closing_policy: str,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
+    counter_breaks: Sequence[CounterBreak] | None = None,
 ) -> dict[str, Any]:
     """Regenerate replication ``replication_index`` of the run with ``root_entropy`` and prepare its playback."""
     problems = []
@@ -324,6 +363,7 @@ def prepare_shared_playback(
     result = simulate_shared_replication(
         horizon, demand_periods, staffing_segments,
         seed_sequence=child, closing_policy=closing_policy, max_trace_events=None,
+        service_samples=service_samples, counter_breaks=counter_breaks,
     )
     return build_playback(result, staffing_segments, replication_index=replication_index, root_entropy=root_entropy)
 
@@ -331,9 +371,22 @@ def prepare_shared_playback(
 def playback_from_replications(replication_result: dict[str, Any], replication_index: int) -> dict[str, Any]:
     """Playback of one replication of a ``run_shared_replications`` result, checked against its stored row."""
     provenance = replication_result["provenance"]
-    if provenance["engine_version"] != ENGINE_VERSION:
+    version = str(provenance["engine_version"])
+    with_breaks = version.endswith(BREAKS_SUFFIX)
+    base_version = version.removesuffix(BREAKS_SUFFIX)
+    stored_breaks = provenance["inputs"].get("counter_breaks")
+    if with_breaks != bool(stored_breaks):
         raise PlaybackConsistencyError(
-            f"The run used engine {provenance['engine_version']}, not {ENGINE_VERSION}; it cannot be regenerated exactly."
+            "The run's counter breaks do not match its engine version; it cannot be regenerated exactly.")
+    if base_version not in (ENGINE_VERSION, RECORDED_ENGINE_VERSION):
+        raise PlaybackConsistencyError(
+            f"The run used engine {provenance['engine_version']}, not {ENGINE_VERSION} or {RECORDED_ENGINE_VERSION}; "
+            "it cannot be regenerated exactly."
+        )
+    service_samples = provenance["inputs"].get("service_samples_hours")
+    if (base_version == RECORDED_ENGINE_VERSION) != (service_samples is not None):
+        raise PlaybackConsistencyError(
+            "The run's recorded service durations do not match its engine version; it cannot be regenerated exactly."
         )
     if not _whole(replication_index) or replication_index >= provenance["replications"]:
         raise SharedSegmentError([f"replication_index must be from 0 to {provenance['replications'] - 1}."])
@@ -346,6 +399,8 @@ def playback_from_replications(replication_result: dict[str, Any], replication_i
         root_entropy=provenance["root_entropy"],
         replication_index=replication_index,
         closing_policy=provenance["closing_policy"],
+        service_samples=service_samples,
+        counter_breaks=[CounterBreak(**item) for item in stored_breaks] if stored_breaks else None,
     )
     stored = replication_result["replications"][replication_index]
     regenerated = playback["summary"]

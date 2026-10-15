@@ -226,7 +226,8 @@ def test_slot_inputs_reject_per_date_off_grid_split_shift_no_breaks():
     records = _records(setup)
     with pytest.raises(ValueError, match="^Break optimization is available for separate queues.$"):
         bo.slot_inputs_from_setup({**setup, "queue_structure": "shared_queue"}, records)
-    with pytest.raises(ValueError, match="^Break optimization requires the representative day basis.$"):
+    with pytest.raises(ValueError, match="^Break optimization requires the representative day basis. Choose Representative day under "
+                       "Customer data periods in Data and setup, then upload the file again.$"):
         bo.slot_inputs_from_setup({**setup, "event_period_basis": "per_date"}, records)
     with pytest.raises(ValueError, match="^This Analysis has no configured breaks to move.$"):
         bo.slot_inputs_from_setup({**setup, "breaks": []}, records)

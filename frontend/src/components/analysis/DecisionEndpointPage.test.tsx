@@ -93,6 +93,9 @@ describe('DecisionEndpointPage', () => {
     renderPage()
     expect(await screen.findByText(insufficient.headline)).toBeInTheDocument()
     expect(screen.getByText('a completed Scenario Validation run')).toBeInTheDocument()
+    // U10 F5: the page asks the spec's question and answers it from the stored fields.
+    expect(screen.getByRole('heading', { level: 1, name: 'Should we use this plan?' })).toBeInTheDocument()
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent(`Not enough checks yet. Run: ${insufficient.missing_evidence.join('; ')}`)
   })
 
   it('requests deterministic derivation and renders the server result', async () => {
@@ -169,6 +172,17 @@ describe('DecisionEndpointPage', () => {
     await waitFor(() => expect(runSelectedDecisionMock).toHaveBeenCalledWith(7))
     expect(createDecisionMock).not.toHaveBeenCalled()
     expect(await screen.findByText(conditional.recommendation)).toBeInTheDocument()
+  })
+
+  it('says the saving cannot be calculated when today cannot keep up', async () => {
+    const overloaded = { ...insufficient, status: 'conditional', headline: 'Consider Scenario "Plan A" conditionally.', missing_evidence: [],
+      facts: { validation_intervals: 4, failed_intervals: 0, current_modeled_cost: null, modeled_savings: null, today_overloaded_periods: ['segment_3'] } }
+    getWorkflowMock.mockResolvedValue({ analysis_id: 7, selection: null, scenario: null, des: null, mc: null, validation: null,
+      decision: { id: 6, kind: 'workflow_decision', status: 'completed', params: {}, result: overloaded,
+        created_at: '2026-10-13T00:00:00Z', finished_at: '2026-10-13T00:01:00Z' }, decision_stale: false })
+    renderPage()
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent(
+      "The plan passed every check, but its cost saving can't be calculated: today's staff can't keep up in segment_3.")
   })
 
   it('keeps shared analyses on the shared Decision endpoint', async () => {

@@ -1,0 +1,1216 @@
+<title>NovaQ Redesign Map</title>
+<style>
+/* Layout: sticky screen index on the left, review column on the right; each screen = wireframe + contents + notes. Tokens follow NovaQ design-system MASTER (navy/gold, Inter/system). */
+:root{
+  --canvas:#F4F8FC; --surface:#FFFFFF; --subtle:#EDF2F8; --side:#08213F; --side-fg:#DCE6F0; --side-hi:#FFFFFF;
+  --fg:#0A2345; --fg2:#52647A; --border:#DCE6F0; --ctl:#6B7C90;
+  --gold:#E8A838; --gold-fg:#0A2345; --link:#185E86; --focus:#1D63A8;
+  --cur:#2563EB; --cur-bg:#EFF6FF; --opt:#7C3AED; --opt-bg:#F5F3FF;
+  --warn-bg:#FFF4D6; --warn:#8A4B00; --info-bg:#EEF7FF; --info:#185E86; --ok-bg:#EAF8F1; --ok:#087A4E; --bad-bg:#FFF0F3; --bad:#B4233A;
+  --skel:#D5DEE9; --person:#E8A838; --person2:#9DB0C6; --counter:#FFFFFF;
+  --font:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'Cascadia Mono','Consolas',monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --canvas:#0B1120; --surface:#162032; --subtle:#1E293B; --side:#070D18; --side-fg:#B0BDCC; --side-hi:#FFFFFF;
+  --fg:#E2E8F0; --fg2:#B0BDCC; --border:#2B3B52; --ctl:#7890A8;
+  --gold:#F0B84C; --gold-fg:#071729; --link:#7CCCF0; --focus:#F0B84C;
+  --cur:#60A5FA; --cur-bg:#102A43; --opt:#C084FC; --opt-bg:#2B1B3D;
+  --warn-bg:#33270F; --warn:#F3C76B; --info-bg:#102C3B; --info:#7CCCF0; --ok-bg:#0E2F25; --ok:#66E3A4; --bad-bg:#3A1620; --bad:#FF8A9C;
+  --skel:#33445E; --person:#F0B84C; --person2:#5F7591; --counter:#1E293B; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#0B1120; --surface:#162032; --subtle:#1E293B; --side:#070D18; --side-fg:#B0BDCC; --side-hi:#FFFFFF;
+  --fg:#E2E8F0; --fg2:#B0BDCC; --border:#2B3B52; --ctl:#7890A8;
+  --gold:#F0B84C; --gold-fg:#071729; --link:#7CCCF0; --focus:#F0B84C;
+  --cur:#60A5FA; --cur-bg:#102A43; --opt:#C084FC; --opt-bg:#2B1B3D;
+  --warn-bg:#33270F; --warn:#F3C76B; --info-bg:#102C3B; --info:#7CCCF0; --ok-bg:#0E2F25; --ok:#66E3A4; --bad-bg:#3A1620; --bad:#FF8A9C;
+  --skel:#33445E; --person:#F0B84C; --person2:#5F7591; --counter:#1E293B; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--canvas);color:var(--fg);font:15px/1.55 var(--font);padding-inline:16px;padding-block:0 48px}
+a{color:var(--link)}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:4px}
+h1,h2,h3{text-wrap:balance;margin:0;line-height:1.2}
+.shell{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px}
+@media (max-width:900px){.shell{grid-template-columns:minmax(0,1fr)}.index{display:none}}
+.index{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;padding-top:28px;max-height:100vh;overflow:auto}
+.index h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2);margin:16px 0 6px}
+.index a{display:flex;gap:8px;padding:5px 8px;border-radius:6px;text-decoration:none;color:var(--fg);font-size:14px}
+.index a:hover{background:var(--subtle)}
+.index .n{font-variant-numeric:tabular-nums;color:var(--fg2);min-width:1.6em}
+.index .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);align-self:center;margin-left:auto}
+main{min-width:0;padding-top:28px;display:flex;flex-direction:column;gap:28px}
+.masthead{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:20px}
+.brand{font-weight:800;font-size:15px;letter-spacing:.02em;color:var(--fg2)}
+.brand b{color:var(--gold)}
+.masthead h1{font-size:2rem;margin-top:6px}
+.masthead p{margin:8px 0 0;color:var(--fg2);max-width:62ch}
+.status{display:flex;gap:8px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--fg2);white-space:nowrap}
+.pill.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.pill.new{background:var(--gold);color:var(--gold-fg);border-color:transparent}
+.pill.disc{background:var(--opt-bg);color:var(--opt);border-color:transparent}
+section.block{display:flex;flex-direction:column;gap:14px}
+section.block>h2{font-size:1.3rem}
+.lede{color:var(--fg2);margin:0;max-width:70ch}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.changes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.chg{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.chg strong{font-size:14.5px}
+.chg span{color:var(--fg2);font-size:13.5px}
+.decisions{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.dec{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.dec .id{font:600 12px var(--mono);color:var(--fg2)}
+.dec strong{font-size:14.5px}
+.dec span{font-size:13.5px;color:var(--fg2)}
+.map{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.zone{border:1px dashed var(--ctl);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
+.zone h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2)}
+.zone.signed{border-style:solid;border-color:var(--border)}
+.node{display:flex;gap:8px;align-items:baseline;font-size:14px}
+.node .n{font:600 12px var(--mono);color:var(--fg2);min-width:1.8em}
+.node .grp{font-size:11.5px;color:var(--fg2);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+.path{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.path .step{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13.5px;font-weight:600}
+.path .step.key{background:var(--gold);color:var(--gold-fg);border-color:transparent}
+.path .arr{color:var(--fg2)}
+.screen{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;scroll-margin-top:16px}
+.screen>header{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:baseline;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.screen>header h3{font-size:1.15rem;display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}
+.screen>header h3 .num{font:600 13px var(--mono);color:var(--fg2)}
+.route{font:13px var(--mono);color:var(--fg2);overflow-wrap:anywhere}
+.screen .body{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;padding:20px}
+@media (max-width:1000px){.screen .body{grid-template-columns:minmax(0,1fr)}}
+.screen .wide{padding:0 20px 20px;display:flex;flex-direction:column;gap:14px}
+.contents h4{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2);margin:0 0 6px}
+.contents ul{margin:0 0 14px;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.limit{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 12px;font-size:13.5px;margin-bottom:12px}
+.needs{background:var(--opt-bg);color:var(--opt);border-radius:8px;padding:8px 12px;font-size:13.5px;margin-bottom:12px}
+.notes label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2);margin-bottom:6px;font-weight:600}
+.notes textarea{width:100%;min-height:72px;resize:vertical;border:1px solid var(--ctl);border-radius:8px;padding:8px 10px;font:15px/1.5 var(--font);background:var(--surface);color:var(--fg)}
+/* wireframe kit */
+.wf{border:1px solid var(--border);border-radius:10px;background:var(--canvas);overflow:hidden;font-size:12px;color:var(--fg)}
+.wf-bar{display:flex;gap:5px;align-items:center;padding:6px 10px;background:var(--subtle);border-bottom:1px solid var(--border)}
+.wf-bar i{width:7px;height:7px;border-radius:50%;background:var(--skel);display:block}
+.wf-bar span{margin-left:8px;font:11px var(--mono);color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-app{display:grid;grid-template-columns:118px minmax(0,1fr);min-height:230px}
+.wf-app.rail{grid-template-columns:38px minmax(0,1fr)}
+.wf-side{background:var(--side);color:var(--side-fg);padding:10px 8px;display:flex;flex-direction:column;gap:3px;font-size:10.5px;position:relative}
+.wf-side .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.wf-side b{color:var(--side-hi);font-size:12px}
+.wf-side b em{color:var(--gold);font-style:normal}
+.wf-side .g{font-size:8.5px;letter-spacing:.08em;opacity:.7;margin-top:5px}
+.wf-side .it{padding:3px 5px;border-radius:4px;display:flex;gap:5px;align-items:center}
+.wf-side .it.on{background:rgba(255,255,255,.12);box-shadow:inset 2px 0 0 var(--gold);color:var(--side-hi)}
+.wf-side .chip{margin-top:auto;border-top:1px solid rgba(255,255,255,.15);padding-top:6px;display:flex;align-items:center;gap:5px}
+.av{width:16px;height:16px;border-radius:50%;background:var(--gold);color:var(--gold-fg);font-size:8px;font-weight:800;display:grid;place-items:center;flex:none}
+.ico{width:12px;height:12px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.menu{position:absolute;left:8px;right:-70px;bottom:34px;background:var(--surface);color:var(--fg);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(8,33,63,.18);padding:5px;display:flex;flex-direction:column;gap:1px;font-size:10.5px;z-index:2}
+.menu .em{color:var(--fg2);padding:3px 6px;border-bottom:1px solid var(--border);margin-bottom:2px}
+.menu .mi{display:flex;gap:6px;align-items:center;padding:3px 6px;border-radius:4px}
+.menu .mi:hover{background:var(--subtle)}
+.menu .sep{border-top:1px solid var(--border);margin:2px 0}
+.wf-main{padding:8px 10px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.wf-head{display:flex;justify-content:space-between;align-items:center;gap:6px;border-bottom:1px solid var(--border);padding-bottom:6px;font-size:10.5px;color:var(--fg2)}
+.wf-head .tools{display:flex;gap:4px}
+.r{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.col{display:flex;flex-direction:column;gap:5px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+@media (max-width:520px){.g4{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr}}
+.box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 7px;min-width:0}
+.box.dash{border-style:dashed}
+.box.hl{border-color:var(--link);box-shadow:0 0 0 1px var(--link)}
+.t{font-weight:700;font-size:12.5px}
+.t.big{font-size:15px}
+.s{color:var(--fg2);font-size:10.5px}
+.ln{height:6px;border-radius:3px;background:var(--skel)}
+.w30{width:30%}.w50{width:50%}.w70{width:70%}.w90{width:90%}
+.b{display:inline-block;border:1px solid var(--ctl);border-radius:5px;padding:2px 7px;font-size:10.5px;background:var(--surface);white-space:nowrap}
+.b.p{background:var(--gold);color:var(--gold-fg);border-color:transparent;font-weight:700}
+.in{border:1px solid var(--ctl);border-radius:5px;padding:3px 6px;font-size:10.5px;color:var(--fg2);background:var(--surface);min-width:0}
+.tab{font-size:10.5px;padding:3px 6px;border-bottom:2px solid transparent;color:var(--fg2)}
+.tab.on{border-color:var(--link);color:var(--link);font-weight:700}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ch{font-size:9.5px;padding:1px 6px;border-radius:999px;white-space:nowrap}
+.ch.d{background:var(--info-bg);color:var(--info)}
+.ch.e{background:var(--cur-bg);color:var(--cur)}
+.ch.sim{background:var(--opt-bg);color:var(--opt)}
+.ch.w{background:var(--warn-bg);color:var(--warn)}
+.ch.n{background:var(--subtle);color:var(--fg2)}
+.ch.ok{background:var(--ok-bg);color:var(--ok)}
+.ch.bad{background:var(--bad-bg);color:var(--bad)}
+.kpi{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.kpi small{font-size:10px;font-weight:600;color:var(--fg2)}
+.tip{display:inline-grid;place-items:center;width:13px;height:13px;border-radius:50%;border:1px solid var(--ctl);font-size:8.5px;font-weight:700;color:var(--fg2);margin-left:3px}
+.tipbox{background:var(--fg);color:var(--canvas);border-radius:6px;padding:5px 7px;font-size:10px;line-height:1.35;max-width:220px}
+.mean{background:var(--info-bg);border-radius:6px;padding:7px 8px;display:flex;flex-direction:column;gap:4px}
+.mean .t{color:var(--info)}
+.bars{display:flex;align-items:flex-end;gap:3px;height:42px}
+.bars i{flex:1;background:var(--cur);opacity:.75;border-radius:2px 2px 0 0;display:block}
+.bars.o i:nth-child(even){background:var(--opt);opacity:.75}
+.strip{display:grid;grid-template-columns:repeat(13,1fr);gap:2px}
+.strip i{height:16px;border-radius:2px;display:block}
+.flow{display:grid;grid-template-columns:auto 1fr 1fr auto;gap:6px;align-items:center}
+.dots{display:flex;gap:3px;flex-wrap:wrap}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--gold);display:block}
+.ctr{display:flex;justify-content:space-between;align-items:center;gap:4px}
+.dotst{width:6px;height:6px;border-radius:50%;display:inline-block;background:var(--cur)}
+.dotst.idle{background:var(--ok)}
+.track{height:5px;border-radius:3px;background:var(--skel);position:relative}
+.track i{position:absolute;left:0;top:0;bottom:0;width:55%;background:var(--link);border-radius:3px}
+.hero-t{font-size:18px;font-weight:800;line-height:1.15}
+/* queue diagrams */
+.qd{width:100%;height:auto;display:block}
+.qd .person{fill:var(--person)}
+.qd .person.dim{fill:var(--person2)}
+.qd .desk{fill:var(--counter);stroke:var(--ctl);stroke-width:1.5}
+.qd .desk.free{stroke:var(--ok);stroke-width:2}
+.qd .lane{fill:var(--subtle)}
+.qd .rope{stroke:var(--ctl);stroke-width:1.5;stroke-dasharray:4 3;fill:none}
+.qd .flowline{stroke:var(--link);stroke-width:1.6;fill:none}
+.qd .flowline.go{stroke:var(--ok);stroke-width:2.2}
+.qd text{fill:var(--fg);font:600 11px var(--font)}
+.qd text.s{fill:var(--fg2);font:500 10px var(--font)}
+.qd text.ok{fill:var(--ok);font:700 10px var(--font)}
+.qd text.in{fill:var(--fg);font:700 10px var(--font)}
+.qcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.qcard h5{margin:0;font-size:13px}
+.qcard p{margin:0;font-size:11.5px;color:var(--fg2);line-height:1.4}
+.qcard .ex{font-size:10.5px;color:var(--fg2)}
+.qcard.pick{border-color:var(--link);box-shadow:0 0 0 1px var(--link)}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.opt{border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--canvas)}
+.opt h5{margin:0;font-size:14px}
+.opt p{margin:0;font-size:13px;color:var(--fg2)}
+.qs{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+table.lim{width:100%;border-collapse:collapse;font-size:14px}
+table.lim th,table.lim td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+table.lim th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg2)}
+.tw{overflow-x:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13.5px;color:var(--fg2)}
+.footer-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+button.copy{font:600 14px var(--font);background:var(--gold);color:var(--gold-fg);border:0;border-radius:8px;padding:10px 16px;cursor:pointer}
+button.ghost{font:600 14px var(--font);background:transparent;color:var(--fg);border:1px solid var(--ctl);border-radius:8px;padding:9px 14px;cursor:pointer}
+#copy-status{font-size:14px;color:var(--fg2)}
+#all-notes{width:100%;min-height:120px;font:13px var(--mono);border:1px solid var(--ctl);border-radius:8px;padding:10px;background:var(--surface);color:var(--fg)}
+.sheetlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.sheet{border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--canvas);font-size:13px}
+.sheet b{display:block;font-size:13.5px}
+.sheet span{color:var(--fg2)}
+.pickwrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1000px){.pickwrap{grid-template-columns:minmax(0,1fr)}}
+.preview{position:sticky;top:12px}
+@media (max-width:1000px){.preview{position:static}}
+.pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.pk{display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--surface);cursor:pointer;position:relative}
+.pk:has(input:checked){border-color:var(--link);box-shadow:0 0 0 1px var(--link)}
+.pk:has(input:focus-visible){outline:3px solid var(--focus);outline-offset:2px}
+.pk input{position:absolute;top:10px;right:10px;width:18px;height:18px;accent-color:var(--link)}
+.pk .nm{font-weight:700;font-size:13.5px;padding-right:24px}
+.pk .pl{font-size:12.5px;color:var(--fg2);line-height:1.4}
+.pk .tags{display:flex;gap:4px;flex-wrap:wrap}
+.pk .mini{height:40px;border-radius:6px;background:var(--canvas);border:1px solid var(--border);display:flex;align-items:center;padding:4px 8px;gap:6px}
+.pk .grp-h{grid-column:1/-1}
+.grph{grid-column:1/-1;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2);font-weight:600;margin-top:4px}
+.pvcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+.pvcharts{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.lnk{font-size:10.5px;color:var(--link);text-decoration:underline}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;border:1px solid var(--border)}
+.st{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:999px;white-space:nowrap}
+.st.serving{background:var(--cur-bg);color:var(--cur)}
+.st.finishing{background:var(--warn-bg);color:var(--warn)}
+.st.onbreak{background:var(--opt-bg);color:var(--opt)}
+.st.available{background:var(--ok-bg);color:var(--ok)}
+.st.closed{background:var(--subtle);color:var(--fg2);border:1px dashed var(--ctl)}
+.stepbox{border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--surface);display:flex;flex-direction:column;gap:6px}
+.stepbox.muted{opacity:.8;border-style:dashed}
+.tl{position:relative;height:8px;border-radius:4px;background:var(--skel);margin-bottom:12px}
+.tl i{position:absolute;left:0;top:0;bottom:0;background:var(--link);border-radius:4px;display:block}
+.tl .tick{position:absolute;top:10px;font-size:9px;color:var(--fg2)}
+.tlb{position:relative;height:14px;overflow:hidden}
+.tlb .sb{position:absolute;top:2px;height:8px;border-radius:2px;background:repeating-linear-gradient(45deg,var(--opt) 0 2px,transparent 2px 4px);border:1px solid var(--opt)}
+table.wft{width:100%;border-collapse:collapse;font-size:10.5px}
+table.wft th,table.wft td{text-align:left;padding:3px 5px;border-bottom:1px solid var(--border);white-space:nowrap}
+table.wft th{color:var(--fg2);font-weight:600}
+.kpiblock{border:1px solid var(--opt);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--canvas)}
+table.kt{width:100%;border-collapse:collapse;font-size:10.5px}
+table.kt th,table.kt td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+table.kt td:nth-child(2),table.kt td:nth-child(3){font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.kt td:last-child{color:var(--fg2)}
+table.kt th{color:var(--fg2);font-weight:600}
+table.kt th.cur{color:var(--cur)}
+table.kt th.opt{color:var(--opt)}
+.chartgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
+.mc{width:100%;height:auto;display:block}
+.mc .ax{stroke:var(--ctl);stroke-width:1}
+.mc .gr{stroke:var(--border);stroke-width:1;stroke-dasharray:3 3}
+.mc .lc{fill:none;stroke:var(--cur);stroke-width:2}
+.mc .lo{fill:none;stroke:var(--opt);stroke-width:2;stroke-dasharray:5 3}
+.mc .bc{fill:var(--cur)}
+.mc .bo{fill:var(--opt)}
+.mc .bn{fill:var(--skel)}
+.mc .bopen{fill:var(--skel)}
+.mc .bbusy{fill:var(--cur)}
+.mc .brk{fill:var(--opt-bg);opacity:.9}
+.mc .lim{stroke:var(--warn);stroke-width:1.5;stroke-dasharray:4 3}
+.mc .ci{stroke:var(--fg);stroke-width:1.2}
+.mc text{fill:var(--fg2);font:500 8.5px var(--font)}
+.key{font-size:9.5px;color:var(--fg2);display:inline-flex;align-items:center;gap:4px}
+.key::before{content:"";width:12px;height:3px;border-radius:2px;display:inline-block}
+.key.c::before{background:var(--cur)}
+.key.o::before{background:repeating-linear-gradient(90deg,var(--opt) 0 4px,transparent 4px 6px)}
+.key.n::before{background:var(--skel);height:8px}
+.key.b::before{background:var(--opt-bg);height:8px;border:1px solid var(--opt)}
+.vsep{width:1px;height:16px;background:var(--border);display:inline-block}
+.seg{display:inline-flex;border:1px solid var(--ctl);border-radius:6px;overflow:hidden}
+.segb{font-size:10.5px;padding:2px 8px;color:var(--fg2);background:var(--surface)}
+.segb.on{background:var(--link);color:var(--surface);font-weight:700}
+.tabdiv{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;border-top:2px dashed var(--border);padding-top:6px;margin-top:4px}
+.tabdiv>span:first-child{font-weight:700;font-size:12.5px}
+.pnav{display:flex;gap:4px;border-bottom:2px solid var(--border);font-size:10.5px}
+.pnav span{padding:3px 7px;color:var(--fg2);font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px}
+.pnav span.on{color:var(--link);border-bottom-color:var(--link)}
+.opt .wf{font-size:11px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<!-- shared symbols -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="p" viewBox="0 0 16 26"><circle cx="8" cy="5" r="4.6"/><rect x="2" y="11" width="12" height="14" rx="5"/></symbol>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" style="fill:var(--link)"/></marker>
+    <marker id="ahg" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" style="fill:var(--ok)"/></marker>
+  </defs>
+</svg>
+
+<div class="shell">
+<nav class="index" aria-label="Screens">
+  <h2>Overview</h2>
+  <a href="#v2"><span class="n">·</span>What changed (v10)</a>
+  <a href="#decisions"><span class="n">·</span>Decisions applied</a>
+  <a href="#map"><span class="n">·</span>Screen map</a>
+  <a href="#path"><span class="n">·</span>End-to-end path</a>
+  <h2>Public</h2>
+  <a href="#s1"><span class="n">1</span>Home<span class="dot" title="Changed"></span></a>
+  <a href="#s2"><span class="n">2</span>Quick calculator (guest)<span class="dot" title="Changed"></span></a>
+  <a href="#s3"><span class="n">3</span>Help center</a>
+  <a href="#s4"><span class="n">4</span>Sign in</a>
+  <h2>Signed in</h2>
+  <a href="#shell"><span class="n">·</span>App shell<span class="dot" title="Changed"></span></a>
+  <a href="#s5"><span class="n">5</span>My analyses</a>
+  <a href="#s6"><span class="n">6</span>New analysis<span class="dot" title="Changed"></span></a>
+  <a href="#s7a"><span class="n">7A</span>Data and setup<span class="dot" title="Changed"></span></a>
+  <a href="#s7b"><span class="n">7B</span>Suggested plans</a>
+  <a href="#s8"><span class="n">8</span>Analysis results<span class="dot" title="Changed"></span></a>
+  <a href="#s9"><span class="n">9</span>Queue simulation<span class="dot" title="Changed"></span></a>
+  <a href="#s10"><span class="n">10</span>Decision<span class="dot" title="Changed"></span></a>
+  <a href="#s11"><span class="n">11</span>Reports<span class="dot" title="Changed"></span></a>
+  <a href="#s12"><span class="n">12</span>Quick calculator<span class="dot" title="Changed"></span></a>
+  <a href="#s13"><span class="n">13</span>Help</a>
+  <a href="#s14"><span class="n">14</span>Settings</a>
+  <h2>Wrap-up</h2>
+  <a href="#limits"><span class="n">·</span>Not in this redesign</a>
+  <a href="#send"><span class="n">·</span>Send me your changes</a>
+</nav>
+
+<main>
+<header class="masthead">
+  <div>
+    <div class="brand">Nova<b>Q</b> · redesign review</div>
+    <h1>NovaQ Redesign Map</h1>
+    <p>Every screen of the proposed compact workflow, from the public homepage to the downloaded report. These are low-detail wireframes for checking structure, order and wording, not final visuals. Write any change in the box under a screen, then copy all notes at the bottom and paste them to me.</p>
+  </div>
+  <div class="status">
+    <span class="pill new">Version 10</span>
+    <span class="pill warn">Proposed · not built</span>
+  </div>
+</header>
+
+<section class="block" id="v2">
+  <h2>What changed in version 10</h2>
+  <div class="changes">
+    <div class="chg"><strong>Two-level results and reports</strong><span>Analysis results shows a "Calculated result · not yet checked by simulation" card once a plan is chosen. Reports has a plan report and a full report, a new sidebar item under Insights, and a reviewed mockup.</span></div>
+    <div class="chg"><strong>Queue simulation: three pages</strong><span>Key results · Replay · Checks and decision, one run bar, 4 headline numbers and 2 charts first, Decision first with one line per check, smooth replay at 0.25×–10×. Corrected which checks the decision needs.</span></div>
+    <div class="chg"><strong>Analysis results: final draft</strong><span>"View results from" any processed file with Data covers and Uploaded on, a read-only banner for older files, four key results in plain words, busy-level day strip, cashier-line workload, and "What the plan changes" once a plan exists.</span></div>
+    <div class="chg"><strong>Simulation key results</strong><span>"Key results | Replay" tabs right next to the Current / Suggested plan switch. Key results (Day summary table + four charts) opens first; step 2 has its own key results and chart.</span></div>
+    <div class="chg"><strong>Queue simulation: final draft</strong><span>Three steps on one page. "Run full operation" plays one continuous day with play, pause, speed and go-to-time. Counter states from real events, scheduled breaks shown separately, whole-day and per-period results from the same run.</span></div>
+    <div class="chg"><strong>Data and setup</strong><span>Upload asks "Use for planning" or "Review only". New "At closing time" setting with no preselected answer.</span></div>
+    <div class="chg"><strong>Backend scope</strong><span>Now includes B3, B4 (a, b, c), B5 and the planning-file choice, as decided. B6 likely; to be confirmed in the B4 spec.</span></div>
+    <div class="chg"><strong>Earlier in version 2</strong><span>Home pictures, single Start button, calculator tips and comparison, account menu, plain-word Decision, PDF summary and Excel calculations.</span></div>
+  </div>
+</section>
+
+<div class="legend" aria-label="Number source labels used in the wireframes">
+  Number labels on screens:
+  <span class="ch d">From your data</span>
+  <span class="ch e">Calculated estimate</span>
+  <span class="ch sim">From a simulation</span>
+  <span class="ch w">Limitation shown to the user</span>
+</div>
+
+<section class="block" id="decisions">
+  <h2>Decisions applied</h2>
+  <div class="decisions">
+    <div class="dec"><span class="id">OD-UX-1</span><strong>Guest calculator: yes</strong><span>New public endpoint, same math, nothing saved, its own low request limit.</span></div>
+    <div class="dec"><span class="id">OD-UX-2</span><strong>No mandatory onboarding</strong><span>Help, hints and examples replace the wizard. Preferences move to Settings.</span></div>
+    <div class="dec"><span class="id">OD-UX-3</span><strong>New sidebar</strong><span>My analyses, Analysis results, Queue simulation, Quick calculator, plus an account menu.</span></div>
+    <div class="dec"><span class="id">OD-UX-4</span><strong>Compare page removed</strong><span>Plan picked in Suggested plans (one click) or switched in Analysis results.</span></div>
+    <div class="dec"><span class="id">OD-UX-5</span><strong>Home pictures: no numbers</strong><span>No wait-time numbers on the public page.</span></div>
+    <div class="dec"><span class="id">OD-UX-6</span><strong>Backend in scope</strong><span>B1 preferences, B2 guest calculator, B3 older files, B4a/b/c continuous simulation, B5 break states, B8 calculation Excel, B9 numbers without a file, plus the planning-file choice.</span></div>
+    <div class="dec"><span class="id">OD-UX-7</span><strong>Fix two docs' formatting</strong><span>Design-system Master and product-decisions get real line breaks.</span></div>
+    <div class="dec"><span class="id">Results</span><strong>Managers first; any processed file</strong><span>Read-only review of older files; upload asks "Use for planning" or "Review only"; dates saved at upload; recalculation labelled; money only with a plan.</span></div>
+    <div class="dec"><span class="id">Reports</span><strong>Two levels, PDF for managers, Excel for checking</strong><span>Plan report after a plan is chosen; full report after the Decision. Excel with live formulas where possible. Reports in the sidebar. Reviewed.</span></div>
+    <div class="dec"><span class="id">Simulation</span><strong>Three pages; continuous day (B4)</strong><span>B4a preview, B4b real service times as standard; closing rule saved per analysis, chosen explicitly; break states from events only.</span></div>
+  </div>
+</section>
+
+<section class="block" id="map">
+  <h2>Screen map</h2>
+  <div class="map">
+    <div class="zone">
+      <h3>Public · no sign-in</h3>
+      <div class="node"><span class="n">1</span>Home</div>
+      <div class="node"><span class="n">2</span>Quick calculator (guest)</div>
+      <div class="node"><span class="n">3</span>Help center (public topics)</div>
+      <div class="node"><span class="n">4</span>Sign in · Create account · Verify email · Forgot / reset password</div>
+    </div>
+    <div class="zone signed">
+      <h3>Signed in · sidebar</h3>
+      <div class="node grp">Workspace</div>
+      <div class="node"><span class="n">5</span>My analyses</div>
+      <div class="node"><span class="n">6</span>New analysis</div>
+      <div class="node"><span class="n">7</span>Analysis workspace: A Data and setup · B Suggested plans</div>
+      <div class="node grp">Insights</div>
+      <div class="node"><span class="n">8</span>Analysis results</div>
+      <div class="node"><span class="n">11</span>Reports (plan report, full report, data only)</div>
+    </div>
+    <div class="zone signed">
+      <h3>Signed in · continued</h3>
+      <div class="node grp">Simulation</div>
+      <div class="node"><span class="n">9</span>Queue simulation</div>
+      <div class="node"><span class="n">10</span>Decision (Checks and decision page)</div>
+      <div class="node grp">Tools</div>
+      <div class="node"><span class="n">12</span>Quick calculator</div>
+      <div class="node grp">Account menu</div>
+      <div class="node"><span class="n">13</span>Get help · <span class="n">14</span>Settings · Language · Log out</div>
+    </div>
+  </div>
+  <p class="lede">Old addresses keep working: Dashboard and the Compare page redirect to My analyses and Analysis results; Datasets, Account and Admin open inside Settings; Optimize opens Suggested plans.</p>
+</section>
+
+<section class="block" id="path">
+  <h2>End-to-end path</h2>
+  <div class="path" role="list">
+    <span class="step" role="listitem">Home</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step key" role="listitem">Start an analysis</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">Sign in or Google</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">New analysis</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">Template → upload → review</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">Suggested plans</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step key" role="listitem">Use this plan</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">Analysis results</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">Queue simulation</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">Checks</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step" role="listitem">Decision</span><span class="arr" aria-hidden="true">→</span>
+    <span class="step key" role="listitem">Download report</span>
+  </div>
+</section>
+
+<!-- 1 HOME -->
+<article class="screen" id="s1" data-screen="1 Home">
+  <header><h3><span class="num">1</span>Home <span class="pill new">Changed</span></h3><span class="route">/</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-bar"><i></i><i></i><i></i><span>novaq.site</span></div>
+      <div class="wf-main">
+        <div class="r" style="justify-content:space-between"><span class="t">Nova<span style="color:var(--gold)">Q</span></span><span class="r"><span class="s">How it works · Quick calculator · Help</span><span class="in">English ▾</span><span class="s">☀</span><span class="b">Sign in</span></span></div>
+        <div class="col" style="padding:6px 0">
+          <span class="hero-t">See how long your customers wait.<br>Find a better way to staff your counters.</span>
+          <span class="s" style="max-width:52ch">Upload your customer records. NovaQ shows when lines get long, suggests how many counters to open, and replays your day so you can see the difference.</span>
+          <div class="r"><span class="b p">Start an analysis →</span><span class="b">Try the quick calculator</span></div>
+          <span class="s">The calculator works without an account.</span>
+        </div>
+        <span class="t">How do your customers line up?</span>
+        <div class="g2">
+          <div class="qcard">
+            <svg class="qd" viewBox="0 0 300 140" role="img" aria-label="One shared line feeding three counters">
+              <rect class="lane" x="6" y="58" width="168" height="34" rx="17"/>
+              <path class="rope" d="M14 58 H170 M14 92 H170"/>
+              <use href="#p" class="person" x="18" y="62" width="16" height="26"/>
+              <use href="#p" class="person" x="44" y="62" width="16" height="26"/>
+              <use href="#p" class="person" x="70" y="62" width="16" height="26"/>
+              <use href="#p" class="person" x="96" y="62" width="16" height="26"/>
+              <use href="#p" class="person" x="122" y="62" width="16" height="26"/>
+              <use href="#p" class="person" x="148" y="62" width="16" height="26"/>
+              <text class="s" x="148" y="52">next</text>
+              <path class="flowline" d="M176 75 C200 75 205 28 228 28" marker-end="url(#ah)"/>
+              <path class="flowline go" d="M176 75 H228" marker-end="url(#ahg)"/>
+              <path class="flowline" d="M176 75 C200 75 205 122 228 122" marker-end="url(#ah)"/>
+              <rect class="desk" x="232" y="12" width="62" height="32" rx="6"/><text class="in" x="240" y="26">Counter 1</text><text class="s" x="240" y="38">busy</text>
+              <rect class="desk free" x="232" y="59" width="62" height="32" rx="6"/><text class="in" x="240" y="73">Counter 2</text><text class="ok" x="240" y="85">free</text>
+              <rect class="desk" x="232" y="106" width="62" height="32" rx="6"/><text class="in" x="240" y="120">Counter 3</text><text class="s" x="240" y="132">busy</text>
+            </svg>
+            <h5>Everyone waits in one line</h5>
+            <p>The next person walks to whichever counter is free.</p>
+            <span class="ex">Like a bank, a pharmacy, or "next please" service.</span>
+          </div>
+          <div class="qcard">
+            <svg class="qd" viewBox="0 0 300 140" role="img" aria-label="Three separate lines, each to its own counter">
+              <rect class="lane" x="6" y="12" width="210" height="32" rx="16"/>
+              <rect class="lane" x="6" y="59" width="210" height="32" rx="16"/>
+              <rect class="lane" x="6" y="106" width="210" height="32" rx="16"/>
+              <use href="#p" class="person" x="140" y="15" width="16" height="26"/>
+              <use href="#p" class="person" x="166" y="15" width="16" height="26"/>
+              <use href="#p" class="person" x="192" y="15" width="16" height="26"/>
+              <use href="#p" class="person" x="192" y="62" width="16" height="26"/>
+              <use href="#p" class="person" x="114" y="109" width="16" height="26"/>
+              <use href="#p" class="person" x="140" y="109" width="16" height="26"/>
+              <use href="#p" class="person" x="166" y="109" width="16" height="26"/>
+              <use href="#p" class="person" x="192" y="109" width="16" height="26"/>
+              <path class="flowline" d="M216 28 H228" marker-end="url(#ah)"/>
+              <path class="flowline" d="M216 75 H228" marker-end="url(#ah)"/>
+              <path class="flowline" d="M216 122 H228" marker-end="url(#ah)"/>
+              <rect class="desk" x="232" y="12" width="62" height="32" rx="6"/><text class="in" x="240" y="26">Counter 1</text><text class="s" x="240" y="38">3 waiting</text>
+              <rect class="desk" x="232" y="59" width="62" height="32" rx="6"/><text class="in" x="240" y="73">Counter 2</text><text class="s" x="240" y="85">1 waiting</text>
+              <rect class="desk" x="232" y="106" width="62" height="32" rx="6"/><text class="in" x="240" y="120">Counter 3</text><text class="s" x="240" y="132">4 waiting</text>
+            </svg>
+            <h5>Each counter has its own line</h5>
+            <p>People pick a line and stay in it, even if another line moves faster.</p>
+            <span class="ex">Like supermarket checkout lanes.</span>
+          </div>
+        </div>
+        <div class="g3"><div class="box"><span class="t">1 Add your records</span><div class="s">Fill in our Excel template with customer times and counter schedules.</div></div><div class="box"><span class="t">2 See suggested plans</span><div class="s">How many counters to open, and when breaks fit best.</div></div><div class="box"><span class="t">3 Watch your day</span><div class="s">Replay customers arriving, waiting and being served.</div></div></div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Header: logo, How it works, Quick calculator, Help, language, theme, <strong>Sign in</strong>. No Start button in the header.</li>
+        <li>One <strong>Start an analysis</strong> button, in the hero, next to Try the quick calculator.</li>
+        <li>"How do your customers line up?" with two pictures: one shared line (shows a free counter taking the next person) and separate lines (each counter with its own line). Each has one plain sentence and an everyday example.</li>
+        <li>The waiting counts in the pictures are drawings, not results.</li>
+        <li>Three steps in everyday words, then a footer with Help and language.</li>
+      </ul>
+      <div class="notes"><label for="n1">Your changes</label><textarea id="n1" data-note placeholder="e.g. change the headline, add a section…"></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 2 GUEST CALC -->
+<article class="screen" id="s2" data-screen="2 Quick calculator (guest)">
+  <header><h3><span class="num">2</span>Quick calculator (guest) <span class="pill new">Changed</span></h3><span class="route">/calculator</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-bar"><i></i><i></i><i></i><span>novaq.site/calculator</span></div>
+      <div class="wf-main">
+        <div class="r" style="justify-content:space-between"><span class="t big">Quick calculator</span><span class="ch n">No account needed · nothing saved</span></div>
+        <div class="tabs"><span class="tab on">Basic</span><span class="tab">Service time varies</span><span class="tab">Limited waiting space</span><span class="tab">Some people leave</span></div>
+        <div class="g3">
+          <div class="col"><span class="s">Customers arriving per hour<span class="tip">i</span></span><span class="in">40</span>
+            <span class="tipbox">How many customers come in during one hour, on average. Count a normal busy hour.</span></div>
+          <div class="col"><span class="s">Customers one counter serves per hour<span class="tip">i</span></span><span class="in">15</span></div>
+          <div class="col"><span class="s">Counters open<span class="tip">i</span></span><span class="in">3</span></div>
+        </div>
+        <div class="r"><span class="b p">Calculate</span></div>
+        <div class="g4">
+          <div class="box"><div class="s">Average wait in line<span class="tip">i</span></div><div class="kpi">9.57 <small>min</small></div></div>
+          <div class="box"><div class="s">How busy counters are<span class="tip">i</span></div><div class="kpi">88.9 <small>%</small></div></div>
+          <div class="box"><div class="s">People waiting, on average<span class="tip">i</span></div><div class="kpi">6.38</div></div>
+          <div class="box"><div class="s">Can counters keep up?<span class="tip">i</span></div><div class="kpi" style="color:var(--ok)">Yes</div></div>
+        </div>
+        <div class="mean">
+          <span class="t">What this means</span>
+          <span class="s" style="color:var(--fg)">With 3 counters open, a customer waits about 9.6 minutes before being served. The counters are busy about 89% of the time.</span>
+          <div class="g3">
+            <div class="box"><div class="s">2 counters</div><div class="t" style="color:var(--bad)">Cannot keep up</div><div class="s">The line keeps growing.</div></div>
+            <div class="box hl"><div class="s">3 counters · now</div><div class="t">9.6 min wait</div><div class="s">89% busy</div></div>
+            <div class="box"><div class="s">4 counters</div><div class="t">1.1 min wait</div><div class="s">67% busy</div></div>
+          </div>
+          <span class="s">A quick estimate for one typical hour. It assumes customers arrive at random. Start an analysis to use your real records.</span>
+        </div>
+        <span class="ch e" style="align-self:flex-start">Calculated estimate · example values from NovaQ's engine</span>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Plain labels; each input and result has an ⓘ that opens a short explanation on tap, hover or keyboard focus. The open tip in the picture is an example.</li>
+        <li>Tabs named by situation, not by model: Service time varies, Limited waiting space, Some people leave.</li>
+        <li><strong>What this means</strong>: one sentence built only from the returned results, plus the same calculation with one fewer and one more counter, so the user sees the trade-off.</li>
+        <li>When counters cannot keep up, the result says so in words, with no wait time (the engine returns none).</li>
+        <li>No "you should" advice: it shows what changes, and the user decides.</li>
+      </ul>
+      <div class="limit">The example numbers (40 arrivals, 15 served per counter, 3 counters) were computed with NovaQ's own engine for this mock-up. The comparison needs three calculations per click; the guest request limit must allow for that.</div>
+      <div class="notes"><label for="n2">Your changes</label><textarea id="n2" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 3 HELP PUBLIC -->
+<article class="screen" id="s3" data-screen="3 Help center (public)">
+  <header><h3><span class="num">3</span>Help center (public)</h3><span class="route">/help</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-bar"><i></i><i></i><i></i><span>novaq.site/help</span></div>
+      <div class="wf-main">
+        <span class="t big">Find help</span><span class="in">Search help…</span>
+        <div class="g3"><div class="box"><span class="t">Starting an analysis</span><div class="ln w70" style="margin-top:4px"></div></div><div class="box"><span class="t">Adding your data</span><div class="ln w70" style="margin-top:4px"></div></div><div class="box"><span class="t">Using the calculator</span><div class="ln w70" style="margin-top:4px"></div></div></div>
+        <div class="g3"><div class="box"><span class="t">Signing in</span><div class="ln w70" style="margin-top:4px"></div></div><div class="box"><span class="t">Google sign-in problems</span><div class="ln w70" style="margin-top:4px"></div></div><div class="box"><span class="t">What NovaQ calculates</span><div class="ln w70" style="margin-top:4px"></div></div></div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Search across guide titles and text, English and Filipino.</li>
+        <li>Topics that make sense before signing in. The full list is on screen 13.</li>
+      </ul>
+      <div class="notes"><label for="n3">Your changes</label><textarea id="n3" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 4 SIGN IN -->
+<article class="screen" id="s4" data-screen="4 Sign in / Create account">
+  <header><h3><span class="num">4</span>Sign in · Create account</h3><span class="route">/login · /register · /verify-email · /forgot-password · /reset-password</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-bar"><i></i><i></i><i></i><span>novaq.site/login?next=/analyses/new</span></div>
+      <div class="wf-main" style="align-items:center">
+        <div class="r" style="align-self:stretch;justify-content:flex-end"><span class="in">English ▾</span></div>
+        <div class="box col" style="width:min(260px,100%)">
+          <span class="t big">Sign in</span>
+          <span class="b" style="text-align:center">G&nbsp; Continue with Google</span>
+          <span class="s" style="text-align:center">or</span>
+          <span class="s">Email</span><span class="in">you@example.com</span>
+          <span class="s">Password</span><span class="in">••••••••</span>
+          <span class="r s" style="justify-content:space-between"><span>Forgot password?</span><span>Resend verification</span></span>
+          <span class="b p" style="text-align:center">Sign in</span>
+          <span class="s" style="text-align:center">No account? Create one</span>
+        </div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Google button shown only when Google sign-in is turned on in the server settings.</li>
+        <li>Email and password, forgot password, resend verification, create account, language dropdown.</li>
+        <li>Came from "Start an analysis": you land on New analysis after signing in, after Google, or after confirming your email.</li>
+        <li>Normal sign-in lands on My analyses.</li>
+      </ul>
+      <div class="notes"><label for="n4">Your changes</label><textarea id="n4" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- SHELL -->
+<article class="screen" id="shell" data-screen="App shell (sidebar + header)">
+  <header><h3><span class="num">·</span>App shell: sidebar and header <span class="pill new">Changed</span></h3><span class="route">every signed-in screen</span></header>
+  <div class="body">
+    <div class="col" style="gap:10px">
+      <div class="wf" aria-hidden="true">
+        <div class="wf-app">
+          <div class="wf-side">
+            <div class="top"><b>Nova<em>Q</em></b><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></div>
+            <span class="g">WORKSPACE</span><span class="it on">My analyses</span>
+            <span class="g">INSIGHTS</span><span class="it">Analysis results</span><span class="it">Reports</span>
+            <span class="g">SIMULATION</span><span class="it">Queue simulation</span>
+            <span class="g">TOOLS</span><span class="it">Quick calculator</span>
+            <div class="menu">
+              <span class="em">you@example.com</span>
+              <span class="mi"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.4.9a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.4-.9a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg>Settings</span>
+              <span class="mi"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>Language ▸</span>
+              <span class="mi"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.9.4-1.4 1-1.4 2.2M12 17h.01"/></svg>Get help</span>
+              <span class="sep"></span>
+              <span class="mi"><svg class="ico" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>Log out</span>
+            </div>
+            <div class="chip"><span class="av">YU</span><span>you@example…</span><span style="margin-left:auto">⌃</span></div>
+          </div>
+          <div class="wf-main">
+            <div class="wf-head"><span>NovaQ / Workspace / <strong style="color:var(--fg)">My analyses</strong></span><span class="tools"><span class="b">☀</span></span></div>
+            <div class="ln w50"></div><div class="ln w90"></div><div class="ln w70"></div>
+            <div class="g2"><div class="box dash" style="height:60px"></div><div class="box dash" style="height:60px"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="wf" aria-hidden="true">
+        <div class="wf-app rail" style="min-height:150px">
+          <div class="wf-side" style="align-items:center;padding:10px 4px">
+            <svg class="ico" viewBox="0 0 24 24" style="color:var(--side-hi);margin-bottom:8px"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+            <span class="it on"><svg class="ico" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6V2Z"/></svg></span>
+            <span class="it"><svg class="ico" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg></span>
+            <span class="it"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7"/><rect x="14" y="13" width="7" height="7"/><path d="M10 7h4v6"/></svg></span>
+            <span class="it"><svg class="ico" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8v4H8z"/></svg></span>
+            <span class="av" style="margin-top:auto">YU</span>
+          </div>
+          <div class="wf-main"><div class="r"><span class="tipbox">Analysis results</span><span class="s">← name shows on hover or keyboard focus</span></div><div class="ln w90"></div><div class="ln w70"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Top of the sidebar: logo and a <strong>hide-sidebar icon</strong> (no "Collapse" word). Its name is read out by screen readers and shown as a tooltip.</li>
+        <li>Groups: Workspace, Insights (Analysis results, Reports), Simulation, Tools.</li>
+        <li>Bottom: one <strong>account button</strong> (initials and email). It opens a menu: your email, Settings, Language, Get help, Log out. Escape or a click outside closes it.</li>
+        <li>Hidden sidebar: a narrow icon strip; each icon shows its name on hover and keyboard focus. The choice is remembered on this device.</li>
+        <li>Phone and tablet: a top bar with a menu button; the account menu sits at the bottom of that menu.</li>
+        <li>Header: where you are and the theme toggle. Language lives in the account menu (and on public pages in the header).</li>
+      </ul>
+      <div class="notes"><label for="nshell">Your changes</label><textarea id="nshell" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 5 MY ANALYSES -->
+<article class="screen" id="s5" data-screen="5 My analyses">
+  <header><h3><span class="num">5</span>My analyses</h3><span class="route">/analyses</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-app">
+        <div class="wf-side"><div class="top"><b>Nova<em>Q</em></b></div><span class="g">WORKSPACE</span><span class="it on">My analyses</span><span class="g">INSIGHTS</span><span class="it">Analysis results</span><span class="it">Reports</span><span class="g">SIMULATION</span><span class="it">Queue simulation</span><span class="g">TOOLS</span><span class="it">Quick calculator</span><div class="chip"><span class="av">YU</span><span>you@…</span></div></div>
+        <div class="wf-main">
+          <div class="r" style="justify-content:space-between"><span class="t big">Your analyses, in one place.</span><span class="b p">+ New analysis</span></div>
+          <div class="r"><span class="in" style="flex:1">Search analyses…</span><span class="b">All</span><span class="b">One line</span><span class="b">Separate lines</span><span class="s">2 analyses</span></div>
+          <div class="g2">
+            <div class="box col"><span class="r" style="justify-content:space-between"><span class="t">Main branch checkout</span><span class="ch n">Ready</span></span><span class="s">Everyone waits in one line</span><span class="s">05:00–18:00 · 13 periods</span><span class="r" style="justify-content:space-between"><span class="s">Archive</span><span class="b p">Open →</span></span></div>
+            <div class="box col"><span class="r" style="justify-content:space-between"><span class="t">Pharmacy counters</span><span class="ch n">Needs data</span></span><span class="s">Each counter has its own line</span><span class="s">Window not set yet</span><span class="r" style="justify-content:space-between"><span class="s">Archive</span><span class="b p">Open →</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Search by name, location or service type; filter by line type; count of results.</li>
+        <li>Card: name, line type in the same words as Home, setup status, operating window and period count when known.</li>
+        <li>Archive asks for confirmation first. Empty state links to the starting guide.</li>
+      </ul>
+      <div class="notes"><label for="n5">Your changes</label><textarea id="n5" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 6 NEW ANALYSIS -->
+<article class="screen" id="s6" data-screen="6 New analysis">
+  <header><h3><span class="num">6</span>New analysis <span class="pill new">Changed</span></h3><span class="route">/analyses/new</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-app">
+        <div class="wf-side"><div class="top"><b>Nova<em>Q</em></b></div><span class="g">WORKSPACE</span><span class="it on">My analyses</span><span class="g">INSIGHTS</span><span class="it">Analysis results</span><span class="it">Reports</span><div class="chip"><span class="av">YU</span><span>you@…</span></div></div>
+        <div class="wf-main">
+          <span class="t big">New analysis</span>
+          <div class="g3"><div class="col"><span class="s">Name</span><span class="in">Main branch checkout</span></div><div class="col"><span class="s">Type of service (optional)</span><span class="in">Supermarket</span></div><div class="col"><span class="s">Location (optional)</span><span class="in">Quezon City</span></div></div>
+          <span class="t">How do your customers line up?</span>
+          <div class="g2">
+            <div class="qcard pick">
+              <span class="r"><span class="t">◉</span><h5>Everyone waits in one line</h5></span>
+              <svg class="qd" viewBox="0 0 300 140" role="img" aria-label="One shared line feeding three counters">
+                <rect class="lane" x="6" y="58" width="168" height="34" rx="17"/>
+                <use href="#p" class="person" x="18" y="62" width="16" height="26"/><use href="#p" class="person" x="44" y="62" width="16" height="26"/><use href="#p" class="person" x="70" y="62" width="16" height="26"/><use href="#p" class="person" x="96" y="62" width="16" height="26"/><use href="#p" class="person" x="122" y="62" width="16" height="26"/><use href="#p" class="person" x="148" y="62" width="16" height="26"/>
+                <path class="flowline" d="M176 75 C200 75 205 28 228 28" marker-end="url(#ah)"/><path class="flowline go" d="M176 75 H228" marker-end="url(#ahg)"/><path class="flowline" d="M176 75 C200 75 205 122 228 122" marker-end="url(#ah)"/>
+                <rect class="desk" x="232" y="12" width="62" height="32" rx="6"/><text class="in" x="240" y="32">Counter 1</text>
+                <rect class="desk free" x="232" y="59" width="62" height="32" rx="6"/><text class="in" x="240" y="73">Counter 2</text><text class="ok" x="240" y="85">free</text>
+                <rect class="desk" x="232" y="106" width="62" height="32" rx="6"/><text class="in" x="240" y="126">Counter 3</text>
+              </svg>
+              <p>The next person goes to whichever counter is free.</p>
+              <span class="ex">Examples: bank, pharmacy, government office with "next please".</span>
+            </div>
+            <div class="qcard">
+              <span class="r"><span class="t">○</span><h5>Each counter has its own line</h5></span>
+              <svg class="qd" viewBox="0 0 300 140" role="img" aria-label="Three separate lines, each to its own counter">
+                <rect class="lane" x="6" y="12" width="210" height="32" rx="16"/><rect class="lane" x="6" y="59" width="210" height="32" rx="16"/><rect class="lane" x="6" y="106" width="210" height="32" rx="16"/>
+                <use href="#p" class="person" x="166" y="15" width="16" height="26"/><use href="#p" class="person" x="192" y="15" width="16" height="26"/>
+                <use href="#p" class="person" x="192" y="62" width="16" height="26"/>
+                <use href="#p" class="person" x="140" y="109" width="16" height="26"/><use href="#p" class="person" x="166" y="109" width="16" height="26"/><use href="#p" class="person" x="192" y="109" width="16" height="26"/>
+                <path class="flowline" d="M216 28 H228" marker-end="url(#ah)"/><path class="flowline" d="M216 75 H228" marker-end="url(#ah)"/><path class="flowline" d="M216 122 H228" marker-end="url(#ah)"/>
+                <rect class="desk" x="232" y="12" width="62" height="32" rx="6"/><text class="in" x="240" y="32">Counter 1</text>
+                <rect class="desk" x="232" y="59" width="62" height="32" rx="6"/><text class="in" x="240" y="79">Counter 2</text>
+                <rect class="desk" x="232" y="106" width="62" height="32" rx="6"/><text class="in" x="240" y="126">Counter 3</text>
+              </svg>
+              <p>People pick a line and stay in it.</p>
+              <span class="ex">Examples: supermarket checkout lanes, toll booths.</span>
+            </div>
+          </div>
+          <div class="box col"><span class="s">Separate lines: what do you call each counter?</span><div class="r"><span class="in">Counter 1</span><span class="in">Counter 2</span><span class="in">Counter 3</span><span class="b">+ Add</span></div></div>
+          <span class="s" style="color:var(--link)">▸ Not sure which one? Answer two questions</span>
+          <div class="r"><span class="b p">Create analysis</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Two large picture cards, the same drawings as Home, so users recognise them.</li>
+        <li>Shared line picture shows the free counter taking the next person; separate lines picture shows lines of different lengths.</li>
+        <li>Everyday examples under each card. Only the name is required.</li>
+        <li>Separate lines: counter names appear under the cards.</li>
+        <li>"Not sure?" opens two yes/no questions inline.</li>
+      </ul>
+      <div class="notes"><label for="n6">Your changes</label><textarea id="n6" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 7A -->
+<article class="screen" id="s7a" data-screen="7A Data and setup">
+  <header><h3><span class="num">7A</span>Analysis workspace · Data and setup</h3><span class="route">/analyses/:id/data</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-app">
+        <div class="wf-side"><div class="top"><b>Nova<em>Q</em></b></div><span class="g">WORKSPACE</span><span class="it on">My analyses</span><span class="g">INSIGHTS</span><span class="it">Analysis results</span><span class="it">Reports</span><span class="g">SIMULATION</span><span class="it">Queue simulation</span><div class="chip"><span class="av">YU</span><span>you@…</span></div></div>
+        <div class="wf-main">
+          <div class="r" style="justify-content:space-between"><span class="t big">Main branch checkout</span><span class="s">Data: march_week.xlsx · checked ✓</span></div>
+          <div class="box r" style="background:var(--info-bg);border-color:transparent;justify-content:space-between"><span class="s" style="color:var(--info)">Next step: upload your data</span><span class="b">Go</span></div>
+          <div class="tabs"><span class="tab on">Data and setup</span><span class="tab">Suggested plans</span></div>
+          <div class="box r"><span class="t">1</span><span class="s" style="flex:1">Download the template</span><span class="b p">Excel</span><span class="b">CSV</span></div>
+          <div class="box r"><span class="t">2</span><span class="s" style="flex:1">Fill it in Excel · example table</span></div>
+          <div class="box col"><span class="r"><span class="t">3</span><span class="s" style="flex:1">Upload</span><span class="in">choose file…</span><span class="b">Check file</span></span><span class="r s"><span>This file is for:</span><span class="b">◉ Use for planning</span><span class="b">○ Review only</span></span></div>
+          <div class="box col"><span class="r"><span class="t">4</span><span class="s">Review what we read: counters, shifts, periods, breaks</span></span><span class="ch w" style="align-self:flex-start">Upload will replace these settings · Confirm / Cancel</span></div>
+          <div class="box col"><span class="r"><span class="t">5</span><span class="s" style="flex:1">At closing time (required before simulating)</span></span><span class="s">○ Finish serving customers already waiting or checking out</span><span class="s">○ Stop service at closing; people still waiting are not served</span></div><div class="box r"><span class="t">6</span><span class="s" style="flex:1">▸ Advanced settings · Enter numbers without a file</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Next step panel, based only on saved results, never on pages visited.</li>
+        <li>Steps 1–4 reuse today's template, preview, confirm and upload. Upload asks whether the file is for planning or review only; a review-only file never becomes the plan's data.</li><li>"At closing time" has no preselected answer. It is saved per analysis and shown beside the operating hours; changing it affects future runs only.</li>
+        <li>Advanced settings: periods with a "Make periods" helper (1–24 periods of 15, 30 or 60 minutes), counters, breaks, capacity, customers leaving.</li>
+        <li>Enter numbers without a file (B9): typed rates become the normal file, labelled "Entered by you".</li>
+      </ul>
+      <div class="limit">Periods must start and end on the same day. Overnight periods are not supported (B7 not scheduled).</div>
+      <div class="notes"><label for="n7a">Your changes</label><textarea id="n7a" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 7B -->
+<article class="screen" id="s7b" data-screen="7B Suggested plans">
+  <header><h3><span class="num">7B</span>Analysis workspace · Suggested plans</h3><span class="route">/analyses/:id/plans</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-app">
+        <div class="wf-side"><div class="top"><b>Nova<em>Q</em></b></div><span class="g">WORKSPACE</span><span class="it on">My analyses</span><span class="g">INSIGHTS</span><span class="it">Analysis results</span><span class="it">Reports</span><div class="chip"><span class="av">YU</span><span>you@…</span></div></div>
+        <div class="wf-main">
+          <div class="tabs"><span class="tab">Data and setup</span><span class="tab on">Suggested plans</span></div>
+          <div class="g2">
+            <div class="box col"><span class="t">Counters to open</span><span class="s">Assumptions you can change</span><div class="g2"><span class="in">Target busy share 70%</span><span class="in">Counter cost / h</span><span class="in">Waiting cost / h</span><span class="in">Max wait (optional)</span></div><span class="b p" style="align-self:flex-start">Find a plan</span>
+              <div class="r"><span class="s">07:00</span><span class="ch d">2 now</span><span class="ch e">3 suggested</span></div><div class="r"><span class="s">08:00</span><span class="ch d">3 now</span><span class="ch e">3 suggested</span></div></div>
+            <div class="box col"><span class="t">Break times</span><span class="s">Separate lines only</span><span class="b" style="align-self:flex-start">Suggest break times</span><div class="ln w90"></div><div class="ln w70"></div><span class="ch sim" style="align-self:flex-start">Before / after from a simulation</span><span class="b" style="align-self:flex-start">Apply…</span></div>
+          </div>
+          <div class="box r" style="justify-content:space-between"><span class="s">Plan – Oct 10, 09:15</span><span class="r"><span class="b">Save without using</span><span class="b">View results</span><span class="b p">Use this plan</span></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Counters to open: defaults shown as defaults you can change; per-period table of current vs suggested counters and predicted wait.</li>
+        <li>Note: lowest modeled cost among options that meet your limits; an estimate, not a guarantee.</li>
+        <li>Break times (separate lines): proposed moves, simulated before/after, Apply opens a confirm window. Note: a local improvement; a better arrangement may exist.</li>
+        <li><strong>Use this plan</strong> saves and selects it for simulation in one click.</li>
+      </ul>
+      <div class="limit">Break suggestions are available for separate lines only.</div>
+      <div class="notes"><label for="n7b">Your changes</label><textarea id="n7b" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 8 RESULTS - FINAL -->
+<article class="screen" id="s8" data-screen="8 Analysis results">
+  <header><h3><span class="num">8</span>Analysis results <span class="pill new">Final draft</span></h3><span class="route">/results?analysis=:id&amp;file=:datasetId</span></header>
+  <div class="wide" style="padding-top:20px">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-app">
+        <div class="wf-side"><div class="top"><b>Nova<em>Q</em></b><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></div><span class="g">WORKSPACE</span><span class="it">My analyses</span><span class="g">INSIGHTS</span><span class="it on">Analysis results</span><span class="it">Reports</span><span class="g">SIMULATION</span><span class="it">Queue simulation</span><span class="g">TOOLS</span><span class="it">Quick calculator</span><div class="chip"><span class="av">YU</span><span>you@…</span></div></div>
+        <div class="wf-main">
+          <div class="r" style="justify-content:space-between"><span class="t big">Analysis results</span><span class="in">Analysis: Main branch checkout ▾</span></div>
+          <div class="box col">
+            <div class="r" style="justify-content:space-between">
+              <span class="r"><span class="s">View results from</span><span class="in" style="font-weight:700;color:var(--fg)">march_records.xlsx ▾</span></span>
+              <span class="b" title="Coming later">Compare with another file · later</span>
+            </div>
+            <div class="r"><span class="s"><strong style="color:var(--fg)">Data covers:</strong> Mar 1 – Mar 31, 2026</span><span class="s"><strong style="color:var(--fg)">Uploaded on:</strong> Oct 9, 2026</span><span class="ch n">Review only</span></div>
+          </div>
+          <div class="box col" style="background:var(--info-bg);border-color:transparent">
+            <span class="t" style="color:var(--info)">You are reviewing a previous file. Your current staffing plan has not changed.</span>
+            <span class="s">Calculated today from the inputs saved with this file. Results from the upload day were not saved.</span>
+          </div>
+          <span class="t">Key results</span>
+          <div class="kgrid">
+            <div class="box col"><span class="s">Recorded average wait</span><span class="kpi">— <small>min</small></span><span class="ch d" style="align-self:flex-start">From your data</span><span class="s">From customer arrival and service-start times.</span><span class="lnk">How was this calculated?</span></div>
+            <div class="box col"><span class="s">Estimated average wait</span><span class="kpi">— <small>min</small></span><span class="ch e" style="align-self:flex-start">Calculated estimate</span><span class="s">From your uploaded inputs and NovaQ's queue model.</span><span class="lnk">How was this calculated?</span></div>
+            <div class="box col"><span class="s">Period that needs attention</span><span class="t" style="color:var(--bad)">Counters can't keep up: 12:00–13:00</span><span class="s">Then highest estimated wait: 11:00–12:00 · — min</span><span class="ch e" style="align-self:flex-start">Calculated estimate</span><span class="s">Not the longest wait any one customer had.</span></div>
+            <div class="box col"><span class="s">Busiest period by customer arrivals</span><span class="kpi">11:00–12:00</span><span class="s">— customers per hour</span><span class="ch d" style="align-self:flex-start">From your data</span></div>
+          </div>
+          <div class="box col">
+            <div class="r" style="justify-content:space-between"><span class="t">Your day, by busy level</span><span class="s">05:00 – 18:00</span></div>
+            <div class="strip"><i style="background:var(--ok-bg)"></i><i style="background:var(--ok-bg)"></i><i style="background:var(--info-bg)"></i><i style="background:var(--info-bg)"></i><i style="background:var(--warn-bg)"></i><i style="background:var(--warn-bg)"></i><i style="background:var(--warn)"></i><i style="background:var(--bad)"></i><i style="background:var(--warn-bg)"></i><i style="background:var(--info-bg)"></i><i style="background:var(--info-bg)"></i><i style="background:var(--ok-bg)"></i><i style="background:var(--ok-bg)"></i></div>
+            <div class="r s"><span><i class="sw" style="background:var(--ok-bg)"></i>Lean, under 60%</span><span><i class="sw" style="background:var(--info-bg)"></i>Normal 60–80%</span><span><i class="sw" style="background:var(--warn-bg)"></i>Peak 80–90%</span><span><i class="sw" style="background:var(--warn)"></i>Critical 90–100%</span><span><i class="sw" style="background:var(--bad)"></i>Can't keep up</span></div>
+            <span class="s">Click a period to see its numbers. Busy levels are NovaQ's fixed labels, not a target for your store.</span>
+          </div>
+          <div class="g2">
+            <div class="box col"><span class="t">Estimated cashier-line workload</span><span class="s">Separate lines only · not a performance score</span>
+              <div class="cmp"><span>Counter 1</span><span class="bar"><i style="width:72%;background:var(--cur)"></i></span><span>Counter 2</span><span class="bar"><i style="width:91%;background:var(--warn)"></i></span><span>Counter 3</span><span class="bar"><i style="width:58%;background:var(--cur)"></i></span></div>
+              <span class="ch e" style="align-self:flex-start">Calculated estimate</span></div>
+            <div class="box col"><span class="t">Recorded vs estimated wait, by period</span><div class="bars o"><i style="height:30%"></i><i style="height:34%"></i><i style="height:55%"></i><i style="height:50%"></i><i style="height:80%"></i><i style="height:72%"></i><i style="height:40%"></i><i style="height:44%"></i></div><span class="r"><span class="ch d">Recorded</span><span class="ch e">Estimated</span></span></div>
+          </div>
+          <div class="box col"><span class="t">Customers per hour, by period</span><div class="bars"><i style="height:20%"></i><i style="height:35%"></i><i style="height:55%"></i><i style="height:70%"></i><i style="height:95%"></i><i style="height:85%"></i><i style="height:60%"></i><i style="height:50%"></i><i style="height:45%"></i><i style="height:40%"></i><i style="height:30%"></i><i style="height:25%"></i><i style="height:15%"></i></div><span class="ch d" style="align-self:flex-start">From your data</span></div>
+          <div class="box col" style="border:2px dashed var(--warn);background:var(--warn-bg)">
+            <div class="r" style="justify-content:space-between"><span class="t" style="color:var(--warn)">Calculated result · not yet checked by simulation</span><span class="r"><span class="b">Download plan report</span><span class="b p">Check it in Queue simulation</span></span></div>
+            <span class="s" style="color:var(--fg)">The calculation suggests opening — counters 11:00–13:00. Estimated wait — → — min. Cost ₱ — → ₱ — (one shared line).</span>
+          </div>
+          <div class="box col" style="border-color:var(--opt)">
+            <div class="r" style="justify-content:space-between"><span class="t">What the plan changes</span><span class="r"><span class="s">Plan:</span><span class="in">Plan – Oct 10 ▾</span><span class="b">Use for simulation</span></span></div>
+            <span class="s">Appears only after a plan is selected. Plans always use the planning file, not a review-only file.</span>
+            <div class="tw"><table class="wft"><thead><tr><th>Period</th><th>Counters</th><th>Estimated wait</th><th>Busy level</th></tr></thead><tbody>
+              <tr><td>11:00</td><td>3 → 4</td><td>— → — min</td><td>Critical → Normal</td></tr>
+              <tr><td>12:00</td><td>3 → 4</td><td>can't keep up → — min</td><td>Can't keep up → Peak</td></tr>
+            </tbody></table></div>
+            <div class="r"><span class="ch w">12:00 is above this plan's target of 70%</span><span class="ch e">Staff cost now vs with the plan: ₱ — → ₱ —</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="body" style="padding:0">
+      <div class="contents">
+        <h4>How it works</h4>
+        <ul>
+          <li><strong>View results from</strong> lists every successfully processed file. The planning file is selected by default. Each entry shows the file name, the dates the data covers, and when it was uploaded.</li>
+          <li>Picking a review-only or older file is read-only: the plan, simulation and decision keep using the planning file. A banner says so.</li>
+          <li>Older files are recalculated today from the inputs saved with them, and the screen says the upload-day results were not saved.</li>
+          <li>Everything on screen belongs to the selected file. Switching files clears the old charts first.</li>
+          <li>Key results answer one question each, with source labels and "How was this calculated?".</li>
+          <li>Busy levels use NovaQ's fixed labels. When a plan is selected, a period above that plan's target is also flagged.</li>
+          <li><strong>Calculated result</strong> (once a plan is selected): "The calculation suggests …" with the label "Calculated result · not yet checked by simulation", "Download plan report" and "Check it in Queue simulation". No decision words; the Decision comes after the simulation checks.</li>
+          <li>Money appears only in "What the plan changes". For separate lines, today's total cost is not available and the screen says why.</li>
+          <li>Warnings explain their basis and never tell the manager to add staff.</li>
+        </ul>
+      </div>
+      <div class="contents">
+        <h4>Messages users can see</h4>
+        <ul>
+          <li>"Recorded waiting time is unavailable because this file does not contain customer arrival and service-start times."</li>
+          <li>"Data period unavailable." (when the dates cannot be established from the file)</li>
+          <li>"Cashier-line workload applies to separate lines. This analysis uses one shared line, so workload is shown for the whole counter group."</li>
+          <li>"Counters can't keep up in this period, so there is no estimated wait. The line keeps growing."</li>
+          <li>Any missing value shows "Unavailable", never 0.</li>
+        </ul>
+        <div class="limit">Needs backend work: B3 (results for any processed file), saved data dates, the "Use for planning / Review only" upload choice (changes NovaQ's protected rule that the latest file is the planning file), and one server-side field for busiest period by arrivals. "Compare with another file" comes later in its own spec.</div>
+        <div class="notes"><label for="n8">Your changes</label><textarea id="n8" data-note></textarea></div>
+      </div>
+    </div>
+  </div>
+</article>
+
+<!-- 9 SIMULATION - FINAL -->
+<article class="screen" id="s9" data-screen="9 Queue simulation">
+  <header><h3><span class="num">9</span>Queue simulation <span class="pill new">Final draft · three pages</span></h3><span class="route">/simulation/results · /simulation/replay · /simulation/checks</span></header>
+  <div class="wide" style="padding-top:20px">
+    <div class="needs" style="background:var(--info-bg);color:var(--info)">Full details, every state and a working motion demo: <a href="https://claude.ai/artifact/YCWcbcvDrHhQbVgZUxVmQg" target="_blank" rel="noopener">Queue Simulation Page mockup</a> (repo copy <code>docs/superpowers/specs/assets/2026-10-09-queue-simulation-page.html</code>). This screen shows the three pages side by side.</div>
+    <div class="opts">
+      <div class="opt">
+        <h5>Page 1 · Key results (opens first)</h5>
+        <div class="wf" aria-hidden="true"><div class="wf-main">
+          <div class="r" style="justify-content:space-between"><span class="t big">Queue simulation</span><span class="r"><span class="in">Analysis ▾</span><span class="b">Current</span><span class="b p">Suggested plan</span></span></div>
+          <div class="pnav"><span class="on">Key results</span><span class="">Replay</span><span class="">Checks and decision</span></div>
+          <div class="box r" style="justify-content:space-between"><span class="s"><strong style="color:var(--fg)">05:00–18:00</strong> · Closing: Finish serving · <span class="lnk">Change</span></span><span class="r"><span class="ch ok">Done</span><span class="ch d">Preview · what does this mean?</span><span class="b p">▶ Run full operation</span><span class="lnk">Advanced</span></span></div>
+          <div class="g4">
+            <div class="box"><div class="s">Average wait</div><div class="kpi" style="font-size:12px"><span style="color:var(--cur)">—</span> → <span style="color:var(--opt)">— min</span></div></div>
+            <div class="box"><div class="s">Longest line</div><div class="kpi" style="font-size:12px"><span style="color:var(--cur)">—</span> → <span style="color:var(--opt)">—</span></div></div>
+            <div class="box"><div class="s">Served</div><div class="kpi" style="font-size:12px"><span style="color:var(--cur)">— of —</span> → <span style="color:var(--opt)">— of —</span></div></div>
+            <div class="box"><div class="s">Not served at closing</div><div class="kpi" style="font-size:12px"><span style="color:var(--cur)">—</span> → <span style="color:var(--opt)">—</span></div></div>
+          </div>
+          <div class="g2"><div class="box"><div class="s">People waiting through the day</div><div class="bars o"><i style="height:20%"></i><i style="height:45%"></i><i style="height:85%"></i><i style="height:60%"></i><i style="height:30%"></i></div></div><div class="box"><div class="s">Average wait by period</div><div class="bars o"><i style="height:25%"></i><i style="height:15%"></i><i style="height:70%"></i><i style="height:35%"></i><i style="height:40%"></i><i style="height:20%"></i></div></div></div>
+          <div class="box r"><span class="t">▸ More results</span><span class="s">4 more numbers · 2 charts · by period · by counter</span></div>
+        </div></div>
+        <p>Four headline numbers comparing Current → Suggested plan, two charts, and everything else under "More results".</p>
+      </div>
+      <div class="opt">
+        <h5>Page 2 · Replay</h5>
+        <div class="wf" aria-hidden="true"><div class="wf-main">
+          <div class="r" style="justify-content:space-between"><span class="t big">Queue simulation</span><span class="r"><span class="in">Analysis ▾</span><span class="b">Current</span><span class="b p">Suggested plan</span></span></div>
+          <div class="pnav"><span class="">Key results</span><span class="on">Replay</span><span class="">Checks and decision</span></div>
+          <div class="box r" style="justify-content:space-between"><span class="s"><strong style="color:var(--fg)">05:00–18:00</strong> · Closing: Finish serving · <span class="lnk">Change</span></span><span class="r"><span class="ch ok">Done</span><span class="ch d">Preview · what does this mean?</span><span class="b p">▶ Run full operation</span><span class="lnk">Advanced</span></span></div>
+          <div class="g4"><div class="box"><div class="s">Arrived</div><div class="kpi">—</div></div><div class="box"><div class="s">Waiting</div><div class="kpi">—</div></div><div class="box"><div class="s">Serving</div><div class="kpi">—</div></div><div class="box"><div class="s">Finished</div><div class="kpi">—</div></div></div>
+          <div class="box flow"><span class="s">In →</span><div class="dots"><i></i><i></i><i></i></div><div class="col"><span class="ctr box">C1 <span class="st serving">Serving</span></span><span class="ctr box">C2 <span class="st finishing">Before break</span></span></div><span class="s">→ Out</span></div>
+          <div class="tl"><i style="width:53%"></i><span class="tick" style="left:0%">05</span><span class="tick" style="left:46%">11</span><span class="tick" style="left:92%">17</span></div>
+          <div class="r"><span class="b">⏮</span><span class="b p">⏸</span><span class="in">1× ▾</span><span class="in">Go to 12:00</span><span class="lnk">Full screen</span></div>
+        </div></div>
+        <p>The moving day only. Dots glide smoothly at 0.25×–10×. Counter states come from simulation events; scheduled breaks are drawn separately.</p>
+      </div>
+      <div class="opt">
+        <h5>Page 3 · Checks and decision</h5>
+        <div class="wf" aria-hidden="true"><div class="wf-main">
+          <div class="r" style="justify-content:space-between"><span class="t big">Queue simulation</span><span class="r"><span class="in">Analysis ▾</span><span class="b">Current</span><span class="b p">Suggested plan</span></span></div>
+          <div class="pnav"><span class="">Key results</span><span class="">Replay</span><span class="on">Checks and decision</span></div>
+          <div class="box r" style="justify-content:space-between"><span class="s"><strong style="color:var(--fg)">05:00–18:00</strong> · Closing: Finish serving · <span class="lnk">Change</span></span><span class="r"><span class="ch ok">Done</span><span class="ch d">Preview · what does this mean?</span><span class="b p">▶ Run full operation</span><span class="lnk">Advanced</span></span></div>
+          <div class="box col" style="border-color:var(--ok)"><span class="s">Should we use this plan?</span><span class="t" style="color:var(--ok)">Passed every check · saving can't be calculated (separate lines)</span><span class="r"><span class="b p">Download report</span><span class="b">Check again</span></span></div>
+          <div class="box r" style="justify-content:space-between"><span class="t">Replay of the day</span><span class="r"><span class="ch ok">Done</span><span class="s">required</span><span class="lnk">details</span></span></div>
+          <div class="box r" style="justify-content:space-between"><span class="t">Many variations</span><span class="r"><span class="ch ok">Holds up</span><span class="s">required (separate lines)</span><span class="lnk">details</span></span></div>
+          <div class="box r" style="justify-content:space-between"><span class="t">Results check</span><span class="r"><span class="ch ok">Saved</span><span class="s">required</span><span class="lnk">details</span></span></div>
+        </div></div>
+        <p>Decision first, in plain words. One line per check; numbers, chart and settings open from "details". Before any check: "No decision yet" and <strong>Check the plan</strong>.</p>
+      </div>
+    </div>
+    <div class="body" style="padding:0">
+      <div class="contents">
+        <h4>How it works</h4>
+        <ul>
+          <li>Three separate pages with the same header: analysis, Current | Suggested plan, and the page links.</li>
+          <li>One run bar on every page: operating hours, closing rule with Change, status, preview chip, <strong>Run full operation</strong>, Advanced.</li>
+          <li>One shared line: one continuous run of the whole day; customers keep their place, wait and unfinished checkout across periods. Preview until real service times from customer records are supported (B4b).</li>
+          <li>Separate lines: the existing full-day run; break states from its events.</li>
+          <li>Replay speed 0.25×–10×, 1× = 1 simulated minute per second (proposed), smooth gliding dots.</li>
+        </ul>
+      </div>
+      <div class="contents">
+        <h4>Which checks the decision needs</h4>
+        <ul>
+          <li><strong>Separate lines:</strong> Replay of the day → Many variations → Results check, all required. "Check the plan" runs the last two and then shows the decision.</li>
+          <li><strong>One shared line, period-by-period run:</strong> Results check is required; Many variations is optional.</li>
+          <li><strong>One shared line, continuous run:</strong> no pass or fail rule is approved yet, so "Repeat the day" shows ranges only and no decision is shown (open decision OD-UX-13).</li>
+          <li>"Many variations" recalculates each period with arrivals and service speed varied; it is a calculated estimate, not simulated days.</li>
+        </ul>
+        <div class="notes"><label for="n9">Your changes</label><textarea id="n9" data-note></textarea></div>
+      </div>
+    </div>
+  </div>
+</article>
+
+<!-- 10 DECISION -->
+<article class="screen" id="s10" data-screen="10 Decision">
+  <header><h3><span class="num">10</span>Decision <span class="pill new">Changed</span></h3><span class="route">/analyses/:id/decision · also inside Queue simulation</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-main">
+        <span class="t big">Should we use this plan?</span>
+        <div class="box col" style="border-color:var(--ok)"><span class="r" style="justify-content:space-between"><span class="t" style="color:var(--ok)">Yes, go ahead with this plan (one shared line example)</span><span class="ch n">Checked Oct 10</span></span><span class="s">The reason from the saved decision, in plain words, goes here.</span></div>
+        <div class="g2"><div class="box col"><span class="s">What we checked</span><span class="s">✓ Replay of the day</span><span class="s">✓ Many variations</span><span class="s">✓ Results check</span></div><div class="box col"><span class="s">Still missing</span><span class="s">Nothing</span></div></div>
+        <span class="ch w" style="align-self:flex-start">Out of date: your data changed after this check. Run the checks again.</span>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Plain words for each outcome</h4>
+      <div class="tw"><table class="lim">
+        <thead><tr><th scope="col">System status</th><th scope="col">What users read</th></tr></thead>
+        <tbody>
+          <tr><td>adopt</td><td><strong>Yes, go ahead with this plan.</strong> Passed every check and costs the same or less (one shared line only).</td></tr>
+          <tr><td>conditional</td><td><strong>Passed every check, but it costs more</strong> (one shared line) · <strong>Passed every check, but the saving can't be calculated</strong> (separate lines; their best outcome).</td></tr>
+          <tr><td>revise</td><td><strong>Change the plan first.</strong> It did not hold up in: then the periods listed.</td></tr>
+          <tr><td>insufficient evidence</td><td><strong>Not enough checks yet.</strong> Run: then what is missing.</td></tr>
+          <tr><td>stale</td><td><strong>Out of date.</strong> Your data or setup changed after this check.</td></tr>
+        </tbody>
+      </table></div>
+      <ul style="margin-top:12px">
+        <li>Headline question: "Should we use this plan?"</li>
+        <li>"What we checked" uses plain names: Replay of the day, Many variations (Monte Carlo), Results check (validation).</li>
+        <li>The outcome comes from the server's saved decision; the page never decides it. The explanation sentences must match the server's reasons, so I'll write them from the actual rule before building.</li>
+      </ul>
+      <div class="notes"><label for="n10">Your changes</label><textarea id="n10" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 11 REPORTS -->
+<article class="screen" id="s11" data-screen="11 Reports">
+  <header><h3><span class="num">11</span>Reports <span class="pill new">Final draft · reviewed</span></h3><span class="route">/reports?analysis=:id · sidebar Insights → Reports</span></header>
+  <div class="wide" style="padding-top:20px">
+    <div class="needs" style="background:var(--info-bg);color:var(--info)">Full details, sample PDF pages and the Excel sheets: <a href="https://claude.ai/artifact/Bu2aMJfSprPMWo3mQRkVjU" target="_blank" rel="noopener">Reports mockup</a> (repo copy <code>docs/superpowers/specs/assets/2026-10-09-reports-page.html</code>).</div>
+    <div class="opts">
+      <div class="opt">
+        <h5>Reports page</h5>
+        <div class="wf" aria-hidden="true"><div class="wf-main">
+          <div class="r" style="justify-content:space-between"><span class="t big">Reports</span><span class="r"><span class="in">Analysis ▾</span><span class="in">Plan ▾</span></span></div>
+          <div class="box col" style="border:2px dashed var(--warn);background:var(--warn-bg)"><span class="t" style="color:var(--warn)">Calculated only · not checked by simulation</span></div>
+          <div class="g2"><div class="box col"><span class="t">PDF summary</span><span class="s">For managers · list of sections</span><span class="b p" style="align-self:flex-start">Download PDF</span></div><div class="box col"><span class="t">Excel calculations</span><span class="s">For checking the math · list of sheets</span><span class="b p" style="align-self:flex-start">Download Excel</span></div></div>
+          <div class="box r" style="justify-content:space-between"><span class="t">Your data only</span><span class="b">Download data</span></div>
+        </div></div>
+      </div>
+      <div class="opt">
+        <h5>Two report levels</h5>
+        <div class="tw"><table class="wft"><thead><tr><th></th><th>Plan report</th><th>Full report</th></tr></thead><tbody>
+          <tr><td>When</td><td>A plan is chosen</td><td>After the checks and Decision</td></tr>
+          <tr><td>Stamp</td><td>Calculated only</td><td>Checked by simulation · Decision</td></tr>
+          <tr><td>PDF</td><td>5 pages</td><td>6 pages</td></tr>
+          <tr><td>Excel</td><td>7 sheets</td><td>10 sheets</td></tr>
+        </tbody></table></div>
+        <p>The same layout for both line types; parts that don't apply say why.</p>
+      </div>
+      <div class="opt">
+        <h5>Excel "Formula check"</h5>
+        <div class="tw"><table class="wft"><thead><tr><th>Step</th><th>Excel cell</th></tr></thead><tbody>
+          <tr><td>a = λ/μ</td><td><code>=B2/C2</code></td></tr>
+          <tr><td>ρ = a/c</td><td><code>=E2/D2</code></td></tr>
+          <tr><td>Wq (h)</td><td><code>=I2/(D2*C2-B2)</code></td></tr>
+          <tr><td>Difference</td><td><code>=K2-L2</code></td></tr>
+        </tbody></table></div>
+        <p>Example λ 40, μ 15, 3 counters: 9.5701 min in both, difference 0.0000 (checked in Python against NovaQ's engine; not yet opened in Excel).</p>
+      </div>
+    </div>
+    <div class="body" style="padding:0">
+      <div class="contents">
+        <h4>PDF (managers and supervisors)</h4>
+        <ul>
+          <li>Plan report: cover with level stamp, key results now vs plan, period table (and break times for separate lines), charts with tables, "Simulation checks: not run".</li>
+          <li>Full report adds: simulation key results, Decision page in plain words, checks summary with settings, what is not included.</li>
+        </ul>
+      </div>
+      <div class="contents">
+        <h4>Excel (checking the math)</h4>
+        <ul>
+          <li>Read me · Inputs · Model choice · Formula check · Plan search · Costs · Not recalculable in Excel; full report adds Simulation · Many variations · Results check and decision.</li>
+          <li>Live formulas where Excel can reproduce the model; other models show NovaQ's values and steps. Simulations give seed and settings to re-run in NovaQ.</li>
+        </ul>
+        <div class="limit">Backend work B8 (own spec): changes protected exports; preview and file are generated from the same rules and tested against each other. Open: older-Excel support for <code>SEQUENCE()</code> (OD-UX-14).</div>
+        <div class="notes"><label for="n11">Your changes</label><textarea id="n11" data-note></textarea></div>
+      </div>
+    </div>
+  </div>
+</article>
+
+<!-- 12 CALC SIGNED IN -->
+<article class="screen" id="s12" data-screen="12 Quick calculator (signed in)">
+  <header><h3><span class="num">12</span>Quick calculator (signed in) <span class="pill new">Changed</span></h3><span class="route">/tools/calculator</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-app">
+        <div class="wf-side"><div class="top"><b>Nova<em>Q</em></b></div><span class="g">SIMULATION</span><span class="it">Queue simulation</span><span class="g">TOOLS</span><span class="it on">Quick calculator</span><div class="chip"><span class="av">YU</span><span>you@…</span></div></div>
+        <div class="wf-main">
+          <span class="t big">Quick calculator</span>
+          <div class="tabs"><span class="tab on">Basic</span><span class="tab">Service time varies</span><span class="tab">Limited waiting space</span><span class="tab">Some people leave</span></div>
+          <div class="g3"><span class="in">Arriving / h ⓘ</span><span class="in">Served / counter / h ⓘ</span><span class="in">Counters ⓘ</span></div>
+          <div class="g4"><div class="box"><div class="s">Wait ⓘ</div><div class="kpi">9.57 <small>min</small></div></div><div class="box"><div class="s">Busy ⓘ</div><div class="kpi">88.9 <small>%</small></div></div><div class="box"><div class="s">Waiting ⓘ</div><div class="kpi">6.38</div></div><div class="box"><div class="s">Keeps up? ⓘ</div><div class="kpi" style="color:var(--ok)">Yes</div></div></div>
+          <div class="mean"><span class="t">What this means</span><div class="g3"><div class="box"><div class="s">2 counters</div><div class="t" style="color:var(--bad)">Cannot keep up</div></div><div class="box hl"><div class="s">3 · now</div><div class="t">9.6 min</div></div><div class="box"><div class="s">4 counters</div><div class="t">1.1 min</div></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Same changes as the guest calculator: ⓘ explanations, plain labels, situation tabs, What this means with one fewer and one more counter.</li>
+        <li>Inside the app, with the sidebar. Does not use uploaded data.</li>
+      </ul>
+      <div class="notes"><label for="n12">Your changes</label><textarea id="n12" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 13 HELP -->
+<article class="screen" id="s13" data-screen="13 Help">
+  <header><h3><span class="num">13</span>Help</h3><span class="route">/help · /help/:topic · opened from the account menu</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-main"><span class="t big">Find help</span><span class="in">Search help…</span>
+        <div class="g2"><div class="box col"><span class="t">Adding your data</span><span class="s">What to do · Why · Next step</span></div><div class="box col"><span class="t">Queue simulation</span><span class="s">What to do · Why · Next step</span></div><div class="box col"><span class="t">Comparing plans</span><span class="s">What to do · Why · Next step</span></div><div class="box col"><span class="t">Problems</span><span class="s">What to do · Why · Next step</span></div></div></div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Guides: Starting an analysis, Adding your data, Reading results, Comparing plans, Queue simulation, Checks, Downloads, Problems.</li>
+        <li>Each guide: what to do, why, and the next step. A "?" on every screen opens the matching guide.</li>
+        <li>Annotated screenshots are added after the screens are built and checked.</li>
+      </ul>
+      <div class="notes"><label for="n13">Your changes</label><textarea id="n13" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<!-- 14 SETTINGS -->
+<article class="screen" id="s14" data-screen="14 Settings">
+  <header><h3><span class="num">14</span>Settings</h3><span class="route">/settings/account · preferences · appearance · files · users</span></header>
+  <div class="body">
+    <div class="wf" aria-hidden="true">
+      <div class="wf-main"><span class="t big">Settings</span>
+        <div class="tabs"><span class="tab on">Account</span><span class="tab">Preferences</span><span class="tab">Appearance</span><span class="tab">Uploaded files</span><span class="tab">Users</span></div>
+        <div class="box col"><span class="s">Email · verified ✓ · sign-in: password, Google</span><span class="t">Change password</span><span class="in">Current password</span><span class="in">New password</span></div>
+        <div class="box col"><span class="s">Google-only account</span><span class="b" style="align-self:flex-start">Email me a link to set a password</span></div>
+      </div>
+    </div>
+    <div class="contents">
+      <h4>Contents</h4>
+      <ul>
+        <li>Account and sign-in: change password, or for Google-only accounts a "set a password" email (no current-password box). Link Google.</li>
+        <li>Preferences: optional operation type and terminology, empty unless you saved them (B1).</li>
+        <li>Appearance: theme and language. Uploaded files: today's Datasets page. Users: admin only.</li>
+      </ul>
+      <div class="notes"><label for="n14">Your changes</label><textarea id="n14" data-note></textarea></div>
+    </div>
+  </div>
+</article>
+
+<section class="block" id="limits">
+  <h2>Still not in this redesign</h2>
+  <p class="lede">These stay as clearly worded limitations on screen until you schedule them.</p>
+  <div class="panel tw">
+    <table class="lim">
+      <thead><tr><th scope="col">Item</th><th scope="col">What users see instead</th></tr></thead>
+      <tbody>
+        <tr><td>Compare two files</td><td>"Compare with another file" shown as coming later. Needs its own spec (comparable periods, settings, missing data).</td></tr>
+        <tr><td>Waiting-space limits and customers leaving in the continuous simulation</td><td>A compatibility message before the run names the setting that is not supported yet. Each gets its own spec.</td></tr>
+        <tr><td>B6 Longer replays</td><td>A notice when the replay stops early; the summary still covers the whole run. Likely needed for full days; confirmed in the B4 spec.</td></tr>
+        <tr><td>B7 Overnight periods</td><td>"Periods must start and end on the same day."</td></tr>
+        <tr><td>Saving upload-day results</td><td>Older files are recalculated today, and the screen says so.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block" id="send">
+  <h2>Send me your changes</h2>
+  <p class="lede">Notes stay in this browser only. Copy them and paste them into our chat.</p>
+  <div class="footer-actions">
+    <button type="button" class="copy" id="copy-notes">Copy all notes</button>
+    <button type="button" class="ghost" id="clear-notes">Clear notes</button>
+    <span id="copy-status" role="status" aria-live="polite"></span>
+  </div>
+  <textarea id="all-notes" readonly hidden aria-label="All notes"></textarea>
+</section>
+</main>
+</div>
+
+<script>
+(function(){
+  var KEY='novaq-redesign-notes';
+  var boxes=[].slice.call(document.querySelectorAll('textarea[data-note]'));
+  var saved={};
+  try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){saved={}}
+  boxes.forEach(function(b){
+    if(saved[b.id])b.value=saved[b.id];
+    b.addEventListener('input',function(){
+      saved[b.id]=b.value;
+      try{localStorage.setItem(KEY,JSON.stringify(saved))}catch(e){}
+    });
+  });
+  function collect(){
+    var out=[];
+    var picked=window.NQ_PICKS?window.NQ_PICKS():[];
+    if(picked.length)out.push('[8 Analysis results · manager metrics picked]\n- '+picked.join('\n- '));
+    boxes.forEach(function(b){
+      var v=b.value.trim(); if(!v)return;
+      var screen=b.closest('[data-screen]').getAttribute('data-screen');
+      out.push('['+screen+']\n'+v);
+    });
+    return out.join('\n\n');
+  }
+  var status=document.getElementById('copy-status');
+  var all=document.getElementById('all-notes');
+  document.getElementById('copy-notes').addEventListener('click',function(){
+    var text=collect();
+    if(!text){status.textContent='No notes yet. Write in a "Your changes" box first.';return}
+    all.value=text;
+    var done=function(){status.textContent='Copied. Paste it into the chat.'};
+    var fallback=function(){all.hidden=false;all.focus();all.select();status.textContent='Copy was blocked. The notes are selected below; press Ctrl+C.'};
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fallback)}else{fallback()}
+    }catch(e){fallback()}
+  });
+  document.getElementById('clear-notes').addEventListener('click',function(){
+    boxes.forEach(function(b){b.value=''});saved={};
+    try{localStorage.removeItem(KEY)}catch(e){}
+    all.hidden=true;status.textContent='Notes cleared.';
+  });
+})();
+</script>

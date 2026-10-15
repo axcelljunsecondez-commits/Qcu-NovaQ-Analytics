@@ -1,10 +1,12 @@
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { NavLink, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getAnalysis, listAnalyses } from '../../api/analyses'
 import { ApiState } from '../ui/ApiState'
 import { WorkflowNavigator } from './WorkflowNavigator'
 import { analysisWorkflow } from '../../lib/workflow'
+import { rememberLastAnalysis } from '../../lib/lastAnalysis'
 
 export function AnalysisWorkspace() {
   const { t } = useTranslation()
@@ -14,10 +16,14 @@ export function AnalysisWorkspace() {
   const id = Number(analysisId)
   const analysis = useQuery({ queryKey: ['analysis', id], queryFn: () => getAnalysis(id), enabled: Number.isInteger(id) })
   const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses })
+  const loadedId = analysis.data?.analysis.id
+  useEffect(() => {
+    if (loadedId !== undefined) rememberLastAnalysis(loadedId)
+  }, [loadedId])
   if (!Number.isInteger(id)) return <Navigate to="/analyses" replace />
   if (analysis.isLoading) return <ApiState.Loading />
   if (analysis.isError || !analysis.data) return <ApiState.ErrorState />
-  const currentStep = analysisWorkflow.find(([path]) => location.pathname.endsWith(path))?.[0] ?? 'current'
+  const currentStep = analysisWorkflow.find(([path]) => location.pathname.endsWith(path))?.[0] ?? 'data'
   return (
     <div>
       <div className="analysis-context card">
@@ -29,6 +35,13 @@ export function AnalysisWorkspace() {
           </select>
         </div>
       </div>
+      <nav className="workspace-tabs" aria-label={t('workspace.tabs_label')}>
+        {(['data', 'plans'] as const).map((tab) => (
+          <NavLink key={tab} to={`/analyses/${id}/${tab}`} className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            {t(tab === 'data' ? 'nav.data_setup' : 'nav.suggested_plans')}
+          </NavLink>
+        ))}
+      </nav>
       <div key={analysisId}><Outlet /></div>
       <WorkflowNavigator />
     </div>

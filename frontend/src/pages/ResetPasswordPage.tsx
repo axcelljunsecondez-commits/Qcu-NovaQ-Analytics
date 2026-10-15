@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { resetPassword } from '../api/auth'
 import { clearFragment, readFragmentToken } from '../auth/fragmentToken'
+import { LanguageSelect } from '../components/layout/LanguageSelect'
 
 export function ResetPasswordPage() {
   const { t } = useTranslation()
@@ -21,6 +22,7 @@ export function ResetPasswordPage() {
     try { await resetPassword(token, password); setState('success') } catch { setState('invalid') }
   }
   return <div className="login-page"><div className="card login-card">
+    <LanguageSelect />
     <h1 className="login-title">{t('auth.reset_title')}</h1>
     {state === 'form' && <form onSubmit={submit}>
       <div className="form-field"><label htmlFor="reset-password">{t('account.new_password')}</label><input id="reset-password" type="password" minLength={8} maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" /></div>

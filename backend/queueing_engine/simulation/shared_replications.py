@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from numbers import Integral, Real
 from typing import Any
@@ -38,9 +38,15 @@ from backend.queueing_engine.services.shared_segments import (
     validate_timeline,
 )
 from backend.queueing_engine.simulation.shared_continuous_des import (
+    BREAK_RULES,
+    BREAKS_SUFFIX,
     CLOSING_POLICIES,
     ENGINE_VERSION,
+    RECORDED,
+    RECORDED_ENGINE_VERSION,
     SERVER_HOURS_MEANING,
+    CounterBreak,
+    resolve_service_samples,
     simulate_shared_replication,
 )
 from backend.queueing_engine.statistics.proportions import wilson_ci
@@ -60,6 +66,11 @@ SEED_SCHEME = (
     "(0-based) uses child SeedSequence(entropy=root_entropy, spawn_key=(i,)), the i-th child of "
     "root.spawn(replications); numpy documents spawned children as seeds for independent bit generators. "
     "Each child spawns two PCG64 streams: arrival gaps, then unit work."
+)
+RECORDED_SEED_SCHEME = SEED_SCHEME.replace(
+    "Each child spawns two PCG64 streams: arrival gaps, then unit work.",
+    "Each child spawns three PCG64 streams: arrival gaps, unit work (not drawn), then service quantiles; the "
+    "arrivals equal those of the exponential engine for the same seed.",
 )
 PARAMETER_UNCERTAINTY = (
     "None. Every replication uses the scenario's own arrival and service rates; the variation is the "
@@ -253,6 +264,13 @@ def replication_row(
     if failure_criteria is not None:
         outcomes = criterion_outcomes(row, failure_criteria)
         row["criteria"] = {"outcomes": outcomes, "replication_outcome": replication_outcome(outcomes)}
+    if "breaks" in result:  # B4c: only runs with counter breaks carry these
+        started = [item for item in result["breaks"] if item["start_hours"] is not None]
+        row["break_server_hours"] = totals["break_server_hours"]
+        row["breaks_started"] = len(started)
+        row["breaks_cancelled_at_closing"] = len(result["breaks"]) - len(started)
+        row["mean_break_delay_hours"] = (
+            math.fsum(item["delay_hours"] for item in started) / len(started) if started else None)
     return row
 
 
@@ -402,6 +420,29 @@ def aggregate_replications(
     }
 
 
+PERIOD_UTILIZATION_DEFINITION = (
+    "Per staffing segment and replication: busy server-hours / present server-hours inside the segment "
+    "(utilization_of_present of the replication's segment); undefined when no server was present. Kept "
+    "outside the replication rows, which a playback regenerates and compares (OD-UX-13)."
+)
+
+
+def _period_utilization(staffing_segments: Sequence[StaffingSegment],
+                        period_hours: Sequence[Sequence[tuple[float, float]]]) -> dict[str, Any]:
+    """Each staffing segment's utilization in every replication, and its across-replication summary."""
+    segments = []
+    for position, segment in enumerate(staffing_segments):
+        busy = [hours[position][0] for hours in period_hours]
+        present = [hours[position][1] for hours in period_hours]
+        values = [b / p if p > 0 else None for b, p in zip(busy, present)]
+        segments.append({
+            "segment_id": segment.segment_id, "start_minute": segment.start_minute, "end_minute": segment.end_minute,
+            "busy_server_hours": busy, "present_server_hours": present, "utilization": values,
+            "summary": summarize_metric(values),
+        })
+    return {"definition": PERIOD_UTILIZATION_DEFINITION, "segments": segments}
+
+
 def run_shared_replications(
     horizon: OperatingHorizon,
     demand_periods: Sequence[DemandPeriod],
@@ -412,14 +453,20 @@ def run_shared_replications(
     closing_policy: str,
     cost_rates: DayCostRates | None = None,
     failure_criteria: FailureCriteria | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
+    counter_breaks: Sequence[CounterBreak] | None = None,
 ) -> dict[str, Any]:
     """Run ``replications`` independent continuous-DES replications and aggregate them.
 
     ``replications`` (1 to ``config.MC_MAX_TRIALS``), ``seed``, and ``closing_policy`` are
     required. Each replication keeps one scalar row; no events are retained. A single
-    replication can be regenerated with its trace by ``shared_playback``.
+    replication can be regenerated with its trace by ``shared_playback``. ``service_samples`` (recorded
+    durations per demand period id, B4b) selects recorded service times; without it every
+    replication is the exponential engine, unchanged.
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
+    recorded = service_samples is not None
+    fallbacks = resolve_service_samples(demand_periods, service_samples)[1] if recorded else []
     problems = []
     if not _is_whole(replications) or not 1 <= replications <= MC_MAX_TRIALS:
         problems.append(f"replications must be a whole number from 1 to {MC_MAX_TRIALS} (config.MC_MAX_TRIALS).")
@@ -438,18 +485,23 @@ def run_shared_replications(
 
     root = np.random.SeedSequence(seed)
     rows: list[dict[str, Any]] = []
+    period_hours: list[list[tuple[float, float]]] = []
     cost_reference: dict[str, Any] = {}
     for index, child in enumerate(root.spawn(replications)):
         result = simulate_shared_replication(
             horizon, demand_periods, staffing_segments,
             seed_sequence=child, closing_policy=closing_policy, max_trace_events=0,
+            service_samples=service_samples, counter_breaks=counter_breaks,
         )
         if cost_rates is not None and not cost_reference:
             cost_reference = cost_shared_day(result, cost_rates)
         rows.append(replication_row(result, index, cost_rates, failure_criteria))
+        period_hours.append([(segment["busy_server_hours"], segment["present_server_hours"])
+                             for segment in result["segments"]])
 
-    return {
+    result = {
         "replications": rows,
+        "period_utilization": _period_utilization(staffing_segments, period_hours),
         "summary": aggregate_replications(
             rows, cost_rates=cost_rates, cost_reference=cost_reference, failure_criteria=failure_criteria,
         ),
@@ -480,3 +532,18 @@ def run_shared_replications(
             },
         },
     }
+    if recorded:
+        assert service_samples is not None
+        provenance = result["provenance"]
+        provenance.update({"engine_version": RECORDED_ENGINE_VERSION, "service_model": RECORDED,
+                           "service_fallbacks": fallbacks, "seed_scheme": RECORDED_SEED_SCHEME})
+        provenance["inputs"]["service_samples_hours"] = {
+            key: [float(value) for value in values] for key, values in service_samples.items()}
+    if counter_breaks:
+        provenance = result["provenance"]
+        provenance["engine_version"] += BREAKS_SUFFIX
+        provenance["break_rules"] = BREAK_RULES
+        provenance["inputs"]["counter_breaks"] = [asdict(item) for item in counter_breaks]
+        result["summary"]["breaks"] = {key: summarize_metric([row[key] for row in rows]) for key in (
+            "break_server_hours", "breaks_started", "breaks_cancelled_at_closing", "mean_break_delay_hours")}
+    return result

@@ -22,7 +22,7 @@ import heapq
 import itertools
 import math
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from numbers import Integral, Real
 from typing import Any
@@ -38,12 +38,35 @@ from backend.queueing_engine.services.shared_segments import (
 )
 
 ENGINE_VERSION = "novaq-shared-continuous-des-v2"
+# B4b (spec 2026-10-09-b4b-recorded-service-times.md): the same engine with recorded service durations.
+RECORDED_ENGINE_VERSION = "novaq-shared-continuous-des-v2+recorded-v1"
+RECORDED = "recorded"
+
+# B4c (spec 2026-10-09-b4c-shared-line-breaks.md and its 2026-10-12 addendum): breaks taken by any counter.
+BREAKS_SUFFIX = "+breaks-v1"
 
 # Same-time order: a completion frees its server before a capacity change is applied, and an
-# arrival at a boundary sees the new capacity. Ties among arrivals follow customer id.
-_COMPLETION, _CAPACITY, _ARRIVAL = 0, 1, 2
+# arrival at a boundary sees the new capacity. Ties among arrivals follow customer id. Break ends
+# come after completions and before capacity changes; breaks become due after capacity changes
+# (B4c addendum rule 5). Runs without breaks keep the order completion, capacity, arrival.
+_COMPLETION, _BREAK_END, _CAPACITY, _BREAK_DUE, _ARRIVAL = 0, 1, 2, 3, 4
 
 CLOSED, IDLE, BUSY, DRAINING = "CLOSED", "IDLE", "BUSY", "DRAINING"
+ON_BREAK = "ON_BREAK"
+# How a break ends (B4c addendum rules 2-4).
+BREAK_COMPLETED, BREAK_STAFFING_CHANGE, BREAK_TRUNCATED_BY_CLOSING, BREAK_CANCELLED_AT_CLOSING = (
+    "completed", "staffing_change", "truncated_by_closing", "cancelled_at_closing")
+BREAK_RULES = (
+    "A break becomes due at its scheduled time and waits first in, first out. A free counter (accepting "
+    "and idle) takes due breaks before waiting customers, the lowest-numbered free counter first, so the "
+    "next counter to finish its customer takes a break that is due; there is no cutoff before a break and "
+    "the delay is recorded. A break lasts its full length from its actual start. A counter on break still "
+    "counts as staffed: a staffing decrease closes idle counters first, then counters on break (highest "
+    "number first; the break ends early, staffing_change), then drains busy ones. At closing a break in "
+    "progress ends (truncated_by_closing), a due break not yet started is cancelled (cancelled_at_closing), "
+    "and a counter on break does not join the DRAIN crew. Time on break counts as present (staffed) "
+    "server-hours, not busy, so utilization of present hours includes break time in its denominator."
+)
 
 # Closing policies approved by the product owner on 2026-09-25 (Phase 3A). There is no default.
 DRAIN, HARD_CUTOFF = "DRAIN", "HARD_CUTOFF"
@@ -97,6 +120,90 @@ ASSUMPTIONS = [
     "Simulated values are one stochastic realization of the configured model, not observations "
     "and not steady-state expectations.",
 ]
+# Recorded service times (B4b, OD-B4b-1 A and OD-B4b-2 A) replace the second and fourth assumptions.
+RECORDED_ASSUMPTIONS = [
+    ASSUMPTIONS[0],
+    "Each customer carries a service quantile u drawn once from Uniform[0, 1) (stored as unit_work). "
+    "Service lasts the recorded duration at position floor(u x n) of the n sorted durations recorded in "
+    "the demand period in which service starts: a uniform draw, with replacement, from those durations "
+    "(inverse-transform sampling of their empirical distribution). A started service is never redrawn, "
+    "rescaled, or interrupted.",
+    "A demand period without recorded durations uses those of the nearest earlier period that has "
+    "them, else the nearest later one; each such period is listed in service_fallbacks.",
+    ASSUMPTIONS[2],
+    "The horizon end is the closing time. Services that start after closing (DRAIN only) use the "
+    "final demand period's recorded durations, because no data exists after closing.",
+    ASSUMPTIONS[4],
+    ASSUMPTIONS[5],
+]
+
+
+def resolve_service_samples(
+    demand_periods: Sequence[DemandPeriod], service_samples: object
+) -> tuple[list[tuple[float, ...]], list[dict[str, str]]]:
+    """Sorted recorded durations (hours) for every demand period, in period order, and the fallbacks used.
+
+    ``service_samples`` maps a demand period id to its recorded durations; a period that is absent or
+    has an empty list borrows the durations of the nearest earlier period that has some, else the
+    nearest later one (OD-B4b-2 A). Every problem is raised at once.
+    """
+    if not isinstance(service_samples, Mapping):
+        raise SharedSegmentError(["service_samples must map demand period ids to lists of recorded durations."])
+    known = [period.period_id for period in demand_periods]
+    problems = [f"service_samples names unknown demand period {key!r}." for key in service_samples if key not in known]
+    own: list[tuple[float, ...]] = []
+    for period_id in known:
+        values = service_samples.get(period_id, [])
+        if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+            problems.append(f"Recorded durations of demand period {period_id} must be a list of hours.")
+            own.append(())
+            continue
+        if not all(_is_finite_real(value) and float(value) > 0 for value in values):
+            problems.append(f"Every recorded duration of demand period {period_id} must be a finite number of hours above 0.")
+            own.append(())
+            continue
+        own.append(tuple(sorted(float(value) for value in values)))
+    if not problems and not any(own):
+        problems.append("At least one demand period needs recorded service durations.")
+    if problems:
+        raise SharedSegmentError(problems)
+    resolved: list[tuple[float, ...]] = []
+    fallbacks: list[dict[str, str]] = []
+    for index, values in enumerate(own):
+        if values:
+            resolved.append(values)
+            continue
+        earlier = [i for i in range(index - 1, -1, -1) if own[i]]
+        source = earlier[0] if earlier else next(i for i in range(index + 1, len(own)) if own[i])
+        resolved.append(own[source])
+        fallbacks.append({"period_id": known[index], "uses_period_id": known[source]})
+    return resolved, fallbacks
+
+
+@dataclass(frozen=True)
+class CounterBreak:
+    """One break taken by any counter (B4c addendum): start and length in hours from the horizon start."""
+
+    break_id: str
+    start_hours: float
+    duration_hours: float
+
+
+def _break_problems(counter_breaks: Sequence[object], end: float) -> list[str]:
+    problems = []
+    seen: set[str] = set()
+    for position, item in enumerate(counter_breaks, start=1):
+        if not isinstance(item, CounterBreak):
+            problems.append(f"Counter break {position} must be a CounterBreak.")
+            continue
+        if not isinstance(item.break_id, str) or not item.break_id.strip() or item.break_id in seen:
+            problems.append(f"Counter break {position} needs its own non-empty id.")
+        seen.add(item.break_id)
+        if not _is_finite_real(item.start_hours) or not 0 <= float(item.start_hours) < end:
+            problems.append(f"Counter break {item.break_id} must start within the horizon [0, {end:g}) hours.")
+        if not _is_finite_real(item.duration_hours) or float(item.duration_hours) <= 0:
+            problems.append(f"Counter break {item.break_id} must last a finite number of hours above 0.")
+    return problems
 
 
 @dataclass
@@ -142,14 +249,28 @@ def simulate_prescribed(
     *,
     closing_policy: str,
     max_trace_events: int | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
+    counter_breaks: Sequence[CounterBreak] | None = None,
 ) -> dict[str, Any]:
     """Run the continuous engine on prescribed (arrival hour, unit work) pairs.
 
     Arrival hours are measured from the horizon start. ``closing_policy`` (``DRAIN`` or
     ``HARD_CUTOFF``) has no default. This entry point is deterministic;
     ``simulate_shared_day`` draws the pairs from seeded random streams.
+
+    With ``service_samples`` (recorded durations per demand period id, B4b) the second item of
+    each pair is the customer's service quantile in [0, 1) instead of its unit work, and
+    services last recorded durations (``RECORDED_ASSUMPTIONS``). Without it the run is the
+    exponential engine, unchanged.
+
+    With ``counter_breaks`` (B4c) counters take breaks by ``BREAK_RULES``; without them (None or
+    empty) the run is unchanged.
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
+    recorded = service_samples is not None
+    breaks = list(counter_breaks or [])
+    has_breaks = bool(breaks)
+    samples, fallbacks = resolve_service_samples(demand_periods, service_samples) if recorded else ([], [])
     end = _hours(horizon.end_minute, horizon)
     period_starts = [_hours(period.start_minute, horizon) for period in demand_periods]
     segment_starts = [_hours(segment.start_minute, horizon) for segment in staffing_segments]
@@ -162,6 +283,7 @@ def simulate_prescribed(
         not isinstance(max_trace_events, Integral) or isinstance(max_trace_events, bool) or max_trace_events < 0
     ):
         problems.append("max_trace_events must be a whole number, 0 or more, or omitted.")
+    problems += _break_problems(breaks, end)
     previous = -math.inf
     for position, pair in enumerate(arrivals, start=1):
         if not isinstance(pair, (tuple, list)) or len(pair) != 2:
@@ -174,7 +296,10 @@ def simulate_prescribed(
         if float(at) < previous:
             problems.append(f"Arrival {position} is earlier than the arrival before it.")
         previous = float(at)
-        if not _is_finite_real(work) or float(work) <= 0:
+        if recorded:
+            if not _is_finite_real(work) or not 0 <= float(work) < 1:
+                problems.append(f"Arrival {position} service quantile must be a number from 0 up to, not including, 1.")
+        elif not _is_finite_real(work) or float(work) <= 0:
             problems.append(f"Arrival {position} work must be a finite number above 0.")
         period = demand_periods[bisect.bisect_right(period_starts, float(at)) - 1]
         if float(period.arrival_rate_per_hour) == 0:
@@ -191,6 +316,14 @@ def simulate_prescribed(
         # At or after closing this is the final demand period's rate (approved Phase 3A rule).
         return float(demand_periods[bisect.bisect_right(period_starts, hour) - 1].service_rate_per_hour)
 
+    def duration_at(hour: float, work: float) -> float:
+        if not recorded:
+            return work / mu_at(hour)
+        # The period in which service starts; at or after closing, the final period (as mu_at).
+        durations = samples[bisect.bisect_right(period_starts, hour) - 1]
+        # u < 1, so floor(u x n) < n; min() only guards a product rounded up to n.
+        return durations[min(int(work * len(durations)), len(durations) - 1)]
+
     servers: list[_Server] = []
     customers = [
         _Customer(customer_id, float(at), float(work), segment_at(float(at)))
@@ -203,6 +336,16 @@ def simulate_prescribed(
         heapq.heappush(heap, (start, _CAPACITY, next(sequence), index))
     for customer in customers:
         heapq.heappush(heap, (customer.arrival, _ARRIVAL, next(sequence), customer.customer_id))
+    for index, item in enumerate(breaks):
+        heapq.heappush(heap, (float(item.start_hours), _BREAK_DUE, next(sequence), index))
+    pending: deque[int] = deque()  # due breaks waiting for a free counter, first in, first out
+    on_break: dict[int, int] = {}  # server id -> index of the break it is on
+    break_rows: list[dict[str, Any]] = [{
+        "break_id": item.break_id, "scheduled_start_hours": float(item.start_hours),
+        "duration_hours": float(item.duration_hours), "server_id": None, "start_hours": None,
+        "end_hours": None, "delay_hours": None, "outcome": None,
+    } for item in breaks]
+    break_area = [0.0 for _ in staffing_segments]
 
     trace: list[dict[str, Any]] = []
     truncated = False
@@ -218,7 +361,8 @@ def simulate_prescribed(
         # Events at or after closing belong to no staffing segment.
         return None if clock.closed else staffing_segments[clock.segment].segment_id
 
-    def record(at: float, kind: str, customer_id: int | None, server_id: int | None) -> None:
+    def record(at: float, kind: str, customer_id: int | None, server_id: int | None,
+               extra: dict[str, Any] | None = None) -> None:
         nonlocal truncated
         if max_trace_events is not None and len(trace) >= max_trace_events:
             truncated = True
@@ -226,6 +370,7 @@ def simulate_prescribed(
         trace.append({
             "t": at, "type": kind, "segment_id": segment_id_now(),
             "customer_id": customer_id, "server_id": server_id, "queue_len_after": len(queue),
+            **(extra or {}),
         })
 
     def advance(now: float) -> None:
@@ -235,6 +380,8 @@ def simulate_prescribed(
             area["queue"] += len(queue) * elapsed
             area["busy"] += sum(1 for server in servers if server.state in (BUSY, DRAINING)) * elapsed
             area["present"] += sum(1 for server in servers if server.state != CLOSED) * elapsed
+            if has_breaks and not clock.closed:
+                break_area[clock.segment] += len(on_break) * elapsed
         clock.last = now
 
     def transition(at: float, kind: str, server: _Server) -> None:
@@ -252,7 +399,7 @@ def simulate_prescribed(
                 break
             server = min(free, key=lambda item: item.server_id)
             customer = customers[queue.popleft() - 1]
-            duration = customer.work / mu_at(now)
+            duration = duration_at(now, customer.work)
             customer.service_start, customer.service_end = now, now + duration
             customer.server_id = server.server_id
             server.state, server.customer_id = BUSY, customer.customer_id
@@ -262,18 +409,51 @@ def simulate_prescribed(
             segment = clock.segment
             max_queue[segment] = max(max_queue[segment], len(queue))
 
+    def break_extra(index: int, **more: Any) -> dict[str, Any]:
+        row = break_rows[index]
+        return {"break_id": row["break_id"], "scheduled_start_hours": row["scheduled_start_hours"], **more}
+
+    def start_due_breaks(now: float) -> None:
+        # Due breaks go before waiting customers, to the lowest-numbered free counter.
+        while pending:
+            free = [server for server in servers if server.state == IDLE]
+            if not free:
+                return
+            server = min(free, key=lambda item: item.server_id)
+            index = pending.popleft()
+            row = break_rows[index]
+            server.state = ON_BREAK
+            on_break[server.server_id] = index
+            row.update(server_id=server.server_id, start_hours=now, delay_hours=now - row["scheduled_start_hours"])
+            heapq.heappush(heap, (now + row["duration_hours"], _BREAK_END, next(sequence), index))
+            record(now, "break_start", None, server.server_id, break_extra(index))
+
+    def end_break(now: float, server: _Server, outcome: str) -> None:
+        index = on_break.pop(server.server_id)
+        break_rows[index].update(end_hours=now, outcome=outcome)
+        server.state = IDLE if outcome == BREAK_COMPLETED else CLOSED
+        if server.state == CLOSED:
+            transitions.append({"t": now, "kind": "close_from_break", "server_id": server.server_id,
+                                "segment_id": segment_id_now(), "customer_id": None})
+        record(now, "break_end", None, server.server_id, break_extra(index, reason=outcome))
+
     def apply_capacity(now: float, index: int) -> None:
         clock.segment = index
         target = int(staffing_segments[index].servers)
-        accepting = [server for server in servers if server.state in (IDLE, BUSY)]
+        # Counters on break still count as staffed (B4c addendum rule 3); without breaks this is
+        # exactly the accepting counters.
+        accepting = [server for server in servers if server.state in (IDLE, BUSY, ON_BREAK)]
         if target < len(accepting):
             excess = len(accepting) - target
             idle = sorted((s for s in accepting if s.state == IDLE), key=lambda s: -s.server_id)
+            resting = sorted((s for s in accepting if s.state == ON_BREAK), key=lambda s: -s.server_id)
             busy = sorted((s for s in accepting if s.state == BUSY), key=lambda s: -s.server_id)
             for server in idle[:excess]:
                 server.state = CLOSED
                 transition(now, "close", server)
-            for server in busy[:max(0, excess - len(idle))]:
+            for server in resting[:max(0, excess - len(idle))]:
+                end_break(now, server, BREAK_STAFFING_CHANGE)
+            for server in busy[:max(0, excess - len(idle) - len(resting))]:
                 server.state = DRAINING
                 transition(now, "drain_start", server)
                 drains[server.server_id] = {
@@ -325,15 +505,29 @@ def simulate_prescribed(
             complete(now, payload)
         elif order == _CAPACITY:
             apply_capacity(now, payload)
+        elif order == _BREAK_DUE:
+            pending.append(payload)
+            record(now, "break_due", None, None, break_extra(payload))
+        elif order == _BREAK_END:
+            row = break_rows[payload]
+            server_id = row["server_id"]
+            if row["end_hours"] is None and on_break.get(server_id) == payload:  # not ended early by staffing
+                end_break(now, servers[server_id - 1], BREAK_COMPLETED)
         else:
             queue.append(payload)
             record(now, "arrival", payload, None)
+        start_due_breaks(now)
         assign(now)
     advance(end)
 
-    # Closing (Phase 3A). Every arrival and capacity change lies before closing, so only service
-    # completions remain in the heap. Completions at exactly the closing time are processed first,
-    # without assigning anyone, so those customers depart at closing without overtime.
+    # Closing (Phase 3A). Every arrival, capacity change and due break lies before closing, so only
+    # service completions and the ends of breaks in progress remain in the heap; the break ends are
+    # dropped, because closing ends those breaks (B4c addendum rule 4). Completions at exactly the
+    # closing time are processed first, without assigning anyone, so those customers depart at
+    # closing without overtime.
+    if has_breaks:
+        heap[:] = [item for item in heap if item[1] == _COMPLETION]
+        heapq.heapify(heap)
     clock.closed = True
     while heap and heap[0][0] == end:
         now, _, _, payload = heapq.heappop(heap)
@@ -347,7 +541,16 @@ def simulate_prescribed(
         "accepting_server_ids": [server.server_id for server in servers if server.state in (IDLE, BUSY)],
         "draining_server_ids": [server.server_id for server in servers if server.state == DRAINING],
     }
+    if has_breaks:
+        at_close["on_break_server_ids"] = sorted(on_break)
     record(end, "closing", None, None)
+    if has_breaks:
+        for server_id in sorted(on_break):
+            end_break(end, servers[server_id - 1], BREAK_TRUNCATED_BY_CLOSING)
+        while pending:
+            index = pending.popleft()
+            break_rows[index]["outcome"] = BREAK_CANCELLED_AT_CLOSING
+            record(end, "break_cancelled_at_closing", None, None, break_extra(index))
 
     def release_idle(now: float) -> None:
         # After closing a server closes once it is idle and nobody is waiting.
@@ -380,22 +583,49 @@ def simulate_prescribed(
     assert not queue and all(server.state == CLOSED for server in servers)
     assert all(customer.departed or customer.unserved_reason for customer in customers)
 
-    return _summarize(
+    result = _summarize(
         horizon, demand_periods, staffing_segments, arrivals, customers, servers,
         segment_hours, areas, max_queue, transitions, drain_records, trace, truncated, end,
-        max_trace_events, closing_policy, at_close, after_close,
+        max_trace_events, closing_policy, at_close, after_close, has_breaks=has_breaks,
     )
+    if recorded:
+        assert service_samples is not None
+        provenance = result["provenance"]
+        provenance.update({
+            "engine_version": RECORDED_ENGINE_VERSION,
+            "service_model": RECORDED,
+            "service_fallbacks": fallbacks,
+            "assumptions": list(RECORDED_ASSUMPTIONS),
+            "unit_work_meaning": "Each customer's service quantile u in [0, 1) (recorded service times).",
+        })
+        provenance["inputs"]["service_samples_hours"] = {
+            key: [float(value) for value in values] for key, values in service_samples.items()}
+    if has_breaks:
+        assert not pending and not on_break and all(row["outcome"] for row in break_rows)
+        result["provenance"]["engine_version"] += BREAKS_SUFFIX
+        result["provenance"]["break_rules"] = BREAK_RULES
+        result["provenance"]["inputs"]["counter_breaks"] = [asdict(item) for item in breaks]
+        result["breaks"] = break_rows
+        result["totals"]["break_server_hours"] = math.fsum(break_area)
+        for row, hours in zip(result["segments"], break_area):
+            row["break_server_hours"] = hours
+    return result
 
 
 def _mean(values: Sequence[float]) -> float | None:
     return math.fsum(values) / len(values) if values else None
 
 
-def _unserved_possible(closing_policy: str, staffing_segments) -> tuple[bool, str]:
+def _unserved_possible(closing_policy: str, staffing_segments, has_breaks: bool = False) -> tuple[bool, str]:
     """Whether the configured closing can leave customers unserved, with the reason."""
     if closing_policy == HARD_CUTOFF:
         return True, "HARD_CUTOFF records every customer still waiting at closing as unserved."
     final = staffing_segments[-1]
+    if has_breaks and int(final.servers) > 0:
+        return True, (
+            "DRAIN with counter breaks: a counter on break at closing does not join the closing crew, so if "
+            "every counter on duty is on break at closing, customers still waiting are unserved."
+        )
     if int(final.servers) == 0:
         return True, (
             f"DRAIN with 0 servers scheduled in the final staffing segment ({final.segment_id}): nobody "
@@ -410,7 +640,7 @@ def _unserved_possible(closing_policy: str, staffing_segments) -> tuple[bool, st
 def _summarize(
     horizon, demand_periods, staffing_segments, arrivals, customers, servers,
     segment_hours, areas, max_queue, transitions, drain_records, trace, truncated, end,
-    max_trace_events, closing_policy, at_close, after_close,
+    max_trace_events, closing_policy, at_close, after_close, has_breaks: bool = False,
 ) -> dict[str, Any]:
     customer_rows = []
     for customer in customers:
@@ -462,7 +692,7 @@ def _summarize(
               for status in ("departed", "unserved_at_close")}
     total_hours = end
     unserved_ids = [row["customer_id"] for row in customer_rows if row["status"] == "unserved_at_close"]
-    unserved_possible, unserved_possible_reason = _unserved_possible(closing_policy, staffing_segments)
+    unserved_possible, unserved_possible_reason = _unserved_possible(closing_policy, staffing_segments, has_breaks)
     assert unserved_possible or not unserved_ids
     closing_releases = [item["t"] for item in transitions if item["segment_id"] is None]
     last_release = max(closing_releases, default=end)
@@ -568,33 +798,71 @@ def simulate_shared_day(
     seed: int | None,
     closing_policy: str,
     max_trace_events: int | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
+    counter_breaks: Sequence[CounterBreak] | None = None,
 ) -> dict[str, Any]:
     """Draw arrivals and unit work from seeded streams, then run the continuous engine.
 
     ``seed=None`` draws fresh entropy; it is recorded in the provenance so the run can be
     repeated exactly by passing it back as ``seed``. ``closing_policy`` has no default.
+    ``service_samples`` selects recorded service times (see ``simulate_prescribed``).
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
     if seed is not None and (not isinstance(seed, Integral) or isinstance(seed, bool) or seed < 0):
         raise SharedSegmentError(["seed must be a whole number, 0 or more, or omitted."])
     seed_sequence = np.random.SeedSequence(seed)
+    recorded = service_samples is not None
+    if recorded:
+        resolve_service_samples(demand_periods, service_samples)  # refuse bad durations before drawing
     result = simulate_prescribed(
-        horizon, demand_periods, staffing_segments, _draw_arrivals(horizon, demand_periods, seed_sequence),
-        closing_policy=closing_policy, max_trace_events=max_trace_events,
+        horizon, demand_periods, staffing_segments,
+        _draw_arrivals(horizon, demand_periods, seed_sequence, recorded=recorded),
+        closing_policy=closing_policy, max_trace_events=max_trace_events, service_samples=service_samples,
+        counter_breaks=counter_breaks,
     )
     result["provenance"].update({
         "seed": seed,
         "seed_entropy": seed_sequence.entropy,
-        "random_streams": "numpy SeedSequence(seed).spawn(2): arrival gaps, then unit work (PCG64)",
+        "random_streams": f"numpy SeedSequence(seed).spawn({_streams(recorded)})" + _STREAM_TEXT[recorded],
     })
     return result
 
 
+_STREAM_TEXT = {
+    False: ": arrival gaps, then unit work (PCG64)",
+    True: (": arrival gaps, then unit work (not drawn), then service quantiles (PCG64); the arrivals equal "
+           "those of the exponential engine for the same sequence"),
+}
+
+
+def _streams(recorded: bool) -> int:
+    return 3 if recorded else 2
+
+
 def _draw_arrivals(
-    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], seed_sequence: np.random.SeedSequence
+    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], seed_sequence: np.random.SeedSequence,
+    *, recorded: bool = False,
 ) -> list[tuple[float, float]]:
-    """(arrival hour, unit work) pairs from the two streams ``seed_sequence.spawn(2)``."""
+    """(arrival hour, unit work) pairs from the two streams ``seed_sequence.spawn(2)``.
+
+    Recorded service times (B4b) spawn three streams instead and pair each arrival with a service
+    quantile from the third, its own stream. A spawned child does not depend on how many are
+    spawned, so the arrival gaps are the same stream as in the exponential engine.
+    """
+    if recorded:
+        arrival_child, _, quantile_child = seed_sequence.spawn(3)
+        times = _arrival_times(horizon, demand_periods, np.random.default_rng(arrival_child))
+        quantiles = np.random.default_rng(quantile_child).random(size=len(times))
+        return list(zip(times, (float(value) for value in quantiles)))
     arrival_stream, work_stream = (np.random.default_rng(child) for child in seed_sequence.spawn(2))
+    times = _arrival_times(horizon, demand_periods, arrival_stream)
+    works = [float(work) for work in work_stream.exponential(1.0, size=len(times))]
+    return list(zip(times, works))
+
+
+def _arrival_times(
+    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], arrival_stream: np.random.Generator
+) -> list[float]:
     times: list[float] = []
     for period in demand_periods:
         rate = float(period.arrival_rate_per_hour)
@@ -605,8 +873,7 @@ def _draw_arrivals(
             if at >= stop:
                 break
             times.append(at)
-    works = [float(work) for work in work_stream.exponential(1.0, size=len(times))]
-    return list(zip(times, works))
+    return times
 
 
 def draw_arrivals(
@@ -638,6 +905,8 @@ def simulate_shared_replication(
     seed_sequence: np.random.SeedSequence,
     closing_policy: str,
     max_trace_events: int | None = None,
+    service_samples: Mapping[str, Sequence[float]] | None = None,
+    counter_breaks: Sequence[CounterBreak] | None = None,
 ) -> dict[str, Any]:
     """Run one replication from a numpy ``SeedSequence`` (Phase 4 replications and playback).
 
@@ -649,16 +918,21 @@ def simulate_shared_replication(
     validate_timeline(horizon, demand_periods, staffing_segments)
     if not isinstance(seed_sequence, np.random.SeedSequence) or seed_sequence.n_children_spawned != 0:
         raise SharedSegmentError(["seed_sequence must be an unused numpy SeedSequence."])
+    recorded = service_samples is not None
+    if recorded:
+        resolve_service_samples(demand_periods, service_samples)  # refuse bad durations before drawing
     result = simulate_prescribed(
-        horizon, demand_periods, staffing_segments, _draw_arrivals(horizon, demand_periods, seed_sequence),
-        closing_policy=closing_policy, max_trace_events=max_trace_events,
+        horizon, demand_periods, staffing_segments,
+        _draw_arrivals(horizon, demand_periods, seed_sequence, recorded=recorded),
+        closing_policy=closing_policy, max_trace_events=max_trace_events, service_samples=service_samples,
+        counter_breaks=counter_breaks,
     )
     result["provenance"].update({
         "seed": None,
         "seed_entropy": seed_sequence.entropy,
         "spawn_key": list(seed_sequence.spawn_key),
         "random_streams": (
-            "numpy SeedSequence(entropy, spawn_key).spawn(2): arrival gaps, then unit work (PCG64)"
+            f"numpy SeedSequence(entropy, spawn_key).spawn({_streams(recorded)})" + _STREAM_TEXT[recorded]
         ),
     })
     return result

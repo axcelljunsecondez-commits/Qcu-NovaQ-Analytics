@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 import statistics
 from datetime import time as datetime_time
 from numbers import Real
@@ -64,7 +65,15 @@ from backend.queueing_engine.simulation.queue_lifecycle import (
 # Engine version stamped on verified Separate-Queue DES optimization snapshots.
 # v2: representative-day candidates are read from one continuous-day DES
 # (9b1f95a4); v1 snapshots hold 24 h per-period figures and are unsupported.
-SEPARATE_DES_ENGINE_VERSION = "novaq-2026-09-separate-des-v2"
+# B13 (spec 2026-10-12-b13-per-date-continuous-day.md, owner-approved Option B): per-date plans whose
+# operating segments lay out a day are judged one continuous day per date. Representative-day plans and
+# per-date plans without segments keep the other version, whose results B13 does not change.
+# U10 F16 (spec 2026-10-13-u10-f16-separate-cost-interval.md): every replication's cost counts, so both
+# versions moved on (v2 -> v4, v3 -> v5); plans saved with v2 or v3 are historical.
+SEPARATE_DES_ENGINE_VERSION = "novaq-2026-10-separate-des-v4"
+SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION = "novaq-2026-10-separate-des-v5"
+SEPARATE_DES_V2_ENGINE_VERSION = "novaq-2026-09-separate-des-v2"
+SEPARATE_DES_V3_ENGINE_VERSION = "novaq-2026-10-separate-des-v3"
 
 # Execution labels of a stored selected-plan DES result: the exact ``execution`` strings that
 # backend/api/workflow.py writes for the per-period and the continuous-day runs.
@@ -600,12 +609,8 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
     # INFEASIBLE left selected-plan playback with an empty floor for exactly the
     # busy periods the operator most needs to watch.
     trace_evidence = {"trace_events": trace, "trace_truncated": trace_truncated}
-    if over_target:
-        return {**base, "status": "INFEASIBLE",
-                "reason": f"Simulated utilization exceeds the {ceiling:.0%} ceiling for: {', '.join(over_target)}.",
-                "evaluations": evaluations, "total_cost": None, "total_lambda": total_lambda,
-                "customer_conservation": conserved, "metric_provenance": "simulated",
-                **trace_evidence}
+    # U10 F16: the replication's cost is defined whatever its utilization; the target is a
+    # feasibility rule decided on the aggregate, so an over-target run still reports its cost.
     server_total = 0.0
     waiting_total = 0.0
     for item in evaluations:
@@ -617,6 +622,13 @@ def evaluate_candidate_with_des(candidate: dict, queues_by_id: dict, *, duration
             lane_wait = _compute_waiting_cost(
                 item["served"] / horizon, item["Wq"], waiting_cost)
             waiting_total += lane_wait or 0.0
+    if over_target:
+        return {**base, "status": "INFEASIBLE",
+                "reason": f"Simulated utilization exceeds the {ceiling:.0%} ceiling for: {', '.join(over_target)}.",
+                "evaluations": evaluations, "total_cost": server_total + waiting_total,
+                "server_cost": server_total, "waiting_cost": waiting_total, "total_lambda": total_lambda,
+                "customer_conservation": conserved, "metric_provenance": "simulated",
+                **trace_evidence}
     return {**base, "status": "FEASIBLE", "reason": None,
             "evaluations": evaluations,
             "total_lambda": total_lambda,
@@ -1202,11 +1214,19 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
                 lifecycles[chosen].enqueue(str(counters["customer"]))
                 env.process(customer_process(chosen, counters["customer"], arrival, label, quantile))
 
+    at_close: dict[str, int] = {}
+
+    def closing_count():
+        # Read-only: customers admitted but not yet finished when the day's last period ends.
+        yield env.timeout(day_end - env.now)
+        at_close["in_system"] = counters["admitted"] - counters["served"]
+
     env.process(schedule_controller())
     for queue_id in lanes:
         if queue_id in by_queue_breaks:
             env.process(break_controller(queue_id))
     env.process(arrival_process())
+    env.process(closing_count())
     env.run(until=day_end + 24.0)
     conserved = counters["served"] == counters["admitted"]
     period_out = []
@@ -1231,6 +1251,7 @@ def run_routing_day_des(periods: list[dict], *, tie_order: list[str], seed: int 
                            "duration_hours": duration, "lanes": lane_rows})
     return {"periods": period_out, "trace_events": trace, "trace_truncated": truncated,
             "admitted": counters["admitted"], "served": counters["served"],
+            "in_system_at_close": at_close.get("in_system"),
             "customer_conservation": conserved, "day_hours": day_end - float(windows[0]["start_hours"])}
 
 
@@ -1252,13 +1273,16 @@ def index_period_queues(records: list, time_label: str) -> dict[str, dict]:
     return indexed
 
 
-def _summarize_metric(values: list) -> dict | None:
+def _summarize_metric(values: list, floor: float | None = None) -> dict | None:
     """Aggregate one continuous metric across replications.
 
     Returns mean, sample standard deviation, standard error, Student-t 95 %
     interval, and contributing count — or None when no replication produced
     a value. Missing stays missing: never zero-filled. Single-replication
     summaries carry a mean but no dispersion or interval.
+
+    ``floor`` is a value the true mean cannot go below (0 for a cost, U10 F16): the lower
+    bound becomes max(floor, mean - half width), which keeps the interval's coverage exactly.
     """
     present = [float(value) for value in values if _is_number(value)]
     count = len(present)
@@ -1271,8 +1295,9 @@ def _summarize_metric(values: list) -> dict | None:
     sd = statistics.stdev(present)
     se = sd / math.sqrt(count)
     half_width = float(student_t.ppf(0.975, count - 1)) * se
+    lower = mean - half_width if floor is None else max(floor, mean - half_width)
     return {"mean": mean, "sd": sd, "se": se,
-            "ci_lower": mean - half_width, "ci_upper": mean + half_width,
+            "ci_lower": lower, "ci_upper": mean + half_width,
             "n": count}
 
 
@@ -1428,10 +1453,10 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
         "waiting_time": _summarize_metric(rep_waits),
         "max_mean_lane_utilization": max(lane_means) if lane_means else None,
         "costs": {
-            "staffing": _summarize_metric([run.get("server_cost") for run in runs]),
-            "waiting": _summarize_metric([run.get("waiting_cost") for run in runs]),
+            "staffing": _summarize_metric([run.get("server_cost") for run in runs], floor=0.0),
+            "waiting": _summarize_metric([run.get("waiting_cost") for run in runs], floor=0.0),
             "abandonment": None,
-            "total": _summarize_metric([run.get("total_cost") for run in runs]),
+            "total": _summarize_metric([run.get("total_cost") for run in runs], floor=0.0),
         },
         "arrivals": _summarize_metric(rep_arrivals),
         "served": _summarize_metric(rep_served),
@@ -1654,10 +1679,62 @@ def _period_current_active(queue_setup: dict, period_rows: list) -> list[str] | 
 
 
 DAY_UTILIZATION_BASIS = "continuous-day DES"
+_DATE_LABEL = re.compile(r"^(\d{4}-\d{2}-\d{2}) \S.* UTC$")
+# B13: each date of a per-date run gets its own seed so dates with equal inputs are independent samples.
+# The stride is far above any replication count, so a date's seed never equals another replication's;
+# date 0 keeps the replication's seed, so a representative day (one date) is unchanged.
+DATE_SEED_STRIDE = 1_000_003
+
+
+def date_seed(seed: int | None, date_index: int) -> int | None:
+    """The seed of the ``date_index``-th date's day for a replication seed (``None`` stays unseeded)."""
+    return None if seed is None else seed + DATE_SEED_STRIDE * date_index
+
+
+def per_date_continuous(queue_setup) -> bool:
+    """B13: a per-date separate-lines setup whose operating segments lay out a day runs one day per date."""
+    setup = queue_setup if isinstance(queue_setup, dict) else {}
+    if setup.get("event_period_basis") != "per_date":
+        return False
+    try:
+        return des_day_start_minutes(setup) is not None
+    except (TypeError, ValueError):
+        return False
+
+
+def separate_engine_version(queue_setup) -> str:
+    """The separate-lines engine version a plan for this setup is calculated and verified with."""
+    return SEPARATE_DES_PER_DATE_DAY_ENGINE_VERSION if per_date_continuous(queue_setup) else SEPARATE_DES_ENGINE_VERSION
+
+
+def per_date_days(queue_setup: dict, order: list[str], period_rows: dict[str, list]) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Group per-date periods by calendar date: ``[(date, [(label, segment key), ...]), ...]`` in date order.
+
+    The date is the first token of NovaQ's per-date label (``YYYY-MM-DD <segment> UTC``); the segment key
+    is the ``segment_id`` ingestion stamps on every row of the period. Raises ValueError naming the period
+    when its label or segment cannot be read, and naming the date and segment when a date has no records
+    for a configured segment (OD-B13-2: NovaQ cannot tell whether the store was open and empty).
+    """
+    configured = [_segment_window(seg)[0] for seg in queue_setup.get("segments") or [] if isinstance(seg, dict)]
+    days: dict[str, list[tuple[str, str]]] = {}
+    for label in order:
+        match = _DATE_LABEL.match(label)
+        keys = {str(row.get("segment_id")) for row in period_rows.get(label) or []
+                if isinstance(row, dict) and row.get("segment_id") is not None}
+        if match is None or len(keys) != 1:
+            raise ValueError(f"NovaQ cannot read the date and operating segment of per-date period {label}.")
+        days.setdefault(match.group(1), []).append((label, keys.pop()))
+    for date, items in days.items():
+        missing = [key for key in configured if key not in {segment for _, segment in items}]
+        if missing:
+            raise ValueError(f"Date {date} has no records for operating segment(s) {', '.join(missing)}; "
+                             "NovaQ cannot tell whether the store was open, so the day cannot be simulated.")
+    return sorted(days.items())
 
 
 def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict[str, list],
-                          scheduled: dict[str, list[str]]):
+                          scheduled: dict[str, list[str]],
+                          days: list[tuple[str, list[tuple[str, str]]]] | None = None):
     """A ``run_fn`` that reads each period's replication from one continuous-day DES.
 
     Finding K: a period run alone for ``duration_hours`` (24 h) dilutes a
@@ -1670,6 +1747,10 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
     period as the horizon. Each seed's day runs once and is cached. Raises
     ValueError when the day cannot be laid out; the caller rejects the
     schedule rather than falling back to 24 h per-period runs (finding K2).
+
+    B13: with ``days`` (from ``per_date_days``) each calendar date is its own continuous day, starting
+    empty; a period reads its replication from its own date's day run. Without ``days`` the whole order
+    is one representative day, exactly as before.
     """
     origin = des_day_start_minutes(queue_setup)
     if origin is None:
@@ -1682,20 +1763,33 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
     except (TypeError, ValueError):
         raise ValueError("Representative-day optimization cannot lay out the operating day: "
                          "an operating segment has an invalid start or end time.") from None
-    unmatched = [label for label in order if label not in segment_windows]
-    if unmatched:
-        raise ValueError("Representative-day optimization cannot lay out the operating day: "
-                         f"period(s) {', '.join(unmatched)} match no configured operating segment.")
-    windows = []
-    for label in order:
-        low, high = segment_windows[label]
-        windows.append({"time": label, "start_hours": (low - origin) / 60.0,
-                        "end_hours": (high - origin) / 60.0,
-                        "active_queue_ids": list(scheduled[label]),
-                        "queues_by_id": {str(row.get("queue_id")): row for row in period_rows[label]}})
+    if days is None:
+        unmatched = [label for label in order if label not in segment_windows]
+        if unmatched:
+            raise ValueError("Representative-day optimization cannot lay out the operating day: "
+                             f"period(s) {', '.join(unmatched)} match no configured operating segment.")
+        days = [("", [(label, label) for label in order])]
+    else:
+        unmatched = [label for _, items in days for label, key in items if key not in segment_windows]
+        if unmatched:
+            raise ValueError("Per-date optimization cannot lay out the operating day: "
+                             f"period(s) {', '.join(unmatched)} match no configured operating segment.")
+    day_windows: dict[str, list[dict]] = {}
+    day_of: dict[str, str] = {}
+    day_index = {day_key: index for index, (day_key, _) in enumerate(days)}
+    for day_key, items in days:
+        windows = []
+        for label, key in sorted(items, key=lambda item: segment_windows[item[1]][0]) if day_key else items:
+            low, high = segment_windows[key]
+            windows.append({"time": label, "start_hours": (low - origin) / 60.0,
+                            "end_hours": (high - origin) / 60.0,
+                            "active_queue_ids": list(scheduled[label]),
+                            "queues_by_id": {str(row.get("queue_id")): row for row in period_rows[label]}})
+            day_of[label] = day_key
+        day_windows[day_key] = windows
     tie_order = [str(queue_id) for queue_id in queue_setup.get("queue_ids") or []]
     day_breaks = resolve_des_breaks(queue_setup)
-    days: dict[Any, dict] = {}
+    runs: dict[Any, dict] = {}
 
     def run(candidate, queues_by_id, *, duration_hours, seed, target, server_cost, waiting_cost,
             max_events):
@@ -1709,13 +1803,15 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
             return {**base, "status": "INVALID_INPUT",
                     "reason": "Continuous-day evaluation needs the scheduled lanes of every period.",
                     "evaluations": None, "total_cost": None}
-        if seed not in days:
+        day_key = day_of[label]
+        if (day_key, seed) not in runs:
             try:
-                days[seed] = run_routing_day_des(windows, tie_order=tie_order, seed=seed,
-                                                 max_events=max_events, breaks=day_breaks)
+                runs[(day_key, seed)] = run_routing_day_des(day_windows[day_key], tie_order=tie_order,
+                                                            seed=date_seed(seed, day_index[day_key]),
+                                                            max_events=max_events, breaks=day_breaks)
             except ValueError as exc:
-                days[seed] = {"error": str(exc)}
-        day = days[seed]
+                runs[(day_key, seed)] = {"error": str(exc)}
+        day = runs[(day_key, seed)]
         if "error" in day:
             return {**base, "status": "INVALID_INPUT", "reason": day["error"],
                     "evaluations": None, "total_cost": None}
@@ -1752,10 +1848,6 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
                   "trace_truncated": day["trace_truncated"]}
         over_target = sorted(item["queue_id"] for item in evaluations if item["active"]
                              and float(item["rho"]) > target + _UTILIZATION_TOLERANCE)
-        if over_target:
-            return {**base, **shared, "status": "INFEASIBLE", "total_cost": None,
-                    "reason": (f"Simulated utilization exceeds the {target:.0%} ceiling for: "
-                               + ", ".join(over_target) + ".")}
         server_total = 0.0
         waiting_total = 0.0
         for item in evaluations:
@@ -1766,6 +1858,11 @@ def _day_candidate_runner(queue_setup: dict, order: list[str], period_rows: dict
             if item["served"] and item["Wq"] is not None:
                 waiting_total += _compute_waiting_cost(
                     item["served"] / horizon, item["Wq"], waiting_cost) or 0.0
+        if over_target:  # U10 F16: the over-target run keeps its cost; feasibility is the aggregate rule
+            return {**base, **shared, "status": "INFEASIBLE", "total_cost": server_total + waiting_total,
+                    "server_cost": server_total, "waiting_cost": waiting_total,
+                    "reason": (f"Simulated utilization exceeds the {target:.0%} ceiling for: "
+                               + ", ".join(over_target) + ".")}
         return {**base, **shared, "status": "FEASIBLE", "reason": None,
                 "total_cost": server_total + waiting_total,
                 "server_cost": server_total, "waiting_cost": waiting_total, "demand_conserved": True}
@@ -1826,7 +1923,8 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
     # Finding K: representative-day full coverage reads every period from one
     # continuous day per replication (see _day_candidate_runner).
     day_run_fn = None
-    if run_fn is None and full_coverage and queue_setup.get("event_period_basis") == "representative_day":
+    if run_fn is None and full_coverage and (queue_setup.get("event_period_basis") == "representative_day"
+                                              or per_date_continuous(queue_setup)):
         scheduled = {label: _period_current_active(queue_setup, grouped[label]) for label in order}
         if all(scheduled.values()):
             scaled_rows = {label: [{**row, "lambda": float(row["lambda"]) * factor
@@ -1835,7 +1933,8 @@ def optimize_separate_schedule(queue_setup: dict, records: list, *, target: floa
             try:
                 day_run_fn = _day_candidate_runner(
                     queue_setup, order, scaled_rows,
-                    {label: list(lanes or []) for label, lanes in scheduled.items()})
+                    {label: list(lanes or []) for label, lanes in scheduled.items()},
+                    days=per_date_days(queue_setup, order, scaled_rows) if per_date_continuous(queue_setup) else None)
             except ValueError as exc:
                 return {"overall": "INVALID_INPUT", "reason": str(exc),
                         "target_utilization": ceiling, "evaluation_method": None,
