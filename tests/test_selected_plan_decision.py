@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from backend.api.scenarios import setup_fingerprint
 from backend.api.workflow import _derive_selected_decision
 from backend.db.models import AnalysisProject, Dataset, Scenario, User
@@ -60,6 +62,20 @@ def test_failed_validation_revises_without_cost_override():
     assert decision["status"] == "revise"
     assert "10:00" in decision["recommendation"]
     assert decision["facts"]["failed_checks"] == 1
+
+
+@pytest.mark.parametrize("failed,inadequate,passed", [(1, 1, 1), (1, 2, 0), (1, 0, 2), (3, 0, 0)])
+def test_mixed_validation_counts_report_only_actual_passes(failed, inadequate, passed):
+    pairs = [["08:00", "east-07"], ["08:00", "lane-A"], ["09:00", "east-07"]]
+    inputs = _inputs(verdict="fail", failed=pairs[:failed],
+                     inadequate=pairs[failed:failed + inadequate])
+    inputs["schedule"]["periods"][0]["optimal_active_lanes"] = 2
+    inputs["validation_result"]["verdict"]["total"] = 3
+    decision = _derive_selected_decision(**inputs)
+    assert decision["status"] == "revise"
+    assert f"Validation: {passed} of 3 checks passed." in decision["rationale"]
+    assert decision["facts"]["failed_checks"] == failed
+    assert decision["facts"]["inadequate_checks"] == inadequate
 
 
 def test_insufficient_validation_stays_insufficient():

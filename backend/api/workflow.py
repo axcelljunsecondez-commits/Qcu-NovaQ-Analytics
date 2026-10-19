@@ -1292,6 +1292,8 @@ def _separate_validation_verdict(
     required_pairs: list[tuple[str, str]],
     mc_rows_by_pair: dict[tuple[str, str], dict[str, Any]],
     failure_cap: float,
+    *,
+    use_exact_counts: bool = False,
 ) -> dict[str, Any]:
     """Aggregate per-queue validation verdicts with FAIL > insufficient > PASS.
 
@@ -1299,6 +1301,8 @@ def _separate_validation_verdict(
     row. No pooled or averaged failure rate is computed. Missing, unsupported,
     errored, or inadequate rows make the overall evidence insufficient, never
     a pass and never zero.
+    Selected-plan callers compare exact MC counts; Current keeps its existing
+    display-rate comparison unless explicitly requested otherwise.
     """
     failed: list[tuple[str, str]] = []
     inadequate: list[tuple[str, str]] = []
@@ -1311,15 +1315,25 @@ def _separate_validation_verdict(
             continue
         failure_rate = mc.get("mc_failure_rate", mc.get("failure_rate"))
         adequate = mc.get("mc_failure_rate_adequate", mc.get("failure_rate_adequate"))
+        comparison_rate = failure_rate
+        if use_exact_counts:
+            failures, trials = mc.get("failure_count"), mc.get("trials_completed")
+            if (isinstance(failures, int) and not isinstance(failures, bool)
+                    and isinstance(trials, int) and not isinstance(trials, bool)
+                    and trials > 0 and 0 <= failures <= trials):
+                comparison_rate = failures / trials
+            else:
+                comparison_rate = None
         verdict = "pass"
         if (
             mc.get("simulation_supported") is not True
             or not _finite_non_negative(failure_rate)
             or adequate is not True
+            or comparison_rate is None
         ):
             verdict = "inadequate"
             inadequate.append(key)
-        elif float(cast(int | float, failure_rate)) > failure_cap:
+        elif float(cast(int | float, comparison_rate)) > failure_cap:
             verdict = "fail"
             failed.append(key)
         rows.append({
@@ -3148,7 +3162,7 @@ def validate_selected_plan(schedule: dict[str, Any], des_result: dict[str, Any],
         pairs = [(time_label, q) for q in active]
         required_pairs.extend(pairs)
         if des_ok:
-            verdict = _separate_validation_verdict(pairs, mc_by_pair, failure_cap)
+            verdict = _separate_validation_verdict(pairs, mc_by_pair, failure_cap, use_exact_counts=True)
             overall_mc.update({key: mc_by_pair[key] for key in pairs if key in mc_by_pair})
         else:
             verdict = {"status": "insufficient", "failed": [], "inadequate": list(pairs),
@@ -3170,7 +3184,7 @@ def validate_selected_plan(schedule: dict[str, Any], des_result: dict[str, Any],
             "des_reason": des_reason,
             "queues": queue_rows,
         })
-    overall = _separate_validation_verdict(required_pairs, overall_mc, failure_cap)
+    overall = _separate_validation_verdict(required_pairs, overall_mc, failure_cap, use_exact_counts=True)
     return {"periods": periods_out, "verdict": overall}
 
 
@@ -3342,7 +3356,7 @@ def _derive_selected_decision(*, scenario: dict[str, Any], schedule: dict[str, A
             "missing_evidence": ["a completed Scenario Validation run"],
         }
     if status == "fail":
-        passed = total - len(failed) if isinstance(total, int) else None
+        passed = total - len(failed) - len(inadequate) if isinstance(total, int) else None
         return {
             **base,
             "status": "revise",

@@ -7,8 +7,12 @@ never averages away failures, never converts missing evidence to success.
 """
 from __future__ import annotations
 
+from copy import deepcopy
+
+import pytest
+
 from backend.api.scenarios import setup_fingerprint
-from backend.api.workflow import validate_selected_plan
+from backend.api.workflow import _separate_validation_verdict, validate_selected_plan
 from backend.queueing_engine.services.separate_optimization import SEPARATE_DES_ENGINE_VERSION
 from tests.helpers import csrf_header, login
 
@@ -33,8 +37,11 @@ def _des(time, lanes, conservation=True):
 
 
 def _mc_row(time, qid, rate=0.01, adequate=True, supported=True):
+    failures = round(rate * 2000)
+    assert failures / 2000 == rate  # These synthetic fixture rates are exactly representable counts.
     return {"time": time, "queue_id": qid, "mc_failure_rate": rate,
             "mc_failure_rate_adequate": adequate,
+            "failure_count": failures, "trials_completed": 2000,
             "simulation_supported": supported, "selected_model": "Parallel M/G/1"}
 
 
@@ -93,6 +100,106 @@ def test_conservation_failure_and_inactive_lanes():
     assert outcome["periods"][0]["status"] == "insufficient"
     # Inactive lanes never create requirements: only active lanes are required.
     assert outcome["verdict"]["total"] == 2
+
+
+def _counted_mc_row(time, qid, failures, trials):
+    fraction = failures / trials
+    return {"time": time, "queue_id": qid, "failure_rate": round(fraction, 4),
+            "failure_count": failures, "trials_completed": trials,
+            "failure_rate_adequate": True, "simulation_supported": True,
+            "selected_model": "Parallel M/G/1", "status": "PASS" if fraction <= 0.05 else "FAIL"}
+
+
+@pytest.mark.parametrize("rate_key", ["failure_rate", "mc_failure_rate"])
+@pytest.mark.parametrize("failures,trials,expected", [
+    (4999, 100000, "pass"), (5000, 100000, "pass"),
+    (5001, 100000, "fail"), (5004, 100000, "fail"),
+    (0, 2000, "pass"), (2000, 2000, "fail"),
+])
+def test_selected_exact_count_boundary(failures, trials, expected, rate_key):
+    row = _counted_mc_row("08:00", "east-07", failures, trials)
+    display_rate = row.pop("failure_rate")
+    row[rate_key] = display_rate
+    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
+                                     _des("08:00", ["east-07"]), [row], 0.05)
+    period = outcome["periods"][0]
+    assert outcome["verdict"]["status"] == expected
+    assert period["status"] == expected
+    assert period["queues"][0]["validation_verdict"] == expected
+    assert period["queues"][0]["mc_failure_rate"] == display_rate
+    assert outcome["verdict"]["failed"] == ([("08:00", "east-07")] if expected == "fail" else [])
+
+
+@pytest.mark.parametrize("field,value", [
+    ("failure_count", None), ("trials_completed", None),
+    ("failure_count", True), ("failure_count", False),
+    ("trials_completed", True), ("trials_completed", False),
+    ("failure_count", "0"), ("trials_completed", "2000"),
+    ("failure_count", 0.0), ("trials_completed", 2000.0),
+    ("failure_count", -1), ("failure_count", 2001),
+    ("trials_completed", 0), ("trials_completed", -1),
+])
+def test_selected_exact_count_invalid(field, value):
+    row = _counted_mc_row("08:00", "east-07", 0, 2000)
+    row[field] = value
+    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
+                                     _des("08:00", ["east-07"]), [row], 0.05)
+    assert outcome["verdict"]["status"] == "insufficient"
+    assert outcome["verdict"]["inadequate"] == [("08:00", "east-07")]
+    assert outcome["periods"][0]["status"] == "insufficient"
+    assert outcome["periods"][0]["queues"][0]["validation_verdict"] == "inadequate"
+
+
+@pytest.mark.parametrize("removed", [
+    ("failure_count",), ("trials_completed",), ("failure_count", "trials_completed"),
+])
+def test_selected_exact_count_missing(removed):
+    row = _counted_mc_row("08:00", "east-07", 0, 2000)
+    for field in removed:
+        row.pop(field)
+    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
+                                     _des("08:00", ["east-07"]), [row], 0.05)
+    assert outcome["verdict"]["status"] == "insufficient"
+    assert outcome["periods"][0]["status"] == "insufficient"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("simulation_supported", False), ("failure_rate_adequate", False),
+    ("failure_rate", None), ("failure_rate", float("nan")),
+    ("failure_rate", float("inf")), ("failure_rate", -0.1),
+])
+def test_selected_exact_counts_keep_evidence_gates(field, value):
+    row = _counted_mc_row("08:00", "east-07", 0, 2000)
+    row[field] = value
+    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
+                                     _des("08:00", ["east-07"]), [row], 0.05)
+    assert outcome["verdict"]["status"] == "insufficient"
+    assert outcome["periods"][0]["status"] == "insufficient"
+
+
+def test_selected_exact_counts_preserve_coordinate_identity():
+    schedule = _schedule({"08:00": ["east-07", "lane A"], "09:00": ["east-07"]})
+    des = {"periods": _des("08:00", ["east-07", "lane A"])["periods"]
+           + _des("09:00", ["east-07"])["periods"]}
+    rows = [_counted_mc_row("08:00", "east-07", 4999, 100000),
+            _counted_mc_row("08:00", "lane A", 5001, 100000),
+            _counted_mc_row("09:00", "east-07", 5000, 100000)]
+    outcome = validate_selected_plan(schedule, des, rows, 0.05)
+    assert outcome["verdict"]["total"] == 3
+    assert outcome["verdict"]["failed"] == [("08:00", "lane A")]
+    assert outcome["verdict"]["status"] == "fail"
+    assert [period["status"] for period in outcome["periods"]] == ["fail", "pass"]
+    assert [row["validation_verdict"] for row in outcome["periods"][0]["queues"]] == ["pass", "fail"]
+
+
+def test_current_default_accepts_legacy_rate_without_counts():
+    row = _counted_mc_row("08:00", "east-07", 0, 2000)
+    row.pop("failure_count")
+    row.pop("trials_completed")
+    outcome = _separate_validation_verdict([("08:00", "east-07")],
+                                           {("08:00", "east-07"): row}, 0.05)
+    assert outcome["status"] == "pass"
+    assert outcome["results"][0]["validation_verdict"] == "pass"
 
 
 # --- API layer ---------------------------------------------------------------------
@@ -254,7 +361,7 @@ def test_validation_passes_and_persists_with_full_identity(db_engine, client):
     assert workflow["validation"]["id"] == validated.json()["evidence"]["id"]
 
 
-def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows):
+def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows, *, num_trials=2000):
     from datetime import datetime, timezone
 
     from backend.db.models import Job, Scenario, User
@@ -268,7 +375,7 @@ def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows):
             params_json={"analysis_id": analysis_id, "scenario_id": scenario_id,
                          "dataset_id": db.get(Scenario, scenario_id).dataset_id,
                          "des_job_id": des_job_id, "failure_threshold": 0.75,
-                         "failure_rate_cap": 0.05, "num_trials": 2000,
+                          "failure_rate_cap": 0.05, "num_trials": num_trials,
                          "engine": "selected-plan-measured-mc",
                          "setup_hash": setup_fingerprint(_setup())},
             result_json={"provenance": "SELECTED", "scenario_id": scenario_id,
@@ -282,12 +389,57 @@ def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows):
 
 
 def _mc_result_row(time, qid, rate=0.0, adequate=True):
+    failures = round(rate * 2000)
+    assert failures / 2000 == rate
     return {"time": time, "queue_id": qid, "lambda": 2.0, "mu": 11.0, "c": 1,
             "rho_mean": 0.2, "Wq_mean": 0.01, "failure_rate": rate,
-            "failure_count": 0, "status": "PASS", "error": None,
+            "failure_count": failures, "trials_completed": 2000,
+            "status": "PASS" if rate <= 0.05 else "FAIL", "error": None,
             "selected_model": "Parallel M/G/1", "simulation_supported": True,
             "failure_rate_ci_lower": 0.0, "failure_rate_ci_upper": 0.01,
             "failure_rate_adequate": adequate}
+
+
+def test_selected_exact_counts_persist_and_drive_fresh_decision(db_engine, client):
+    from backend.db.models import Job
+    from tests.helpers import make_sessionmaker
+
+    email = "exact-counts@example.com"
+    analysis_id, dataset_id, scenario_id = _api_workspace(db_engine, email)
+    login(client, email, "pw")
+    headers = csrf_header(client)
+    selected = client.post(f"/analyses/{analysis_id}/workflow/selection", headers=headers,
+                           json={"scenario_id": scenario_id})
+    assert selected.status_code == 200, selected.text
+    des = client.post(f"/analyses/{analysis_id}/workflow/simulation/des/selected",
+                      headers=headers, json={"seed": 42})
+    assert des.status_code == 200, des.text
+    des_id = des.json()["evidence"]["id"]
+    # Synthetic persisted count evidence: exercise the consumer without 100,000 MC trials.
+    row = _counted_mc_row("08:00", "east-07", 5001, 100000)
+    mc_id = _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_id,
+                          [row], num_trials=100000)
+    with make_sessionmaker(db_engine)() as db:
+        before = {job_id: deepcopy(db.get(Job, job_id).result_json) for job_id in (des_id, mc_id)}
+    validated = _post(client, analysis_id, "simulation/validation/selected")
+    assert validated.status_code == 200, validated.text
+    validation = validated.json()["evidence"]
+    result = validation["result"]
+    assert result["verdict"]["status"] == "fail"
+    assert result["periods"][0]["status"] == "fail"
+    assert (result["scenario_id"], result["dataset_id"], result["des_job_id"], result["mc_job_id"]) == (
+        scenario_id, dataset_id, des_id, mc_id)
+    decided = _post(client, analysis_id, "decision/selected")
+    assert decided.status_code == 200, decided.text
+    decision = decided.json()["decision"]
+    assert decision["status"] == "revise"
+    assert decision["evidence_ids"]["validation"] == validation["id"]
+    assert decision["evidence_ids"]["mc"] == mc_id
+    assert decision["evidence_ids"]["des"] == des_id
+    with make_sessionmaker(db_engine)() as db:
+        assert db.get(Job, validation["id"]).result_json == result
+        for job_id, original in before.items():
+            assert db.get(Job, job_id).result_json == original
 
 
 def test_cross_scenario_mc_evidence_is_rejected(db_engine, client):
