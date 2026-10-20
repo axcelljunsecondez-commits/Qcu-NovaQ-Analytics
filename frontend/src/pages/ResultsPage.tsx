@@ -1,7 +1,7 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalyses, listAnalysisDatasets } from '../api/analyses'
 import { getObservedWait } from '../api/workflow'
 import { ApiState } from '../components/ui/ApiState'
@@ -13,10 +13,13 @@ import { ArrivalsChart, WaitByPeriodChart, WorkloadChart } from '../components/r
 import { ResultsDetails } from '../components/results/ResultsDetails'
 import { useSelectedPlan } from '../components/results/useSelectedPlan'
 import { currentDatasetId } from '../lib/datasets'
-import { rememberLastAnalysis, resolveLastAnalysis, storedLastAnalysis, subscribeLastAnalysis } from '../lib/lastAnalysis'
+import { rememberLastAnalysis } from '../lib/lastAnalysis'
+import { AnalysisEntry } from '../components/analysis/AnalysisEntry'
 import { ALL } from '../lib/periodFilter'
 import { hasCustomerRecords, isProcessed, lineOf } from '../lib/results'
 import { HelpLink } from '../components/ui/HelpLink'
+import { AnalysisSelector } from '../components/analysis/AnalysisSelector'
+import { ResultsSummary } from '../components/results/ResultsSummary'
 
 /**
  * Analysis results (spec 2026-10-09 §7.7, D14–D21, D31): the results of any successfully
@@ -29,7 +32,11 @@ export function ResultsPage() {
   const [params, setParams] = useSearchParams()
   const id = Number(params.get('analysis'))
   const validId = Number.isInteger(id) && id > 0
-  const stored = useSyncExternalStore(subscribeLastAnalysis, storedLastAnalysis, () => null)
+  const reference = params.get('view') === 'reference'
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    heading.current?.focus({ preventScroll: true })
+  }, [reference])
   const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses })
   const analysis = useQuery({ queryKey: ['analysis', id], queryFn: () => getAnalysis(id), enabled: validId })
   const datasets = useQuery({ queryKey: ['datasets', id], queryFn: () => listAnalysisDatasets(id), enabled: validId })
@@ -64,9 +71,7 @@ export function ResultsPage() {
   }, [analysis.data])
 
   if (!validId) {
-    if (analyses.isLoading) return <ApiState.Loading />
-    const last = resolveLastAnalysis(analyses.data?.analyses, stored)
-    return <Navigate to={last ? `/results?analysis=${last}` : '/analyses'} replace />
+    return <AnalysisEntry destination="results" />
   }
 
   const update = (changes: Record<string, string | null>) => {
@@ -79,20 +84,20 @@ export function ResultsPage() {
   }
   const period = params.get('period') ?? ALL
   const line = params.get('line') ?? ALL
+  const referenceParams = new URLSearchParams(params)
+  referenceParams.set('view', 'reference')
+  const returnParams = new URLSearchParams(params)
+  returnParams.delete('view')
+  const analysisOptions = (analyses.data?.analyses ?? []).filter((item) => !item.archived_at || item.id === id)
+    .map((item) => ({ id: item.id, name: item.name }))
+  if (!(analyses.data?.analyses ?? []).some((item) => item.id === id)) analysisOptions.push({ id, name: analysis.data?.analysis.name ?? String(id) })
 
   const header = (
     <header className="page-header results-header">
       <div>
-        <p className="topbar-eyebrow">{t('nav.group_insights')}</p>
-        <div className="title-row"><h1 className="page-title">{t('nav.analysis_results')}</h1><HelpLink topic="results" /></div>
+        <div className="title-row"><h1 ref={heading} tabIndex={-1} className="page-title">{t(reference ? 'results.reference_title' : 'nav.analysis_results')}</h1><HelpLink topic="results" /></div>
       </div>
-      <div className="form-field">
-        <label htmlFor="results-analysis">{t('results.analysis_label')}</label>
-        <select id="results-analysis" value={String(id)} onChange={(event) => navigate(`/results?analysis=${event.target.value}`)}>
-          {(analyses.data?.analyses ?? []).filter((item) => !item.archived_at || item.id === id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          {!(analyses.data?.analyses ?? []).some((item) => item.id === id) && <option value={id}>{analysis.data?.analysis.name ?? id}</option>}
-        </select>
-      </div>
+      <AnalysisSelector id="results-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions} onChange={(value) => navigate(`/results?analysis=${value}`)} />
     </header>
   )
 
@@ -115,6 +120,7 @@ export function ResultsPage() {
   return (
     <div className="page-stack">
       {header}
+      {reference && <Link className="results-reference-return" to={`/results?${returnParams}`}>{t('results.return_to_results')}</Link>}
       <FileSelector files={files} selected={selected} onSelect={(fileValue) => update({ file: fileValue === planningId ? null : String(fileValue), period: null, line: null })} />
 
       {!isPlanningFile && (
@@ -128,33 +134,30 @@ export function ResultsPage() {
       {current.isLoading ? <ApiState.Loading /> : current.isError || !current.data ? (
         <ApiState.ErrorState error={current.error} />
       ) : current.data.dataset.id !== selected.id ? <ApiState.Loading /> : (
-        <>
+        reference ? <>
+          <p className="form-hint">{t('results.reference_scope')}</p>
+          <ResultsDetails rows={rows} explanations={current.data.explanations} selectedModel={current.data.selected_model}
+            period={period} line={line} onPeriod={(value) => update({ period: value })} onLine={(value) => update({ line: value })} />
+        </> : <>
           <section aria-labelledby="key-results-title">
             <h2 id="key-results-title" className="section-title">{t('results.key_results')}</h2>
             <KeyResults
               rows={rows}
               kpis={current.data.kpis}
               separate={separateRows}
-              recorded={{ hasRecords: records, loading: observed.isLoading, dayWaitHours: observed.data?.available ? observed.data.day_observed_wait : null }}
+              recorded={{ hasRecords: records, loading: observed.isLoading, dayWaitHours: observed.data?.available && observed.data.dataset_id === selected.id ? observed.data.day_observed_wait : null }}
               busiest={current.data.busiest_period}
             />
           </section>
-          <BusyStrip rows={rows} planTarget={planTarget} period={period === ALL ? null : period} onPeriod={(time) => update({ period: time })} />
-          <div className="grid g2">
+          <ResultsSummary rows={rows} period={period} line={line} planTarget={planTarget} onPeriod={(value) => update({ period: value })} onLine={(value) => update({ line: value })}
+            referenceLink={<Link to={`/results?${referenceParams}`}>{t('results.reference_title')}</Link>} />
+          {new Set(rows.map((row) => row.time)).size > 1 && <BusyStrip showNumbers={false} rows={rows} planTarget={planTarget} period={period === ALL ? null : period} onPeriod={(time) => update({ period: time })} />}
+          <div className="results-patterns">
             <ArrivalsChart periods={current.data.arrivals_by_period} />
             <WorkloadChart rows={rows} separate={separateRows} />
           </div>
           {records && observed.data?.available && observed.data.dataset_id === selected.id && <WaitByPeriodChart periods={observed.data.periods} />}
           {isPlanningFile && <PlanChanges analysisId={id} plan={plan} />}
-          <ResultsDetails
-            rows={rows}
-            explanations={current.data.explanations}
-            selectedModel={current.data.selected_model}
-            period={period}
-            line={line}
-            onPeriod={(value) => update({ period: value })}
-            onLine={(value) => update({ line: value })}
-          />
         </>
       )}
     </div>

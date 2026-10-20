@@ -1,7 +1,7 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link, Navigate, NavLink, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, listAnalyses } from '../api/analyses'
 import { getWorkflow } from '../api/workflow'
 import { ApiState } from '../components/ui/ApiState'
@@ -13,8 +13,10 @@ import { KeyResultsView } from '../components/queueSimulation/KeyResultsView'
 import { ReplayView } from '../components/queueSimulation/ReplayView'
 import { RunBar } from '../components/queueSimulation/RunBar'
 import { buildContext, defaultRun, simulationHref, type RunChoice, type SimulationPageName } from '../components/queueSimulation/simulationContext'
-import { rememberLastAnalysis, resolveLastAnalysis, storedLastAnalysis, subscribeLastAnalysis } from '../lib/lastAnalysis'
+import { rememberLastAnalysis } from '../lib/lastAnalysis'
+import { AnalysisEntry } from '../components/analysis/AnalysisEntry'
 import { HelpLink } from '../components/ui/HelpLink'
+import { AnalysisSelector } from '../components/analysis/AnalysisSelector'
 
 const PAGES: Array<{ page: SimulationPageName; labelKey: string }> = [
   { page: 'results', labelKey: 'simulation.page_results' },
@@ -32,7 +34,6 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
   const [params, setParams] = useSearchParams()
   const id = Number(params.get('analysis'))
   const validId = Number.isInteger(id) && id > 0
-  const stored = useSyncExternalStore(subscribeLastAnalysis, storedLastAnalysis, () => null)
   const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses })
   const analysis = useQuery({ queryKey: ['analysis', id], queryFn: () => getAnalysis(id), enabled: validId })
   const named = analysis.data?.analysis.queue_setup.queue_structure === 'shared_queue' && params.get('mode') === 'named'
@@ -44,9 +45,7 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
   }, [analysis.data])
 
   if (!validId) {
-    if (analyses.isLoading) return <ApiState.Loading />
-    const last = resolveLastAnalysis(analyses.data?.analyses, stored)
-    return <Navigate to={last ? simulationHref(page, new URLSearchParams({ analysis: String(last) })) : '/analyses'} replace />
+    return <AnalysisEntry destination={`simulation/${page}`} />
   }
 
   const shared = analysis.data?.analysis.queue_setup.queue_structure === 'shared_queue'
@@ -57,19 +56,17 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     setParams(next, { replace: true })
   }
   const modeSwitch = shared ? <SimulationModeSwitch mode={named ? 'named' : 'legacy'} onChange={(mode) => setParam('mode', mode === 'named' ? 'named' : null)} /> : null
+  const analysisOptions = (analyses.data?.analyses ?? []).filter((item) => !item.archived_at || item.id === id)
+    .map((item) => ({ id: item.id, name: item.name }))
+  if (!(analyses.data?.analyses ?? []).some((item) => item.id === id)) analysisOptions.push({ id, name: analysis.data?.analysis.name ?? String(id) })
   const header = (
     <header className="page-header simulation-header">
       <div>
         <p className="topbar-eyebrow">{t('nav.group_simulation')}</p>
         <div className="title-row"><h1 className="page-title">{t('nav.queue_simulation')}</h1>{page === 'checks' ? <HelpLink topic="checks" /> : <HelpLink topic="simulation" section={page === 'replay' ? 'reading' : undefined} />}</div>
       </div>
-      <div className="form-field">
-        <label htmlFor="simulation-analysis">{t('results.analysis_label')}</label>
-        <select id="simulation-analysis" value={String(id)} onChange={(event) => navigate(simulationHref(page, new URLSearchParams({ analysis: event.target.value })))}>
-          {(analyses.data?.analyses ?? []).filter((item) => !item.archived_at || item.id === id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          {!(analyses.data?.analyses ?? []).some((item) => item.id === id) && <option value={id}>{analysis.data?.analysis.name ?? id}</option>}
-        </select>
-      </div>
+      <AnalysisSelector id="simulation-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions}
+        onChange={(value) => navigate(simulationHref(page, new URLSearchParams({ analysis: value })))} />
     </header>
   )
 
@@ -122,13 +119,14 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
             <Link to={`/analyses/${id}/plans`}>{t('nav.suggested_plans')}</Link>
           </div>
         )}
+        <Link className="button-link" to={`/results?analysis=${id}`}>{t('simulation.choose_saved_plan')}</Link>
       </div>
     )
   }
 
   const periodRun = (
     <>
-      <RunBar key={`run-${id}-${run}`} context={context} run={run} runLabelKey={context.separate ? undefined : 'simulation.run_period_by_period'} />
+      <RunBar key={`run-${id}-${run}`} context={context} run={run} />
       {page === 'results' && <KeyResultsView context={context} run={run} />}
       {page === 'replay' && <ReplayView context={context} run={run} />}
       {page === 'checks' && <ChecksView key={`checks-${id}-${run}`} context={context} run={run} />}

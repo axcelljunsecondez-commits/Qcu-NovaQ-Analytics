@@ -451,7 +451,8 @@ describe('Current dataset changes and cached workflow evidence', () => {
     expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
     await waitFor(() => expect(getAnalysisCurrentMock.mock.calls.length).toBeGreaterThan(lookupsBefore))
     await waitFor(() => expect(getAnalysisCurrentMock.mock.results.at(-1)?.type).toBe('return'))
-    expect(screen.getByRole('button', { name: 'Run full operation' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run period by period' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run full operation' })).not.toBeInTheDocument()
     expect(watch.stop()).toEqual([])
   })
 

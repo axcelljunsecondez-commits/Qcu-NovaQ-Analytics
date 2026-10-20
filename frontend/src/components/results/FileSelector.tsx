@@ -28,12 +28,12 @@ export function FileSelector({ files, selected, onSelect }: { files: DatasetOut[
           })}
         </select>
       </div>
+      <p className="results-source-name">{selected.source_filename || selected.name}</p>
       <dl className="results-file-facts">
         <div><dt>{t('results.data_covers')}</dt><dd>{covers(selected)}</dd></div>
         <div><dt>{t('results.uploaded_on')}</dt><dd>{formatDay(selected.created_at, i18n.language)}</dd></div>
-        {tag && <div><dt className="sr-only">{t('results.file_role')}</dt><dd><span className={`badge ${selected.is_current ? 'badge-ok' : 'badge-warn'}`}>{t(tag)}</span></dd></div>}
+        {tag && <div><dt className="sr-only">{t('results.file_role')}</dt><dd><span className={`badge ${selected.is_current ? 'badge-info' : 'badge-warn'}`}>{t(tag)}</span></dd></div>}
       </dl>
-      <p className="form-hint">{t('results.compare_later')}</p>
     </section>
   )
 }

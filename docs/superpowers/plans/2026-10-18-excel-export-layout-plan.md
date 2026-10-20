@@ -1,0 +1,9 @@
+# Excel export layout plan
+
+Spec: `../specs/2026-10-18-excel-export-layout.md`. Owner authorization: “go” after the exact formatting proposal. Worktree `feat/ux-u1-shell`; new 641-file baseline and unchanged diff/staging/HEAD evidence under root `output/excel-layout-2026-10-18/before/`.
+
+1. COMPLETE: inspect native screenshots, workbook builder/formula writer, existing route regressions and protected scope. Cause: shared/general sheets mostly use default widths; only selected separate/full-day sheets have layout adjustments.
+2. COMPLETE: capture pre-edit exports from the existing isolated SYNTHETIC models and reproduce the defect with focused route tests.
+3. COMPLETE: implement one presentation pass in `backend/reports/plan_report.py`; keep all value/formula writers intact. Apply widths, header/body styles, empty-cell title merges, computed wrapped heights and semantic numeric formats.
+4. COMPLETE: run focused route/formula/report regressions and exact before/after workbook payload comparisons, including missing/zero/unstable values and multiplier provenance. Render and inspect all 41 final views covering 37 sheets and four helper blocks. Isolated Linux image smoke also passed.
+5. COMPLETE for source repair and separately approved local activation: repository backend, Ruff, mypy and frontend gates passed; the initial frontend worker-start failure and successful full host rerun are recorded separately. The owner approved the exact API replacement and existing nginx reload; both executed successfully. Current API downloads, source/configuration/backup checks and renderer inspection passed. A later same-container service resume and the failed historical Full comparison/newer saved evidence are recorded separately in the report. Current-evidence verification passed without altering inputs, mathematics or newer evidence. Native Excel remains NOT TESTED; broader reconstruction and production are outside this completed scope.

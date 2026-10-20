@@ -4504,7 +4504,7 @@ th {
 
   .sidebar,
   .app-main {
-    transition: width var(--motion-fast), margin-left var(--motion-fast);
+    transition: color var(--motion-fast), background-color var(--motion-fast), border-color var(--motion-fast);
   }
 
   .sidebar.is-collapsed {
@@ -5157,6 +5157,115 @@ summary.setup-step-title::before {
   margin-top: 3px;
 }
 
+/* Responsive overview (2026-10-16). All corrections stay inside the signed-in shell. */
+.app-shell {
+  background: var(--color-bg-canvas);
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell .app-main,
+.app-shell .app-main > *,
+.app-shell .page-stack > *,
+.app-shell .card,
+.app-shell .grid > *,
+.app-shell .form-field,
+.app-shell .title-row,
+.app-shell .analysis-context > *,
+.app-shell .results-header > *,
+.app-shell .simulation-header > * { min-width: 0; }
+
+.app-shell .app-main { overflow-x: visible; }
+.app-shell a { color: var(--color-action-link); }
+.app-shell .sidebar a { color: var(--text-sidebar); }
+.app-shell .sidebar a.active { color: var(--color-action-primary-fg); }
+.app-shell .nav-section-title { font-size: 0.875rem; color: var(--text-sidebar); letter-spacing: 0.04em; }
+.app-shell :is(.form-hint, .page-caption, .field-error, .kpi-label, .status-badge, .badge, .busy-cell, .action-card-desc, .workflow-position, .lang-btn span) { font-size: 0.875rem; }
+.app-shell :is(button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, th, td, label) { font-size: 0.875rem; }
+.app-shell :is(input, select, textarea) { font-size: 1rem; min-width: 0; max-width: 100%; border-color: var(--color-border-control); }
+.app-shell .form-hint { max-width: 75ch; }
+.app-shell .setup-steps { grid-template-columns: minmax(0, 1fr); }
+.app-shell .setup-step { min-width: 0; }
+.app-shell :is(p, dd, td, th, label, .page-title, .card-title) { overflow-wrap: anywhere; }
+.app-shell :is(a, button, input, select, textarea, [tabindex]):focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 3px; }
+.app-shell .page-title[tabindex='-1']:focus { outline: none; }
+.app-shell :is(.btn-primary, .button-primary, .button-link) { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); }
+.app-shell :is(.btn-primary, .button-primary, .button-link):hover { background: var(--color-action-primary-hover); color: var(--color-action-primary-fg); }
+.app-shell :is(button, .button-link, .btn-primary):disabled,
+.app-shell [aria-disabled='true'] { background: var(--color-disabled-bg); color: var(--color-disabled-fg); border-color: var(--color-disabled-border); }
+.app-shell :is(.btn-secondary, .btn-ghost) { border-color: var(--color-border-control); }
+.app-shell :is(.badge-ok, .btn-good, .alert-ok, .status-normal) { background: var(--color-success-bg); color: var(--color-success-fg); border-color: var(--color-success-border); }
+.app-shell :is(.badge-warn, .alert-warn, .status-peak) { background: var(--color-warning-bg); color: var(--color-warning-fg); border-color: var(--color-warning-border); }
+.app-shell :is(.badge-bad, .alert-error, .status-critical, .status-unstable) { background: var(--color-danger-bg); color: var(--color-danger-fg); border-color: var(--color-danger-border); }
+.app-shell :is(.badge-info, .alert-info) { background: var(--color-info-bg); color: var(--color-info-fg); border-color: var(--color-info-border); }
+.app-shell :is(.status-badge, .busy-cell).busy-lean { background: var(--color-success-bg); color: var(--color-success-fg); }
+.app-shell :is(.status-badge, .busy-cell).busy-normal { background: var(--color-info-bg); color: var(--color-info-fg); }
+.app-shell :is(.status-badge, .busy-cell).busy-peak { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.app-shell :is(.status-badge, .busy-cell).busy-critical { background: var(--color-danger-bg); color: var(--color-danger-fg); }
+.app-shell :is(.status-badge, .busy-cell).busy-unstable {
+  background: repeating-linear-gradient(135deg, var(--color-danger-bg) 0 6px, var(--color-bg-surface) 6px 12px);
+  color: var(--color-danger-fg);
+}
+.app-shell :is(.status-badge, .busy-cell).busy-unknown { background: var(--color-unavailable-bg); color: var(--color-unavailable-fg); }
+.app-shell .table-scroll { min-width: 0; width: 100%; max-width: 100%; }
+.app-shell .table-scroll table { min-width: 100%; }
+.app-shell .results-reference .table-scroll table { min-width: 900px; }
+.app-shell th { text-transform: none; letter-spacing: normal; }
+.app-shell .analysis-selector { flex: 0 1 24rem; width: 100%; max-width: 100%; }
+.app-shell .results-header { align-items: flex-start; }
+.app-shell .analysis-selector select,
+.app-shell .results-file select,
+.app-shell .reports-page select { width: 100%; }
+.app-shell .analysis-selector-context { margin: 4px 0 0; color: var(--color-text-secondary); font-size: 0.875rem; overflow-wrap: anywhere; }
+/* The workspace already shows the full name beside this selector. Keep its description for AT. */
+.app-shell .analysis-context .analysis-selector-context { display: none; }
+.app-shell .results-file { display: grid; grid-template-columns: minmax(0, 1fr); }
+.app-shell .results-source-name { margin: 8px 0 0; font-size: 0.875rem; }
+.app-shell .results-file-facts { font-size: 0.875rem; }
+.app-shell .results-file-facts div { flex-wrap: wrap; }
+.app-shell .key-results { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-shell .key-result-compact { background: var(--color-bg-subtle); padding: 16px; box-shadow: none; }
+.app-shell .key-result-compact .key-result-value strong { font-size: 1rem; }
+.app-shell .results-metric-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.app-shell .results-metric-heading h3 { margin: 0; }
+.app-shell .sidebar { background: var(--color-bg-sidebar); }
+.app-shell .results-section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.app-shell .results-section-heading a { font-size: 0.875rem; text-decoration: underline; }
+.app-shell .results-summary-table table { table-layout: fixed; }
+.app-shell .results-summary-table :is(th, td) { white-space: normal; }
+.app-shell .results-summary-list { display: none; }
+.app-shell .results-patterns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)); gap: 16px; }
+.app-shell .results-chart-list { padding: 0; list-style: none; }
+.app-shell .results-chart-values,
+.app-shell .report-context { display: grid; gap: 8px; margin: 8px 0; font-size: 0.875rem; }
+.app-shell :is(.results-chart-values, .report-context) > div { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.app-shell :is(.results-chart-values, .report-context) dt { font-weight: 600; }
+.app-shell :is(.results-chart-values, .report-context) dd { margin: 0; }
+.app-shell .info-tip-stable { vertical-align: middle; }
+.app-shell .info-tip-stable .info-tip-button { min-width: 32px; min-height: 32px; color: var(--color-action-link); background: transparent; }
+.app-shell .info-tip-stable .info-tip-text { position: fixed; max-width: min(22rem, calc(100vw - 48px)); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: var(--shadow-md); text-align: left; }
+.app-shell .optimize-flow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.app-shell .optimize-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 16px; align-items: start; }
+.app-shell .optimize-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 16px; }
+
+@media (max-width: 767px) {
+  .app-shell .analysis-selector { flex-basis: auto; }
+  .app-shell .key-results { grid-template-columns: minmax(0, 1fr); }
+  .app-shell .results-summary-table { display: none; }
+  .app-shell .results-summary-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; font-size: 0.875rem; }
+  .app-shell .results-summary-list li { padding-block: 12px; border-block-start: 1px solid var(--color-border-subtle); }
+  .app-shell .results-summary-list dl { display: grid; gap: 8px; margin: 0; }
+  .app-shell .results-summary-list dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .app-shell .results-summary-list dt { color: var(--color-text-secondary); }
+  .app-shell .results-summary-list dd { margin: 0; }
+  .app-shell .info-tip-stable .info-tip-button { min-width: 44px; min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *, .app-shell *::before, .app-shell *::after { animation-duration: 0.01ms; transition-duration: 0.01ms; scroll-behavior: auto; }
+}
+
 .plan-switcher {
   display: flex;
   flex-wrap: wrap;
@@ -5320,3 +5429,11 @@ summary.setup-step-title::before {
 .waiting-chart-close { stroke: var(--border-accent); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
 .older-run { border-top: 1px solid var(--border); padding-top: 16px; }
 .replay-clock { font-size: 1.1rem; margin: 8px 0; }
+
+/* Keep focused inputs visible when the workflow bar would occupy a short viewport. */
+@media (max-height: 480px) {
+  .workflow-footer {
+    position: static;
+    bottom: auto;
+  }
+}

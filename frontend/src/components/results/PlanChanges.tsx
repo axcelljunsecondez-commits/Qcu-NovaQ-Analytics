@@ -99,17 +99,17 @@ function CalculatedResult({ analysisId, changes, waitNow, waitPlan, costNow, cos
       <p>{t('results.suggests_cost', { now: costNow ?? unavailable, plan: costPlan ?? unavailable })}{costNote ? ` ${costNote}` : ''}</p>
       {separate && <p className="form-hint">{t('results.separate_plan_basis')}</p>}
       <div className="button-row">
-        <Link className="button-link" to={`/reports?analysis=${analysisId}`}>{t('results.open_reports')}</Link>
+        <Link className="button-link" to={`/reports?analysis=${analysisId}`}>{t('results.view_plan_exports')}</Link>
         <Link className="button-link" to={`/simulation/results?analysis=${analysisId}&plan=suggested`}>{t('results.check_in_simulation')}</Link>
       </div>
     </section>
   )
 }
 
-function Switcher({ options, selectedId, analysisId }: { options: { id: number; name: string }[]; selectedId: number; analysisId: number }) {
+function Switcher({ options, selectedId, analysisId }: { options: { id: number; name: string }[]; selectedId: number | null; analysisId: number }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [choice, setChoice] = useState(String(selectedId))
+  const [choice, setChoice] = useState(selectedId === null ? '' : String(selectedId))
   const select = useMutation({
     mutationFn: (scenarioId: number) => selectWorkflowScenario(analysisId, scenarioId),
     onSuccess: async () => {
@@ -118,15 +118,17 @@ function Switcher({ options, selectedId, analysisId }: { options: { id: number; 
     },
   })
   const chosen = Number(choice)
+  const eligible = choice !== '' && options.some((option) => option.id === chosen)
   return (
     <div className="plan-switcher">
       <div className="form-field">
         <label htmlFor="plan-switcher">{t('results.plan_label')}</label>
         <select id="plan-switcher" value={choice} onChange={(event) => setChoice(event.target.value)}>
+          {selectedId === null && <option value="" disabled>{t('results.choose_saved_plan')}</option>}
           {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
         </select>
       </div>
-      <button type="button" className="btn-primary" disabled={chosen === selectedId || select.isPending} onClick={() => select.mutate(chosen)}>
+      <button type="button" className="btn-primary" disabled={!eligible || chosen === selectedId || select.isPending} onClick={() => select.mutate(chosen)}>
         {select.isPending ? t('common.loading') : t('results.use_for_simulation')}
       </button>
       {select.isError && <div role="alert" className="alert alert-error">{messageOf(select.error, t('errors.server'))}</div>}
@@ -186,10 +188,15 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
   if (plan.kind === 'loading') return <p className="form-hint">{t('common.loading')}</p>
   if (plan.kind === 'error') return <div className="alert alert-error" role="alert">{t('results.plan_error')}</div>
   if (plan.kind === 'none') {
+    const options = plan.separateComparison
+      ? plan.separateComparison.plans.filter((item) => item.valid && !item.stale).map((item) => ({ id: item.scenario_id, name: item.name }))
+      : (plan.scenarios ?? []).filter((item) => item.provenance === 'verified_snapshot' && isCurrentScenario(item) && operationalComparisonComplete(scenarioRows(item)))
+        .map((item) => ({ id: Number(item.id), name: item.name }))
     return (
       <section className="card" aria-labelledby="plan-none-title">
         <h2 id="plan-none-title" className="section-title">{t('results.plan_changes')}</h2>
-        <p>{t('results.no_plan_selected')}</p>
+        <p>{t(options.length > 0 ? 'results.saved_plan_available' : 'results.no_plan_selected')}</p>
+        {options.length > 0 && <Switcher key={analysisId} options={options} selectedId={null} analysisId={analysisId} />}
         <Link className="button-link" to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>
       </section>
     )

@@ -39,7 +39,7 @@ function item(id: number) {
 
 function TransientProbe() {
   const [count, setCount] = useState(0)
-  return <button type="button" onClick={() => setCount((value) => value + 1)}>Transient {count}</button>
+  return <><h1>Page title</h1><button type="button" onClick={() => setCount((value) => value + 1)}>Transient {count}</button></>
 }
 
 beforeEach(() => {
@@ -50,6 +50,33 @@ beforeEach(() => {
 })
 
 describe('AnalysisWorkspace', () => {
+  it.each([null, '2026-10-19T00:00:00Z'])('keeps the loaded current record selected when absent from the list (archived_at=%s)', async (archivedAt) => {
+    getMock.mockImplementation(async (id: number) => ({ analysis: { ...item(id), archived_at: id === 2 ? archivedAt : null } }))
+    listMock.mockResolvedValue({ analyses: [item(1)] })
+    const router = createMemoryRouter(
+      [{
+        path: '/analyses/:analysisId',
+        element: <AnalysisWorkspace />,
+        children: [{ path: 'plans', element: <TransientProbe /> }],
+      }],
+      { initialEntries: ['/analyses/2/plans'] },
+    )
+    render(
+      <QueryClientProvider client={makeQueryClient()}>
+        <I18nextProvider i18n={testI18n()}>
+          <RouterProvider router={router} />
+        </I18nextProvider>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('Analysis 2', { selector: 'p.card-title' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Switch Analysis')).toHaveValue('2')
+    expect(screen.getAllByRole('option', { name: 'Analysis 2' })).toHaveLength(1)
+    fireEvent.change(screen.getByLabelText('Switch Analysis'), { target: { value: '1' } })
+    expect(await screen.findByText('Analysis 1', { selector: 'p.card-title' })).toBeInTheDocument()
+    expect(screen.getAllByRole('option', { name: 'Analysis 1' })).toHaveLength(1)
+    expect(router.state.location.pathname).toBe('/analyses/1/plans')
+  })
+
   it('uses the route as context and resets transient child state when switching', async () => {
     const router = createMemoryRouter(
       [{
@@ -66,7 +93,9 @@ describe('AnalysisWorkspace', () => {
         </I18nextProvider>
       </QueryClientProvider>,
     )
-    expect(await screen.findByRole('heading', { name: 'Analysis 1' })).toBeInTheDocument()
+    expect(await screen.findByText('Analysis 1', { selector: 'p.card-title' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Page title')
     expect(screen.getByText('Step 2 of 6')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back: Data and setup' })).toHaveAttribute(
       'href',
@@ -79,7 +108,7 @@ describe('AnalysisWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Transient 0' }))
     expect(screen.getByRole('button', { name: 'Transient 1' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Switch Analysis'), { target: { value: '2' } })
-    expect(await screen.findByRole('heading', { name: 'Analysis 2' })).toBeInTheDocument()
+    expect(await screen.findByText('Analysis 2', { selector: 'p.card-title' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Transient 0' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/analyses/2/plans')
   })

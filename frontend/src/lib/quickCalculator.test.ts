@@ -62,4 +62,11 @@ describe('quick calculator logic (U9)', () => {
     expect(summarize('leaving', result({ rho: 1.3333, rho_effective: 0.9023, abandonment_rate: 0.3233 }))).toMatchObject({
       keepUp: null, busy: 0.9023, leaving: 0.3233 })
   })
+
+  it('preserves the Erlang-A workload ratio in minutes without recalculating a different population mean', () => {
+    const summary = summarize('leaving', result({ Wq: 0.6809975199598253, metric_basis: 'workload_per_served_throughput' }))
+    expect(summary.waitMinutes).toBeCloseTo(40.85985119758952, 9)
+    expect(summary.waitMinutes).not.toBeCloseTo(24.30690748347044, 6)
+    expect(summary.waitMinutes).not.toBeCloseTo(28.867787793952992, 6)
+  })
 })

@@ -19,23 +19,14 @@ export function ArrivalsChart({ periods }: { periods: PeriodArrivals[] | undefin
       <h2 id="results-arrivals-title" className="section-title">{t('results.arrivals_chart')}</h2>
       <p className="key-result-source">{t('results.source_data')}</p>
       {values.length === 0 ? <p className="empty-state">{t('results.arrivals_unavailable')}</p> : (
-        <>
-          <div className="hbar-chart" role="img" aria-labelledby="results-arrivals-title">
+          <ul className="hbar-chart results-chart-list" aria-labelledby="results-arrivals-title">
             {values.map((item) => (
-              <div className="hbar-row" key={item.time}>
-                <div className="hbar-head"><span className="hbar-label">{item.time}</span><span className="hbar-value">{item.value !== null ? fmtDecimal(item.value) : unavailable}</span></div>
-                <span className="hbar-track"><span className="hbar-fill" style={{ width: width(item.value, max) }} /></span>
-              </div>
+              <li className="hbar-row" key={item.time}>
+                <div className="hbar-head"><span className="hbar-label">{item.time}</span><span className="hbar-value">{item.value !== null ? t('results.customers_per_hour', { count: item.value, value: fmtDecimal(item.value) }) : unavailable}</span></div>
+                <span className="hbar-track" aria-hidden="true"><span className="hbar-fill" style={{ width: width(item.value, max) }} /></span>
+              </li>
             ))}
-          </div>
-          <div className="table-scroll chart-data-table" role="region" aria-label={t('results.arrivals_table')} tabIndex={0}>
-            <table>
-              <caption className="sr-only">{t('results.arrivals_table')}</caption>
-              <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('results.col_arrivals')}</th></tr></thead>
-              <tbody>{values.map((item) => <tr key={item.time}><th scope="row">{item.time}</th><td>{item.value !== null ? fmtDecimal(item.value) : unavailable}</td></tr>)}</tbody>
-            </table>
-          </div>
-        </>
+          </ul>
       )}
     </section>
   )
@@ -56,29 +47,20 @@ export function WaitByPeriodChart({ periods }: { periods: ObservedWaitPeriod[] }
         <li><span className="hbar-legend-bar" aria-hidden="true" />{t('results.recorded')}</li>
         <li><span className="hbar-legend-bar hbar-legend-alt" aria-hidden="true" />{t('results.estimated')}</li>
       </ul>
-      <div className="hbar-chart" role="img" aria-labelledby="results-wait-title">
+      <ul className="hbar-chart results-chart-list" aria-labelledby="results-wait-title">
         {items.map((item) => (
-          <div className="hbar-row" key={item.time}>
-            <div className="hbar-head"><span className="hbar-label">{item.time}</span><span className="hbar-value">{text(item.recorded)} · {text(item.estimated)}</span></div>
-            <span className="hbar-track"><span className="hbar-fill" style={{ width: width(item.recorded, max) }} /></span>
-            <span className="hbar-track"><span className="hbar-fill hbar-fill-alt" style={{ width: width(item.estimated, max) }} /></span>
-          </div>
+          <li className={`hbar-row${item.flagged ? ' row-warning' : ''}`} key={item.time}>
+            <div className="hbar-head"><span className="hbar-label">{item.time}</span></div>
+            <dl className="results-chart-values">
+              <div><dt>{t('results.recorded')}</dt><dd>{text(item.recorded)}</dd></div>
+              <div><dt>{t('results.estimated')}</dt><dd>{text(item.estimated)}</dd></div>
+            </dl>
+            {item.flagged && <span className="status-badge status-critical">{t('current.observed_flagged')}</span>}
+            <span className="hbar-track" aria-hidden="true"><span className="hbar-fill" style={{ width: width(item.recorded, max) }} /></span>
+            <span className="hbar-track" aria-hidden="true"><span className="hbar-fill hbar-fill-alt" style={{ width: width(item.estimated, max) }} /></span>
+          </li>
         ))}
-      </div>
-      <div className="table-scroll chart-data-table" role="region" aria-label={t('results.wait_table')} tabIndex={0}>
-        <table>
-          <caption className="sr-only">{t('results.wait_table')}</caption>
-          <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('results.recorded')}</th><th scope="col">{t('results.estimated')}</th><th scope="col">{t('analyses.status')}</th></tr></thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.time} className={item.flagged ? 'row-warning' : undefined}>
-                <th scope="row">{item.time}</th><td>{text(item.recorded)}</td><td>{text(item.estimated)}</td>
-                <td>{item.flagged ? <span className="status-badge status-critical">{t('current.observed_flagged')}</span> : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      </ul>
     </section>
   )
 }
@@ -106,24 +88,18 @@ export function WorkloadChart({ rows, separate }: { rows: ResultRow[]; separate:
             <li><span className="hbar-legend-bar" aria-hidden="true" />{t('current.workload_avg')}</li>
             <li><span className="hbar-legend-marker" aria-hidden="true" />{t('current.workload_peak')}</li>
           </ul>
-          <div className="hbar-chart" role="img" aria-labelledby="results-workload-title">
+          <ul className="hbar-chart results-chart-list" aria-labelledby="results-workload-title">
             {workload.map((cashier) => (
-              <div className="hbar-row" key={cashier.queueId}>
+              <li className="hbar-row" key={cashier.queueId}>
                 <div className="hbar-head"><span className="hbar-label">{cashier.queueId}</span><span className="hbar-value">{t('current.workload_row_values', { avg: fmtPctDecimal(cashier.averageRho), peak: fmtPctDecimal(cashier.peakRho) })}</span></div>
-                <span className="hbar-track">
+                <p className="form-hint">{t('current.workload_peak_time')}: {cashier.peakTime}</p>
+                <span className="hbar-track" aria-hidden="true">
                   <span className="hbar-fill" style={{ width: width(cashier.averageRho, scale) }} />
                   <span className="hbar-marker" style={{ left: width(cashier.peakRho, scale) }} />
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
-          <div className="table-scroll chart-data-table" role="region" aria-label={t('current.workload_table')} tabIndex={0}>
-            <table>
-              <caption className="sr-only">{t('current.workload_table')}</caption>
-              <thead><tr><th scope="col">{t('analyses.service_line')}</th><th scope="col">{t('current.workload_avg')}</th><th scope="col">{t('current.workload_peak')}</th><th scope="col">{t('current.workload_peak_time')}</th></tr></thead>
-              <tbody>{workload.map((cashier) => <tr key={cashier.queueId}><th scope="row">{cashier.queueId}</th><td>{fmtPctDecimal(cashier.averageRho)}</td><td>{fmtPctDecimal(cashier.peakRho)}</td><td>{cashier.peakTime}</td></tr>)}</tbody>
-            </table>
-          </div>
+          </ul>
         </>
       )}
     </section>

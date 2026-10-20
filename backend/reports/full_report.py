@@ -4,9 +4,8 @@ Spec: docs/superpowers/specs/2026-10-09-b8-reports-pdf-excel.md §1 (available w
 export). Everything here quotes persisted evidence: the Decision's own headline, recommendation, rationale and
 facts, the simulation's stored summary, and each check's stored settings and statuses. No verdict is re-derived.
 
-Shared lines: the Decision is made from the period-by-period run (``workflow._derive_decision``), so that run is
-the simulation shown; the full-day run is a preview without a pass or fail rule (OD-UX-13) and is listed under
-"What is not included". Separate lines: the selected-plan chain (``reports._selected_report_chain``).
+Shared lines: follow the current Decision's recorded full-day or period-by-period basis (OD-UX-13), without
+mixing their evidence. Separate lines: the selected-plan chain (``reports._selected_report_chain``).
 """
 
 from __future__ import annotations
@@ -16,8 +15,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 FULL_LABEL = "Plan checked by simulation, with the Decision"
-SHARED_SOURCE = ("Period-by-period simulation: the evidence the Decision uses. The full-day run is a preview and "
-                 "is not part of the Decision.")
+SHARED_SOURCE = "Period-by-period simulation: the evidence used by this Decision."
 NOT_RECORDED = "not recorded by this run"
 
 
@@ -68,10 +66,72 @@ def _within(rows: Sequence[Mapping[str, Any]]) -> str:
     return f"{passed} of {len(rows)} within the allowed failure share"
 
 
+def _shared_full_day_sections(run: Mapping[str, Any], mc: Mapping[str, Any] | None,
+                              decision: Mapping[str, Any], counter_breaks: bool) -> dict[str, Any]:
+    """Read the saved run's aggregates and the Decision's verdicts; derive no new verdict or simulation."""
+    result, params = run.get("result") or {}, run.get("params") or {}
+    summary = result.get("summary") or {}
+    customers = (summary.get("customers") or {}).get("per_replication") or {}
+    metrics = summary.get("metrics") or {}
+    waiting = (summary.get("waiting_time") or {}).get("customer_weighted_mean_hours") or {}
+    wait = _finite(waiting.get("value"))
+    headlines = [
+        {"label": "Average wait of served customers (all repeated days)",
+         "value": None if wait is None else wait * 60, "unit": "minutes"},
+        {"label": "Longest line (average per day)",
+         "value": _finite((metrics.get("max_queue_in_horizon") or {}).get("mean")), "unit": "people"},
+        {"label": "Customers served (average per day)",
+         "value": _finite((customers.get("served") or {}).get("mean")), "unit": "customers"},
+        {"label": "Customers not served (average per day)",
+         "value": _finite((customers.get("unserved") or {}).get("mean")), "unit": "customers"},
+    ]
+    labels = params.get("period_labels") or {}
+    points = []
+    for segment in (result.get("period_utilization") or {}).get("segments") or []:
+        mean = _finite((segment.get("summary") or {}).get("mean"))
+        points.append({"label": str(labels.get(segment.get("segment_id"), segment.get("segment_id"))),
+                       "value": None if mean is None else mean * 100})
+    mc_rows = ((mc or {}).get("result") or {}).get("results") or []
+    mc_params = (mc or {}).get("params") or {}
+    periods = (decision.get("facts") or {}).get("periods") or []
+    outcome = "not recorded by this Decision"
+    if periods:
+        counts = {status: sum(p.get("verdict") == status for p in periods) for status in ("pass", "fail", "insufficient")}
+        outcome = (f"{counts['pass']} passed, {counts['fail']} failed, {counts['insufficient']} without enough evidence "
+                   f"of {len(periods)} recorded periods (as counted by the Decision)")
+    recorded = lambda key: params.get(key) if params.get(key) is not None else "not recorded"
+    checks = [
+        {"check": "Simulation run", "outcome": "done",
+         "settings": (f"Full-day run {run['id']}; {recorded('replications')} repeated days; seed {recorded('seed')}; "
+                      f"closing rule {recorded('closing_policy')}; service model {recorded('service_model')}")},
+        {"check": "Many variations", "outcome": _within(mc_rows) if mc else "not run",
+         "settings": (f"{mc_params.get('num_trials', 'not recorded')} trials; a trial fails when counters are busier than "
+                      f"{_percent(mc_params.get('failure_threshold'))}; allowed failure share {_percent(mc_params.get('failure_rate_cap'))}")},
+        {"check": "Results check", "outcome": outcome,
+         "settings": "Full-day busy shares against plan targets and Many variations; no period-by-period validation is used."},
+    ]
+    not_included = ["Period-by-period simulation and its validation are not used for this full-day Decision."]
+    if counter_breaks:
+        not_included.append("Suggested counters do not account for the counter breaks in the Setup.")
+    return {
+        "decision": _decision(decision),
+        "simulation": {"source": "Full-day simulation: the saved repeated days used by this Decision.",
+                       "basis": "full_day_run", "headlines": headlines,
+                       "charts": [{"title": "Average busy share by period (across repeated days)", "unit": "percent", "points": points},
+                                  _failure_chart(mc_rows, mc_params.get("failure_rate_cap"))]},
+        "checks": checks,
+        "not_included": not_included + [str(decision.get("provenance_warning") or "")],
+    }
+
+
 def shared_full_sections(*, des: Mapping[str, Any] | None, mc: Mapping[str, Any] | None,
                          validation: Mapping[str, Any] | None, decision: Mapping[str, Any],
-                         counter_breaks: bool) -> dict[str, Any]:
+                         counter_breaks: bool, full_day: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Full-report sections for one shared line from the current evidence (job views with params and result)."""
+    if decision.get("basis") == "full_day_run":
+        if full_day is None or full_day.get("id") != (decision.get("evidence_ids") or {}).get("continuous"):
+            raise ValueError("A full-day Decision requires its matching saved run.")
+        return _shared_full_day_sections(full_day, mc, decision, counter_breaks)
     summary = ((des or {}).get("result") or {}).get("summary") or {}
     mc_rows = ((mc or {}).get("result") or {}).get("results") or []
     mc_params, des_params = (mc or {}).get("params") or {}, (des or {}).get("params") or {}
@@ -92,8 +152,7 @@ def shared_full_sections(*, des: Mapping[str, Any] | None, mc: Mapping[str, Any]
          "settings": (f"{val_params.get('des_sim_hours')} simulated hours, {val_params.get('mc_trials')} trials, "
                       f"allowed failure share {_percent(val_params.get('mc_failure_rate_cap'))}")},
     ]
-    not_included = ["The full-day run of the shared line is a preview: no pass or fail rule exists for it yet, so it "
-                    "is not part of the Decision."]
+    not_included = ["A full-day run is not used for this period-by-period Decision."]
     if counter_breaks:
         not_included.append("Suggested counters do not account for the counter breaks in the Setup.")
     return {

@@ -67,7 +67,7 @@ export function neighbourCounters(situation: Situation, inputs: CalculatorInputs
 export type KeepUp = 'yes' | 'no' | 'not_calculated'
 
 export interface CalculatorSummary {
-  /** Average wait in line, minutes; null when the model gives none. */
+  /** Returned Wq in minutes; leaving uses workload per served customer, not mean wait. Null when unavailable. */
   waitMinutes: number | null
   /** Share of time counters are busy (0-1); null when not given. */
   busy: number | null

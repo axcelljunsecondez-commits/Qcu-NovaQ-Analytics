@@ -131,7 +131,7 @@ export function QuickCalculatorPage() {
             return (
               <div className="form-field" key={field}>
                 <label htmlFor={`calculator-${field}`}>{label}</label>
-                <InfoTip name={label} text={t(`calculator.field_info.${field}`)} />
+                <InfoTip stableInteraction={Boolean(user)} name={label} text={t(`calculator.field_info.${field}`)} />
                 <input id={`calculator-${field}`} type="number" inputMode="decimal" min={field === 'c' || field === 'capacity' ? 1 : 0}
                   step={field === 'c' || field === 'capacity' ? 1 : 'any'} value={values[field]} aria-invalid={problems.includes(field)}
                   aria-describedby={problems.includes(field) ? `calculator-${field}-error` : undefined}
@@ -145,12 +145,12 @@ export function QuickCalculatorPage() {
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </form>
 
-      {calculation && <Results calculation={calculation} />}
+      {calculation && <Results calculation={calculation} stableInteraction={Boolean(user)} />}
     </div>
   )
 }
 
-function Results({ calculation }: { calculation: Calculation }) {
+function Results({ calculation, stableInteraction }: { calculation: Calculation; stableInteraction: boolean }) {
   const { t } = useTranslation()
   const { situation, main } = calculation
   const s = main.summary
@@ -167,12 +167,15 @@ function Results({ calculation }: { calculation: Calculation }) {
       <h2 className="card-title">{t('calculator.results')}</h2>
       <p className="form-hint">{t('calculator.model_used', { model: t(`calculator.model.${main.model}`) })}</p>
       <div className="card-grid">
-        {cards.map((card) => (
-          <div className="card kpi-card" key={card.key} data-testid={`calculator-${card.key}`}>
-            <span className="kpi-label">{t(`calculator.result.${card.key}`)} <InfoTip name={t(`calculator.result.${card.key}`)} text={t(`calculator.result_info.${card.key}`)} /></span>
-            <strong className="kpi-value">{card.value}</strong>
-          </div>
-        ))}
+        {cards.map((card) => {
+          const label = card.key === 'wait' && situation === 'leaving' ? 'workload' : card.key
+          return (
+            <div className="card kpi-card" key={card.key} data-testid={`calculator-${card.key}`}>
+              <span className="kpi-label">{t(`calculator.result.${label}`)} <InfoTip stableInteraction={stableInteraction} name={t(`calculator.result.${label}`)} text={t(`calculator.result_info.${label}`)} /></span>
+              <strong className="kpi-value">{card.value}</strong>
+            </div>
+          )
+        })}
       </div>
       <h3 className="card-title">{t('calculator.what_this_means')}</h3>
       <ul className="calculator-meaning" data-testid="calculator-meaning">
@@ -192,7 +195,9 @@ function meaning(t: (key: string, options?: Record<string, unknown>) => string, 
   if (s.waitMinutes === null || s.busy === null) {
     return t('calculator.meaning.not_calculated', { counters })
   }
-  const base = t('calculator.meaning.result', { counters, wait: fmtDecimal(s.waitMinutes), busy: fmtPctDecimal(s.busy) })
+  const base = t(situation === 'leaving' ? 'calculator.meaning.workload' : 'calculator.meaning.result', {
+    counters, wait: fmtDecimal(s.waitMinutes), busy: fmtPctDecimal(s.busy),
+  })
   if (situation === 'limited') return `${base} ${t('calculator.meaning.turned_away', { share: fmtPctDecimal(s.turnedAway) })}`
   if (situation === 'leaving') return `${base} ${t('calculator.meaning.leaving', { share: fmtPctDecimal(s.leaving) })}`
   return base

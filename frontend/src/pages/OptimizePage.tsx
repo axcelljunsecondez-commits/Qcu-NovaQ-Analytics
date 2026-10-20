@@ -172,8 +172,8 @@ function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
   const { t } = useTranslation()
   return (
     <div className="card result-card" style={{
-      background: 'linear-gradient(135deg, #faf7f2 0%, #fafafa 100%)',
-      border: '1px solid #f0ece4',
+      background: 'var(--color-bg-surface)',
+      border: '1px solid var(--color-border-subtle)',
       borderRadius: '13px',
       padding: '18px',
     }}>
@@ -785,10 +785,10 @@ export function OptimizePage() {
         </div>
       )}
 
-      {/* Two-column layout: Controls + Result */}
-      <div className="grid g2" style={{ marginTop: '12px' }}>
-        {/* Left Column — Controls */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Controls precede full-width results */}
+      <div className="optimize-flow" style={{ marginTop: '12px' }}>
+        {/* Controls */}
+        <div className="optimize-controls">
           {/* Goal Presets (shared optimizer only: preset targets sit outside the Separate range) */}
           {!isSeparateStaffing && (
           <div className="card" style={{ padding: '18px' }}>
@@ -809,7 +809,7 @@ export function OptimizePage() {
                     padding: '12px',
                     cursor: 'pointer',
                     background: options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes
-                      ? 'var(--state-current-bg)' : 'var(--primary-contrast)',
+                      ? 'var(--state-current-bg)' : 'var(--color-bg-surface)',
                     borderColor: options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes
                       ? 'var(--accent)' : 'var(--border)',
                   }}
@@ -861,7 +861,7 @@ export function OptimizePage() {
                   aria-label={t('optimize.source_dataset')}
                   value={datasetId}
                   onChange={(e) => setDatasetId(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 >
                   <option value="">—</option>
                   {datasets.data?.datasets.filter(isForPlanning).map((d: DatasetOut) => (
@@ -883,7 +883,7 @@ export function OptimizePage() {
               waitingCost: DEFAULT_OPTIONS.customer_waiting_cost,
             })}</p>
             {isSeparateStaffing && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div className="optimize-fields">
               <div className="form-field">
                 <label htmlFor="opt-sep-cost" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.server_cost')}</label>
                 <input
@@ -894,7 +894,7 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, server_cost_per_hr: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
               </div>
               <div className="form-field">
@@ -907,13 +907,13 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, customer_waiting_cost: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
               </div>
             </div>
             )}
             {isSeparateStaffing ? null : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div className="optimize-fields">
               <div className="form-field">
                 <label htmlFor="opt-util" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.planning_target')}</label>
                 <input
@@ -924,20 +924,20 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, target_utilization: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
               </div>
               <div className="form-field">
                 <label htmlFor="opt-min" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.min_servers')}</label>
-                <input id="opt-min" type="number" min={1} max={256} value={options.min_servers ?? 1} onChange={(e) => setOptions((o) => ({ ...o, min_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }} />
+                <input id="opt-min" type="number" min={1} max={256} value={options.min_servers ?? 1} onChange={(e) => setOptions((o) => ({ ...o, min_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }} />
               </div>
               <div className="form-field">
                 <label htmlFor="opt-max" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.max_servers')}</label>
-                <input id="opt-max" type="number" min={1} max={256} value={options.max_servers ?? 24} onChange={(e) => setOptions((o) => ({ ...o, max_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }} />
+                <input id="opt-max" type="number" min={1} max={256} value={options.max_servers ?? 24} onChange={(e) => setOptions((o) => ({ ...o, max_servers: Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }} />
               </div>
               <div className="form-field">
                 <label htmlFor="opt-max-wait" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.max_wait')}</label>
-                <input id="opt-max-wait" type="number" min={0} step="any" value={options.max_wait_minutes ?? ''} onChange={(e) => setOptions((o) => ({ ...o, max_wait_minutes: e.target.value === '' ? null : Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }} />
+                <input id="opt-max-wait" type="number" min={0} step="any" value={options.max_wait_minutes ?? ''} onChange={(e) => setOptions((o) => ({ ...o, max_wait_minutes: e.target.value === '' ? null : Number(e.target.value) }))} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }} />
               </div>
               <div className="form-field">
                 <label htmlFor="opt-cost" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.server_cost')}</label>
@@ -949,7 +949,7 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, server_cost_per_hr: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
               </div>
               <div className="form-field">
@@ -962,7 +962,7 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, customer_waiting_cost: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
               </div>
               <div className="form-field">
@@ -975,7 +975,7 @@ export function OptimizePage() {
                   min={0}
                   value={availableCashiers}
                   onChange={(e) => setAvailableCashiers(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
                 <span className="form-hint">{t('optimize.available_cashiers_help')}</span>
               </div>
@@ -989,7 +989,7 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, cost_per_abandonment: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
               </div>
               <div className="form-field">
@@ -1002,7 +1002,7 @@ export function OptimizePage() {
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, abandonment_rate: Number(e.target.value) }))
                   }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                 />
               </div>
             </div>
@@ -1012,20 +1012,20 @@ export function OptimizePage() {
               onClick={handleOptimize}
               disabled={running}
               className="button-primary"
-              style={{ width: '100%', marginTop: '14px', padding: '12px 24px', background: running ? 'var(--disabled-bg)' : 'var(--accent)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 800, cursor: running ? 'not-allowed' : 'pointer' }}
+              style={{ width: '100%', marginTop: '14px', padding: '12px 24px', background: running ? 'var(--disabled-bg)' : 'var(--accent)', color: running ? 'var(--color-disabled-fg)' : 'var(--color-action-primary-fg)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 800, cursor: running ? 'not-allowed' : 'pointer' }}
             >
-              {running ? 'Optimizing...' : t('optimize.run')}
+              {running ? t('common.loading') : t('optimize.run')}
             </button>
           </div>
         </div>
 
-        {/* Right Column — Result Card */}
+        {/* Results */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Separate result card replaces the shared candidate card */}
           {isSeparateStaffing && schedule && <SeparateScheduleCard schedule={schedule} />}
           {isSeparateStaffing && !schedule && !running && !error && (
             <div className="card result-card" style={{
-              border: '1px solid #f0ece4',
+              border: '1px solid var(--color-border-subtle)',
               borderRadius: '13px',
               padding: '18px',
             }}>
@@ -1038,8 +1038,8 @@ export function OptimizePage() {
           {/* Result Card */}
           {!isSeparateStaffing && (
           <div className="card result-card" style={{
-            background: 'linear-gradient(135deg, #faf7f2 0%, #fafafa 100%)',
-            border: '1px solid #f0ece4',
+            background: 'var(--color-bg-surface)',
+            border: '1px solid var(--color-border-subtle)',
             borderRadius: '13px',
             padding: '18px',
           }}>
@@ -1057,7 +1057,7 @@ export function OptimizePage() {
                   </div>
                   <div style={{ flex: 1, textAlign: 'center' }}>
                     <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.candidate_period_cost')}</div>
-                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--accent)', marginTop: '3px' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--color-data-optimized)', marginTop: '3px' }}>
                       {fmt(totalOptimal)}
                     </div>
                     <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '1px' }}>{t('optimize.candidate_label')}</div>
@@ -1070,8 +1070,8 @@ export function OptimizePage() {
                     marginTop: '12px',
                     padding: '10px',
                     borderRadius: '8px',
-                    background: deltaCost > 0 ? '#f0fdf4' : deltaCost < 0 ? '#fef3f2' : '#f8f9fa',
-                    border: `1px solid ${deltaCost > 0 ? '#bbf7d0' : deltaCost < 0 ? '#fecdd3' : 'var(--border)'}`,
+                    background: deltaCost > 0 ? 'var(--color-success-bg)' : deltaCost < 0 ? 'var(--color-danger-bg)' : 'var(--color-bg-subtle)',
+                    border: `1px solid ${deltaCost > 0 ? 'var(--color-success-border)' : deltaCost < 0 ? 'var(--color-danger-border)' : 'var(--color-border-subtle)'}`,
                     textAlign: 'center',
                   }}>
                     <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.period_cost_difference')}</div>
@@ -1083,7 +1083,7 @@ export function OptimizePage() {
 
                 {/* Peak requirement + staffing lines */}
                 {staffingSummaryAvailable && (
-                  <div style={{ marginTop: '12px', borderTop: '1px solid #e9ecef', paddingTop: '10px' }}>
+                  <div style={{ marginTop: '12px', borderTop: '1px solid var(--color-border-subtle)', paddingTop: '10px' }}>
                     {staffingTotalsValue && (
                       <div style={{ marginBottom: '8px' }}>
                         <div className="form-hint">{t('optimize.net_staffing_reduction')}</div>
@@ -1147,7 +1147,7 @@ export function OptimizePage() {
                     padding: '12px',
                     borderRadius: '10px',
                     background: 'var(--info-bg)',
-                    border: '1px solid #d6e5f3',
+                    border: '1px solid var(--color-info-border)',
                   }}>
                     <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.candidate_explanation')}</div>
                     <p style={{ fontSize: '14px', color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.5 }}>
@@ -1179,14 +1179,14 @@ export function OptimizePage() {
                     step="any"
                     value={multiplier}
                     onChange={(e) => setMultiplier(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                   />
                 </div>
                 <button
                   type="button"
                   onClick={handleWhatIf}
                   disabled={running}
-                  style={{ padding: '8px 16px', background: 'var(--accent)', color: 'var(--primary-contrast)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: running ? 'not-allowed' : 'pointer', height: '35px' }}
+                  style={{ padding: '8px 16px', background: 'var(--accent)', color: running ? 'var(--color-disabled-fg)' : 'var(--color-action-primary-fg)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: running ? 'not-allowed' : 'pointer', height: '35px' }}
                 >
                   {t('optimize.what_if')}
                 </button>
@@ -1208,7 +1208,7 @@ export function OptimizePage() {
                     value={scenarioName}
                     onChange={(e) => setScenarioName(e.target.value)}
                     placeholder={t('optimize.scenario_placeholder')}
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                   />
                 </div>
                 <button
@@ -1249,7 +1249,7 @@ export function OptimizePage() {
                     value={scenarioName}
                     onChange={(e) => setScenarioName(e.target.value)}
                     placeholder={t('optimize.scenario_placeholder')}
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px' }}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
                   />
                 </div>
                 <button

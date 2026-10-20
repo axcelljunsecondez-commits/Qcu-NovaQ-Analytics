@@ -142,6 +142,64 @@ function keyResult(name: string) {
 }
 
 describe('Analysis results: the planning file', () => {
+  it('selects an eligible saved plan before any selection exists, without saving or generating another plan', async () => {
+    const user = userEvent.setup()
+    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Saved plan', 'CURRENT'), scenario(4, 'Old plan', 'STALE')] })
+    selectMock.mockImplementation(async () => {
+      getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Saved plan' }))
+      return { selection: {} }
+    })
+    renderResults()
+    const choice = await screen.findByLabelText('Plan')
+    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(within(choice).queryByRole('option', { name: 'Old plan' })).not.toBeInTheDocument()
+    await user.selectOptions(choice, '3')
+    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+    await waitFor(() => expect(selectMock).toHaveBeenCalledWith(7, 3))
+    expect(await screen.findByText('Calculated result · not yet checked by simulation')).toBeInTheDocument()
+  })
+
+  it('keeps an unselected saved plan available after a selection refusal, and allows a retry', async () => {
+    const user = userEvent.setup()
+    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Saved plan', 'CURRENT')] })
+    selectMock.mockRejectedValueOnce({ response: { data: { detail: 'Plan needs recalculation.' } } })
+    renderResults()
+    await user.selectOptions(await screen.findByLabelText('Plan'), '3')
+    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Plan needs recalculation.')
+    expect(screen.getByRole('option', { name: 'Saved plan' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+    await waitFor(() => expect(selectMock).toHaveBeenCalledTimes(2))
+  })
+
+  it('offers the first separate saved plan while excluding invalid and stale plans', async () => {
+    const user = userEvent.setup()
+    getAnalysisMock.mockResolvedValue(analysis('separate_queues'))
+    getSeparateMock.mockResolvedValue({ analysis_id: 7, selected_scenario_id: null, plans: [
+      { scenario_id: 21, name: 'Eligible lanes', valid: true, stale: false },
+      { scenario_id: 22, name: 'Invalid lanes', valid: false, stale: false },
+      { scenario_id: 23, name: 'Old lanes', valid: true, stale: true },
+    ] })
+    renderResults()
+    const choice = await screen.findByLabelText('Plan')
+    expect(within(choice).getAllByRole('option').map((option) => option.textContent)).toEqual(['Choose a saved plan', 'Eligible lanes'])
+    await user.selectOptions(choice, '21')
+    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+    await waitFor(() => expect(selectMock).toHaveBeenCalledWith(7, 21))
+    expect(getWorkflowMock).not.toHaveBeenCalled()
+  })
+
+  it('does not offer incomplete or historical snapshots for the first selection', async () => {
+    listScenariosMock.mockResolvedValue({ scenarios: [
+      scenario(3, 'Historical', 'HISTORICAL_REQUIRES_RECALCULATION'),
+      { ...scenario(4, 'Incomplete', 'CURRENT'), results: { results: [] } },
+      { ...scenario(5, 'Unverified', 'CURRENT'), provenance: 'legacy' },
+    ] })
+    renderResults()
+    expect(await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Plan')).not.toBeInTheDocument()
+  })
+
   it('opens the planning file with its dates, tags and key results from the server', async () => {
     renderResults()
     expect(await screen.findByRole('heading', { name: 'Recorded average wait' })).toBeInTheDocument()
@@ -223,7 +281,10 @@ describe('Analysis results: the planning file', () => {
     renderResults()
     await user.click(await screen.findByRole('button', { name: '08:00-09:00: Peak' }))
     expect(screen.getByTestId('where')).toHaveTextContent('/results?analysis=7&period=08%3A00-09%3A00')
-    const panel = screen.getByRole('heading', { name: 'Numbers for 08:00-09:00' }).parentElement as HTMLElement
+    const summary = screen.getByRole('heading', { name: 'Current operation by period' }).closest('section') as HTMLElement
+    expect(within(summary).getAllByText('3 min').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('link', { name: 'Inputs and model' }))
+    const panel = screen.getByRole('table', { name: "Every period's numbers" })
     expect(within(panel).getByText('83.33%')).toBeInTheDocument()
   })
 })
@@ -282,6 +343,63 @@ describe('Analysis results: another file', () => {
     renderResults('/results?analysis=7&file=13')
     expect(await screen.findByLabelText('View results from')).toHaveValue('11')
     expect(getCurrentMock).not.toHaveBeenCalledWith(7, 13)
+  })
+})
+
+describe('Inputs and model reference', () => {
+  it('retains file/period/line through native links and preserves review-only request guards', async () => {
+    const user = userEvent.setup()
+    renderResults('/results?analysis=7&file=12&period=07%3A00-08%3A00&line=queue_a')
+    const link = await screen.findByRole('link', { name: 'Inputs and model' })
+    expect(link).toHaveAttribute('href', '/results?analysis=7&file=12&period=07%3A00-08%3A00&line=queue_a&view=reference')
+    await user.click(link)
+    expect(screen.getByRole('heading', { level: 1, name: 'Inputs and model' })).toHaveFocus()
+    expect(screen.queryByRole('heading', { name: 'Recorded average wait' })).not.toBeInTheDocument()
+    const back = screen.getByRole('link', { name: 'Return to analysis results' })
+    expect(back).toHaveAttribute('href', '/results?analysis=7&file=12&period=07%3A00-08%3A00&line=queue_a')
+    await user.click(back)
+    expect(screen.getByRole('heading', { level: 1, name: 'Analysis results' })).toHaveFocus()
+    for (const mock of [getWorkflowMock, listScenariosMock, getSeparateMock, selectMock]) expect(mock).not.toHaveBeenCalled()
+    expect(getCurrentMock).toHaveBeenCalledWith(7, 12)
+  })
+
+  it('opens a deep link with every returned model explanation and input intact', async () => {
+    getCurrentMock.mockResolvedValue({ ...currentFor(reviewFile), explanations: [{
+      time: '07:00-08:00', queue_id: null, selected_model: 'M/M/c', selection_reason: 'Source model reason',
+      operational_facts: ['Source operating fact'], measured_characteristics: ['Source measured input'], model_assumptions: ['Source assumption'],
+    }] })
+    renderResults('/results?analysis=7&file=12&view=reference&period=07%3A00-08%3A00')
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText('99')).toBeInTheDocument()
+    expect(within(table).getByText('50')).toBeInTheDocument()
+    await userEvent.setup().click(screen.getByText('07:00-08:00: M/M/c', { selector: 'summary' }))
+    for (const text of ['Source model reason', 'Source operating fact', 'Source measured input', 'Source assumption']) expect(screen.getByText(text)).toBeVisible()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    for (const mock of [getWorkflowMock, listScenariosMock, getSeparateMock, selectMock]) expect(mock).not.toHaveBeenCalled()
+  })
+
+  it('keeps the default concise while charts retain exact values, flags and units as semantic lists', async () => {
+    getObservedMock.mockResolvedValue({ dataset_id: 11, available: true, day_observed_wait: 0.1,
+      periods: [{ time: '08:00-09:00', modeled_wait: 0.05, observed_wait: 0.12, flagged: true }] })
+    renderResults()
+    await screen.findByRole('heading', { name: 'Recorded average wait' })
+    expect(screen.queryByText("Every period's numbers")).not.toBeInTheDocument()
+    expect(screen.queryByText('How was this calculated?')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    const arrivals = screen.getByRole('list', { name: 'Customers per hour, by period' })
+    expect(within(arrivals).getByText('40 customers per hour')).toBeInTheDocument()
+    const chart = screen.getByRole('list', { name: 'Recorded vs estimated wait, by period' })
+    expect(within(chart).getByText('7.2 min')).toBeInTheDocument()
+    expect(within(chart).getByText('3 min')).toBeInTheDocument()
+    expect(within(chart).getByText('Much longer than modeled')).toBeInTheDocument()
+  })
+
+  it('does not show recorded wait from a mismatched file response', async () => {
+    getObservedMock.mockResolvedValue({ dataset_id: 999, available: true, day_observed_wait: 100, periods: [] })
+    renderResults()
+    await screen.findByRole('heading', { name: 'Recorded average wait' })
+    expect(within(keyResult('Recorded average wait')).getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('6000 min')).not.toBeInTheDocument()
   })
 })
 

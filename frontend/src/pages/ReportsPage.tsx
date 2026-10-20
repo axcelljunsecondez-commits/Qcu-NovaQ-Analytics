@@ -1,8 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, listAnalyses, listAnalysisDatasets } from '../api/analyses'
 import {
   downloadReport,
@@ -14,9 +14,12 @@ import {
 } from '../api/reports'
 import { ApiState } from '../components/ui/ApiState'
 import { HelpLink } from '../components/ui/HelpLink'
-import { rememberLastAnalysis, resolveLastAnalysis, storedLastAnalysis, subscribeLastAnalysis } from '../lib/lastAnalysis'
+import { rememberLastAnalysis } from '../lib/lastAnalysis'
+import { AnalysisEntry } from '../components/analysis/AnalysisEntry'
 import { plainDecision } from '../lib/decisionPlain'
 import { isProcessed } from '../lib/results'
+import { AnalysisSelector } from '../components/analysis/AnalysisSelector'
+import { fmtDecimal } from '../lib/format'
 
 interface PreviewWithAfter extends ReportPreview {
   after_checks: { pdf: string[]; excel: string[] }
@@ -64,7 +67,6 @@ export function ReportsPage() {
   const [params] = useSearchParams()
   const id = Number(params.get('analysis'))
   const validId = Number.isInteger(id) && id > 0
-  const stored = useSyncExternalStore(subscribeLastAnalysis, storedLastAnalysis, () => null)
   const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses })
   const analysis = useQuery({ queryKey: ['analysis', id], queryFn: () => getAnalysis(id), enabled: validId })
   const datasets = useQuery({ queryKey: ['datasets', id], queryFn: () => listAnalysisDatasets(id), enabled: validId })
@@ -85,24 +87,19 @@ export function ReportsPage() {
   }, [analysis.data])
 
   if (!validId) {
-    if (analyses.isLoading) return <ApiState.Loading />
-    const last = resolveLastAnalysis(analyses.data?.analyses, stored)
-    return <Navigate to={last ? `/reports?analysis=${last}` : '/analyses'} replace />
+    return <AnalysisEntry destination="reports" />
   }
 
+  const analysisOptions = (analyses.data?.analyses ?? []).filter((item) => !item.archived_at || item.id === id)
+    .map((item) => ({ id: item.id, name: item.name }))
+  if (!(analyses.data?.analyses ?? []).some((item) => item.id === id)) analysisOptions.push({ id, name: analysis.data?.analysis.name ?? String(id) })
   const header = (
     <header className="page-header results-header">
       <div>
         <p className="topbar-eyebrow">{t('nav.group_insights')}</p>
         <div className="title-row"><h1 className="page-title">{t('reports.title')}</h1><HelpLink topic="downloads" /></div>
       </div>
-      <div className="form-field">
-        <label htmlFor="reports-analysis">{t('results.analysis_label')}</label>
-        <select id="reports-analysis" value={String(id)} onChange={(event) => navigate(`/reports?analysis=${event.target.value}`)}>
-          {(analyses.data?.analyses ?? []).filter((item) => !item.archived_at || item.id === id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          {!(analyses.data?.analyses ?? []).some((item) => item.id === id) && <option value={id}>{analysis.data?.analysis.name ?? id}</option>}
-        </select>
-      </div>
+      <AnalysisSelector id="reports-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions} onChange={(value) => navigate(`/reports?analysis=${value}`)} />
     </header>
   )
   if (analysis.isLoading || datasets.isLoading || plan.isLoading || (plan.isSuccess && full.isLoading)) {
@@ -169,7 +166,13 @@ export function ReportsPage() {
             <p data-testid="report-decision-plain">{decisionAnswer(full.data.model, t)}</p>
           </>
         )}
-        {preview && <p className="form-hint">{t('reports.page.plan_name', { name: preview.model.cover.plan_name })}</p>}
+        {preview && <dl className="report-context" data-testid="report-context">
+          <div><dt>{t('results.plan_label')}</dt><dd>{preview.model.cover.plan_name ?? t('results.unavailable')}</dd></div>
+          <div><dt>{t('reports.context.dataset')}</dt><dd>{preview.model.data?.dataset_name ?? t('results.unavailable')}
+            {preview.model.data?.dataset_id != null && ` · ${t('reports.context.dataset_id', { id: preview.model.data.dataset_id })}`}</dd></div>
+          {preview.model.line_type === 'shared' && typeof preview.model.assumptions?.what_if_multiplier === 'number' && Number.isFinite(preview.model.assumptions.what_if_multiplier) &&
+            <div><dt>{t('reports.context.demand')}</dt><dd>{t('reports.context.multiplier', { value: fmtDecimal(preview.model.assumptions.what_if_multiplier) })}</dd></div>}
+        </dl>}
       </section>
 
       {message && <div role={message.ok ? 'status' : 'alert'} className={`alert ${message.ok ? 'alert-ok' : 'alert-error'}`}>{message.text}</div>}

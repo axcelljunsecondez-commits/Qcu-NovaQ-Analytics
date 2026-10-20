@@ -12,14 +12,16 @@ vi.mock('../api/analyses', () => ({
   createAnalysis: (...args: unknown[]) => createAnalysisMock(...args),
 }))
 
-function renderPage() {
+function renderPage(route = '/analyses/new') {
   return renderWithProviders(
     <Routes>
       <Route path="/analyses/new" element={<NewAnalysisPage />} />
       <Route path="/analyses/:analysisId/data" element={<div>Canonical setup</div>} />
       <Route path="/analyses/:analysisId/guided-setup" element={<div>Guided chooser</div>} />
+      <Route path="/results" element={<div>Results destination</div>} />
+      <Route path="/simulation/replay" element={<div>Replay destination</div>} />
     </Routes>,
-    { route: '/analyses/new' },
+    { route },
   )
 }
 
@@ -30,6 +32,22 @@ beforeEach(() => {
 })
 
 describe('NewAnalysisPage structure selection', () => {
+  it.each([['results', 'Results destination'], ['simulation/replay', 'Replay destination']])('returns a newly created analysis to %s', async (destination, expected) => {
+    const user = userEvent.setup()
+    renderPage(`/analyses/new?continue=${encodeURIComponent(destination)}`)
+    await user.type(await screen.findByLabelText('Analysis name'), 'new test workspace')
+    await user.click(screen.getByRole('button', { name: 'Create analysis' }))
+    expect(await screen.findByText(expected)).toBeInTheDocument()
+    expect(createAnalysisMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['https://example.com', '//example.com', 'login', 'results?analysis=99'])('rejects the unsupported continuation %s', async (destination) => {
+    const user = userEvent.setup()
+    renderPage(`/analyses/new?continue=${encodeURIComponent(destination)}`)
+    await user.type(await screen.findByLabelText('Analysis name'), 'new test workspace')
+    await user.click(screen.getByRole('button', { name: 'Continue to queue setup' }))
+    expect(await screen.findByText('Canonical setup')).toBeInTheDocument()
+  })
   it('offers exactly two primary structures plus help, no model jargon', async () => {
     renderPage()
     expect(await screen.findByRole('radio', { name: /Everyone waits in one line/ })).toBeChecked()

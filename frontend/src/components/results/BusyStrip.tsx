@@ -9,12 +9,14 @@ import {
 const LEVELS: UtilizationBand[] = ['Lean', 'Normal', 'Peak', 'Critical', 'Unstable']
 
 /** NovaQ's fixed busy levels per period (spec §7.7, D19); clicking a period shows its numbers. */
-export function BusyStrip({ rows, planTarget, period, onPeriod }: {
+export function BusyStrip({ rows, planTarget, period, onPeriod, showNumbers = true }: {
   rows: ResultRow[]
   /** The selected plan's target utilization; null when no plan is selected. */
   planTarget: number | null
   period: string | null
   onPeriod: (time: string | null) => void
+  /** Results already shows these rows in its operational summary. Other consumers retain their table. */
+  showNumbers?: boolean
 }) {
   const { t } = useTranslation()
   const strip = dayStrip(rows)
@@ -61,7 +63,7 @@ export function BusyStrip({ rows, planTarget, period, onPeriod }: {
         </div>
       )}
 
-      {period !== null && chosen.length > 0 && (
+      {showNumbers && period !== null && chosen.length > 0 && (
         <div className="busy-period" aria-live="polite">
           <h3 className="card-title">{t('results.period_numbers', { period })}</h3>
           <div className="table-scroll" role="region" aria-label={t('results.period_numbers', { period })} tabIndex={0}>

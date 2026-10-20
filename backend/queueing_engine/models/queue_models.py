@@ -409,7 +409,7 @@ def mgck(lambda_: float, mu: float, c: int, service_variance: float, K: int) -> 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Non-preemptive two-class M/M/c priority queue  —  Kleinrock (1975)
+# Non-preemptive two-class M/M/c priority queue — Larson & Odoni (1981)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def mmc_priority(lambda1: float, lambda2: float, mu: float, c: int) -> dict[str, Any]:
@@ -417,17 +417,20 @@ def mmc_priority(lambda1: float, lambda2: float, mu: float, c: int) -> dict[str,
     Compute steady-state metrics for a two-class non-preemptive priority
     M/M/c queue.
 
-    Class 1 (priority) — express lane customers (≤10 items).
-    Class 2 (regular)  — regular lane customers.
+    Class 1 has priority over class 2 at the next available shared server.
+    Both classes have the same independent exponential service distribution;
+    this is not a model of dedicated lanes with different service rates.
 
     The total waiting time Wq_mmc is computed from the standard M/M/c model
-    at the aggregate load (λ = λ1 + λ2). Priority class waiting times then
-    follow the Kleinrock conservation law:
+    at the aggregate load (λ = λ1 + λ2). The residual time until a server
+    becomes free is W0 = P(all servers busy)/(c·μ) = Wq_mmc·(1-rho).
+    The nonpreemptive class waiting times are:
 
-      Wq₁ = Wq_mmc  /  (1 - σ₁)
-      Wq₂ = Wq_mmc  /  ((1 - σ₁)(1 - σ₁ - σ₂))
+      Wq₁ = W0 / (1 - σ₁)
+      Wq₂ = W0 / ((1 - σ₁)(1 - rho))
 
-    where σᵢ = λᵢ / (c·μ).
+    where σᵢ = λᵢ / (c·μ) and rho = σ₁ + σ₂. Rates are per hour;
+    waiting/sojourn times are hours and Lq values are mean customer counts.
 
     Parameters
     ----------
@@ -449,8 +452,11 @@ def mmc_priority(lambda1: float, lambda2: float, mu: float, c: int) -> dict[str,
 
     References
     ----------
-    Kleinrock, L. (1975).  *Queueing Systems, Volume I: Theory*.
-    Wiley-Interscience.  Section 3.3.
+    Larson, R. C. and Odoni, A. R. (1981). Urban Operations Research.
+    Prentice-Hall. Section 4.9.3, equations (4.111)-(4.112).
+    https://web.mit.edu/urban_or_book/www/book/chapter4/4.9.3.html
+    The former Kleinrock Volume I, section 3.3 citation was incorrect:
+    that section concerns discouraged arrivals, not priority waiting times.
     """
     if not (_is_valid_rate(lambda1) and _is_valid_rate(lambda2) and _is_valid_rate(mu)):
         return _result(
@@ -472,9 +478,8 @@ def mmc_priority(lambda1: float, lambda2: float, mu: float, c: int) -> dict[str,
     total_lambda = lambda1 + lambda2
     rho = total_lambda / (c * mu)          # total per-server utilisation
     sigma1 = lambda1 / (c * mu)
-    sigma2 = lambda2 / (c * mu)
 
-    if rho >= 1.0 or (sigma1 + sigma2) >= 1.0:
+    if total_lambda >= c * mu or is_saturated(rho):
         return _result(
             rho=rho,
             stable=False,
@@ -483,14 +488,21 @@ def mmc_priority(lambda1: float, lambda2: float, mu: float, c: int) -> dict[str,
 
     # Base M/M/c waiting time at the aggregate load
     base = mmc(total_lambda, mu, c)
-    wq_mmc = base["Wq"]                     # overall mean waiting time
+    wq_mmc = base.get("Wq")
+    if not base.get("stable", False) or wq_mmc is None or not math.isfinite(wq_mmc):
+        return _result(
+            rho=rho,
+            stable=False,
+            error=base.get("error") or "Priority calculation failed due to numerical instability.",
+        )
 
-    # Priority-class waiting times  (Kleinrock conservation law)
+    # Residual until the first completion, including zero when a server is free.
+    w0 = wq_mmc * (1.0 - rho)
     denom1 = 1.0 - sigma1
-    denom2 = denom1 * (1.0 - sigma1 - sigma2)
+    denom2 = denom1 * (1.0 - rho)
 
-    wq1 = wq_mmc / denom1
-    wq2 = wq_mmc / denom2
+    wq1 = w0 / denom1
+    wq2 = w0 / denom2
 
     w1 = wq1 + 1.0 / mu
     w2 = wq2 + 1.0 / mu

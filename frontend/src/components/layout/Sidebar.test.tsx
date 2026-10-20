@@ -79,7 +79,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
     await vi.waitFor(() => expect(listAnalysesMock).toHaveBeenCalled())
-    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/analyses')
+    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results')
     act(() => rememberLastAnalysis(7))
     expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
     expect(localStorage.getItem(LAST_ANALYSIS_KEY)).toBe('7')
@@ -89,21 +89,29 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     ['an archived analysis', '9'],
     ['an analysis that is not listed', '42'],
     ['a malformed value', 'abc'],
-  ])('falls back to My analyses for %s', async (_label, stored) => {
+  ])('opens the Results picker for %s', async (_label, stored) => {
     localStorage.setItem(LAST_ANALYSIS_KEY, stored)
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
     await vi.waitFor(() => expect(listAnalysesMock).toHaveBeenCalled())
-    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/analyses')
+    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results')
   })
 
-  it('falls back to My analyses when storage cannot be read', async () => {
+  it('opens the Simulation picker when storage cannot be read', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked')
     })
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
-    expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/analyses')
+    expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/simulation/results')
+  })
+
+  it('keeps an explicit translated name on every collapsed link', async () => {
+    renderWithProviders(<Sidebar collapsed onToggleCollapsed={() => undefined} />, { route: '/analyses' })
+    const nav = await navLinks()
+    for (const name of ['My analyses', 'Analysis results', 'Reports', 'Queue simulation', 'Quick calculator']) {
+      expect(within(nav).getByRole('link', { name })).toHaveAttribute('aria-label', name)
+    }
   })
 
   it('marks exactly one destination as the current page', async () => {

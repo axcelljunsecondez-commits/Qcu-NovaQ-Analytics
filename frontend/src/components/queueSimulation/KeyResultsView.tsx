@@ -5,7 +5,7 @@ import { fmt, fmtDecimal, downloadCsv } from '../../lib/format'
 import { SAMPLE_MINUTES, dayOrigin, dayPeriods, mergeDayTrace, scheduledBreaks, waitingThroughTheDay, wallClock, type ScheduledBreak } from '../../lib/replay'
 import { DatePicker } from './DatePicker'
 import { LqHistogram, MaxQueueBars, RhoLqLines, UtilizationHeatmap } from '../charts/Charts'
-import { currentRun, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
+import { currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 function Card({ label, now, plan, note }: { label: string; now: string; plan: string; note?: string }) {
   const { t } = useTranslation()
@@ -166,7 +166,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
         <Card label={t('simulation.served_customers')} now={value(nowSummary, current !== null, count('served'))} plan={value(planSummary, suggested !== null, count('served'))} note={perPeriodNote} />
         <Card label={t('simulation.not_served_at_close')} now={value(nowSummary, current !== null, count('in_system_at_close'))} plan={value(planSummary, suggested !== null, count('in_system_at_close'))} note={perPeriodNote} />
       </div>
-      {!shown && <p className="empty-state">{t(context.separate ? 'simulation.run_first' : 'simulation.run_first_period')}</p>}
+      {!shown && <p className="empty-state">{t(runBasisKey(context, run) === 'simulation.run_basis_per_period' ? 'simulation.run_first_period' : 'simulation.run_first')}</p>}
       {shown?.kind === 'separate' && (
         <div role="status" className={`alert ${shown.result.overall_conservation ? 'alert-ok' : 'alert-error'}`}>
           {shown.result.overall_conservation ? t('simulation.sep_conservation_ok') : t('simulation.sep_conservation_bad')}

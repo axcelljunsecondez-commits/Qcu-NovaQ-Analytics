@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import type { ModelExplanation } from '../../api/types'
 import { PeriodFilter } from '../analysis/PeriodFilter'
 import { fmtDecimal, fmtPctDecimal } from '../../lib/format'
-import { ALL, matchesFilter } from '../../lib/periodFilter'
+import { matchesFilter } from '../../lib/periodFilter'
 import { busyLevel, cantKeepUp, finiteNumber, levelClass, levelKey, lineOf, minutes, timeOf, type ResultRow } from '../../lib/results'
 
 /** Every period's numbers and the model chosen for it, filtered by the URL's period and line. */
@@ -20,10 +20,10 @@ export function ResultsDetails({ rows, explanations, selectedModel, period, line
   const separate = rows.some((row) => lineOf(row) !== null)
   const visible = rows.filter((row) => matchesFilter(row.time, row.queue_id, period, line))
   const visibleExplanations = explanations.filter((item) => matchesFilter(item.time, item.queue_id, period, line))
-  const filtered = period !== ALL || line !== ALL
   return (
-    <details className="card collapsible-card" open={filtered}>
-      <summary><h2 className="section-title" id="results-details-title">{t('results.details')}</h2><span className="collapsible-count">{t('filters.showing', { shown: visible.length, total: rows.length })}</span></summary>
+    <section className="card results-reference" aria-labelledby="results-details-title">
+      <h2 className="section-title" id="results-details-title">{t('results.details')}</h2>
+      <p className="form-hint">{t('filters.showing', { shown: visible.length, total: rows.length })}</p>
       <PeriodFilter idPrefix="results" periods={rows.map((row) => row.time)} lines={rows.map((row) => row.queue_id)} period={period} line={line} onPeriod={onPeriod} onLine={onLine} />
       {rows.length > 0 && visible.length === 0 ? <p className="empty-state">{t('filters.no_match')}</p> : (
         <div className="table-scroll table-scroll-capped" role="region" aria-labelledby="results-details-title" tabIndex={0}>
@@ -80,6 +80,6 @@ export function ResultsDetails({ rows, explanations, selectedModel, period, line
           ))}
         </div>
       )}
-    </details>
+    </section>
   )
 }

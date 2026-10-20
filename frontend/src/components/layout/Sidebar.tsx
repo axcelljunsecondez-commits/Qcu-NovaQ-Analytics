@@ -93,6 +93,7 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
                       to={item.target(lastAnalysisId)}
                       className={active ? 'active' : undefined}
                       aria-current={active ? 'page' : undefined}
+                      aria-label={label}
                     >
                       <NavIcon name={item.icon} />
                       <span className="nav-label">{label}</span>

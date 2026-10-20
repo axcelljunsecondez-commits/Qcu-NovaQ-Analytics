@@ -4,11 +4,15 @@ costing.py — Configurable cost calculation engine.
 Computes operational cost breakdown for queueing segments:
 
   Server Cost     = c × cost_per_server_hr × hours_per_interval
-  Waiting Cost    = Wq × λ × cost_per_wait_hr
-  Abandonment Cost = λ × abandonment_rate × cost_per_abandonment
+  Waiting Cost    = Wq × λ × cost_per_wait_hr × hours_per_interval
+  Abandonment Cost = λ × abandonment_rate × cost_per_abandonment × hours_per_interval
   Total Cost      = Server + Waiting + Abandonment
 
-All cost parameters are user-configurable (defaults = QCU PHP rates).
+Rates: λ is customers/hour, Wq is hours/customer, server cost is currency
+per server-hour, waiting cost is currency per customer-hour, and abandonment
+cost is currency per abandoned customer. Each returned cost is an interval
+total in currency, for the supplied duration in hours. These modeled totals
+are not observed expenditure. All cost parameters are user-configurable.
 """
 
 from __future__ import annotations
@@ -49,19 +53,20 @@ def compute_segment_costs(
     servers : float
         Number of servers (c).
     arrival_rate : float
-        Customer arrival rate (λ).
+        Customer arrival rate (λ), customers per hour.
     wq : float
         Mean waiting time in queue (hours).
     cost_per_server_hr : float
         Hourly cost per server.
     cost_per_wait_hr : float
-        Hourly customer waiting cost.
+        Currency per customer-hour of waiting.
     cost_per_abandonment : float
         Cost per abandoned customer.
     abandonment_rate : float
         Fraction of customers who abandon.
     hours_per_interval : float
-        Duration of the time interval.
+        Duration of the time interval in hours (finite and nonnegative).
+        This helper retains its existing input-validation policy.
 
     Returns
     -------
@@ -86,11 +91,11 @@ def compute_segment_costs(
     if wq is None or (isinstance(wq, float) and math.isnan(wq)) or np.isinf(wq) or wq < 0:
         wait_cost = None
     else:
-        wait_cost = wq * arrival_rate * cost_per_wait_hr
+        wait_cost = wq * arrival_rate * cost_per_wait_hr * hours_per_interval
 
     # Abandonment applies to stable and unstable rows alike, matching
     # compute_all_costs and the optimization engine.
-    abandonment_cost = arrival_rate * abandonment_rate * cost_per_abandonment
+    abandonment_cost = arrival_rate * abandonment_rate * cost_per_abandonment * hours_per_interval
 
     total_cost = None if wait_cost is None else server_cost + wait_cost + abandonment_cost
 
@@ -112,7 +117,8 @@ def compute_all_costs(
     """
     Compute cost columns for every row in a results DataFrame.
 
-    Expects columns: c (servers), lambda (arrival_rate), Wq.
+    Expects columns: c (servers), lambda (customers/hour), Wq (hours/customer).
+    All costs are totals over hours_per_interval hours, as in compute_segment_costs.
     Appends: server_cost, wait_cost, abandonment_cost, total_cost.
     """
     if df is None or df.empty:
@@ -140,12 +146,16 @@ def compute_all_costs(
 
     if valid.any():
         result.loc[valid, "server_cost"] = (servers[valid] * cost_per_server_hr * hours_per_interval).round(2)
-        result.loc[valid, "abandonment_cost"] = (arrival_rate[valid] * abandonment_rate * cost_per_abandonment).round(2)
+        result.loc[valid, "abandonment_cost"] = (
+            arrival_rate[valid] * abandonment_rate * cost_per_abandonment * hours_per_interval
+        ).round(2)
 
         wq_valid = wq[valid]
         stable_mask = wq_valid.notna() & ~np.isinf(wq_valid) & (wq_valid >= 0)
         wait_cost = pd.Series(np.nan, index=wq_valid.index, dtype="float64")
-        wait_cost[stable_mask] = wq_valid[stable_mask] * arrival_rate[valid][stable_mask] * cost_per_wait_hr
+        wait_cost[stable_mask] = (
+            wq_valid[stable_mask] * arrival_rate[valid][stable_mask] * cost_per_wait_hr * hours_per_interval
+        )
         result.loc[valid, "wait_cost"] = wait_cost.round(2)
 
         result.loc[valid, "total_cost"] = (

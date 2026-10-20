@@ -8,7 +8,7 @@ import { operatingHours } from '../../lib/replay'
 import { breakNoticeKey, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** One-row run bar (D30): hours, closing rule, status, Run full operation, Advanced. */
-export function RunBar({ context, run, runLabelKey = 'simulation.run_full_operation' }: { context: SimulationContext; run: RunChoice; runLabelKey?: string }) {
+export function RunBar({ context, run }: { context: SimulationContext; run: RunChoice }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { analysisId } = context
@@ -48,6 +48,7 @@ export function RunBar({ context, run, runLabelKey = 'simulation.run_full_operat
   const capabilityErrors = [...new Set(returnedRows.filter((row) => row.simulation_supported === false && typeof row.error === 'string')
     .map((row) => `${String(row.time)}: ${String(row.error)}`))]
   const hoursText = operatingHours(context.analysis.queue_setup)
+  const runLabelKey = runBasisKey(context, run) === 'simulation.run_basis_per_period' ? 'simulation.run_period_by_period' : 'simulation.run_full_operation'
 
   function start() {
     if (legacy) {

@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { createAnalysis } from '../api/analyses'
 import type { QueueSetup, QueueStructure } from '../api/types'
 import { QueueIdEditor } from '../components/analysis/QueueIdEditor'
 import { LineStructurePicture } from '../components/illustrations/LineStructurePicture'
 import { answered, recommend, type Answer } from '../lib/structureRecommendation'
+import { analysisDestinationHref, parseAnalysisDestination } from '../lib/analysisDestination'
 
 const baseSetup: QueueSetup = {
   queue_structure: 'unknown',
@@ -40,6 +41,8 @@ const ANSWERS: Array<{ value: Answer; labelKey: string }> = [
 export function NewAnalysisPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const destination = parseAnalysisDestination(params.get('continue'))
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [serviceType, setServiceType] = useState('')
@@ -52,7 +55,7 @@ export function NewAnalysisPage() {
     mutationFn: createAnalysis,
     onSuccess: ({ analysis }) => {
       void queryClient.invalidateQueries({ queryKey: ['analyses'] })
-      navigate(`/analyses/${analysis.id}/data`, { replace: true })
+      navigate(destination ? analysisDestinationHref(destination, analysis.id) : `/analyses/${analysis.id}/data`, { replace: true })
     },
   })
   function setupFor(structure: QueueStructure): QueueSetup {
@@ -156,7 +159,7 @@ export function NewAnalysisPage() {
 
         {create.isError && <div role="alert" className="alert alert-error">{t('errors.server')}</div>}
         <div className="form-row">
-          <button type="submit" className="btn-primary" disabled={!name.trim() || !idsValid || create.isPending}>{t('analyses.continue')}</button>
+          <button type="submit" className="btn-primary" disabled={!name.trim() || !idsValid || create.isPending}>{t(destination ? 'analysis_entry.create' : 'analyses.continue')}</button>
         </div>
       </form>
     </div>

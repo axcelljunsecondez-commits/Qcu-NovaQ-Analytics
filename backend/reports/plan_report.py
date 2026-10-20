@@ -14,10 +14,13 @@ import io
 import math
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+from textwrap import wrap
 from typing import Any
 
 from openpyxl import Workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 from backend.queueing_engine.services.model_selection import select_model
 from backend.reports.formula_check import NOT_AVAILABLE, formula_row, write_formula_sheet
@@ -224,7 +227,8 @@ def build_separate_plan_model(*, analysis: Mapping[str, Any], scenario: Mapping[
         "data": {"dataset_id": dataset.get("id"), "dataset_name": dataset.get("name"), "rows": records},
         "key_results": {
             "cost_now": cost_now, "cost_plan": _sum_or_none([row["cost_plan"] for row in periods]),
-            "cost_basis": "Mean simulated counter cost plus waiting cost per period, added over the periods.",
+            "cost_basis": ("Optimizer simulation estimates of counter cost plus waiting cost at current and suggested staffing, "
+                           "added over the periods. There is no comparable Current cost basis; savings are unavailable."),
             "cost_now_unavailable": None if cost_now is not None else
             "Today's simulated cost is missing for at least one period.",
             "highest_wait_now_minutes": _max_or_none([row["wait_now_minutes"] for row in periods]),
@@ -271,28 +275,160 @@ def workbook_sheets(model: Mapping[str, Any]) -> list[str]:
     return ["Overview", "Your data", "Plan", "Formula check", "Plan search", *full, "Assumptions", "Provenance"]
 
 
+def _format_report_workbook(workbook: Workbook) -> None:
+    """Presentation only: never write data or formulas, or move their cell references."""
+    widths = {
+        "Overview": [42, 100], "Plan": [28, 14, 18, 16, 16, 18, 18, 18, 18, 18],
+        "Plan search": [28, 14, 50, 18, 18, 18, 18, 18], "Simulation": [65, 24, 18],
+        "Checks": [25, 65, 75], "Decision": [25, 110], "Assumptions": [42, 100], "Provenance": [42, 100],
+        "Formula check": [28, 20, 22, 22, 26, 14, 24, 22, 20, 22, 24, 22, 24, 26, 60, 3],
+    }
+    panes = {"Your data": "B4", "Plan": "D4", "Plan search": "C4", "Formula check": "D5"}
+    navy, text, muted = "142C49", "172B45", "4B5D73"
+    header_fill = PatternFill("solid", fgColor=navy)
+    alternate_fill = PatternFill("solid", fgColor="F1F5FA")
+    rule = Border(bottom=Side(style="thin", color="D4A72C"))
+
+    for sheet in workbook:
+        formula = sheet.title == "Formula check"
+        header = 4 if formula else 3
+        if sheet.title == "Your data":
+            sizes = [28 if cell.value == "time" else 26 if cell.value == "queue_id" else 22
+                     for cell in sheet[header]]
+        else:
+            sizes = list(widths[sheet.title])
+        if sheet.title == "Plan" and workbook["Overview"]["B6"].value == "separate":
+            sizes[3:] = [24] * 7
+        sizes.extend([20] * max(0, sheet.max_column - len(sizes)))
+        for column, size in enumerate(sizes, 1):
+            sheet.column_dimensions[get_column_letter(column)].width = size
+        sheet.sheet_view.showGridLines = False
+        sheet.sheet_view.zoomScale = 100
+        sheet.freeze_panes = panes.get(sheet.title)
+
+        # Only otherwise empty title/note cells are merged; the data grid stays intact.
+        _merge_report_heading(sheet, 1, 6 if formula else sheet.max_column)
+        if formula:
+            _merge_report_heading(sheet, 2, 8)
+            _merge_report_heading(sheet, 3, 8)
+        section_rows: set[int] = set()
+        if sheet.title == "Simulation":
+            for row in range(4, sheet.max_row + 1):
+                if sheet.cell(row, 1).value is not None and all(sheet.cell(row, c).value is None for c in (2, 3)):
+                    _merge_report_heading(sheet, row, 3)
+                    section_rows.add(row)
+
+        for row in sheet:
+            for cell in row:
+                if cell.value is None:
+                    continue
+                numeric = cell.data_type == "f" or isinstance(cell.value, (int, float))
+                cell.font = Font(name="Arial", size=11, color=text)
+                cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="right" if numeric else "left", indent=1)
+                if cell.row == header:
+                    cell.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+                    cell.fill = header_fill
+                    cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="left", indent=1)
+                elif cell.row > header and cell.row not in section_rows and cell.row % 2 == 0:
+                    cell.fill = alternate_fill
+                if cell.row >= header and ((sheet.title == "Plan" and cell.column in (2, 3, 10))
+                                           or (sheet.title == "Plan search" and cell.column == 2)):
+                    cell.alignment = Alignment(wrap_text=True, vertical="center" if cell.row == header else "top", horizontal="center")
+        sheet["A1"].font = Font(name="Arial", size=16, bold=True, color=navy)
+        sheet["A1"].border = rule
+        if formula:
+            for row in (2, 3):
+                sheet.cell(row, 1).font = Font(name="Arial", size=10, color=muted)
+        for row in section_rows:
+            sheet.cell(row, 1).font = Font(name="Arial", size=11, bold=True, color=navy)
+
+        _format_report_numbers(sheet)
+        merged_widths = {(area.min_row, area.min_col): sum(sizes[area.min_col - 1:area.max_col])
+                         for area in sheet.merged_cells.ranges}
+        for row in sheet:
+            lines = 1
+            for cell in row:
+                if not isinstance(cell.value, str) or cell.data_type == "f":
+                    continue
+                size = merged_widths.get((cell.row, cell.column), sizes[cell.column - 1])
+                capacity = max(6, int(size * 0.85 * 11 / (cell.font.sz or 11)) - 5)
+                lines = max(lines, sum(max(1, len(wrap(part, width=capacity))) for part in cell.value.split("\n")))
+            minimum = 36 if row[0].row == 1 else 48 if row[0].row == header else 24
+            if sheet.title == "Decision" and row[0].row == 6:
+                minimum = 42
+            sheet.row_dimensions[row[0].row].height = min(409, max(minimum, lines * 16 + 10))
+
+
+def _merge_report_heading(sheet: Worksheet, row: int, last_column: int) -> None:
+    if last_column > 1 and all(sheet.cell(row, column).value is None for column in range(2, last_column + 1)):
+        sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_column)
+
+
+def _format_report_numbers(sheet: Worksheet) -> None:
+    """Formats describe existing units; percent-valued chart points are not scaled again."""
+    header = 4 if sheet.title == "Formula check" else 3
+    for row in sheet.iter_rows(min_row=header + 1):
+        for cell in row:
+            if cell.data_type != "f" and not isinstance(cell.value, (int, float)):
+                continue
+            column = cell.column
+            if sheet.title == "Formula check":
+                if column == 14:
+                    cell.number_format = "0.00E+00"
+                elif column == 7:
+                    cell.number_format = "0.000000E+00"
+                elif column == 9:
+                    cell.number_format = "0.0%"
+                elif column in (8, 10, 11, 12, 13) or column >= 17:
+                    cell.number_format = "0.00000000"
+            elif sheet.title == "Plan":
+                cell.number_format = ("0.0%" if column in (4, 5) else "0" if column in (2, 3)
+                                      else "0.0000" if column in (6, 7) else "#,##0.00")
+            elif sheet.title == "Plan search":
+                cell.number_format = ("0.0%" if column == 4 else "0" if column == 2
+                                      else "0.0000" if column == 5 else "#,##0.00")
+            elif sheet.title == "Overview":
+                cell.number_format = "0.0000" if cell.row in (12, 13) else "#,##0.00"
+            elif sheet.title == "Assumptions":
+                name = sheet.cell(cell.row, 1).value
+                cell.number_format = "0.0%" if name == "target_utilization" else "0" if name == "max_servers" else "#,##0.00"
+            elif sheet.title == "Simulation":
+                cell.number_format = "0.0000" if sheet.cell(cell.row, 3).value == "minutes" else "#,##0.00"
+    if sheet.title == "Simulation":
+        percent = False
+        for row in range(4, sheet.max_row + 1):
+            unit = sheet.cell(row, 2).value
+            if isinstance(unit, str) and unit in ("percent", "minutes"):
+                percent = unit == "percent"
+            elif percent and isinstance(unit, (int, float)):
+                sheet.cell(row, 2).number_format = '0.0"%"'
+
+
 def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
     """The plan report's "check the math" workbook, from the report model only."""
     workbook = Workbook()
     overview = workbook.active
     overview.title = "Overview"
     cover, key = model["cover"], model["key_results"]
+    separate = model.get("line_type") == "separate"
     _table(overview, "Full report" if model.get("report") == "full" else "Plan report", ["Item", "Value"], [
         ["Report", cover.get("label")], ["Analysis", cover.get("analysis_name")], ["Lines", cover.get("line_type")],
         ["Plan", cover.get("plan_name")], ["Generated (UTC)", cover.get("generated_at")],
-        ["Total cost now", key.get("cost_now") if key.get("cost_now") is not None else key.get("cost_now_unavailable")],
+        ["Cost at current staffing (optimizer simulation)" if separate else "Total cost now",
+         key.get("cost_now") if key.get("cost_now") is not None else key.get("cost_now_unavailable")],
         ["Total cost with the plan", key.get("cost_plan")], ["Cost basis", key.get("cost_basis")],
-        ["Highest wait now (min)", key.get("highest_wait_now_minutes")],
+        ["Highest wait at current staffing (simulated, min)" if separate else "Highest wait now (min)", key.get("highest_wait_now_minutes")],
         ["Highest wait with the plan (min)", key.get("highest_wait_plan_minutes")],
     ])
     data_rows = model["data"]["rows"]
     columns = [key for key in ("time", "queue_id", "lambda", "mu", "c", "variance", "K", "theta")
                if any(isinstance(row, Mapping) and row.get(key) is not None for row in data_rows)]
-    _table(workbook.create_sheet("Your data"), "Your data (the planning file)", columns,
+    _table(workbook.create_sheet("Your data"), "Your data (the planning file)" if separate else "Saved calculation inputs", columns,
            [[row.get(column) for column in columns] for row in data_rows if isinstance(row, Mapping)])
-    _table(workbook.create_sheet("Plan"), "Now and with the plan, by period", [
-        "Period", "Counters now", "Counters with the plan", "Busy share now", "Busy share with the plan",
-        "Wait now (min)", "Wait with the plan (min)", "Cost now", "Cost with the plan", "Model"],
+    _table(workbook.create_sheet("Plan"), "Optimizer simulation at current and suggested staffing" if separate else "Now and with the plan, by period", [
+        "Period", "Counters now", "Counters with the plan", "Busy at current staffing (simulated)" if separate else "Busy share now", "Busy share with the plan",
+        "Wait at current staffing (simulated, min)" if separate else "Wait now (min)", "Wait with the plan (min)",
+        "Cost at current staffing (simulated)" if separate else "Cost now", "Cost with the plan", "Model"],
         [[row["time"], row["counters_now"], row["counters_plan"], row["busy_now"], row["busy_plan"],
           row["wait_now_minutes"], row["wait_plan_minutes"], row["cost_now"], row["cost_plan"], row["model"]]
          for row in model["periods"]])
@@ -326,6 +462,7 @@ def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
     _table(workbook.create_sheet("Provenance"), "Provenance", ["Item", "Value"],
            [[name, value] for name, value in model["provenance"].items()])
     assert workbook.sheetnames == workbook_sheets(model)
+    _format_report_workbook(workbook)
     buffer = io.BytesIO()
     workbook.save(buffer)
     buffer.seek(0)

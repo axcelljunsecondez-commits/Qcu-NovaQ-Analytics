@@ -7,6 +7,7 @@ import { ApiState } from '../ui/ApiState'
 import { WorkflowNavigator } from './WorkflowNavigator'
 import { analysisWorkflow } from '../../lib/workflow'
 import { rememberLastAnalysis } from '../../lib/lastAnalysis'
+import { AnalysisSelector } from './AnalysisSelector'
 
 export function AnalysisWorkspace() {
   const { t } = useTranslation()
@@ -24,16 +25,14 @@ export function AnalysisWorkspace() {
   if (analysis.isLoading) return <ApiState.Loading />
   if (analysis.isError || !analysis.data) return <ApiState.ErrorState />
   const currentStep = analysisWorkflow.find(([path]) => location.pathname.endsWith(path))?.[0] ?? 'data'
+  const listed = analyses.data?.analyses ?? []
+  const options = listed.some((item) => item.id === id) ? listed : [...listed, analysis.data.analysis]
   return (
     <div>
       <div className="analysis-context card">
-        <div><span className="form-hint">{t('analyses.active')}</span><h1 className="card-title">{analysis.data.analysis.name}</h1></div>
-        <div className="form-field">
-          <label htmlFor="analysis-switcher">{t('analyses.switch')}</label>
-          <select id="analysis-switcher" value={String(id)} onChange={(e) => navigate(`/analyses/${e.target.value}/${currentStep}`)}>
-            {(analyses.data?.analyses ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-        </div>
+        <div><span className="form-hint">{t('analyses.active')}</span><p className="card-title">{analysis.data.analysis.name}</p></div>
+        <AnalysisSelector id="analysis-switcher" label={t('analyses.switch')} value={String(id)} options={options}
+          onChange={(value) => navigate(`/analyses/${value}/${currentStep}`)} />
       </div>
       <nav className="workspace-tabs" aria-label={t('workspace.tabs_label')}>
         {(['data', 'plans'] as const).map((tab) => (

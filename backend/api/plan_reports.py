@@ -20,7 +20,10 @@ from sqlalchemy.orm import Session
 from backend.api.analyses import own_analysis
 from backend.api.deps import get_current_user, user_rate_limit
 from backend.api.workflow import (
+    FULL_DAY_BASIS,
     _current_evidence,
+    _eligible_full_day_run,
+    _job_out,
     _latest_job,
     _scenario_evidence,
     _selected_scenario_and_dataset,
@@ -107,8 +110,18 @@ def _full_model(db: Session, user: User, analysis: AnalysisProject) -> dict[str,
         if decision is None:
             raise HTTPException(status_code=422, detail={"code": "no_current_decision", "detail": NO_DECISION})
         evidence = _current_evidence(db, user, analysis)
+        if (evidence.get("decision") or {}).get("result") != decision:
+            # Evidence may have changed since the gate read; never mix it with the earlier Decision.
+            raise HTTPException(status_code=422, detail={"code": "no_current_decision", "detail": NO_DECISION})
+        full_day = None
+        if decision.get("basis") == FULL_DAY_BASIS:
+            scenario, dataset, _ = _selected_scenario_and_dataset(db, user, analysis)
+            run = _eligible_full_day_run(db, user, analysis, scenario, dataset)
+            if run is None or run.id != (decision.get("evidence_ids") or {}).get("continuous"):
+                raise HTTPException(status_code=422, detail={"code": "no_current_decision", "detail": NO_DECISION})
+            full_day = _job_out(run)
         sections = shared_full_sections(des=evidence["des"], mc=evidence["mc"], validation=evidence["validation"],
-                                        decision=decision, counter_breaks=bool(setup.get("counter_breaks")))
+                                        decision=decision, counter_breaks=bool(setup.get("counter_breaks")), full_day=full_day)
     return full_model(plan, sections)
 
 

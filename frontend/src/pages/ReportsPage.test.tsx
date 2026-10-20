@@ -89,6 +89,33 @@ afterEach(() => {
 })
 
 describe('Reports page (B8, D33)', () => {
+  it('identifies the saved changed-demand plan without claiming it covers unchanged Current inputs', async () => {
+    const preview = { ...planPreview, model: { ...planPreview.model,
+      data: { dataset_id: 3, dataset_name: 'March records' }, assumptions: { what_if_multiplier: 1.25 } } }
+    previewMock.mockImplementation(async (_id: number, level: string) => {
+      if (level === 'plan') return preview
+      throw refused(404, 'No current checks.')
+    })
+    renderReports()
+    const context = await screen.findByTestId('report-context')
+    expect(context).toHaveTextContent('Four at eight')
+    expect(context).toHaveTextContent('March records · File ID 3')
+    expect(context).toHaveTextContent('1.25× the source arrival rate')
+    expect(fileMock).not.toHaveBeenCalled()
+  })
+
+  it('does not invent a demand multiplier when the preview omits it', async () => {
+    previewMock.mockImplementation(async (_id: number, level: string) => {
+      if (level === 'plan') return planPreview
+      throw refused(404, 'No current checks.')
+    })
+    renderReports()
+    const context = await screen.findByTestId('report-context')
+    expect(context).toHaveTextContent('Unavailable')
+    expect(context).not.toHaveTextContent('1×')
+    expect(screen.queryByText('Saved plan demand')).not.toBeInTheDocument()
+  })
+
   it('offers only the data report until a plan is chosen', async () => {
     previewMock.mockRejectedValue(refused(422, { code: 'no_selected_plan', detail: 'Choose a plan in Suggested plans first.' }))
     renderReports()
@@ -135,7 +162,7 @@ describe('Reports page (B8, D33)', () => {
     renderReports()
     expect(await screen.findByText('Checked by simulation · Decision: Adopt')).toBeInTheDocument()
     expect(screen.getByTestId('report-decision-plain')).toHaveTextContent('Yes, go ahead with this plan. It passed every check and costs the same or less.')
-    expect(screen.getByText('Plan: Four at eight')).toBeInTheDocument()
+    expect(within(screen.getByTestId('report-context')).getByText('Four at eight')).toBeInTheDocument()
     expect(screen.getByTestId('full-stamp')).toHaveClass('badge-ok')
     const excel = screen.getByTestId('report-card-excel')
     expect(within(excel).getAllByRole('listitem').map((item) => item.textContent)).toContain('Decision')

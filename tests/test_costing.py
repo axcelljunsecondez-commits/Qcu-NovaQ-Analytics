@@ -16,6 +16,58 @@ from backend.queueing_engine.services.costing import (
 
 
 class CostingTests(unittest.TestCase):
+    def test_interval_duration_reference_in_scalar_vector_and_summary(self):
+        # Quantity-times-rate derivation: (20 + 100 + 2) currency/hour.
+        frame = pd.DataFrame({"c": [2, 2], "lambda": [4, 4], "Wq": [0.25, 0.25]})
+        for duration, server, waiting, abandoned, total in [
+            (1, 20, 100, 2, 122), (0.5, 10, 50, 1, 61), (2, 40, 200, 4, 244),
+        ]:
+            with self.subTest(hours=duration):
+                params = dict(cost_per_server_hr=10, cost_per_wait_hr=100,
+                              cost_per_abandonment=5, abandonment_rate=0.1,
+                              hours_per_interval=duration)
+                expected = dict(server_cost=server, wait_cost=waiting,
+                                abandonment_cost=abandoned, total_cost=total)
+                self.assertEqual(compute_segment_costs(2, 4, 0.25, **params), expected)
+                vector = compute_all_costs(frame, **params)
+                for index in frame.index:
+                    self.assertEqual(vector.loc[index, list(expected)].to_dict(), expected)
+                summary = compute_cost_summary(frame, **params)
+                self.assertEqual(summary["total_server_cost"], 2 * server)
+                self.assertEqual(summary["total_wait_cost"], 2 * waiting)
+                self.assertEqual(summary["total_abandonment_cost"], 2 * abandoned)
+                self.assertEqual(summary["total_cost"], 2 * total)
+                self.assertEqual(summary["avg_cost_per_segment"], total)
+
+    def test_interval_cost_missing_wait_keeps_independent_components(self):
+        params = dict(cost_per_server_hr=10, cost_per_wait_hr=100,
+                      cost_per_abandonment=5, abandonment_rate=0.1, hours_per_interval=0.5)
+        scalar = compute_segment_costs(2, 4, None, **params)
+        self.assertEqual(scalar, dict(server_cost=10, wait_cost=None, abandonment_cost=1, total_cost=None))
+        frame = pd.DataFrame({"c": [2], "lambda": [4], "Wq": [None]})
+        vector = compute_all_costs(frame, **params)
+        self.assertTrue(math.isnan(vector.loc[0, "wait_cost"]))
+        self.assertEqual(vector.loc[0, "abandonment_cost"], 1)
+        summary = compute_cost_summary(frame, **params)
+        self.assertIsNone(summary["total_cost"])
+        self.assertIsNone(summary["total_wait_cost"])
+        self.assertEqual(summary["total_server_cost"], 10)
+        self.assertEqual(summary["total_abandonment_cost"], 1)
+
+    def test_interval_zero_demand_missing_rows_and_rounding(self):
+        params = dict(cost_per_server_hr=10.123, cost_per_wait_hr=100,
+                      cost_per_abandonment=5, abandonment_rate=0.1, hours_per_interval=0.5)
+        expected = dict(server_cost=10.12, wait_cost=0, abandonment_cost=0, total_cost=10.12)
+        self.assertEqual(compute_segment_costs(2, 0, 0, **params), expected)
+        frame = pd.DataFrame({"c": [2, None], "lambda": [0, 4], "Wq": [0, 0.25]})
+        vector = compute_all_costs(frame, **params)
+        self.assertEqual(vector.loc[0, list(expected)].to_dict(), expected)
+        self.assertTrue(vector.loc[1, list(expected)].isna().all())
+        self.assertIsNone(compute_cost_summary(frame, **params)["total_cost"])
+        # Existing missing monetary-rate policy is not expanded by this repair.
+        with self.assertRaises(TypeError):
+            compute_segment_costs(2, 4, 0.25, cost_per_wait_hr=None)
+
     def test_compute_segment_costs_basic(self):
         costs = compute_segment_costs(
             servers=3,

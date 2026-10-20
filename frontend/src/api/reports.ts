@@ -48,6 +48,8 @@ export interface ReportPreview {
     report: ReportLevel
     line_type: 'shared' | 'separate'
     cover: { label: string; plan_name: string | null; analysis_name: string | null }
+    data?: { dataset_id: number | null; dataset_name: string | null }
+    assumptions?: { what_if_multiplier?: number | null }
     decision?: { status: string; headline: string; recommendation: string
       missing_evidence?: string[] | null; facts?: DecisionFacts | null }
   }

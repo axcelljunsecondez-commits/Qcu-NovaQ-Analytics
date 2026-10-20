@@ -3,15 +3,14 @@ import { useTranslation } from 'react-i18next'
 import type { PeriodArrivals } from '../../api/types'
 import { fmtDecimal } from '../../lib/format'
 import { finiteNumber, minutes, periodsNeedingAttention, type ResultRow } from '../../lib/results'
+import { InfoTip } from '../ui/InfoTip'
 
-function KeyResult({ id, label, source, how, children }: { id: string; label: string; source: string; how: string; children: ReactNode }) {
-  const { t } = useTranslation()
+function KeyResult({ id, label, source, how, compact = false, children }: { id: string; label: string; source: string; how: string; compact?: boolean; children: ReactNode }) {
   return (
-    <section className="card key-result" aria-labelledby={`${id}-label`}>
-      <h3 id={`${id}-label`} className="kpi-label">{label}</h3>
+    <section className={`card key-result${compact ? ' key-result-compact' : ''}`} aria-labelledby={`${id}-label`}>
+      <div className="results-metric-heading"><h3 id={`${id}-label`} className="kpi-label">{label}</h3><InfoTip stableInteraction name={label} text={how} /></div>
       <div className="key-result-value">{children}</div>
       <p className="key-result-source">{source}</p>
-      <details className="key-result-how"><summary>{t('results.how_calculated')}</summary><p>{how}</p></details>
     </section>
   )
 }
@@ -56,7 +55,7 @@ export function KeyResults({ rows, kpis, separate, recorded, busiest }: {
         <strong>{minutesText(finiteNumber(kpis.avg_waiting_time), unavailable, unit)}</strong>
         {!separate && unstableCount > 0 && <p className="key-result-note">{t('results.estimated_excludes', { count: unstableCount })}</p>}
       </KeyResult>
-      <KeyResult id="kr-attention" label={t('results.attention')} source={t('results.source_estimate')} how={t('results.how_attention')}>
+      <KeyResult compact id="kr-attention" label={t('results.attention')} source={t('results.source_estimate')} how={t('results.how_attention')}>
         {attention.cantKeepUp.length === 0 && attention.highestWait === null && <strong>{unavailable}</strong>}
         {attention.cantKeepUp.length > 0 && (
           <p><span className="status-badge status-critical">{t('results.cant_keep_up')}</span>{' '}
@@ -71,7 +70,7 @@ export function KeyResults({ rows, kpis, separate, recorded, busiest }: {
         )}
         <p className="key-result-note">{t('results.not_longest_wait')}</p>
       </KeyResult>
-      <KeyResult id="kr-busiest" label={t('results.busiest')} source={t('results.source_data')}
+      <KeyResult compact id="kr-busiest" label={t('results.busiest')} source={t('results.source_data')}
         how={separate ? t('results.how_busiest_separate') : t('results.how_busiest_shared')}>
         {busiest && busiestRate !== null
           ? <><strong>{busiest.time}</strong><p>{t('results.customers_per_hour', { count: busiestRate, value: fmtDecimal(busiestRate) })}</p></>

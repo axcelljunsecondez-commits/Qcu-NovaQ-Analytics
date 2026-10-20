@@ -60,7 +60,8 @@ def _styles() -> dict[str, ParagraphStyle]:
 def _table(styles: Mapping[str, ParagraphStyle], headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> Table:
     data = [[Paragraph(escape(str(text)), styles["head"]) for text in headers]]
     data += [[Paragraph(escape(str(cell)), styles["cell"]) for cell in row] for row in rows]
-    table = Table(data, repeatRows=1, hAlign="LEFT")
+    # Match the chart width and keep longer provenance labels inside the printable page.
+    table = Table(data, colWidths=[460 / len(headers)] * len(headers), repeatRows=1, hAlign="LEFT")
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY), ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -105,6 +106,7 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
     styles = _styles()
     cover, key, periods = model["cover"], model["key_results"], model["periods"]
     full = model.get("report") == "full"
+    now_label = "Current staffing (simulated)" if model.get("line_type") == "separate" else "Now"
     story: list[Flowable] = [
         Paragraph("NovaQ full report" if full else "NovaQ plan report", styles["title"]),
         Paragraph(escape(cover["label"]), styles["label"]),
@@ -114,7 +116,7 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
             ["Generated (UTC)", cover.get("generated_at")],
         ]),
         Paragraph("Key results: now and with the plan", styles["h2"]),
-        _table(styles, ["", "Now", "With the plan"], [
+        _table(styles, ["", now_label, "With the plan"], [
             ["Total cost", number(key.get("cost_now")) if key.get("cost_now") is not None else key.get("cost_now_unavailable"),
              number(key.get("cost_plan"))],
             ["Longest average wait in any period (minutes)", number(key.get("highest_wait_now_minutes")),
@@ -131,8 +133,8 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
         Paragraph("By period", styles["h2"]),
         KeepTogether([
             _chart("Counters now and with the plan", labels,
-                   [("Now", [row["counters_now"] for row in periods]), ("With the plan", [row["counters_plan"] for row in periods])]),
-            _table(styles, ["Period", "Counters now", "With the plan", "Busy now", "Busy with the plan"],
+                   [(now_label, [row["counters_now"] for row in periods]), ("With the plan", [row["counters_plan"] for row in periods])]),
+            _table(styles, ["Period", "Counters now", "With the plan", f"Busy: {now_label}" if model.get("line_type") == "separate" else "Busy now", "Busy with the plan"],
                    [[row["time"], row["counters_now"], row["counters_plan"], percent(row["busy_now"]), percent(row["busy_plan"])]
                     for row in periods]),
             Paragraph("A busy share above 100% means customers arrive faster than the counters can serve them.", styles["body"]),
@@ -140,9 +142,10 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
         Spacer(1, 10),
         KeepTogether([
             _chart("Average wait in line, minutes (no bar: counters cannot keep up)", labels,
-                   [("Now", [row["wait_now_minutes"] for row in periods]),
+                   [(now_label, [row["wait_now_minutes"] for row in periods]),
                     ("With the plan", [row["wait_plan_minutes"] for row in periods])]),
-            _table(styles, ["Period", "Wait now (min)", "Wait with the plan (min)", "Cost now", "Cost with the plan"],
+            _table(styles, ["Period", f"Wait: {now_label} (min)" if model.get("line_type") == "separate" else "Wait now (min)",
+                            "Wait with the plan (min)", f"Cost: {now_label}" if model.get("line_type") == "separate" else "Cost now", "Cost with the plan"],
                    [[row["time"], number(row["wait_now_minutes"]), number(row["wait_plan_minutes"]),
                      number(row["cost_now"]), number(row["cost_plan"])] for row in periods]),
         ]),

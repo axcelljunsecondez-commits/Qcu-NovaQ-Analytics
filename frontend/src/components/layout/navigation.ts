@@ -25,19 +25,19 @@ function analysisStep(...steps: string[]) {
 const analysisResults: NavItem = {
   key: 'analysis_results',
   icon: 'results',
-  target: (lastAnalysisId) => (lastAnalysisId ? `/results?analysis=${lastAnalysisId}` : '/analyses'),
+  target: (lastAnalysisId) => (lastAnalysisId ? `/results?analysis=${lastAnalysisId}` : '/results'),
   matches: (pathname) => pathname === '/results' || pathname.startsWith('/results/'),
 }
 const reports: NavItem = {
   key: 'reports',
   icon: 'reports',
-  target: (lastAnalysisId) => (lastAnalysisId ? `/reports?analysis=${lastAnalysisId}` : '/analyses'),
+  target: (lastAnalysisId) => (lastAnalysisId ? `/reports?analysis=${lastAnalysisId}` : '/reports'),
   matches: (pathname) => pathname === '/reports' || analysisStep('reports')(pathname),
 }
 const queueSimulation: NavItem = {
   key: 'queue_simulation',
   icon: 'simulation',
-  target: (lastAnalysisId) => (lastAnalysisId ? `/simulation/results?analysis=${lastAnalysisId}` : '/analyses'),
+  target: (lastAnalysisId) => (lastAnalysisId ? `/simulation/results?analysis=${lastAnalysisId}` : '/simulation/results'),
   matches: (pathname) => pathname.startsWith('/simulation') || analysisStep('decision')(pathname),
 }
 const quickCalculator: NavItem = {
