@@ -32,3 +32,33 @@ Acceptance: frontend regression/type/lint/build; symmetric locale keys; exact
 media hashes and size; closed-player no source, correct mappings, Close/Escape and
 unmount pause; real-browser playback/seek/download/focus, both themes and narrow
 viewports. Local/CI proof is distinct from a successful production cutover.
+
+## Approved seeking correction (2026-10-22)
+
+The first actual Pages preview reproduced failed seeking in all three clips in a
+fresh Edge context. Pages returned full 200 responses to Range requests; the
+native seekable timeline stayed [0,0] after full buffering. Cached playback did
+not reproduce that failure and cannot substitute for fresh-session verification.
+
+The owner approved this bounded correction and verification on 2026-10-22:
+load only the opened clip from its existing same-origin URL into a browser Blob;
+check HTTP success and the catalog's expected MP4 size/type before using it. Show
+the existing translated Loading state while downloading and the existing direct
+download fallback on failure. Preserve the native controls, no autoplay, focus,
+text steps and direct MP4/VTT links. Abort pending work, pause the video and revoke
+the Blob URL on close/unmount; ignore late completions. Each clip must download
+before playback starts. Its size remains below 25 MiB.
+
+The owner explicitly expanded the file scope to the player and its tests,
+`frontend/public/_headers`, `nginx/nginx.conf`, `nginx/production.conf`,
+`tests/test_production_hardening.py`, and these spec/plan/verification documents:
+nine files. Add only `media-src 'self' blob:` to all three existing CSP copies.
+Pin equality and the remaining directives; do not broaden script, connect, frame
+or other policy permissions. This is the sole approved configuration exception to
+the original scope. No API bridge, routes, backend, mathematics, authentication,
+database, dependency, Docker runtime or cloud setting change is included.
+
+Acceptance additionally requires abort/revocation/late-completion and StrictMode
+regressions, CSP parity, and actual corrected-app seeking on a range-incapable
+server and an updated Pages preview, each in fresh contexts. A test-only DOM
+feasibility experiment is not application implementation proof.

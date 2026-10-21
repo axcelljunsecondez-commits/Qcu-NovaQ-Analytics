@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { StrictMode } from 'react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen, within } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import en from '../../../public/locales/en/translation.json'
 import tl from '../../../public/locales/tl/translation.json'
@@ -14,18 +14,61 @@ import { VideoTutorials } from './VideoTutorials'
 
 vi.mock('../../api/auth', () => ({ me: vi.fn(async () => ({ user: null })), login: vi.fn(), logout: vi.fn() }))
 const pause = vi.fn()
+const fetchClip = vi.fn<typeof fetch>()
+const createObjectURL = vi.fn<(blob: Blob) => string>()
+const revokeObjectURL = vi.fn<(url: string) => void>()
 const descriptors = new Map<string, PropertyDescriptor | undefined>()
+const urlDescriptors = new Map<string, PropertyDescriptor | undefined>()
+let nextUrl = 0
+
+function clipResponse(bytes = TUTORIALS[0].bytes as number, type = 'video/mp4') {
+  return new Response(new Uint8Array(bytes), { headers: { 'Content-Type': type } })
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
+
+async function loadedVideo() {
+  const video = document.querySelector('video')!
+  await waitFor(() => expect(video).toHaveAttribute('src', expect.stringMatching(/^blob:/)))
+  return video
+}
+
 beforeAll(() => {
   for (const key of ['showModal', 'close']) descriptors.set(key, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, key))
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.setAttribute('open', '') } })
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value() { this.removeAttribute('open') } })
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(pause)
+  for (const key of ['createObjectURL', 'revokeObjectURL']) urlDescriptors.set(key, Object.getOwnPropertyDescriptor(URL, key))
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
 })
-beforeEach(() => pause.mockClear())
+beforeEach(() => {
+  pause.mockClear()
+  fetchClip.mockReset()
+  createObjectURL.mockReset()
+  revokeObjectURL.mockReset()
+  nextUrl = 0
+  createObjectURL.mockImplementation(() => `blob:https://novaq.test/tutorial-${++nextUrl}`)
+  fetchClip.mockImplementation(async (input) => {
+    const tutorial = TUTORIALS.find((item) => tutorialFile(item, 'mp4') === String(input))
+    if (!tutorial) throw new Error('Unexpected test request')
+    return clipResponse(tutorial.bytes)
+  })
+  vi.stubGlobal('fetch', fetchClip)
+})
+afterEach(() => vi.unstubAllGlobals())
 afterAll(() => {
   for (const [key, descriptor] of descriptors) {
     if (descriptor) Object.defineProperty(HTMLDialogElement.prototype, key, descriptor)
     else Reflect.deleteProperty(HTMLDialogElement.prototype, key)
+  }
+  for (const [key, descriptor] of urlDescriptors) {
+    if (descriptor) Object.defineProperty(URL, key, descriptor)
+    else Reflect.deleteProperty(URL, key)
   }
   vi.restoreAllMocks()
 })
@@ -36,6 +79,8 @@ describe('Tutorials: app behavior (media and native dialog are stubbed in JSDOM)
     expect(container.querySelector('video')).toBeNull()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /^Watch / })).toHaveLength(3)
+    expect(fetchClip).not.toHaveBeenCalled()
+    expect(createObjectURL).not.toHaveBeenCalled()
   })
 
   it.each(TUTORIALS)('opens the matching $id media, captions and steps', async (tutorial) => {
@@ -46,7 +91,12 @@ describe('Tutorials: app behavior (media and native dialog are stubbed in JSDOM)
     const title = en[`tutorials.${tutorial.id}.title`]
     const dialog = screen.getByRole('dialog', { name: title })
     const video = within(dialog).getByLabelText(title)
-    expect(video).toHaveAttribute('src', tutorialFile(tutorial, 'mp4'))
+    await loadedVideo()
+    expect(fetchClip).toHaveBeenCalledOnce()
+    expect(fetchClip).toHaveBeenCalledWith(tutorialFile(tutorial, 'mp4'), { signal: expect.any(AbortSignal) })
+    expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ size: tutorial.bytes, type: 'video/mp4' }))
+    const source = video.getAttribute('src')!
+    const signal = fetchClip.mock.calls[0][1]!.signal!
     expect(video).toHaveAttribute('controls')
     expect(video).toHaveAttribute('playsinline')
     expect(video).not.toHaveAttribute('autoplay')
@@ -60,6 +110,8 @@ describe('Tutorials: app behavior (media and native dialog are stubbed in JSDOM)
     expect(document.querySelector('video')).toBeNull()
     expect(trigger).toHaveFocus()
     expect(pause).toHaveBeenCalled()
+    expect(signal.aborted).toBe(true)
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(source)
   })
 
   it('cleans up on native Escape cancellation and can reopen', async () => {
@@ -67,37 +119,101 @@ describe('Tutorials: app behavior (media and native dialog are stubbed in JSDOM)
     renderWithProviders(<TutorialWatch id="key-metrics" />)
     const trigger = screen.getByRole('button', { name: 'Watch tutorial' })
     await user.click(trigger)
+    const firstSource = (await loadedVideo()).getAttribute('src')!
     fireEvent(screen.getByRole('dialog'), new Event('cancel', { bubbles: true, cancelable: true }))
     expect(document.querySelector('video')).toBeNull()
     expect(trigger).toHaveFocus()
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(firstSource)
     await user.click(trigger)
     expect(screen.getByRole('dialog', { name: 'Analysis key metrics' })).toBeInTheDocument()
+    expect((await loadedVideo()).getAttribute('src')).not.toBe(firstSource)
   })
 
   it('pauses the video when its page unmounts', async () => {
     const user = userEvent.setup()
     const view = renderWithProviders(<TutorialWatch id="queue-simulation" />)
     await user.click(screen.getByRole('button', { name: 'Watch tutorial' }))
+    const source = (await loadedVideo()).getAttribute('src')!
     pause.mockClear()
     view.unmount()
     expect(pause).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(source)
+    expect(fetchClip.mock.calls[0][1]!.signal!.aborted).toBe(true)
   })
 
   it('keeps the selected video source and close focus in StrictMode', async () => {
     const user = userEvent.setup()
     renderWithProviders(<StrictMode><TutorialWatch id="analysis-workflow" /></StrictMode>)
     await user.click(screen.getByRole('button', { name: 'Watch tutorial' }))
-    expect(document.querySelector('video')).toHaveAttribute('src', tutorialFile(TUTORIALS[0], 'mp4'))
+    const source = (await loadedVideo()).getAttribute('src')!
+    expect(fetchClip).toHaveBeenCalledTimes(2)
+    expect(fetchClip.mock.calls[0][1]!.signal!.aborted).toBe(true)
+    expect(fetchClip.mock.calls[1][1]!.signal!.aborted).toBe(false)
+    expect(createObjectURL).toHaveBeenCalledOnce()
     expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(source)
   })
 
   it('shows a download fallback when the media element reports an error', async () => {
     const user = userEvent.setup()
     renderWithProviders(<TutorialWatch id="analysis-workflow" />)
     await user.click(screen.getByRole('button', { name: 'Watch tutorial' }))
+    await loadedVideo()
     fireEvent.error(document.querySelector('video')!)
     expect(screen.getByRole('alert')).toHaveTextContent('Use Download video')
     expect(screen.getByRole('link', { name: 'Download video' })).toBeInTheDocument()
+  })
+
+  it('shows loading and aborts a pending fetch without creating a late Blob URL after Close', async () => {
+    const pending = deferred<Response>()
+    fetchClip.mockReturnValueOnce(pending.promise)
+    const user = userEvent.setup()
+    renderWithProviders(<TutorialWatch id="analysis-workflow" />)
+    await user.click(screen.getByRole('button', { name: 'Watch tutorial' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Loading')
+    expect(document.querySelector('video')).not.toHaveAttribute('src')
+    const signal = fetchClip.mock.calls[0][1]!.signal!
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(signal.aborted).toBe(true)
+    await act(async () => pending.resolve(clipResponse()))
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    expect(document.querySelector('video')).toBeNull()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('ignores body completion after page unmount, even if the fetch mock ignores abort', async () => {
+    const body = deferred<Blob>()
+    const response = clipResponse()
+    vi.spyOn(response, 'blob').mockReturnValue(body.promise)
+    fetchClip.mockResolvedValueOnce(response)
+    const user = userEvent.setup()
+    const view = renderWithProviders(<TutorialWatch id="analysis-workflow" />)
+    await user.click(screen.getByRole('button', { name: 'Watch tutorial' }))
+    await waitFor(() => expect(response.blob).toHaveBeenCalled())
+    view.unmount()
+    expect(fetchClip.mock.calls[0][1]!.signal!.aborted).toBe(true)
+    await act(async () => body.resolve(await clipResponse().blob()))
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['HTTP failure', () => Promise.resolve(new Response(null, { status: 404 }))],
+    ['network failure', () => Promise.reject(new TypeError('offline'))],
+    ['wrong file size', () => Promise.resolve(clipResponse(1))],
+    ['wrong media type', () => Promise.resolve(clipResponse(TUTORIALS[0].bytes, 'text/html'))],
+  ])('keeps the direct download fallback on %s', async (_name, result) => {
+    fetchClip.mockImplementationOnce(result)
+    const user = userEvent.setup()
+    renderWithProviders(<TutorialWatch id="analysis-workflow" />)
+    await user.click(screen.getByRole('button', { name: 'Watch tutorial' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Use Download video')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Download video' })).toHaveAttribute('href', tutorialFile(TUTORIALS[0], 'mp4'))
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(document.querySelector('video')).not.toHaveAttribute('src')
   })
 
   it('filters the library with every search word and hides it for no match', () => {

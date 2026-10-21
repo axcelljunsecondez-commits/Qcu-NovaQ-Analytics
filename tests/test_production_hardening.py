@@ -258,3 +258,22 @@ def test_pages_headers_mirror_production_nginx():
     csp = headers["Content-Security-Policy"]
     assert csp == _nginx_header(nginx, "Content-Security-Policy")
     assert "frame-ancestors 'none'" in csp and "unsafe-eval" not in csp
+    local_nginx = (root / "nginx/nginx.conf").read_text(encoding="utf-8")
+    assert csp == _nginx_header(local_nginx, "Content-Security-Policy")
+    # Only local media gains blob:; scripts, connections and frames keep their fence.
+    directives = dict(part.strip().split(" ", 1) for part in csp.split(";"))
+    assert directives == {
+        "default-src": "'self'",
+        "base-uri": "'self'",
+        "object-src": "'none'",
+        "frame-ancestors": "'none'",
+        "form-action": "'self'",
+        "script-src": "'self' https://accounts.google.com/gsi/client",
+        "style-src": "'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
+        "img-src": "'self' data: blob:",
+        "font-src": "'self' data:",
+        "connect-src": "'self' https://accounts.google.com/gsi/",
+        "frame-src": "https://accounts.google.com/gsi/",
+        "worker-src": "'self' blob:",
+        "media-src": "'self' blob:",
+    }

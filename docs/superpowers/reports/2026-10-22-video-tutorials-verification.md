@@ -100,3 +100,74 @@ Local frontend verification is complete. Exact-candidate CI, Pages MP4 checks,
 production cutover and live verification must be recorded separately. This
 document does not claim that any version has been committed, pushed or deployed.
 The release is frontend-only; it requires no Render redeployment or migration.
+
+## Approved seeking correction and local verification (2026-10-22)
+
+The sections above record the initial local candidate. Its actual Pages preview
+`00a741bc` at commit `8942911e7a30e67a71014ef78a0de5b97176f526` failed midpoint
+seeking for all three clips in a fresh Edge context: full 200 responses to Range
+requests, a fully buffered file, seekable [0,0], and a seek returning to zero.
+A cached response exposed a full timeline, so cached success cannot clear this
+failure. The other 45 preview checks passed. Six downloads match the exact Git
+candidate; VTT checkout differences are solely Windows CRLF versus Git LF.
+The initial candidate's CI run 39638787562 completed all 11 jobs successfully;
+that CI result does not close its actual preview failure.
+
+The owner approved the nine-file correction and verification on 2026-10-22.
+The native player now fetches only the opened clip as a Blob after checking HTTP
+success, expected bytes and MP4 MIME type. It shows the existing translated
+Loading text, preserves downloads and error fallback, aborts pending work, ignores
+late completion, pauses and revokes the URL on close/unmount. The native controls
+and media bytes remain unchanged. The selected file downloads before playback.
+
+The only policy expansion is `media-src 'self' blob:` in Pages and both nginx
+configurations. The hardening test pins equality and every remaining directive.
+No API bridge, routes, backend, mathematics, authentication, database, dependency,
+Docker runtime or cloud setting is changed by the correction.
+
+Executed correction checks:
+
+- Focused `Tutorials.test.tsx` plus `apiProxy.test.ts`: **2 files, 32 tests passed**,
+  exit 0, 79.40 seconds. JSDOM media/dialog stubs verify lifecycle and fallback;
+  native playback is separately verified below.
+- Full corrected frontend suite: **83 files, 701 tests passed**, exit 0,
+  779.15 seconds. No runtime or test source changed after this run.
+- `npm run typecheck`, `npm run lint`, `npm run build`: exit 0. The existing
+  large-chunk advisory remains. Production npm audit: exit 0, zero vulnerabilities.
+- `python -m pytest tests/test_production_hardening.py::test_pages_headers_mirror_production_nginx -x --tb=short`:
+  **1 passed**, exit 0, 4.28 seconds. An installed Starlette/AnyIO deprecation
+  warning remains. No database fixture or database action was used by this test.
+- `ruff check tests/test_production_hardening.py`: passed.
+- The actual corrected build, with its actual built CSP, on a loopback static
+  server without byte-range support: **54 browser checks passed** in a fresh Edge
+  context. All three clips decoded, played and sought exactly to 127.5, 76.5 and
+  123 seconds. No MP4 request preceded Watch. All 10 created Blob URLs were revoked
+  exactly once after closing. No CSP violation or uncaught browser error occurred.
+  Lifecycle instrumentation passed through the actual browser APIs; no test-only
+  media source substitution or synthetic MP4 response was used.
+- Light/dark checks at 1366x900, 375x812 and 812x375 passed, including bounded
+  dialogs, keyboard/focus, search and EN/TL controls. Six native downloads match
+  the actual build bytes and Git content (accounting for VTT line endings).
+- Corrected-build contextual shortcuts: **63 checks passed**, with the same
+  explicitly synthetic API GET fixtures described above. The mapping assertion
+  follows the actual MP4 fetch plus Blob source and direct download path.
+  Unexpected fixture requests, mutation requests and uncaught errors: zero.
+
+The anonymous local auth GET is an explicit fixture, not backend proof. Physical
+phones and Safari/iOS remain NOT TESTED. The isolated test-only Blob feasibility
+experiment is retained separately and is not counted as implementation proof.
+
+Correction evidence under the primary checkout's ignored `output/`:
+
+- `tutorial-release-2026-10-21/seek-focused-tests.log`
+- `tutorial-release-2026-10-21/seek-full-frontend.log`
+- `tutorial-release-2026-10-21/seek-build.log`
+- `tutorial-release-2026-10-21/seek-npm-audit.json`
+- `playwright/tutorial-release-20261021/fresh-preview-diagnostic-20261022.txt`
+- `playwright/tutorial-release-20261021/corrected-local-browser-verification-20261022.json`
+- `playwright/tutorial-release-20261021/corrected-context-browser-verification-20261022.json`
+- Corresponding scripts, raw outputs, native downloads and `seekfix22-*.jpg`.
+
+Updated exact-candidate CI, an updated actual Pages preview, production cutover
+and live checks remain separate release gates. They are not claimed complete by
+this local verification record. Existing unrelated findings remain open.
