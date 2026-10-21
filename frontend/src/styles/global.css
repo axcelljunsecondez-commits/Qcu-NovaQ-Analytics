@@ -5437,3 +5437,37 @@ summary.setup-step-title::before {
     bottom: auto;
   }
 }
+
+/* Optional, same-origin tutorial help. Existing workflow actions stay primary. */
+.tutorial-library, .tutorial-dialog { --tutorial-muted: var(--color-text-secondary, var(--text-primary)); --tutorial-link: var(--color-action-link, var(--text-primary)); }
+.tutorial-library .form-hint, .tutorial-dialog .form-hint { color: var(--tutorial-muted); }
+.tutorial-library a, .tutorial-dialog a { color: var(--tutorial-link); text-decoration: underline; text-underline-offset: 0.2em; }
+.tutorial-heading-actions, .tutorial-watch, .tutorial-card-actions, .tutorial-downloads, .tutorial-dialog-heading, .tutorial-section-heading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tutorial-watch { min-height: 44px; gap: 8px; }
+.tutorial-watch svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
+.tutorial-section-heading { justify-content: space-between; margin-bottom: 16px; }
+.tutorial-section-heading h2, .tutorial-section-heading p { margin: 0; }
+.tutorial-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; list-style: none; margin: 0; padding: 0; }
+.tutorial-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.tutorial-card > img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; background: var(--navy-950); }
+.tutorial-card-content { padding: 18px; display: flex; flex-direction: column; flex: 1; }
+.tutorial-card-content > p { font-size: 0.875rem; }
+.tutorial-card-actions { margin-top: auto; }
+.tutorial-card-actions a, .tutorial-downloads a { min-height: 44px; display: inline-flex; align-items: center; }
+.tutorial-dialog { width: min(1000px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); }
+.tutorial-dialog::backdrop { background: rgb(4 16 32 / 78%); }
+.tutorial-dialog-heading { justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+.tutorial-dialog-heading > div { min-width: 0; flex: 1; }
+.tutorial-dialog-heading h2 { margin-bottom: 6px; }
+.tutorial-dialog-heading p { margin: 0; max-width: none; }
+.tutorial-dialog video { display: block; width: 100%; aspect-ratio: 16 / 9; background: var(--navy-950); border-radius: 6px; }
+.tutorial-downloads { margin: 18px 0; gap: 20px; }
+.tutorial-steps { border-top: 1px solid var(--border); padding-top: 12px; }
+.tutorial-steps summary { cursor: pointer; min-height: 44px; padding: 8px 0; font-weight: 600; }
+.tutorial-steps ol { padding-left: 24px; }
+.tutorial-steps li { margin-bottom: 12px; }
+.tutorial-time { color: var(--tutorial-muted); font-variant-numeric: tabular-nums; margin-right: 12px; }
+.tutorial-example-note { margin: 16px 0 0; max-width: none; }
+.app-shell .tutorial-dialog { background: var(--color-bg-surface); color: var(--color-text-primary); border-color: var(--color-border-subtle); }
+@media (max-width: 1100px) { .tutorial-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .tutorial-grid { grid-template-columns: minmax(0, 1fr); } .tutorial-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 16px; } }

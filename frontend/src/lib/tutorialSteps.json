@@ -1,0 +1,336 @@
+{
+  "analysis-workflow": [
+    {
+      "time": "0:00",
+      "caption": "Sign in. Open My analyses, then select New Analysis."
+    },
+    {
+      "time": "0:07",
+      "caption": "Enter a name you can find again later."
+    },
+    {
+      "time": "0:14",
+      "caption": "Choose one shared line or a separate line at each counter."
+    },
+    {
+      "time": "0:22",
+      "caption": "After naming the analysis and choosing a line, select Continue to queue setup."
+    },
+    {
+      "time": "0:30",
+      "caption": "Choose Customer events or Totals and rates to match your records."
+    },
+    {
+      "time": "0:38",
+      "caption": "Download the XLSX or CSV template."
+    },
+    {
+      "time": "0:44",
+      "caption": "Fill in the template with your records. Keep the column names."
+    },
+    {
+      "time": "0:52",
+      "caption": "Select Use for planning for your plans, simulations and checks."
+    },
+    {
+      "time": "1:00",
+      "caption": "Choose the file, then select Upload and process."
+    },
+    {
+      "time": "1:07",
+      "caption": "Check any file review before you confirm. Fix errors and upload again."
+    },
+    {
+      "time": "1:15",
+      "caption": "Check that NovaQ read your data and setup correctly."
+    },
+    {
+      "time": "1:23",
+      "caption": "If setup is incomplete, fill in the missing fields and select Save."
+    },
+    {
+      "time": "1:32",
+      "caption": "Open Analysis results. Check the analysis and file you are viewing."
+    },
+    {
+      "time": "1:40",
+      "caption": "Recorded wait comes from your records. Estimated wait comes from the model."
+    },
+    {
+      "time": "1:48",
+      "caption": "Open Suggested plans and check the source file."
+    },
+    {
+      "time": "1:55",
+      "caption": "Check the target, counter limits and costs before you run."
+    },
+    {
+      "time": "2:03",
+      "caption": "Select Optimize. Read the result and any warning."
+    },
+    {
+      "time": "2:10",
+      "caption": "Enter a plan name. Select Use this plan."
+    },
+    {
+      "time": "2:17",
+      "caption": "Save without using keeps the plan but does not select it."
+    },
+    {
+      "time": "2:25",
+      "caption": "Open Queue simulation. Select Suggested plan to test the selected plan."
+    },
+    {
+      "time": "2:33",
+      "caption": "Read whether the run covers the whole day or one period at a time."
+    },
+    {
+      "time": "2:42",
+      "caption": "For a shared-line full-day run, check the rule for closing time."
+    },
+    {
+      "time": "2:50",
+      "caption": "Start the run and wait for Done. Read any warning before you continue."
+    },
+    {
+      "time": "2:58",
+      "caption": "Read the wait, longest line, customers served and closing-time result."
+    },
+    {
+      "time": "3:06",
+      "caption": "Open Replay. Use Play and Pause to watch the saved run."
+    },
+    {
+      "time": "3:14",
+      "caption": "Open Checks and decision for the selected plan."
+    },
+    {
+      "time": "3:21",
+      "caption": "Select Check the plan. Wait for the required checks to finish."
+    },
+    {
+      "time": "3:29",
+      "caption": "Read the Decision and its reason. Revise means change the plan first."
+    },
+    {
+      "time": "3:37",
+      "caption": "Open Reports. Check the plan name and Decision before downloading."
+    },
+    {
+      "time": "3:45",
+      "caption": "Select Download PDF for a summary of the results."
+    },
+    {
+      "time": "3:52",
+      "caption": "Select Download Excel for the inputs and calculation details."
+    },
+    {
+      "time": "3:59",
+      "caption": "Use Your data only when you need a file without a plan report."
+    },
+    {
+      "time": "4:07",
+      "caption": "Open the downloaded file. Check that it contains the results you need."
+    }
+  ],
+  "key-metrics": [
+    {
+      "time": "0:00",
+      "caption": "Select the analysis and file you want to read."
+    },
+    {
+      "time": "0:08",
+      "caption": "This is the average wait from arrival until service starts in your records."
+    },
+    {
+      "time": "0:16",
+      "caption": "Without both times, NovaQ cannot show recorded wait. Unavailable does not mean zero."
+    },
+    {
+      "time": "0:25",
+      "caption": "This is the wait NovaQ calculates from your uploaded inputs."
+    },
+    {
+      "time": "0:33",
+      "caption": "For one shared line, periods where counters cannot keep up are left out."
+    },
+    {
+      "time": "0:42",
+      "caption": "If any separate line cannot keep up, no overall estimated average is shown."
+    },
+    {
+      "time": "0:51",
+      "caption": "These answer different questions. The estimate is not a promise about tomorrow."
+    },
+    {
+      "time": "0:59",
+      "caption": "NovaQ first lists periods where counters cannot keep up."
+    },
+    {
+      "time": "1:06",
+      "caption": "Then it shows the highest estimated average wait, not one customer's longest wait."
+    },
+    {
+      "time": "1:15",
+      "caption": "This period has the most arrivals per hour. Separate lines are added together."
+    },
+    {
+      "time": "1:24",
+      "caption": "Select the information icon beside a metric to read its meaning."
+    },
+    {
+      "time": "1:32",
+      "caption": "Choose a Time to see the rows for that period."
+    },
+    {
+      "time": "1:39",
+      "caption": "For separate lines, use Service line to focus on one counter line."
+    },
+    {
+      "time": "1:47",
+      "caption": "The filters change the table. The top Key results still describe the file."
+    },
+    {
+      "time": "1:56",
+      "caption": "Select a time block to focus on that period."
+    },
+    {
+      "time": "2:03",
+      "caption": "The colors use fixed busy levels. They are not a score for your staff."
+    },
+    {
+      "time": "2:11",
+      "caption": "Busy levels are guide labels. Your plan has its own target."
+    },
+    {
+      "time": "2:19",
+      "caption": "Open Inputs and model when you need the detailed inputs."
+    },
+    {
+      "time": "2:26",
+      "caption": "In Reports, choose Download Excel for the calculation details."
+    }
+  ],
+  "queue-simulation": [
+    {
+      "time": "0:00",
+      "caption": "Open Queue simulation and select the right analysis."
+    },
+    {
+      "time": "0:07",
+      "caption": "Current uses the counters in your planning file. Suggested plan uses your selected plan."
+    },
+    {
+      "time": "0:16",
+      "caption": "Open Suggested plans. Save and select a plan with Use this plan."
+    },
+    {
+      "time": "0:24",
+      "caption": "Key results shows numbers. Replay shows the run. Checks and decision tests the plan."
+    },
+    {
+      "time": "0:33",
+      "caption": "Read the run type. Do not treat separate periods as one continuous day."
+    },
+    {
+      "time": "0:42",
+      "caption": "Before a shared-line full-day run, check what happens at closing time."
+    },
+    {
+      "time": "0:50",
+      "caption": "Choose whether to serve everyone in line or leave waiting customers unserved at closing."
+    },
+    {
+      "time": "1:00",
+      "caption": "Open Advanced settings. Set Random seed to 42 to follow this example."
+    },
+    {
+      "time": "1:08",
+      "caption": "Repeated days sets how many times the full day runs."
+    },
+    {
+      "time": "1:16",
+      "caption": "Select Run full operation. Wait for Done."
+    },
+    {
+      "time": "1:23",
+      "caption": "For separate lines, read the run type and break warning before using the results."
+    },
+    {
+      "time": "1:32",
+      "caption": "Read the units and notes before you compare Current with Suggested plan."
+    },
+    {
+      "time": "1:40",
+      "caption": "Average wait uses all served customers across the repeated days."
+    },
+    {
+      "time": "1:48",
+      "caption": "This card averages each day's longest line. Brackets show the lowest and highest day."
+    },
+    {
+      "time": "1:57",
+      "caption": "Under the stop-at-closing rule, these customers were still waiting and were not served."
+    },
+    {
+      "time": "2:06",
+      "caption": "Use matching settings to compare Current and Suggested plan."
+    },
+    {
+      "time": "2:14",
+      "caption": "Select Replay to view the saved run."
+    },
+    {
+      "time": "2:21",
+      "caption": "The full-day replay shows one repeated day, not the average of all days."
+    },
+    {
+      "time": "2:30",
+      "caption": "Select Play to watch. Select Pause to stop."
+    },
+    {
+      "time": "2:37",
+      "caption": "Choose a slower Speed if the replay is hard to follow."
+    },
+    {
+      "time": "2:44",
+      "caption": "Step moves to the next event. Restart returns to the beginning."
+    },
+    {
+      "time": "2:52",
+      "caption": "Watch how many customers arrived, are waiting, are being served, and have finished."
+    },
+    {
+      "time": "3:00",
+      "caption": "Select Checks and decision. Keep Suggested plan selected."
+    },
+    {
+      "time": "3:08",
+      "caption": "Use the check settings required by your study. Read Required and Optional."
+    },
+    {
+      "time": "3:17",
+      "caption": "Many variations tests changes in how fast customers arrive and get served."
+    },
+    {
+      "time": "3:26",
+      "caption": "Select Check the plan. Wait for the checks to finish."
+    },
+    {
+      "time": "3:34",
+      "caption": "Read which periods passed, failed, or need more evidence."
+    },
+    {
+      "time": "3:42",
+      "caption": "Read the answer and its reason. Revise means change the plan first."
+    },
+    {
+      "time": "3:50",
+      "caption": "If data, setup or plan changes, rerun the steps needed for current results."
+    },
+    {
+      "time": "3:59",
+      "caption": "Open Reports to download the results with their warnings."
+    }
+  ]
+}

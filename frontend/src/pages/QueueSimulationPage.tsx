@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { TutorialWatch } from '../components/help/TutorialWatch'
 import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, listAnalyses } from '../api/analyses'
 import { getWorkflow } from '../api/workflow'
@@ -63,7 +64,7 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     <header className="page-header simulation-header">
       <div>
         <p className="topbar-eyebrow">{t('nav.group_simulation')}</p>
-        <div className="title-row"><h1 className="page-title">{t('nav.queue_simulation')}</h1>{page === 'checks' ? <HelpLink topic="checks" /> : <HelpLink topic="simulation" section={page === 'replay' ? 'reading' : undefined} />}</div>
+        <div className="title-row"><h1 className="page-title">{t('nav.queue_simulation')}</h1>{page === 'checks' ? <HelpLink topic="checks" /> : <HelpLink topic="simulation" section={page === 'replay' ? 'reading' : undefined} />}<TutorialWatch id="queue-simulation" /></div>
       </div>
       <AnalysisSelector id="simulation-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions}
         onChange={(value) => navigate(simulationHref(page, new URLSearchParams({ analysis: value })))} />

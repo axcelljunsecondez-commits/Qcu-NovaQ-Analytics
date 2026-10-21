@@ -1,0 +1,58 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:08.000
+Select the analysis and file you want to read.
+
+00:00:08.000 --> 00:00:16.000
+This is the average wait from arrival until service starts in your records.
+
+00:00:16.000 --> 00:00:25.000
+Without both times, NovaQ cannot show recorded wait. Unavailable does not mean zero.
+
+00:00:25.000 --> 00:00:33.000
+This is the wait NovaQ calculates from your uploaded inputs.
+
+00:00:33.000 --> 00:00:42.000
+For one shared line, periods where counters cannot keep up are left out.
+
+00:00:42.000 --> 00:00:51.000
+If any separate line cannot keep up, no overall estimated average is shown.
+
+00:00:51.000 --> 00:00:59.000
+These answer different questions. The estimate is not a promise about tomorrow.
+
+00:00:59.000 --> 00:01:06.000
+NovaQ first lists periods where counters cannot keep up.
+
+00:01:06.000 --> 00:01:15.000
+Then it shows the highest estimated average wait, not one customer's longest wait.
+
+00:01:15.000 --> 00:01:24.000
+This period has the most arrivals per hour. Separate lines are added together.
+
+00:01:24.000 --> 00:01:32.000
+Select the information icon beside a metric to read its meaning.
+
+00:01:32.000 --> 00:01:39.000
+Choose a Time to see the rows for that period.
+
+00:01:39.000 --> 00:01:47.000
+For separate lines, use Service line to focus on one counter line.
+
+00:01:47.000 --> 00:01:56.000
+The filters change the table. The top Key results still describe the file.
+
+00:01:56.000 --> 00:02:03.000
+Select a time block to focus on that period.
+
+00:02:03.000 --> 00:02:11.000
+The colors use fixed busy levels. They are not a score for your staff.
+
+00:02:11.000 --> 00:02:19.000
+Busy levels are guide labels. Your plan has its own target.
+
+00:02:19.000 --> 00:02:26.000
+Open Inputs and model when you need the detailed inputs.
+
+00:02:26.000 --> 00:02:33.000
+In Reports, choose Download Excel for the calculation details.

@@ -1,0 +1,91 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:07.000
+Open Queue simulation and select the right analysis.
+
+00:00:07.000 --> 00:00:16.000
+Current uses the counters in your planning file. Suggested plan uses your selected plan.
+
+00:00:16.000 --> 00:00:24.000
+Open Suggested plans. Save and select a plan with Use this plan.
+
+00:00:24.000 --> 00:00:33.000
+Key results shows numbers. Replay shows the run. Checks and decision tests the plan.
+
+00:00:33.000 --> 00:00:42.000
+Read the run type. Do not treat separate periods as one continuous day.
+
+00:00:42.000 --> 00:00:50.000
+Before a shared-line full-day run, check what happens at closing time.
+
+00:00:50.000 --> 00:01:00.000
+Choose whether to serve everyone in line or leave waiting customers unserved at closing.
+
+00:01:00.000 --> 00:01:08.000
+Open Advanced settings. Set Random seed to 42 to follow this example.
+
+00:01:08.000 --> 00:01:16.000
+Repeated days sets how many times the full day runs.
+
+00:01:16.000 --> 00:01:23.000
+Select Run full operation. Wait for Done.
+
+00:01:23.000 --> 00:01:32.000
+For separate lines, read the run type and break warning before using the results.
+
+00:01:32.000 --> 00:01:40.000
+Read the units and notes before you compare Current with Suggested plan.
+
+00:01:40.000 --> 00:01:48.000
+Average wait uses all served customers across the repeated days.
+
+00:01:48.000 --> 00:01:57.000
+This card averages each day's longest line. Brackets show the lowest and highest day.
+
+00:01:57.000 --> 00:02:06.000
+Under the stop-at-closing rule, these customers were still waiting and were not served.
+
+00:02:06.000 --> 00:02:14.000
+Use matching settings to compare Current and Suggested plan.
+
+00:02:14.000 --> 00:02:21.000
+Select Replay to view the saved run.
+
+00:02:21.000 --> 00:02:30.000
+The full-day replay shows one repeated day, not the average of all days.
+
+00:02:30.000 --> 00:02:37.000
+Select Play to watch. Select Pause to stop.
+
+00:02:37.000 --> 00:02:44.000
+Choose a slower Speed if the replay is hard to follow.
+
+00:02:44.000 --> 00:02:52.000
+Step moves to the next event. Restart returns to the beginning.
+
+00:02:52.000 --> 00:03:00.000
+Watch how many customers arrived, are waiting, are being served, and have finished.
+
+00:03:00.000 --> 00:03:08.000
+Select Checks and decision. Keep Suggested plan selected.
+
+00:03:08.000 --> 00:03:17.000
+Use the check settings required by your study. Read Required and Optional.
+
+00:03:17.000 --> 00:03:26.000
+Many variations tests changes in how fast customers arrive and get served.
+
+00:03:26.000 --> 00:03:34.000
+Select Check the plan. Wait for the checks to finish.
+
+00:03:34.000 --> 00:03:42.000
+Read which periods passed, failed, or need more evidence.
+
+00:03:42.000 --> 00:03:50.000
+Read the answer and its reason. Revise means change the plan first.
+
+00:03:50.000 --> 00:03:59.000
+If data, setup or plan changes, rerun the steps needed for current results.
+
+00:03:59.000 --> 00:04:06.000
+Open Reports to download the results with their warnings.

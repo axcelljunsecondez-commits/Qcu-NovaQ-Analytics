@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { TutorialWatch } from '../components/help/TutorialWatch'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalyses, listAnalysisDatasets } from '../api/analyses'
 import { getObservedWait } from '../api/workflow'
@@ -95,7 +96,7 @@ export function ResultsPage() {
   const header = (
     <header className="page-header results-header">
       <div>
-        <div className="title-row"><h1 ref={heading} tabIndex={-1} className="page-title">{t(reference ? 'results.reference_title' : 'nav.analysis_results')}</h1><HelpLink topic="results" /></div>
+        <div className="title-row"><h1 ref={heading} tabIndex={-1} className="page-title">{t(reference ? 'results.reference_title' : 'nav.analysis_results')}</h1><HelpLink topic="results" /><TutorialWatch id="key-metrics" /></div>
       </div>
       <AnalysisSelector id="results-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions} onChange={(value) => navigate(`/results?analysis=${value}`)} />
     </header>

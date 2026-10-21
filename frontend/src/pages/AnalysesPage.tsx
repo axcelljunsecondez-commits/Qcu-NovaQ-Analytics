@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { TutorialWatch } from '../components/help/TutorialWatch'
 import { Link, useSearchParams } from 'react-router-dom'
 import { archiveAnalysis, listAnalyses } from '../api/analyses'
 import type { AnalysisProjectOut } from '../api/types'
@@ -85,7 +86,7 @@ export function AnalysesPage() {
           <h1 className="page-title">{t('analyses.title')}</h1>
           <p className="page-caption">{t('analyses.caption')}</p>
         </div>
-        <Link className="button-link" to="/analyses/new">{t('analyses.new')}</Link>
+        <div className="tutorial-heading-actions"><TutorialWatch id="analysis-workflow" /><Link className="button-link" to="/analyses/new">{t('analyses.new')}</Link></div>
       </div>
       {archive.isError && <div role="alert" className="alert alert-error">{t('errors.server')}</div>}
       {all.length === 0 ? (
