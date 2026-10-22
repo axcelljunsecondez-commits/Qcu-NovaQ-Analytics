@@ -1,58 +1,58 @@
 WEBVTT
 
-00:00:00.000 --> 00:00:08.000
+00:00:00.467 --> 00:00:03.833
 Select the analysis and file you want to read.
 
-00:00:08.000 --> 00:00:16.000
+00:00:03.833 --> 00:00:08.333
 This is the average wait from arrival until service starts in your records.
 
-00:00:16.000 --> 00:00:25.000
+00:00:08.333 --> 00:00:15.667
 Without both times, NovaQ cannot show recorded wait. Unavailable does not mean zero.
 
-00:00:25.000 --> 00:00:33.000
+00:00:15.667 --> 00:00:19.600
 This is the wait NovaQ calculates from your uploaded inputs.
 
-00:00:33.000 --> 00:00:42.000
+00:00:19.600 --> 00:00:24.467
 For one shared line, periods where counters cannot keep up are left out.
 
-00:00:42.000 --> 00:00:51.000
+00:00:24.467 --> 00:00:29.967
 If any separate line cannot keep up, no overall estimated average is shown.
 
-00:00:51.000 --> 00:00:59.000
+00:00:29.967 --> 00:00:35.733
 These answer different questions. The estimate is not a promise about tomorrow.
 
-00:00:59.000 --> 00:01:06.000
+00:00:35.733 --> 00:00:39.567
 NovaQ first lists periods where counters cannot keep up.
 
-00:01:06.000 --> 00:01:15.000
+00:00:39.567 --> 00:00:45.600
 Then it shows the highest estimated average wait, not one customer's longest wait.
 
-00:01:15.000 --> 00:01:24.000
+00:00:45.600 --> 00:00:50.867
 This period has the most arrivals per hour. Separate lines are added together.
 
-00:01:24.000 --> 00:01:32.000
+00:00:50.867 --> 00:00:55.167
 Select the information icon beside a metric to read its meaning.
 
-00:01:32.000 --> 00:01:39.000
+00:00:55.167 --> 00:00:58.233
 Choose a Time to see the rows for that period.
 
-00:01:39.000 --> 00:01:47.000
+00:00:58.233 --> 00:01:02.833
 For separate lines, use Service line to focus on one counter line.
 
-00:01:47.000 --> 00:01:56.000
+00:01:02.833 --> 00:01:08.233
 The filters change the table. The top Key results still describe the file.
 
-00:01:56.000 --> 00:02:03.000
+00:01:08.233 --> 00:01:11.300
 Select a time block to focus on that period.
 
-00:02:03.000 --> 00:02:11.000
+00:01:11.300 --> 00:01:16.667
 The colors use fixed busy levels. They are not a score for your staff.
 
-00:02:11.000 --> 00:02:19.000
+00:01:16.667 --> 00:01:21.067
 Busy levels are guide labels. Your plan has its own target.
 
-00:02:19.000 --> 00:02:26.000
+00:01:21.067 --> 00:01:24.900
 Open Inputs and model when you need the detailed inputs.
 
-00:02:26.000 --> 00:02:33.000
+00:01:24.900 --> 00:01:29.467
 In Reports, choose Download Excel for the calculation details.

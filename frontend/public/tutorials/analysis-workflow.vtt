@@ -1,100 +1,43 @@
 WEBVTT
 
-00:00:00.000 --> 00:00:07.000
-Sign in. Open My analyses, then select New Analysis.
+00:00:00.467 --> 00:00:09.400
+Welcome to NovaQ
 
-00:00:07.000 --> 00:00:14.000
-Enter a name you can find again later.
+00:00:09.400 --> 00:00:11.967
+This guide uses Help examples. Small screen details may look different.
 
-00:00:14.000 --> 00:00:22.000
-Choose one shared line or a separate line at each counter.
+00:00:11.967 --> 00:00:17.867
+Sign in. Open My analyses, then choose New Analysis.
 
-00:00:22.000 --> 00:00:30.000
-After naming the analysis and choosing a line, select Continue to queue setup.
+00:00:17.867 --> 00:00:20.133
+Enter a name that you can find again later.
 
-00:00:30.000 --> 00:00:38.000
-Choose Customer events or Totals and rates to match your records.
+00:00:20.133 --> 00:00:22.767
+Choose how customers wait at your counters.
 
-00:00:38.000 --> 00:00:44.000
-Download the XLSX or CSV template.
+00:00:22.767 --> 00:00:26.400
+Choose this when everyone waits in one line for the next free counter.
 
-00:00:44.000 --> 00:00:52.000
-Fill in the template with your records. Keep the column names.
+00:00:26.400 --> 00:00:29.533
+Choose this when each counter has its own line.
 
-00:00:52.000 --> 00:01:00.000
-Select Use for planning for your plans, simulations and checks.
+00:00:29.533 --> 00:00:34.133
+Choose Continue to queue setup. Then open Data and setup.
 
-00:01:00.000 --> 00:01:07.000
-Choose the file, then select Upload and process.
+00:00:34.133 --> 00:00:39.333
+Choose the file type you need. Download the CSV or XLSX template.
 
-00:01:07.000 --> 00:01:15.000
-Check any file review before you confirm. Fix errors and upload again.
+00:00:39.333 --> 00:00:43.100
+Add your own records to the template. Keep the column names.
 
-00:01:15.000 --> 00:01:23.000
-Check that NovaQ read your data and setup correctly.
+00:00:43.100 --> 00:00:47.367
+Use for planning makes this file the data for your plans and checks.
 
-00:01:23.000 --> 00:01:32.000
-If setup is incomplete, fill in the missing fields and select Save.
+00:00:47.367 --> 00:00:51.500
+Review only saves the file for viewing. It is not used for plans.
 
-00:01:32.000 --> 00:01:40.000
-Open Analysis results. Check the analysis and file you are viewing.
+00:00:51.500 --> 00:00:55.100
+Choose your file. Then select Upload and process.
 
-00:01:40.000 --> 00:01:48.000
-Recorded wait comes from your records. Estimated wait comes from the model.
-
-00:01:48.000 --> 00:01:55.000
-Open Suggested plans and check the source file.
-
-00:01:55.000 --> 00:02:03.000
-Check the target, counter limits and costs before you run.
-
-00:02:03.000 --> 00:02:10.000
-Select Optimize. Read the result and any warning.
-
-00:02:10.000 --> 00:02:17.000
-Enter a plan name. Select Use this plan.
-
-00:02:17.000 --> 00:02:25.000
-Save without using keeps the plan but does not select it.
-
-00:02:25.000 --> 00:02:33.000
-Open Queue simulation. Select Suggested plan to test the selected plan.
-
-00:02:33.000 --> 00:02:42.000
-Read whether the run covers the whole day or one period at a time.
-
-00:02:42.000 --> 00:02:50.000
-For a shared-line full-day run, check the rule for closing time.
-
-00:02:50.000 --> 00:02:58.000
-Start the run and wait for Done. Read any warning before you continue.
-
-00:02:58.000 --> 00:03:06.000
-Read the wait, longest line, customers served and closing-time result.
-
-00:03:06.000 --> 00:03:14.000
-Open Replay. Use Play and Pause to watch the saved run.
-
-00:03:14.000 --> 00:03:21.000
-Open Checks and decision for the selected plan.
-
-00:03:21.000 --> 00:03:29.000
-Select Check the plan. Wait for the required checks to finish.
-
-00:03:29.000 --> 00:03:37.000
-Read the Decision and its reason. Revise means change the plan first.
-
-00:03:37.000 --> 00:03:45.000
-Open Reports. Check the plan name and Decision before downloading.
-
-00:03:45.000 --> 00:03:52.000
-Select Download PDF for a summary of the results.
-
-00:03:52.000 --> 00:03:59.000
-Select Download Excel for the inputs and calculation details.
-
-00:03:59.000 --> 00:04:07.000
-Use Your data only when you need a file without a plan report.
-
-00:04:07.000 --> 00:04:15.000
-Open the downloaded file. Check that it contains the results you need.
+00:00:55.100 --> 00:00:59.967
+If NovaQ names a wrong row, fix that row in your file and upload again.

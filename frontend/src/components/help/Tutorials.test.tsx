@@ -219,7 +219,7 @@ describe('Tutorials: app behavior (media and native dialog are stubbed in JSDOM)
   it('filters the library with every search word and hides it for no match', () => {
     const view = renderWithProviders(<VideoTutorials query="key metrics" />)
     expect(screen.getByRole('heading', { name: 'Analysis key metrics' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'My analyses to reports' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Start and add data' })).not.toBeInTheDocument()
     view.rerender(<VideoTutorials query="no-such-video" />)
     expect(screen.queryByRole('region', { name: 'Video tutorials' })).not.toBeInTheDocument()
   })
@@ -242,12 +242,12 @@ describe('Tutorials: app behavior (media and native dialog are stubbed in JSDOM)
     }
   })
 
-  it('ships exact verified MP4s below 25 MiB with matching captions and posters', () => {
+  it('ships exact approved MP4s below 24 MiB with matching captions and posters', () => {
     const root = join(__dirname, '../../../public/tutorials')
     for (const tutorial of TUTORIALS) {
       const bytes = readFileSync(join(root, `${tutorial.id}.mp4`))
       expect(bytes.length).toBe(tutorial.bytes)
-      expect(bytes.length).toBeLessThan(25 * 1024 ** 2)
+      expect(bytes.length).toBeLessThan(24 * 1024 ** 2)
       expect(createHash('sha256').update(bytes).digest('hex')).toBe(tutorial.sha256)
       expect(tutorial.revision).toBe(tutorial.sha256.slice(0, 12))
       expect(readFileSync(join(root, `${tutorial.id}.vtt`), 'utf8')).toMatch(/^WEBVTT/)

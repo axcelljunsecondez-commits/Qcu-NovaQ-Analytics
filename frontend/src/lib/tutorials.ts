@@ -2,9 +2,9 @@ import type { TFunction } from 'i18next'
 import steps from './tutorialSteps.json'
 
 export const TUTORIALS = [
-  { id: 'analysis-workflow', seconds: 255, bytes: 1973500, sha256: '8495ebfe3a0c992321126225079fbe3779107ae49ddd477b8a8ca54d9b549b3e', revision: '8495ebfe3a0c' },
-  { id: 'key-metrics', seconds: 153, bytes: 1470909, sha256: '6be08abb6cc290f5b771a7320f2c7df156235836102e9eb1823fea7358f4ab56', revision: '6be08abb6cc2' },
-  { id: 'queue-simulation', seconds: 246, bytes: 1780480, sha256: '9899542501e8aa09c8be280627650260598389bb0b836c19563e20d51001a786', revision: '9899542501e8' },
+  { id: 'analysis-workflow', seconds: 62, bytes: 1387977, sha256: '5a27b75e8e02b7a651804404341e3d68990275752e27573c6d0c6874b85be62a', revision: '5a27b75e8e02' },
+  { id: 'key-metrics', seconds: 91, bytes: 3664985, sha256: '78ed2acb4af253902ee1d2dfffd1080520c600c2a42175cc432d9de5f800b5ff', revision: '78ed2acb4af2' },
+  { id: 'queue-simulation', seconds: 145, bytes: 5112569, sha256: '9cc2158fdb7da46f00795b0adc16a9608bc3446f99a8903c2efaca483a0ad370', revision: '9cc2158fdb7d' },
 ] as const
 
 export type TutorialId = (typeof TUTORIALS)[number]['id']
