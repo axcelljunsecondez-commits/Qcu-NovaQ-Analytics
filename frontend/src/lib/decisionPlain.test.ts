@@ -15,12 +15,15 @@ describe('plainDecision (spec §7.9, U10 F5)', () => {
 
   it('names the failed periods when the Decision lists them, else counts them', () => {
     expect(plainDecision({ status: 'revise', separate: true, failedPeriods: ['09:00', '10:00'] }))
-      .toEqual({ key: 'decision.plain.revise_periods', params: { periods: '09:00, 10:00' } })
+      .toEqual({ key: 'decision.plain.revise_separate_periods', params: { periods: '09:00, 10:00' } })
     expect(plainDecision({ status: 'revise', separate: false, failedPeriods: [], failedCount: 1, totalCount: 4 }))
       .toEqual({ key: 'decision.plain.revise_count', params: { failed: 1, total: 4 } })
     expect(plainDecision({ status: 'revise', separate: false, failedCount: 0, totalCount: 4 }))
       .toEqual({ key: 'decision.plain.revise_count', params: { failed: 0, total: 4 } })
     expect(plainDecision({ status: 'revise', separate: false, failedCount: 1 })).toEqual({ key: 'decision.plain.revise' })
+    expect(plainDecision({ status: 'revise', separate: true, failedCount: 2, totalCount: 60 }))
+      .toEqual({ key: 'decision.plain.revise_separate_count', params: { failed: 2, total: 60 } })
+    expect(plainDecision({ status: 'revise', separate: true })).toEqual({ key: 'decision.plain.revise_separate' })
   })
 
   it('names the missing evidence, else the periods without enough data', () => {

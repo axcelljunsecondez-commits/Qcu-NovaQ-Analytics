@@ -175,6 +175,8 @@ def _full_pages(model: Mapping[str, Any], styles: Mapping[str, ParagraphStyle]) 
     story: list[Flowable] = [PageBreak(), Paragraph("Decision", styles["h2"]),
                              Paragraph(escape(str(decision.get("headline"))), styles["body"]),
                              Paragraph(escape(str(decision.get("recommendation"))), styles["body"])]
+    if decision.get("scope_notice"):
+        story.append(Paragraph(escape(str(decision["scope_notice"])), styles["body"]))
     story += [Paragraph("• " + escape(str(line)), styles["body"]) for line in decision.get("rationale") or []]
     story += [Paragraph("Simulation key results", styles["h2"]), Paragraph(escape(simulation["source"]), styles["body"]),
               _table(styles, ["Result", "Value"], [

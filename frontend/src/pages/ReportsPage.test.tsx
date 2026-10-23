@@ -200,10 +200,23 @@ describe('Reports page (B8, D33)', () => {
       .toBe('Not enough checks yet. Run: completed Setup')
     // Separate-lane counts are line-periods, so they are never shown as periods.
     expect(await show(withDecision({ status: 'revise', facts: { failed_intervals: 2, validation_intervals: 12 } }, 'separate')))
-      .toBe('Change the plan first.')
+      .toBe('This saved run did not pass. Review the plan and estimated loads.')
+    expect(await show(withDecision({ status: 'revise', facts: { failed_checks: 2, validation_checks: 60 } }, 'separate')))
+      .toBe('This saved run did not pass 2 of 60 checks. Review the plan and estimated loads.')
     expect(await show(withDecision({ status: 'conditional', facts: { today_overloaded_periods: ['09:00'] } }, 'separate')))
-      .toBe("The plan passed every check, but its cost saving can't be calculated for separate lines. Use it only if you accept the cost.")
+      .toBe('Saved checks passed for this run. Savings cannot be compared. Review the estimated loads and costs before using the plan.')
     expect(await show(withDecision({ status: 'something_new', facts: null }))).toBe('Do not adopt Scenario "Four at eight" yet.')
+  })
+
+  it.each(['en', 'tl'] as const)('shows a visible Separate scope note in %s without deriving new evidence', async (lang) => {
+    const separate = { ...fullPreview, model: { ...fullPreview.model, line_type: 'separate',
+      decision: { status: 'conditional', headline: 'Old saved headline', recommendation: 'Old saved recommendation' } } }
+    previewMock.mockImplementation(async (_id: number, level: string) => level === 'plan' ? planPreview : separate)
+    renderReports('/reports?analysis=7', lang)
+    const note = await screen.findByTestId('selected-decision-scope')
+    expect(note).toBeVisible()
+    expect(note.closest('details')).toBeNull()
+    expect(note).toHaveTextContent(lang === 'en' ? 'Load estimate uncertainty: Not checked.' : 'Hindi pa nasusuri')
   })
 
   it('shows a refused download as an alert', async () => {

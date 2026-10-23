@@ -1,0 +1,25 @@
+# Selected-load precision: bounded research before implementation
+
+APPROVED RESEARCH SCOPE: owner requested seed repair before deployment, then chose "Research a more useful, justified correction before implementation". Deployment is held. No statistical application integration, threshold/cap/seed/run-limit change or relaxed regression is authorized by this research selection.
+
+## Question and candidate
+
+Can replacing the earlier additive Hoeffding interval for deterministically truncated counts with a bounded-variable binary-KL (Chernoff) interval materially improve useful classifications at the unchanged 20-run budget? Study one prespecified candidate, not an estimator chosen after seeing passing results. Do not assume routed lane counts are Poisson, Normal or independent across lanes.
+
+Reuse the earlier source-grounded conditional Poisson domination: a lane-period count X is at most its potential-arrival Poisson envelope N, with frozen mean Lambda. This is conditional on the actual routing-mode mapping and ideal independent marginal replication streams; deterministic PRNG independence and real-world input-rate accuracy are not established. Y=min(X,B). The already reviewed tail allowance delta(B)=Lambda*P(N>=B)-B*P(N>=B+1) bounds E[X]-E[Y]. B uses the previous input-only rule, fixed before outcomes. No outcome-selected cutoff.
+
+For n independent scaled truncated counts Z=Y/B in [0,1], invert kl(zbar,p)<=log(2*m/.05)/n to obtain [l,u]. The count-mean interval is [B*l, B*u+delta(B)], intersected with the known [0,Lambda] mean envelope. Divide by the actual positive period duration for rates. This is a project adaptation of a published bounded-mean bound, not a paper proving NovaQ's routing assumptions. Use the unchanged exact conditional stress event only to propagate rate endpoints; never substitute it into application MC or alter its Wilson intervals.
+
+Primary reference: Foong, Bruinsma and Burt (2022), "A Note on the Chernoff Bound for Random Variables in the Unit Interval", Theorem 3, https://arxiv.org/html/2205.07880. Supporting bounded-variable MGF result: Garivier and Cappe (2011), "The KL-UCB Algorithm for Bounded Stochastic Bandits and Beyond", Lemma 9, https://proceedings.mlr.press/v19/garivier11a/garivier11a.pdf. Union allocation does not require lane independence. All assumptions must remain explicit.
+
+## Frozen experiment and acceptance
+
+- Output-only candidate and experiments. Freeze source/preregistration hashes before execution; retain failures and amendments. Application seed 42, alpha .05, failure cap .05, target and run bounds stay unchanged.
+- Independent numerical inversion against 80-digit Decimal bisection, endpoint and tail references, unit conversion, invalid/missing counts, n=1/20/21, known zero versus zero observed variance, and interval nesting against the previous Hoeffding bound. Numeric-domain ceiling Lambda=1000 is inherited; no universal floating-point claim.
+- Nine synthetic cases as in the previous registered study, with fresh independent batches and new registered RNG seed; 10,000 batches each. Three fresh actual-routing symmetric known-mean cases, 500 disjoint batches each, with 20 replications and 64-seed spacing. Record all per-mode/date master seeds and reject cross-batch aliases. Known symmetric means apply only to those constructed fixtures.
+- Family and sentinel coverage checks: 24 one-sided exact binomial tests, reject if any p<.05/24. Report uncertainty, abstentions and widths. No detected undercoverage is not proof; require the conditional derivation and numerical references as well.
+- Usefulness: compare widths and supported pass/fail/insufficient classifications on all retained historical fixture rows and freshly captured current-candidate batches starting at 42, 106 and 170. Historical overlapping batches are not independent coverage calibration. A narrower interval alone is not an application repair. Minimum usefulness evidence is at least one additional supported lane-period classification on the studied fixture without failed validity checks. Otherwise retain NO-GO for integration under the unchanged budget.
+- Fresh fixture capture uses the unchanged production DES/MC/validation/Decision chain in temporary SQLite data. Observational wrappers return original results, do not change RNG calls, and retain actual replication counts/identities. Missing rows are not zero-filled.
+- Do not remove/relax the existing strict xfail. Its raw conditional-MC criterion and any proposed selected-uncertainty criterion must be reconciled explicitly before source integration. An external all-insufficient result does not close the existing finding.
+
+Permitted files: this research specification, its final report, and new output-only scripts/results under output/seed-precision-research-20261023 in the primary checkout. Existing native save-verification test additions remain separate. Do not modify application statistics, raw data, old research artifacts, configs, Docker stacks, Git state, manuscript claims or report consumers. Independent completed native save checks may be recorded and their task-owned temporary container removed.

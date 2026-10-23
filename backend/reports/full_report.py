@@ -14,6 +14,8 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from backend.reports.selected_scope import selected_scope_notice
+
 FULL_LABEL = "Plan checked by simulation, with the Decision"
 SHARED_SOURCE = "Period-by-period simulation: the evidence used by this Decision."
 NOT_RECORDED = "not recorded by this run"
@@ -184,7 +186,7 @@ def separate_full_sections(*, des: Mapping[str, Any], mc: Mapping[str, Any], val
          "outcome": f"{verdict.get('status')}: {total - failed - inadequate} of {total} line-periods passed, {failed} failed, {inadequate} without enough data"},
     ]
     return {
-        "decision": _decision(decision),
+        "decision": {**_decision(decision), "scope_notice": selected_scope_notice(decision)},
         "simulation": {"source": f"Selected-plan simulation of {basis}.", "headlines": _headlines(summary),
                        "basis": summary.get("basis"),
                        "charts": [_wait_chart(summary), _failure_chart(mc_rows, mc_params.get("failure_rate_cap"))]},

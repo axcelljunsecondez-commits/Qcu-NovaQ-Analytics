@@ -167,12 +167,18 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
         <p className="form-hint">{t('simulation.sep_selected_plan')}: {scenario.name}</p>
         {decision ? (
           <div>
-            <div role={decision.status === 'revise' || decision.status === 'insufficient_evidence' ? 'alert' : 'status'} className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`}>
-              <PlainAnswer plain={plainDecision({ status: decision.status, separate: true, failedPeriods: decision.failed_periods, missing: decision.missing_evidence, inadequatePeriods: decision.inadequate_periods })} />
+            <div role={decision.status === 'revise' || decision.status === 'insufficient_evidence' ? 'alert' : 'status'} className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`}>
+              <PlainAnswer plain={plainDecision({ status: decision.status, separate: true, failedPeriods: decision.failed_periods,
+                failedCount: decision.facts?.failed_checks, totalCount: decision.facts?.validation_checks,
+                missing: decision.missing_evidence, inadequatePeriods: decision.inadequate_periods })} />
               {' '}<span className="badge badge-neutral">{decisionStatusLabel(decision.status, t)}</span>
             </div>
+            <p className="alert alert-warn" data-testid="selected-decision-scope">
+              <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+            </p>
             <details className="decision-details">
             <summary>{t('decision.plain.details')}</summary>
+            <p>{t('decision.plain.selected_scope_details')}</p>
             {decision.headline && <p className="decision-headline">{decision.headline}</p>}
             {decision.recommendation && <p>{decision.recommendation}</p>}
             <h3 className="section-title">{t('simulation.sep_decision_rationale')}</h3>

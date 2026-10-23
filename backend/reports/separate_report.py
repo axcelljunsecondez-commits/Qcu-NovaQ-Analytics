@@ -12,6 +12,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from backend.reports.selected_scope import selected_scope_notice
+
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
@@ -319,6 +321,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
             "rationale": list(decision.get("rationale") or []),
             "facts": decision.get("facts") or {},
             "failed_periods": list(decision.get("failed_periods") or []),
+            "scope_notice": selected_scope_notice(decision),
         },
         "staffing_title": staffing_title,
         "cost": {

@@ -40,6 +40,7 @@ from backend.api.settings import Settings
 from backend.api.shared_continuous import router as continuous_shared_router
 from backend.api.shared_named import router as named_shared_router
 from backend.api.simulation import router as simulation_router
+from backend.api.supervisor_schedule import router as supervisor_schedule_router
 from backend.api.templates import router as templates_router
 from backend.api.users import router as users_router
 from backend.api.workflow import router as workflow_router
@@ -350,6 +351,7 @@ def create_app(
     app.include_router(reports_router)
     app.include_router(templates_router)
     app.include_router(workflow_router)
+    app.include_router(supervisor_schedule_router)
     app.include_router(named_shared_router)
     app.include_router(continuous_shared_router)
 

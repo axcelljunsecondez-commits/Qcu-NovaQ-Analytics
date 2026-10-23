@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Link, Route, Routes } from 'react-router-dom'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient } from '@tanstack/react-query'
 import { renderWithProviders } from '../test/test-utils'
@@ -20,8 +20,8 @@ const getAnalysisCurrentMock = vi.fn()
 const listAnalysisDatasetsMock = vi.fn()
 const patchAnalysisMock = vi.fn()
 const listDatasetsMock = vi.fn()
-const optimizeSeparateBreaksMock = vi.fn()
-const applySeparateBreaksMock = vi.fn()
+const previewSupervisorScheduleMock = vi.fn()
+const applySupervisorScheduleMock = vi.fn()
 const unexpectedCall = vi.fn()
 
 vi.mock('../api/workflow', () => ({
@@ -46,8 +46,8 @@ vi.mock('../api/optimization', () => ({
   optimize: (...args: unknown[]) => unexpectedCall(...args),
   optimizeBatch: (...args: unknown[]) => unexpectedCall(...args),
   optimizeSeparate: (...args: unknown[]) => unexpectedCall(...args),
-  optimizeSeparateBreaks: (...args: unknown[]) => optimizeSeparateBreaksMock(...args),
-  applySeparateBreaks: (...args: unknown[]) => applySeparateBreaksMock(...args),
+  previewSupervisorSchedule: (...args: unknown[]) => previewSupervisorScheduleMock(...args),
+  applySupervisorSchedule: (...args: unknown[]) => applySupervisorScheduleMock(...args),
   DEFAULT_OPTIONS: {
     target_utilization: 0.7,
     server_cost_per_hr: 87,
@@ -165,6 +165,7 @@ function job(id: number, kind: string, result: unknown, params: Record<string, u
 
 function queueSetup(structure: 'separate_queues' | 'shared_queue') {
   return {
+    event_period_basis: 'representative_day',
     queue_structure: structure, fixed_server_count: structure === 'shared_queue' ? 2 : null,
     staffing_varies_by_period: false, capacity_mode: 'unlimited', total_system_capacity: null,
     abandonment_mode: 'not_modeled', patience_rate_per_hour: null, segments: [],
@@ -250,6 +251,19 @@ function holdWorkflowRequests(): () => void {
   }
 }
 
+// Synthetic API fixture for the new orchestration; cache assertions below are unchanged.
+const supervisorCheck = {
+  schedule: { overall: 'COMPLETE', reason: null, target_utilization: .9,
+    evaluation_method: 'DES_REPLICATIONS', periods: [],
+    des: { replications: 5, base_seed: 42, duration_hours: 24, max_events: 10000 } },
+  engine_version: 'fixture-engine', preview_hash: 'a'.repeat(64),
+  setup_hash: 'hash-1', dataset_id: 11, can_apply: true, blockers: [],
+  breaks: { ...breakProposal, target_rho: .9,
+    des: { ...breakProposal.des, seeds: [42,43,44,45,46],
+      comparison: { mean_wait_change_minutes: -1.75, proposed_better_runs: 5, runs: 5,
+        paired_wait_change: { mean: -1.75, sd: .4, se: .18, ci_lower: -2.25, ci_upper: -1.25, n: 5, verdict: 'shorter' } } } },
+}
+
 // Records which of `texts` are ever inserted into the page, including text a later render removes.
 function watchForText(texts: string[]) {
   const seen = new Set<string>()
@@ -328,10 +342,13 @@ async function saveServerCountOnSetup(user: ReturnType<typeof userEvent.setup>, 
 async function applyBreaksOnOptimize(user: ReturnType<typeof userEvent.setup>) {
   const versionBefore = server.setupVersion
   await user.click(screen.getByRole('link', { name: 'Open Optimize' }))
-  await user.click(await screen.findByRole('button', { name: 'Suggest break times' }))
-  await user.click(await screen.findByRole('button', { name: 'Apply to Setup' }))
-  await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Apply to Setup' }))
-  expect(await screen.findByText('Setup updated with the proposed breaks. Rerun the workflow from Current.')).toBeInTheDocument()
+  await user.clear(await screen.findByRole('spinbutton', { name: 'Busy limit per cashier' }))
+  await user.type(screen.getByRole('spinbutton', { name: 'Busy limit per cashier' }), '90')
+  await user.click(screen.getByRole('checkbox', { name: 'Allow break times to change' }))
+  await user.click(screen.getByRole('button', { name: 'Check schedule' }))
+  await user.click(await screen.findByRole('button', { name: 'Continue to confirm' }))
+  await user.click(screen.getByRole('button', { name: 'Save break changes' }))
+  expect(await screen.findByText('Break times saved in Setup. Earlier Current, Simulation and Decision results need to be rerun.')).toBeInTheDocument()
   expect(server.setupVersion).toBe(versionBefore + 1)
 }
 
@@ -357,14 +374,14 @@ beforeEach(() => {
   }))
   listAnalysisDatasetsMock.mockReset().mockImplementation(async () => ({ datasets: [datasetRow(11)] }))
   listDatasetsMock.mockReset().mockImplementation(async () => ({ datasets: [datasetRow(11)] }))
-  optimizeSeparateBreaksMock.mockReset().mockResolvedValue(breakProposal)
+  previewSupervisorScheduleMock.mockReset().mockResolvedValue(supervisorCheck)
   // The server writes only the proposed break start times into the Setup (tests/test_break_apply_api.py).
-  applySeparateBreaksMock.mockReset().mockImplementation(async () => {
+  applySupervisorScheduleMock.mockReset().mockImplementation(async () => {
     changeSetup({
       ...server.setup,
       breaks: [{ queue_id: 'queue_1', scheduled_start_time: '11:00:00', duration_minutes: 30, original_start_time: '10:00:00' }],
     })
-    return { analysis: { id: 7, name: 'Checkout', queue_setup: structuredClone(server.setup) }, moves_applied: 1 }
+    return { ...supervisorCheck, can_apply: false, analysis: { id: 7, name: 'Checkout', queue_setup: structuredClone(server.setup) }, moves_applied: 1 }
   })
   unexpectedCall.mockReset()
   vi.spyOn(window, 'confirm').mockReturnValue(true)

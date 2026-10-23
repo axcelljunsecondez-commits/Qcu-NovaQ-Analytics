@@ -101,6 +101,7 @@ def test_the_shared_full_report_quotes_the_stored_evidence(db_engine, client):
     decision = workflow["decision"]["result"]
     model = _model(client, a).json()["model"]
     assert model["report"] == "full" and model["cover"]["level"] == "full"
+    assert "scope_notice" not in model["decision"]
     assert {key: model["decision"][key] for key in ("status", "headline", "recommendation", "rationale")} == {
         key: decision[key] for key in ("status", "headline", "recommendation", "rationale")}
     simulation = model["simulation"]
@@ -163,7 +164,36 @@ def test_the_separate_full_report_keeps_todays_chain_and_quotes_it(db_engine, cl
     assert "whole day as one continuous run" in model["simulation"]["source"]
     assert model["simulation"]["headlines"][2]["value"] == 6  # customers served on the replayed day
     assert model["decision"]["status"] == "conditional"
-    assert client.get(f"/analyses/{a}/reports/full.pdf").status_code == 200
+    from backend.reports.selected_scope import SELECTED_SCOPE_NOTICE
+
+    before = client.get(f"/analyses/{a}/workflow").json()
+    assert model["decision"]["scope_notice"] == SELECTED_SCOPE_NOTICE
+    pdf = client.get(f"/analyses/{a}/reports/full.pdf")
+    assert pdf.status_code == 200
+    assert pdf_text(pdf.content).count("Load estimate uncertainty: Not checked.") == 1
+    workbook = load_workbook(io.BytesIO(client.get(f"/analyses/{a}/reports/full.xlsx").content))
+    sheet = workbook["Decision"]
+    assert sheet["B5"].value == before["decision"]["result"]["headline"]
+    assert sheet["B6"].value == before["decision"]["result"]["recommendation"]
+    assert sheet.cell(sheet.max_row, 1).value == "Current scope note"
+    assert sheet.cell(sheet.max_row, 2).value == SELECTED_SCOPE_NOTICE
+    assert sheet.cell(sheet.max_row, 2).alignment.wrap_text is True
+    assert sheet.row_dimensions[sheet.max_row].height > 24
+    no_note = {**model, "decision": {key: value for key, value in model["decision"].items() if key != "scope_notice"}}
+    from backend.reports.plan_report import generate_plan_workbook
+
+    prior = load_workbook(generate_plan_workbook(no_note))
+    # Compare one identical preview model: separate HTTP exports legitimately
+    # stamp a later generation time, which is unrelated to appended-row layout.
+    same_model = load_workbook(generate_plan_workbook(model))
+    assert prior.sheetnames == same_model.sheetnames == workbook.sheetnames
+    for old_sheet in prior:
+        for row in old_sheet:
+            for cell in row:
+                assert same_model[old_sheet.title][cell.coordinate].value == cell.value
+    after = client.get(f"/analyses/{a}/workflow").json()
+    for key in ("des", "mc", "validation", "decision"):
+        assert before[key] == after[key]
     assert "NovaQ plan report" in pdf_text(client.get(f"/analyses/{a}/reports/plan.pdf").content)
 
 
