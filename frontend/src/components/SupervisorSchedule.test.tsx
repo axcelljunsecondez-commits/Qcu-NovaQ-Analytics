@@ -163,7 +163,8 @@ describe('supervisor schedule workflow', () => {
     const input = await screen.findByRole('spinbutton', { name: 'Busy limit per cashier' })
     await user.clear(input); if (value) await user.type(input, value)
     await user.click(screen.getByRole('button', { name: 'Check schedule' }))
-    expect(await screen.findByRole('alert')).toHaveFocus()
+    const alert = await screen.findByRole('alert')
+    await waitFor(() => expect(alert).toHaveFocus())
     expect(mocks.preview).not.toHaveBeenCalled()
   })
   it('shows a real combined preview, wait uncertainty and disables saving unapplied moves', async () => {
