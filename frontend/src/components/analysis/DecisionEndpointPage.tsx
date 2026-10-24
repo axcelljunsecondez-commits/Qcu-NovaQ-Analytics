@@ -45,6 +45,7 @@ export function DecisionEndpointPage() {
   return (
     <DecisionEndpoint
       decision={decision}
+      separate={isSeparate}
       decisionStale={workflow.data.decision_stale}
       isPending={derive.isPending}
       error={derive.isError ? messageOf(derive.error, t('errors.server')) : null}

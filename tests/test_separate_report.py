@@ -147,6 +147,52 @@ def test_model_preserves_evidence_without_fabrication():
     assert model["staffing_title"] == "Selected Staffing Schedule"
 
 
+def test_legacy_saved_decision_scope_in_preview_pdf_and_excel_without_rewriting_evidence():
+    import copy
+
+    import openpyxl
+
+    from backend.reports.report_export import generate_separate_excel_report, generate_separate_pdf_report
+    from backend.reports.selected_scope import SELECTED_SCOPE_NOTICE
+    from tests.test_b8_full_report import pdf_text
+
+    chain = _chain()
+    original = copy.deepcopy(chain)
+    model = build_separate_report_model(chain)
+    assert model["decision"]["scope_notice"] == SELECTED_SCOPE_NOTICE
+    for field in ("headline", "recommendation", "status", "facts", "failed_periods", "rationale"):
+        assert model["decision"][field] == chain["decision"][field]
+    text = pdf_text(generate_separate_pdf_report(model).getvalue())
+    assert text.count("Load estimate uncertainty: Not checked.") == 1
+    workbook = openpyxl.load_workbook(generate_separate_excel_report(model))
+    sheet = workbook["Decision"]
+    assert sheet.cell(sheet.max_row, 1).value == "Current scope note"
+    assert sheet.cell(sheet.max_row, 2).value == SELECTED_SCOPE_NOTICE
+    assert sheet.cell(sheet.max_row, 2).alignment.wrap_text is True
+    assert sheet.row_dimensions[sheet.max_row].height > 24
+    without_note = copy.deepcopy(model)
+    without_note["decision"].pop("scope_notice")
+    prior = openpyxl.load_workbook(generate_separate_excel_report(without_note))
+    assert prior.sheetnames == workbook.sheetnames
+    for prior_sheet in prior:
+        for row in prior_sheet:
+            for cell in row:
+                assert workbook[prior_sheet.title][cell.coordinate].value == cell.value
+    assert chain == original
+
+
+def test_report_does_not_duplicate_an_identical_scope_notice_in_saved_text():
+    from backend.reports.full_report import separate_full_sections
+    from backend.reports.selected_scope import SELECTED_SCOPE_NOTICE
+
+    chain = _chain()
+    chain["decision"]["recommendation"] += " " + SELECTED_SCOPE_NOTICE
+    assert build_separate_report_model(chain)["decision"]["scope_notice"] is None
+    sections = separate_full_sections(des={}, mc={}, validation={}, decision=chain["decision"])
+    assert sections["decision"]["scope_notice"] is None
+    assert sections["decision"]["recommendation"] == chain["decision"]["recommendation"]
+
+
 def test_revise_model_titles_schedule_without_approval_language():
     chain = _chain()
     chain["decision"] = {**chain["decision"], "status": "revise",

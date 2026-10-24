@@ -64,6 +64,16 @@ def test_failed_validation_revises_without_cost_override():
     assert decision["facts"]["failed_checks"] == 1
 
 
+def test_selected_recommendations_are_scoped_to_the_saved_run():
+    passed = _derive_selected_decision(**_inputs())
+    assert "for this run" in passed["recommendation"]
+    assert "estimated loads and costs" in passed["recommendation"]
+    assert "adopt only with cost acceptance" not in passed["recommendation"]
+    failed = _derive_selected_decision(**_inputs(verdict="fail", failed=[["10:00", "east-07"]]))
+    assert "saved run" in failed["recommendation"]
+    assert "estimated loads" in failed["recommendation"]
+
+
 @pytest.mark.parametrize("failed,inadequate,passed", [(1, 1, 1), (1, 2, 0), (1, 0, 2), (3, 0, 0)])
 def test_mixed_validation_counts_report_only_actual_passes(failed, inadequate, passed):
     pairs = [["08:00", "east-07"], ["08:00", "lane-A"], ["09:00", "east-07"]]

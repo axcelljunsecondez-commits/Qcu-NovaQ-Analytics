@@ -15,7 +15,7 @@ from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.utilization import utilization_band
 
 logger = get_logger(__name__)
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 from reportlab.lib import colors
@@ -280,6 +280,8 @@ def generate_separate_pdf_report(model: dict) -> io.BytesIO:
     elements.append(Paragraph(headings[1], h2))
     elements.append(Paragraph(escape(str(decision.get("headline") or "No decision headline.")), bullet_style))
     elements.append(Paragraph(escape(str(decision.get("recommendation") or "")), bullet_style))
+    if decision.get("scope_notice"):
+        elements.append(Paragraph(escape(str(decision["scope_notice"])), bullet_style))
     for line in decision.get("rationale") or []:
         elements.append(Paragraph(escape(f"• {line}"), bullet_style))
 
@@ -504,6 +506,12 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
     after = 5 + len(decision.get("rationale") or [])
     _put(ws_dec, after, "Failed periods",
          ", ".join(decision.get("failed_periods") or []) or "N/A")
+    if decision.get("scope_notice"):
+        notice = str(decision["scope_notice"])
+        _put(ws_dec, after + 1, "Current scope note", notice)
+        ws_dec.column_dimensions["B"].width = 110
+        ws_dec.cell(after + 1, 2).alignment = Alignment(wrap_text=True, vertical="top")
+        ws_dec.row_dimensions[after + 1].height = min(409, math.ceil(len(notice) / 90) * 16 + 10)
 
     ws_cost = _sheet("Cost", ["Metric", "Value"])
     _put(ws_cost, 2, "Current waiting cost (analytical)", cost.get("current_waiting"), money_fmt)

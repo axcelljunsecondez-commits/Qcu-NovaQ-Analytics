@@ -10,12 +10,11 @@ import { useTranslation } from 'react-i18next'
 import { listDatasets, getDataset } from '../api/datasets'
 import { getAnalysis } from '../api/analyses'
 import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/optimization'
-import { applySeparateBreaks, optimizeSeparate, optimizeSeparateBreaks, type BreakOptimizeResult } from '../api/optimization'
 import { createScenario } from '../api/scenarios'
 import { selectWorkflowScenario } from '../api/workflow'
-import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { SupervisorSchedule } from '../components/SupervisorSchedule'
 import { currentDatasetId, isForPlanning } from '../lib/datasets'
-import type { DatasetOut, OptimizationOut, SegmentRow, SeparateSchedule } from '../api/types'
+import type { DatasetOut, OptimizationOut, SegmentRow } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
 import { generateOptimizationInsights } from '../lib/insights'
 import {
@@ -23,7 +22,7 @@ import {
   comparisonComplete,
   comparisonTotals,
 } from '../lib/comparison'
-import { fmt, fmtDecimal, fmtPctDecimal, messageOf } from '../lib/format'
+import { fmt, fmtPctDecimal, messageOf } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
 import { utilizationBand } from '../lib/utilization'
 import { ApiState } from '../components/ui/ApiState'
@@ -158,350 +157,6 @@ function staffingTotals(rows: OptimizationOut[]) {
   return { removed, added, net: removed - added }
 }
 
-function formatLaneCount(value: number | null | undefined): string {
-  return value === null || value === undefined ? '—' : String(value)
-}
-
-function formatAdjustment(value: number | null | undefined, t: TFunction): string {
-  if (value === null || value === undefined) return '—'
-  if (value === 0) return t('optimize.sep_keep')
-  return value > 0 ? `+${value}` : String(value)
-}
-
-function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule }) {
-  const { t } = useTranslation()
-  return (
-    <div className="card result-card" style={{
-      background: 'var(--color-bg-surface)',
-      border: '1px solid var(--color-border-subtle)',
-      borderRadius: '13px',
-      padding: '18px',
-    }}>
-      <h3 className="section-title">{t('optimize.sep_estimated_plan')}</h3>
-      <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-        <span>{t('optimize.sep_target')}: {fmtPctDecimal(schedule.target_utilization)}</span>
-        {' · '}<span>{t('optimize.sep_method')}</span>
-        {' · '}<span>{t('optimize.sep_replications')}: {schedule.des.replications}</span>
-      </div>
-      {schedule.overall !== 'COMPLETE' && (
-        <div role="alert" className="alert alert-warn" style={{ marginTop: '12px' }}>
-          <strong>
-            {schedule.overall === 'INFEASIBLE'
-              ? t('optimize.sep_infeasible')
-              : t('optimize.sep_unavailable_title')}
-          </strong>
-          {schedule.reason && <p style={{ margin: '4px 0 0' }}>{schedule.reason}</p>}
-          {schedule.overall !== 'INFEASIBLE' && (
-            <p style={{ margin: '4px 0 0' }}>{t('optimize.sep_unavailable_body')}</p>
-          )}
-        </div>
-      )}
-      <div className="table-scroll" role="region" aria-label={t('optimize.sep_estimated_plan')} tabIndex={0} style={{ marginTop: '12px' }}>
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">{t('optimize.sep_col_time')}</th>
-              <th scope="col">{t('optimize.sep_col_current')}</th>
-              <th scope="col">{t('optimize.sep_col_optimal')}</th>
-              <th scope="col">{t('optimize.sep_col_adjustment')}</th>
-              <th scope="col">{t('optimize.sep_col_peak')}</th>
-              <th scope="col">{t('optimize.sep_col_cost')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {schedule.periods.map((period) => {
-              const uncertainty = period.optimum?.cost_uncertainty
-              return (
-                <tr key={period.time}>
-                  <th scope="row">{period.time}</th>
-                  <td>{period.current_active_lanes === null ? '—' : period.current_active_lanes.length}</td>
-                  <td>{formatLaneCount(period.optimal_active_lanes)}</td>
-                  <td>{formatAdjustment(period.adjustment, t)}</td>
-                  <td>
-                    {fmtPctDecimal(period.optimum?.candidate_utilization ?? null)}
-                    {period.optimum?.near_target_noise === true && (
-                      <small role="note" style={{ display: 'block', color: 'var(--warning)' }}>
-                        {t('optimize.sep_near_target_noise')}
-                      </small>
-                    )}
-                  </td>
-                  <td>
-                    {fmt(period.optimum?.total_cost ?? null)}
-                    {uncertainty && uncertainty.ci_lower !== null && uncertainty.ci_upper !== null && (
-                      <small style={{ display: 'block', color: 'var(--text-secondary)' }}>
-                        {t('optimize.sep_cost_ci')}: {fmt(uncertainty.ci_lower)}–{fmt(uncertainty.ci_upper)}
-                      </small>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-      {schedule.periods.map((period) => (
-        <details key={period.time} style={{ marginTop: '8px' }}>
-          <summary style={{ fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
-            {t('optimize.sep_candidate_evidence')} · {period.time}
-          </summary>
-          <table style={{ marginTop: '6px' }}>
-            <thead>
-              <tr>
-                <th scope="col">{t('optimize.sep_col_lanes')}</th>
-                <th scope="col">{t('optimize.sep_col_status')}</th>
-                <th scope="col">{t('optimize.sep_col_peak')}</th>
-                <th scope="col">{t('optimize.sep_col_mean_cost')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {period.candidates.map((candidate) => (
-                <tr key={candidate.active_lane_count}>
-                  <td>{candidate.active_lane_count}</td>
-                  <td>{candidate.status}</td>
-                  <td>{fmtPctDecimal(candidate.candidate_utilization)}</td>
-                  <td>{fmt(candidate.mean_total_cost)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
-      ))}
-    </div>
-  )
-}
-
-const WAIT_VERDICT_KEYS = {
-  shorter: 'optimize.breaks_wait_shorter',
-  longer: 'optimize.breaks_wait_longer',
-  no_clear_difference: 'optimize.breaks_wait_unclear',
-} as const
-
-function breakLabel(label: string, t: TFunction): string {
-  const match = /^Break (\d+)$/.exec(label)
-  return match ? t('optimize.breaks_label', { number: match[1] }) : label
-}
-
-function BreakOptimizerCard({ analysisId, datasetId, latestDatasetId }: {
-  analysisId: number
-  datasetId: string
-  latestDatasetId: number | null
-}) {
-  const { t } = useTranslation()
-  const queryClient = useQueryClient()
-  const [applying, setApplying] = useState(false)
-  const [applied, setApplied] = useState(false)
-  const [target, setTarget] = useState(0.85)
-  const [maxMove, setMaxMove] = useState(120)
-  const [result, setResult] = useState<BreakOptimizeResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [running, setRunning] = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  const rho = (value: number | null) => (value === null ? t('optimize.breaks_nobody_working') : fmtDecimal(value))
-  const change = result?.des.comparison.paired_wait_change ?? null
-
-  async function runBreaks() {
-    setError(null)
-    setApplied(false)
-    setRunning(true)
-    try {
-      setResult(await optimizeSeparateBreaks(analysisId, {
-        dataset_id: datasetId ? Number(datasetId) : null,
-        target_rho: target,
-        max_shift_minutes: maxMove,
-      }))
-    } catch (err) {
-      setResult(null)
-      setError(messageOf(err, t('errors.server')))
-    } finally {
-      setRunning(false)
-    }
-  }
-
-  // The moves are listed in an accessible dialog (spec §10) before anything is applied.
-  async function applyBreaks() {
-    if (!result) return
-    setConfirming(false)
-    setError(null)
-    setApplying(true)
-    try {
-      // Only the proposal's own parameters go back; the server recomputes the break times.
-      await applySeparateBreaks(analysisId, {
-        target_rho: result.target_rho,
-        max_shift_minutes: result.max_shift_minutes,
-        setup_hash: result.setup_hash,
-        dataset_id: result.dataset_id,
-      })
-      setResult(null)
-      setApplied(true)
-      for (const key of ['analysis', 'current', 'separate-comparison']) {
-        void queryClient.invalidateQueries({ queryKey: [key, analysisId] })
-      }
-      // Workflow evidence records the Setup it was computed for: drop it so the previous Setup's
-      // evidence is not shown while its fresh request is in flight (invalidation would show it).
-      void queryClient.resetQueries({ queryKey: ['workflow', analysisId] })
-      // Applied breaks change the Setup, so saved scenarios' evidence status can change (4d).
-      void queryClient.resetQueries({ queryKey: ['scenarios', analysisId] })
-    } catch (err) {
-      setError(messageOf(err, t('errors.server')))
-    } finally {
-      setApplying(false)
-    }
-  }
-
-  const onLatest = result !== null && latestDatasetId !== null && result.dataset_id === latestDatasetId
-  const changed = result ? result.slots.filter((slot) => slot.rho_before !== slot.rho_after) : []
-  return (
-    <div className="card" style={{ marginTop: '16px' }}>
-      <h2 className="section-title">{t('optimize.breaks_title')}</h2>
-      <p className="form-hint">{t('optimize.breaks_help')}</p>
-      <div className="form-row" style={{ gap: '12px', alignItems: 'flex-end' }}>
-        <div className="form-field">
-          <label htmlFor="break-target">{t('optimize.breaks_target')}</label>
-          <input id="break-target" type="number" min={0.05} max={1} step={0.05} value={target}
-            onChange={(e) => setTarget(Number(e.target.value))} />
-        </div>
-        <div className="form-field">
-          <label htmlFor="break-window">{t('optimize.breaks_window')}</label>
-          <input id="break-window" type="number" min={0} max={240} step={15} value={maxMove}
-            onChange={(e) => setMaxMove(Number(e.target.value))} />
-        </div>
-        <button type="button" disabled={running} onClick={() => void runBreaks()}>
-          {running ? t('optimize.breaks_running') : t('optimize.breaks_run')}
-        </button>
-      </div>
-      {error && <div role="alert" className="alert alert-error" style={{ marginTop: '12px' }}>{error}</div>}
-      {applied && <p role="status" className="alert alert-success" style={{ marginTop: '12px' }}>{t('optimize.breaks_apply_success')}</p>}
-      {result && (
-        <div style={{ marginTop: '12px' }}>
-          <p role="status"><strong>{t(result.status === 'improved' ? 'optimize.breaks_status_improved' : 'optimize.breaks_status_no_improvement')}</strong></p>
-          {result.moves.length > 0 && (
-            <div className="form-row" style={{ gap: '12px', alignItems: 'center' }}>
-              <button type="button" disabled={applying || !onLatest} onClick={() => setConfirming(true)}>
-                {applying ? t('optimize.breaks_apply_running') : t('optimize.breaks_apply')}
-              </button>
-              {!onLatest && <p className="form-hint">{t('optimize.breaks_apply_latest_only')}</p>}
-            </div>
-          )}
-          <p>{t('optimize.breaks_peak', { before: rho(result.peak_rho.before), after: rho(result.peak_rho.after) })}</p>
-          <p>{t('optimize.breaks_above_target', { target: fmtDecimal(result.target_rho), before: result.slots_above_target.before, after: result.slots_above_target.after })}</p>
-          <div className="table-scroll" role="region" aria-label={t('optimize.breaks_table_label')} tabIndex={0}>
-            <table aria-label={t('optimize.breaks_table_label')}>
-              <thead>
-                <tr>
-                  <th scope="col">{t('optimize.breaks_col_cashier')}</th>
-                  <th scope="col">{t('optimize.breaks_col_break')}</th>
-                  <th scope="col">{t('optimize.breaks_col_current')}</th>
-                  <th scope="col">{t('optimize.breaks_col_proposed')}</th>
-                  <th scope="col">{t('optimize.breaks_col_minutes')}</th>
-                  <th scope="col">{t('optimize.breaks_col_moved')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.proposed_breaks.map((entry, index) => (
-                  <tr key={`${entry.queue_id}-${index}`}>
-                    <th scope="row">{entry.queue_id}</th>
-                    <td>{breakLabel(entry.label, t)}</td>
-                    <td>{entry.current_start_time.slice(0, 5)}</td>
-                    <td>{entry.scheduled_start_time.slice(0, 5)}</td>
-                    <td>{entry.duration_minutes}</td>
-                    <td>{t(entry.shift_minutes !== 0 ? 'optimize.breaks_moved_yes' : 'optimize.breaks_moved_no')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {changed.length > 0 && (
-            <>
-              <h3 className="section-title">{t('optimize.breaks_slots_title')}</h3>
-              <div className="table-scroll" role="region" aria-label={t('optimize.breaks_slots_title')} tabIndex={0}>
-                <table aria-label={t('optimize.breaks_slots_title')}>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('optimize.breaks_col_slot')}</th>
-                      <th scope="col">{t('optimize.breaks_col_rho_before')}</th>
-                      <th scope="col">{t('optimize.breaks_col_rho_after')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {changed.map((slot) => (
-                      <tr key={slot.start}>
-                        <th scope="row">{`${slot.start}–${slot.end}`}</th>
-                        <td>{rho(slot.rho_before)}</td>
-                        <td>{rho(slot.rho_after)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-          <p className="form-hint">{t('optimize.breaks_slot_note')}</p>
-          <h3 className="section-title">{t('optimize.breaks_gaps_title')}</h3>
-          {result.staffing_gaps.length === 0 ? (
-            <p>{t('optimize.breaks_gaps_none')}</p>
-          ) : (
-            <ul>
-              {result.staffing_gaps.map((gap) => (
-                <li key={gap.start}>{t('optimize.breaks_gap_item', { start: gap.start, end: gap.end, onShift: gap.on_shift, rho: rho(gap.rho_no_breaks) })}</li>
-              ))}
-            </ul>
-          )}
-          <h3 className="section-title">{t('optimize.breaks_des_title')}</h3>
-          <div className="table-scroll" role="region" aria-label={t('optimize.breaks_des_title')} tabIndex={0}>
-            <table aria-label={t('optimize.breaks_des_title')}>
-              <thead>
-                <tr>
-                  <th scope="col">{t('optimize.breaks_col_metric')}</th>
-                  <th scope="col">{t('optimize.breaks_col_current_schedule')}</th>
-                  <th scope="col">{t('optimize.breaks_col_proposed_schedule')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {([
-                  ['optimize.breaks_des_mean_wait', 'mean_wait_minutes', 2],
-                  ['optimize.breaks_des_max_queue', 'max_queue', 1],
-                  ['optimize.breaks_des_served', 'served', 1],
-                ] as const).map(([label, key, digits]) => (
-                  <tr key={key}>
-                    <th scope="row">{t(label)}</th>
-                    <td>{fmt(result.des.current.summary[key], digits)}</td>
-                    <td>{fmt(result.des.proposed.summary[key], digits)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {change && (
-            <>
-              <p><strong>{t(WAIT_VERDICT_KEYS[change.verdict])}</strong></p>
-              <p>
-                {change.ci_lower !== null && change.ci_upper !== null
-                  ? t('optimize.breaks_wait_change', { change: fmt(change.mean), low: fmt(change.ci_lower), high: fmt(change.ci_upper) })
-                  : t('optimize.breaks_wait_change_no_range', { change: fmt(change.mean) })}
-              </p>
-            </>
-          )}
-          <p className="form-hint">{t('optimize.breaks_des_better', { better: result.des.comparison.proposed_better_runs, runs: result.des.comparison.runs })}</p>
-          <p className="form-hint">{t('optimize.breaks_des_note')}</p>
-          <p className="form-hint">{t('plans.breaks_local_note')}</p>
-        </div>
-      )}
-      {confirming && result && (
-        <ConfirmDialog
-          title={t('optimize.breaks_apply_confirm_title')}
-          message={[...result.moves.map((move) => t('optimize.breaks_apply_move', {
-            cashier: move.queue_id, label: breakLabel(move.label, t), from: move.from, to: move.to,
-          })), t('optimize.breaks_apply_confirm_warning')].join(' ')}
-          confirmLabel={t('optimize.breaks_apply')}
-          cancelLabel={t('common.cancel')}
-          onCancel={() => setConfirming(false)}
-          onConfirm={() => void applyBreaks()}
-        />
-      )}
-    </div>
-  )
-}
-
 export function OptimizePage() {
   const { t } = useTranslation()
   const analysisParam = useParams().analysisId
@@ -532,32 +187,12 @@ export function OptimizePage() {
   const [used, setUsed] = useState(false)
   const [selectionProblem, setSelectionProblem] = useState<string | null>(null)
   const [availableCashiers, setAvailableCashiers] = useState('')
-  const [sepTarget, setSepTarget] = useState(0.70)
-  const [schedule, setSchedule] = useState<SeparateSchedule | null>(null)
-  const [sepSnapshot, setSepSnapshot] = useState<{
-    signature: string; datasetId: string; rowCount: number; target: number;
-    serverCost: number | undefined; waitingCost: number | undefined;
-    factor: number; minLanes: number; calculatedAt: string; engineVersion: string;
-  } | null>(null)
-  const sepSignature = JSON.stringify({
-    datasetId, sepTarget,
-    serverCost: options.server_cost_per_hr, waitingCost: options.customer_waiting_cost,
-    multiplier,
-  })
-  const sepStale = sepSnapshot !== null && sepSnapshot.signature !== sepSignature
-
-  // The server applies break proposals only when made on this dataset (latest successfully processed).
-  const latestValidDatasetId = (datasets.data?.datasets ?? [])
-    .filter((d: DatasetOut) => d.validation?.ok && isForPlanning(d))
-    .reduce<number | null>((latest, d) => (latest === null || d.id > latest ? d.id : latest), null)
   const analysis = useQuery({
     queryKey: ['analysis', analysisId],
     queryFn: () => getAnalysis(analysisId!),
     enabled: Number.isInteger(analysisId),
   })
   const isSeparateStaffing = analysis.data?.analysis.queue_setup.queue_structure === 'separate_queues'
-  // Full coverage: every configured Separate queue stays active in every candidate.
-  const separateQueueCount = analysis.data?.analysis.queue_setup.queue_ids.length ?? 0
 
   async function run(dataset: DatasetOut, factor = 1) {
     setError(null)
@@ -578,47 +213,10 @@ export function OptimizePage() {
     }
   }
 
-  async function runSeparate(dataset: DatasetOut, factor = 1) {
-    if (analysisId === undefined) {
-      setError(t('errors.server'))
-      return
-    }
-    setError(null)
-    setSaved(false)
-    setRunning(true)
-    try {
-      const out = await optimizeSeparate(analysisId, Number(dataset.id), {
-        target_utilization: sepTarget,
-        server_cost_per_hr: options.server_cost_per_hr,
-        customer_waiting_cost: options.customer_waiting_cost,
-        lambda_multiplier: factor,
-        min_active_lanes: separateQueueCount,
-      })
-      setSchedule(out.schedule)
-      const rowCount = datasets.data?.datasets.find((d: DatasetOut) => String(d.id) === datasetId)?.row_count ?? 0
-      setSepSnapshot({
-        signature: sepSignature, datasetId, rowCount, target: sepTarget,
-        serverCost: options.server_cost_per_hr, waitingCost: options.customer_waiting_cost,
-        factor, minLanes: separateQueueCount, calculatedAt: new Date().toISOString(),
-        engineVersion: out.engine_version,
-      })
-      setScenarioName((prev) => prev || `Optimal @ ${Math.round(sepTarget * 100)}%`)
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
-      setError(typeof detail === 'string' ? detail : t('errors.server'))
-    } finally {
-      setRunning(false)
-    }
-  }
-
   async function handleOptimize() {
     const dataset = datasets.data?.datasets.find((d: DatasetOut) => String(d.id) === datasetId)
     if (!dataset) {
       setError(t('optimize.select_dataset_first'))
-      return
-    }
-    if (isSeparateStaffing) {
-      await runSeparate(dataset)
       return
     }
     await run(dataset)
@@ -632,10 +230,6 @@ export function OptimizePage() {
     const factor = Number(multiplier)
     if (!Number.isFinite(factor) || factor <= 0) {
       setError(t('optimize.multiplier_range_error'))
-      return
-    }
-    if (isSeparateStaffing) {
-      await runSeparate(dataset, factor)
       return
     }
     if (!rows) {
@@ -686,57 +280,6 @@ export function OptimizePage() {
     }
   }
 
-  async function handleSaveSeparate(use = false) {
-    if (
-      !schedule || schedule.overall !== 'COMPLETE' || !sepSnapshot || sepStale ||
-      running || saving || !scenarioName.trim()
-    ) {
-      return
-    }
-    setSaving(true)
-    setSaved(false)
-    setUsed(false)
-    setSelectionProblem(null)
-    try {
-      const target = schedule.target_utilization
-      const inputOptions = {
-        target_utilization: target,
-        server_cost_per_hr: sepSnapshot.serverCost,
-        customer_waiting_cost: sepSnapshot.waitingCost,
-        min_active_lanes: sepSnapshot.minLanes,
-        max_active_lanes: null,
-        lambda_multiplier: sepSnapshot.factor,
-        des: { ...schedule.des },
-      }
-      const created = await createScenario({
-        name: scenarioName.trim(),
-        analysis_id: analysisId,
-        dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
-        settings: {
-          ...inputOptions,
-          calculation: {
-            schema_version: 2,
-            engine_version: sepSnapshot.engineVersion,
-            analysis_id: analysisId,
-            dataset_id: sepSnapshot.datasetId ? Number(sepSnapshot.datasetId) : null,
-            dataset_row_count: sepSnapshot.rowCount,
-            options: inputOptions,
-            calculated_at: sepSnapshot.calculatedAt,
-          },
-        },
-        results: { schedule },
-      })
-      void queryClient.invalidateQueries({ queryKey: ['scenarios', analysisId] })
-      setSaved(true)
-      if (use) await selectSavedPlan(created.scenario.id)
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
-      setError(typeof detail === 'string' ? detail : t('errors.server'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const totals = !stale && rows ? comparisonTotals(rows) : null
   const totalCurrent = totals?.current ?? null
   const totalOptimal = totals?.optimal ?? null
@@ -753,14 +296,16 @@ export function OptimizePage() {
   const staffingSummaryAvailable = rows !== null && rows.length > 0 && rows.every((row) => row.c_optimal !== null && row.c_optimal !== undefined)
   const warnings = rows?.filter((r) => r.warning) ?? []
 
+  if (isSeparateStaffing && analysis.data) return <SupervisorSchedule key={analysisId} analysis={analysis.data.analysis} />
+
   return (
     <div className="optimize-page">
       {/* Topbar */}
       <div className="topbar">
         <div>
-          <div className="topbar-eyebrow">{t(isSeparateStaffing ? 'optimize.staffing_eyebrow' : 'optimize.eyebrow')}</div>
-          <div className="title-row"><h1 className="page-title">{t(isSeparateStaffing ? 'optimize.staffing_title' : 'optimize.title')}</h1><HelpLink topic="plans" /></div>
-          <p className="page-caption">{t(isSeparateStaffing ? 'optimize.staffing_description' : 'optimize.description')}</p>
+          <div className="topbar-eyebrow">{t('optimize.eyebrow')}</div>
+          <div className="title-row"><h1 className="page-title">{t('optimize.title')}</h1><HelpLink topic="plans" /></div>
+          <p className="page-caption">{t('optimize.description')}</p>
         </div>
       </div>
 
@@ -790,7 +335,7 @@ export function OptimizePage() {
         {/* Controls */}
         <div className="optimize-controls">
           {/* Goal Presets (shared optimizer only: preset targets sit outside the Separate range) */}
-          {!isSeparateStaffing && (
+          {(
           <div className="card" style={{ padding: '18px' }}>
             <h3 className="section-title">{t('optimize.constraint_presets')}</h3>
             <div className="goal-presets">
@@ -827,28 +372,7 @@ export function OptimizePage() {
           )}
 
           {/* Utilization target (Separate optimizer: approved 40-90% range) */}
-          {isSeparateStaffing && (
-          <div className="card" style={{ padding: '18px' }}>
-            <h3 className="section-title">{t('optimize.sep_target')}</h3>
-            <div className="form-field">
-              <label htmlFor="opt-sep-target" style={{ fontSize: '14px', fontWeight: 800 }}>
-                {t('optimize.sep_target')} ({fmtPctDecimal(sepTarget)})
-              </label>
-              <input
-                id="opt-sep-target"
-                aria-label={t('optimize.sep_target')}
-                type="range"
-                min={0.4}
-                max={0.9}
-                step={0.05}
-                value={sepTarget}
-                onChange={(e) => setSepTarget(Number(e.target.value))}
-                style={{ width: '100%' }}
-              />
-              <span className="form-hint">{t('optimize.sep_target_desc')}</span>
-            </div>
-          </div>
-          )}
+
 
           {/* Source Dataset */}
           <div className="card" style={{ padding: '18px' }}>
@@ -882,37 +406,8 @@ export function OptimizePage() {
               serverCost: DEFAULT_OPTIONS.server_cost_per_hr,
               waitingCost: DEFAULT_OPTIONS.customer_waiting_cost,
             })}</p>
-            {isSeparateStaffing && (
-            <div className="optimize-fields">
-              <div className="form-field">
-                <label htmlFor="opt-sep-cost" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.server_cost')}</label>
-                <input
-                  id="opt-sep-cost"
-                  type="number"
-                  step="any"
-                  value={options.server_cost_per_hr ?? ''}
-                  onChange={(e) =>
-                    setOptions((o) => ({ ...o, server_cost_per_hr: Number(e.target.value) }))
-                  }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
-                />
-              </div>
-              <div className="form-field">
-                <label htmlFor="opt-sep-wait" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.waiting_cost')}</label>
-                <input
-                  id="opt-sep-wait"
-                  type="number"
-                  step="any"
-                  value={options.customer_waiting_cost ?? ''}
-                  onChange={(e) =>
-                    setOptions((o) => ({ ...o, customer_waiting_cost: Number(e.target.value) }))
-                  }
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
-                />
-              </div>
-            </div>
-            )}
-            {isSeparateStaffing ? null : (
+
+            {(
             <div className="optimize-fields">
               <div className="form-field">
                 <label htmlFor="opt-util" style={{ fontSize: '14px', fontWeight: 800 }}>{t('system.planning_target')}</label>
@@ -1022,21 +517,10 @@ export function OptimizePage() {
         {/* Results */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Separate result card replaces the shared candidate card */}
-          {isSeparateStaffing && schedule && <SeparateScheduleCard schedule={schedule} />}
-          {isSeparateStaffing && !schedule && !running && !error && (
-            <div className="card result-card" style={{
-              border: '1px solid var(--color-border-subtle)',
-              borderRadius: '13px',
-              padding: '18px',
-            }}>
-              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>
-                <p style={{ margin: 0 }}>{t('optimize.empty_result')}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '14px' }}>{t('optimize.empty_result_help')}</p>
-              </div>
-            </div>
-          )}
+
+
           {/* Result Card */}
-          {!isSeparateStaffing && (
+          {(
           <div className="card result-card" style={{
             background: 'var(--color-bg-surface)',
             border: '1px solid var(--color-border-subtle)',
@@ -1166,7 +650,7 @@ export function OptimizePage() {
           )}
 
           {/* What-If Card */}
-          {(rows || (isSeparateStaffing && schedule)) && (
+          {rows && (
             <div className="card" style={{ padding: '18px' }}>
               <h3 className="section-title">{t('page2.what_if')}</h3>
               <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
@@ -1236,45 +720,7 @@ export function OptimizePage() {
           )}
 
           {/* Save Scenario Card (Separate: verified DES snapshot, COMPLETE only) */}
-          {isSeparateStaffing && schedule && (
-            <div className="card" style={{ padding: '18px' }}>
-              <h3 className="section-title">{t('page2.save_scenario')}</h3>
-              <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
-                <div className="form-field" style={{ flex: 1 }}>
-                  <label htmlFor="opt-scenario" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.scenario_name')}</label>
-                  <input
-                    id="opt-scenario"
-                    aria-label={t('optimize.scenario_name')}
-                    type="text"
-                    value={scenarioName}
-                    onChange={(e) => setScenarioName(e.target.value)}
-                    placeholder={t('optimize.scenario_placeholder')}
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--color-border-control)', borderRadius: '8px', fontSize: '16px' }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveSeparate(true)}
-                  disabled={saving || running || sepStale || !sepSnapshot || schedule.overall !== 'COMPLETE' || !scenarioName.trim()}
-                >
-                  {t('plans.use_this_plan')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => void handleSaveSeparate()}
-                  disabled={saving || running || sepStale || !sepSnapshot || schedule.overall !== 'COMPLETE' || !scenarioName.trim()}
-                >
-                  {t('plans.save_without_using')}
-                </button>
-              </div>
-              <p className="form-hint">{t('plans.separate_estimate_note')}</p>
-              {sepStale && <div role="alert" className="alert alert-warn" style={{ marginTop: '8px' }}>{t('integrity.stale')}</div>}
-              {saved && !sepStale && !used && !selectionProblem && <div className="alert alert-success" role="status" style={{ marginTop: '8px' }}>{t('optimize.saved')}</div>}
-              {used && !sepStale && <div className="alert alert-success" role="status" style={{ marginTop: '8px' }}>{t('plans.used')}</div>}
-              {selectionProblem && <div className="alert alert-warn" role="alert" style={{ marginTop: '8px' }}>{t('plans.saved_not_used', { reason: selectionProblem })}</div>}
-            </div>
-          )}
+
         </div>
       </div>
 
@@ -1370,7 +816,7 @@ export function OptimizePage() {
           </div>
         </div>
       )}
-      {analysisId !== undefined && isSeparateStaffing && <BreakOptimizerCard analysisId={analysisId} datasetId={datasetId} latestDatasetId={latestValidDatasetId} />}
+
       {analysis.data && !isSeparateStaffing && (
         <p className="form-hint" style={{ marginTop: '16px' }}>{t('optimize.breaks_shared_note')}</p>
       )}

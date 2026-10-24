@@ -37,9 +37,11 @@ const DECISION_BADGE: Record<string, string> = { adopt: 'badge-ok', conditional:
  */
 function decisionAnswer(model: ReportPreview['model'], t: TFunction): string {
   const decision = model.decision!
-  const facts = model.line_type === 'shared' ? decision.facts ?? {} : {}
+  const facts = decision.facts ?? {}
   const plain = plainDecision({ status: decision.status, separate: model.line_type === 'separate',
-    failedPeriods: facts.failed_periods, failedCount: facts.failed_intervals, totalCount: facts.validation_intervals,
+    failedPeriods: model.line_type === 'shared' ? facts.failed_periods : undefined,
+    failedCount: model.line_type === 'shared' ? facts.failed_intervals : facts.failed_checks,
+    totalCount: model.line_type === 'shared' ? facts.validation_intervals : facts.validation_checks,
     missing: decision.missing_evidence ?? undefined, inadequatePeriods: facts.insufficient_periods,
     todayOverloaded: facts.today_overloaded_periods })
   return plain ? t(plain.key, plain.params) : decision.headline
@@ -164,6 +166,9 @@ export function ReportsPage() {
           <>
             <span className={`badge ${DECISION_BADGE[full.data.model.decision.status] ?? 'badge-neutral'}`} data-testid="full-stamp">{t('reports.page.stamp_full', { decision: t(`decision.status.${full.data.model.decision.status}`) })}</span>
             <p data-testid="report-decision-plain">{decisionAnswer(full.data.model, t)}</p>
+            {full.data.model.line_type === 'separate' && <p className="alert alert-warn" data-testid="selected-decision-scope">
+              <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+            </p>}
           </>
         )}
         {preview && <dl className="report-context" data-testid="report-context">

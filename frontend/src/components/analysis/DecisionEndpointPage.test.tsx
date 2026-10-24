@@ -71,6 +71,34 @@ beforeEach(() => {
 })
 
 describe('DecisionEndpointPage', () => {
+  it('uses Separate context and exposes unassessed mean-load uncertainty beside a saved conditional result', async () => {
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    getWorkflowMock.mockResolvedValue({ decision_stale: false, decision: { result: {
+      ...insufficient, provenance: 'SELECTED', status: 'conditional', missing_evidence: [],
+      recommendation: 'Original saved wording.', facts: { validation_checks: 60, failed_checks: 0 },
+    } } })
+    renderPage()
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Saved checks passed for this run. Savings cannot be compared.')
+    expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('costs more than today')
+    expect(screen.getByTestId('selected-decision-scope')).toHaveTextContent('Load estimate uncertainty: Not checked.')
+    expect(screen.getByText('Original saved wording.')).toBeInTheDocument()
+    expect(runSelectedDecisionMock).not.toHaveBeenCalled()
+    expect(createDecisionMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { failed_periods: ['13:00-14:00'], facts: { failed_checks: 2, validation_checks: 60 }, expected: 'in 13:00-14:00' },
+    { failed_periods: [], facts: { failed_checks: 2, validation_checks: 60 }, expected: '2 of 60 checks' },
+    { failed_periods: [], facts: null, expected: 'This saved run did not pass. Review' },
+  ])('reads selected root periods and check counts without inventing period counts: $expected', async ({ expected, ...fields }) => {
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    getWorkflowMock.mockResolvedValue({ decision_stale: false, decision: { result: {
+      ...insufficient, provenance: 'SELECTED', status: 'revise', missing_evidence: [], ...fields,
+    } } })
+    renderPage()
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent(expected)
+  })
+
   it('renders only persisted evidence returned by the workflow API', async () => {
     getWorkflowMock.mockResolvedValue({
       analysis_id: 7,

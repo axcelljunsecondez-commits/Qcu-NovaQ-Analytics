@@ -1,0 +1,9 @@
+# Offline selected-load budget study execution plan
+
+Authority and exact design: docs/superpowers/specs/2026-10-23-selected-load-budget-study.md. Owner approved offline research only. Candidate codex/supervisor-schedule-20261023 at 151486ee04147f013857f69fe8ce77d899388660; primary checkout main is a different, older checkout. Protect all existing uncommitted supervisor work and earlier evidence.
+
+1. Inspect current source and prior evidence; create output-only bounded interval, numeric/calibration, fixture-driver and independent-review helpers. Capture the source/diff baseline and hash the new spec, this plan, helpers and inputs before execution.
+2. Run the registered numeric/calibration gates, retaining actual outputs and exit codes. On any unexplained failure, stop affected execution, keep the failure and record a justified harness-only amendment before a retry. Never change acceptance thresholds to turn failure into success.
+3. With clean dedicated temporary SQLite fixtures, reproduce the unchanged selected-plan setup and baseline counts/configuration at seed 42. If matched, run registered sample-size checkpoints and disjoint batches, with the 900s ceiling. Persist raw arrays/checkpoint logs before proceeding; never modify source to accept a larger HTTP run.
+4. Independently verify all completed counts, intervals, stress bounds, coverage frequencies and multiple-look allocation. Summarize actual resource/precision tradeoffs and unknowns, including incomplete looks.
+5. Write a final report with source paths, derivation, exact commands/runtime versions, actual results, retained failures and GO/NO-GO for further proposal only. Compare source hashes and diff/staging; no commit, push, build, Docker, production database or deployment action. The application repair remains OPEN unless a separately authorized implemented correction later passes its own verification.

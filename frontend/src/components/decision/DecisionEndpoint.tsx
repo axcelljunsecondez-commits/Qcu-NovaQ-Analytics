@@ -4,6 +4,7 @@ import { plainDecision } from '../../lib/decisionPlain'
 
 interface DecisionEndpointProps {
   decision: WorkflowDecision | null
+  separate: boolean
   decisionStale: boolean
   isPending: boolean
   error: string | null
@@ -19,6 +20,7 @@ const statusClasses: Record<WorkflowDecision['status'], string> = {
 
 export function DecisionEndpoint({
   decision,
+  separate,
   decisionStale,
   isPending,
   error,
@@ -55,12 +57,16 @@ export function DecisionEndpoint({
             {t(`decision.status.${decision.status}`)}
           </span>
           <h2 className="decision-title" data-testid="decision-plain">{(() => {
-            const plain = plainDecision({ status: decision.status, separate: false, failedPeriods: decision.facts?.failed_periods,
-              failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals,
-              missing: decision.missing_evidence, inadequatePeriods: decision.facts?.insufficient_periods,
+            const plain = plainDecision({ status: decision.status, separate, failedPeriods: separate ? decision.failed_periods : decision.facts?.failed_periods,
+              failedCount: separate ? decision.facts?.failed_checks : decision.facts?.failed_intervals,
+              totalCount: separate ? decision.facts?.validation_checks : decision.facts?.validation_intervals,
+              missing: decision.missing_evidence, inadequatePeriods: separate ? decision.inadequate_periods : decision.facts?.insufficient_periods,
               todayOverloaded: decision.facts?.today_overloaded_periods })
             return plain ? t(plain.key, plain.params) : decision.headline
           })()}</h2>
+          {separate && <p className="alert alert-warn" data-testid="selected-decision-scope">
+            <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+          </p>}
           <p className="decision-headline">{decision.headline}</p>
           <p className="decision-recommendation">{decision.recommendation}</p>
 
@@ -78,6 +84,9 @@ export function DecisionEndpoint({
             </>
           )}
           <div className="alert alert-warn">{decision.provenance_warning}</div>
+          {separate && <details className="decision-details"><summary>{t('decision.plain.details')}</summary>
+            <p>{t('decision.plain.selected_scope_details')}</p>
+          </details>}
         </div>
       )}
 

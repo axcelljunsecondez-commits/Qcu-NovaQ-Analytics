@@ -72,6 +72,9 @@ export interface DecisionFacts {
   server_delta?: number
   validation_intervals?: number
   failed_intervals?: number
+  /** Selected Separate evidence counts lane-period checks, not periods. */
+  validation_checks?: number | null
+  failed_checks?: number | null
   failure_rate_cap?: number | null
   today_overloaded_periods?: string[]
   failed_periods?: string[]
@@ -95,6 +98,9 @@ export interface WorkflowDecision {
   facts?: DecisionFacts
   basis?: DecisionBasis
   provenance_warning: string
+  /** Selected Separate evidence returns these at the result root. */
+  failed_periods?: string[]
+  inadequate_periods?: string[]
 }
 
 /** 4f/5e: why the recorded selection does or does not yield the selected scenario. */

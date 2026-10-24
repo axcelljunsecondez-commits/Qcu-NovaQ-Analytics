@@ -457,6 +457,8 @@ def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
                 ["What to do", decision.get("recommendation")]]
                + [["Reason", line] for line in decision.get("rationale") or []]
                + [["Not included", line] for line in model.get("not_included") or [] if line])
+        if decision.get("scope_notice"):
+            workbook["Decision"].append(["Current scope note", decision["scope_notice"]])
     _table(workbook.create_sheet("Assumptions"), "Assumptions", ["Setting", "Value"],
            [[name, value if not isinstance(value, (dict, list)) else str(value)] for name, value in model["assumptions"].items()])
     _table(workbook.create_sheet("Provenance"), "Provenance", ["Item", "Value"],

@@ -3362,9 +3362,10 @@ def _derive_selected_decision(*, scenario: dict[str, Any], schedule: dict[str, A
             "status": "revise",
             "headline": f'Do not adopt Scenario "{name}" yet.',
             "recommendation": (
-                f"Revise and re-test the plan because {len(failed)} of "
-                f"{total} validation checks did not pass "
-                f"({', '.join(failed_times) if failed_times else 'unspecified periods'})."
+                f"This saved run did not pass {len(failed)} of "
+                f"{total} validation checks "
+                f"({', '.join(failed_times) if failed_times else 'unspecified periods'}). "
+                "Review the plan and estimated loads, then revise and re-test."
             ),
             "rationale": [
                 f"Selected Scenario: {name} (ID {scenario.get('id')}).",
@@ -3391,9 +3392,9 @@ def _derive_selected_decision(*, scenario: dict[str, Any], schedule: dict[str, A
         "status": "conditional",
         "headline": f'Consider Scenario "{name}" conditionally.',
         "recommendation": (
-            f"All {total} validation checks passed, but modeled savings are "
-            f"unavailable for Separate plans (no comparable Current cost basis); "
-            f"adopt only with cost acceptance."
+            f"All {total} validation checks passed for this run. Modeled savings are "
+            "unavailable for Separate plans (no comparable Current cost basis). "
+            "Review the estimated loads and costs before using the plan."
         ),
         "rationale": [
             f"Selected Scenario: {name} (ID {scenario.get('id')}).",

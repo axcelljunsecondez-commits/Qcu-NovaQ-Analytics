@@ -177,3 +177,33 @@ export async function applySeparateBreaks(
   )
   return data
 }
+
+// Supervisor orchestration is additive; legacy optimization contracts stay unchanged.
+export interface SupervisorRequest extends SeparateOptimizeOptions {
+  dataset_id: number
+  allow_break_changes: boolean
+  max_shift_minutes: number
+}
+export type SupervisorBlocker = 'break_changes_off' | 'no_moves' | 'break_limit' |
+  'customer_accounting' | 'wait_unavailable' | 'wait_longer' | 'staffing_check' | 'not_current_data'
+export interface SupervisorPreview {
+  schedule: SeparateSchedule
+  engine_version: string
+  breaks: Omit<BreakOptimizeResult, 'setup_hash' | 'dataset_id'> | null
+  setup_hash: string
+  dataset_id: number
+  can_apply: boolean
+  blockers: SupervisorBlocker[]
+  preview_hash: string
+}
+export async function previewSupervisorSchedule(analysisId: number, body: SupervisorRequest): Promise<SupervisorPreview> {
+  const { data } = await http.post<SupervisorPreview>(
+    `/analyses/${analysisId}/workflow/optimize/separate/supervisor/preview`, body)
+  return data
+}
+export async function applySupervisorSchedule(analysisId: number, body: SupervisorRequest & { preview_hash: string }):
+  Promise<SupervisorPreview & { analysis: AnalysisProjectOut; moves_applied: number }> {
+  const { data } = await http.post<SupervisorPreview & { analysis: AnalysisProjectOut; moves_applied: number }>(
+    `/analyses/${analysisId}/workflow/optimize/separate/supervisor/apply`, body)
+  return data
+}
