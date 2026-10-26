@@ -1,0 +1,143 @@
+{
+  "part1": {
+    "seconds": 145,
+    "bytes": 3045141,
+    "sha256": "14076de82423998b05fd004368f8ff222d11cf8e896a7e6791c35b61fb7a7ade",
+    "revision": "14076de82423",
+    "chapters": [
+      {
+        "seconds": 0.0,
+        "title": "Open another checkout?",
+        "text": "One checkout is open. A second cashier is available. The line is starting to grow. Do you open another checkout? Let's follow one customer and see what makes the wait."
+      },
+      {
+        "seconds": 15.33124716553288,
+        "title": "Start when Ben joins the line.",
+        "text": "Here is Ben's visit from the start. He joins the line at nine oh one. Record his arrival here. His waiting time starts now."
+      },
+      {
+        "seconds": 29.738503401360543,
+        "title": "The cashier is still helping Ana.",
+        "text": "Cara joins behind Ben. The cashier is still helping Ana, so both customers wait in line."
+      },
+      {
+        "seconds": 41.60648526077097,
+        "title": "Which clock should stop next?",
+        "text": "Ana finishes and leaves. It is Ben's turn. When his service begins, which clock should stop?"
+      },
+      {
+        "seconds": 51.50925170068027,
+        "title": "Waiting stops when service begins.",
+        "text": "His waiting clock stops. At nine oh two, the cashier starts serving Ben. Record service start."
+      },
+      {
+        "seconds": 65.27678004535147,
+        "title": "Service time has its own clock.",
+        "text": "Ben is being served now. Only his service clock runs. His waiting time stays at one minute."
+      },
+      {
+        "seconds": 74.77678004535147,
+        "title": "Ben finishes at 9:04.",
+        "text": "At nine oh four, Ben's service ends. Record that time. He leaves, and Cara moves forward. Ben spent two minutes receiving service."
+      },
+      {
+        "seconds": 89.77678004535147,
+        "title": "A three-minute visit, explained.",
+        "text": "Ben spent three minutes here: one minute waiting, then two minutes in service. Arrival, service start, and service end explain the difference."
+      },
+      {
+        "seconds": 102.2940589569161,
+        "title": "Now the queueing terms have a meaning.",
+        "text": "Lambda describes the arrival rate. Mu describes the service rate of one counter. C counts available counters. Queueing theory studies how these parts of the service process relate to waiting."
+      },
+      {
+        "seconds": 117.73541950113379,
+        "title": "What if the second checkout were open?",
+        "text": "If the second checkout is already staffed when Ben arrives, he can start immediately. His wait in this example changes from one minute to zero."
+      },
+      {
+        "seconds": 130.73541950113378,
+        "title": "What happens at your checkout?",
+        "text": "That is the idea behind studying a queue: connect what you observe to the time people spend waiting. Next, we will collect the records behind those numbers in your own workplace."
+      }
+    ]
+  },
+  "part2": {
+    "seconds": 262,
+    "bytes": 5756460,
+    "sha256": "9dc12e479c57155e82fbcb10b507b1cc5e98d31ecc076f0608abd089186b4804",
+    "revision": "9dc12e479c57",
+    "chapters": [
+      {
+        "seconds": 0.0,
+        "title": "Before the next busy shift…",
+        "text": "Before the next busy shift, your manager asks: do we need another cashier? Start with what actually happens at the checkout. Here is what your team should write down."
+      },
+      {
+        "seconds": 14.017188208616782,
+        "title": "Which line are we measuring?",
+        "text": "Choose the line and the observation window. Here, it is nine to nine thirty. Use one clock, full dates, and anonymous customer identifiers. Arrival means joining this line, not entering the shop."
+      },
+      {
+        "seconds": 31.018730158730158,
+        "title": "How many people reach the line?",
+        "text": "Count everyone who joins during the whole window, not only completed transactions. In this teaching sample, twelve arrivals in thirty minutes gives lambda: twenty-four arrivals per hour."
+      },
+      {
+        "seconds": 49.01873015873015,
+        "title": "How long does the transaction take?",
+        "text": "Time the service itself. Leave out the customer's wait and the cashier's idle time. Suppose three completed services take one, two, and three minutes. Their average is two minutes. Sixty divided by two gives mu: thirty customers per hour, per counter. This is a rate estimate, not a guaranteed throughput."
+      },
+      {
+        "seconds": 74.0883446712018,
+        "title": "How many checkouts can serve this line?",
+        "text": "A busy checkout still counts as available. A cashier on break does not. If one of two checkouts closes at nine fifteen, c changes from two to one. Record when the change happens."
+      },
+      {
+        "seconds": 93.0883446712018,
+        "title": "Same average. Same service pattern?",
+        "text": "Both samples average two minutes. Does that average tell the whole story?"
+      },
+      {
+        "seconds": 102.0883446712018,
+        "title": "The average hides the spread.",
+        "text": "The second sample has short and long transactions. Variance describes that spread. Keep individual service times, not just their average. NovaQ expresses service-time variance in hours squared."
+      },
+      {
+        "seconds": 121.0883446712018,
+        "title": "What about the customer who leaves?",
+        "text": "Dana joins at nine oh five and leaves at nine ten because of the wait. Record both times and mark left before service. Her service never started, so do not make up service timestamps."
+      },
+      {
+        "seconds": 140.08834467120178,
+        "title": "Would they have waited longer?",
+        "text": "A customer starts service after two minutes. Have we measured their maximum patience?"
+      },
+      {
+        "seconds": 149.08834467120178,
+        "title": "We only know: at least two minutes.",
+        "text": "No. We know they were willing to wait at least two minutes. If someone is still waiting when observation ends, their full patience is also unknown. A patience estimate needs served, left, and unfinished waits. Using only the people who left misses part of the picture."
+      },
+      {
+        "seconds": 171.08834467120184,
+        "title": "Theta needs a stated model assumption.",
+        "text": "For an exponential-patience model, suppose mean patience is ten minutes. Theta is then six per hour for each waiting customer. It is not six percent leaving, or six total departures per hour. This assumed example is not an estimate from our small records. Theta is model-specific."
+      },
+      {
+        "seconds": 194.08834467120187,
+        "title": "What should the team bring back?",
+        "text": "Bring back arrivals, service starts and ends, customer and queue identifiers, and waiting outcomes. Also bring the observation window and a timed record of available checkouts and breaks. Keep unknown values unknown."
+      },
+      {
+        "seconds": 213.0883446712019,
+        "title": "Before uploading, check the input path.",
+        "text": "NovaQ's completed-service event upload requires arrival, service start, and service end. Separate lines also need a queue identifier. Keep the full field log, including people who leave. Do not invent service times or quietly remove their arrivals. Use a supported input path and model for the records you have."
+      },
+      {
+        "seconds": 237.81265306122464,
+        "title": "Now the staffing question has a starting point.",
+        "text": "Lambda: arrivals. Mu: service speed per counter. C: available counters. Variance: how service times differ. Theta: a suitable patience model, when needed. Bring the observations, then examine the staffing question with the right model."
+      }
+    ]
+  }
+}

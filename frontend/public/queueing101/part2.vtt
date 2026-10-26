@@ -1,0 +1,94 @@
+WEBVTT
+
+00:00:00.800 --> 00:00:06.764
+Before the next busy shift, your manager asks: do we need another cashier?
+
+00:00:06.914 --> 00:00:13.267
+Start with what actually happens at the checkout. Here is what your team should write down.
+
+00:00:14.817 --> 00:00:20.886
+Choose the line and the observation window. Here, it is nine to nine thirty.
+
+00:00:21.036 --> 00:00:30.269
+Use one clock, full dates, and anonymous customer identifiers. Arrival means joining this line, not entering the shop.
+
+00:00:31.819 --> 00:00:37.692
+Count everyone who joins during the whole window, not only completed transactions.
+
+00:00:37.842 --> 00:00:45.005
+In this teaching sample, twelve arrivals in thirty minutes gives lambda: twenty-four arrivals per hour.
+
+00:00:49.819 --> 00:00:55.897
+Time the service itself. Leave out the customer's wait and the cashier's idle time.
+
+00:00:56.047 --> 00:01:03.421
+Suppose three completed services take one, two, and three minutes. Their average is two minutes.
+
+00:01:03.571 --> 00:01:13.338
+Sixty divided by two gives mu: thirty customers per hour, per counter. This is a rate estimate, not a guaranteed throughput.
+
+00:01:14.888 --> 00:01:20.807
+A busy checkout still counts as available. A cashier on break does not.
+
+00:01:20.957 --> 00:01:29.320
+If one of two checkouts closes at nine fifteen, c changes from two to one. Record when the change happens.
+
+00:01:33.888 --> 00:01:39.582
+Both samples average two minutes. Does that average tell the whole story?
+
+00:01:42.888 --> 00:01:49.262
+The second sample has short and long transactions. Variance describes that spread.
+
+00:01:49.412 --> 00:01:58.010
+Keep individual service times, not just their average. NovaQ expresses service-time variance in hours squared.
+
+00:02:01.888 --> 00:02:06.687
+Dana joins at nine oh five and leaves at nine ten because of the wait.
+
+00:02:06.837 --> 00:02:15.435
+Record both times and mark left before service. Her service never started, so do not make up service timestamps.
+
+00:02:20.888 --> 00:02:27.382
+A customer starts service after two minutes. Have we measured their maximum patience?
+
+00:02:29.888 --> 00:02:34.587
+No. We know they were willing to wait at least two minutes.
+
+00:02:34.737 --> 00:02:40.736
+If someone is still waiting when observation ends, their full patience is also unknown.
+
+00:02:40.886 --> 00:02:49.199
+A patience estimate needs served, left, and unfinished waits. Using only the people who left misses part of the picture.
+
+00:02:51.888 --> 00:02:57.367
+For an exponential-patience model, suppose mean patience is ten minutes.
+
+00:02:57.517 --> 00:03:06.215
+Theta is then six per hour for each waiting customer. It is not six percent leaving, or six total departures per hour.
+
+00:03:06.365 --> 00:03:13.203
+This assumed example is not an estimate from our small records. Theta is model-specific.
+
+00:03:14.888 --> 00:03:22.682
+Bring back arrivals, service starts and ends, customer and queue identifiers, and waiting outcomes.
+
+00:03:22.832 --> 00:03:30.939
+Also bring the observation window and a timed record of available checkouts and breaks. Keep unknown values unknown.
+
+00:03:33.888 --> 00:03:44.016
+NovaQ's completed-service event upload requires arrival, service start, and service end. Separate lines also need a queue identifier.
+
+00:03:44.166 --> 00:03:52.579
+Keep the full field log, including people who leave. Do not invent service times or quietly remove their arrivals.
+
+00:03:52.729 --> 00:03:57.063
+Use a supported input path and model for the records you have.
+
+00:03:58.613 --> 00:04:07.231
+Lambda: arrivals. Mu: service speed per counter. C: available counters.
+
+00:04:07.381 --> 00:04:14.835
+Variance: how service times differ. Theta: a suitable patience model, when needed.
+
+00:04:14.985 --> 00:04:20.388
+Bring the observations, then examine the staffing question with the right model.

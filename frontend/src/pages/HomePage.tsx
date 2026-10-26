@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/useAuth'
 import { LineStructurePicture } from '../components/illustrations/LineStructurePicture'
 import { LanguageSelect } from '../components/layout/LanguageSelect'
 import { ThemeToggle } from '../components/layout/ThemeToggle'
+import { ExpandableSlides } from '../components/home/ExpandableSlides'
+import { QueueingLessons } from '../components/learning/QueueingLessons'
 
 const START_PATH = '/analyses/new'
 
@@ -12,15 +15,17 @@ const START_PATH = '/analyses/new'
 export function HomePage() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const [howOpen, setHowOpen] = useState(false)
+  const [queuesOpen, setQueuesOpen] = useState(false)
   const start = user ? START_PATH : `/login?next=${encodeURIComponent(START_PATH)}`
 
   return (
-    <div className="home-page">
+    <div className="home-page home-learning-page">
       <a className="skip-link" href="#home-main">{t('common.skip_to_content')}</a>
       <header className="home-header">
         <div className="home-logo">Nova<b>Q</b></div>
         <nav className="home-header-actions" aria-label={t('home.header_navigation')}>
-          <a href="#how-it-works">{t('home.how_it_works')}</a>
+          <button type="button" className="home-how-link" aria-expanded={howOpen} aria-controls="home-how-it-works-panel" onClick={() => setHowOpen(true)}>{t('home.how_it_works')}</button>
           <Link to="/calculator">{t('nav.quick_calculator')}</Link>
           <Link to="/help">{t('nav.help')}</Link>
           <LanguageSelect />
@@ -31,8 +36,10 @@ export function HomePage() {
         </nav>
       </header>
 
-      <main className="home-main" id="home-main">
+      <main className="home-main home-spotlight" id="home-main">
+        <div className="home-spotlight-column">
         <section className="home-hero" aria-labelledby="home-title">
+          <p className="home-tagline">{t('nav.motto')}</p>
           <h1 id="home-title">{t('home.hero_title')}<br /><span>{t('home.hero_accent')}</span></h1>
           <p>{t('home.hero_desc')}</p>
           <div className="home-hero-actions">
@@ -41,36 +48,28 @@ export function HomePage() {
           </div>
           <p className="home-note">{t('home.calculator_note')}</p>
         </section>
-
-        <section className="home-structures" aria-labelledby="home-structures-title">
-          <h2 id="home-structures-title">{t('home.structures_title')}</h2>
-          <div className="home-structure-grid">
-            {(['shared', 'separate'] as const).map((variant) => (
-              <article key={variant} className="card home-structure-card">
-                <LineStructurePicture variant={variant} />
-                <h3>{t(`home.structure_${variant}_title`)}</h3>
-                <p>{t(`home.structure_${variant}_desc`)}</p>
-                <p className="home-note">{t(`home.structure_${variant}_example`)}</p>
-              </article>
-            ))}
-          </div>
-          <p className="home-note">{t('home.pictures_note')}</p>
-        </section>
-
-        <section className="home-steps" id="how-it-works" aria-labelledby="home-steps-title">
-          <h2 id="home-steps-title">{t('home.how_it_works')}</h2>
-          <ol>
-            {(['records', 'plans', 'watch'] as const).map((step) => (
-              <li key={step} className="card">
-                <strong>{t(`home.step_${step}_title`)}</strong>
-                <span>{t(`home.step_${step}_desc`)}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <ExpandableSlides id="home-how-it-works" title={t('home.how_it_works')} description={t('queueing101.how_description')}
+          open={howOpen} onOpenChange={setHowOpen} slides={(['records', 'plans', 'watch'] as const).map((step, index) => ({
+            id: step, label: t('queueing101.step', { number: index + 1 }), content: <div className="home-workflow-slide">
+              <p className="home-slide-eyebrow">{t('queueing101.step', { number: index + 1 })}</p>
+              <h3>{t(`home.step_${step}_title`)}</h3><p>{t(`home.step_${step}_desc`)}</p>
+            </div>,
+          }))} />
+        </div>
+        <div className="home-spotlight-column">
+          <QueueingLessons />
+          <ExpandableSlides id="home-queue-types" title={t('queueing101.queue_types')} description={t('queueing101.queue_types_description')}
+            open={queuesOpen} onOpenChange={setQueuesOpen} footer={<p className="home-note">{t('home.pictures_note')}</p>}
+            slides={(['separate', 'shared'] as const).map((variant) => ({
+              id: variant, label: t(`home.structure_${variant}_title`), content: <div className="home-queue-slide">
+                <h3>{t(`home.structure_${variant}_title`)}</h3><p>{t(`home.structure_${variant}_desc`)}</p>
+                <LineStructurePicture variant={variant} /><p className="home-note">{t(`home.structure_${variant}_example`)}</p>
+              </div>,
+            }))} />
+        </div>
       </main>
 
-      <footer className="home-footer"><span>NovaQ v1.0 · {t('nav.capstone')}</span><span>{t('nav.motto')}</span></footer>
+      <footer className="home-footer"><span>NovaQ v1.0 · {t('nav.capstone')}</span></footer>
     </div>
   )
 }
