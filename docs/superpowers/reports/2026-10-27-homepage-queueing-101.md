@@ -2,7 +2,7 @@
 
 Status: **COMPLETE for the authorized local implementation and web activation.**
 
-Verified on 2026-10-27. Homepage: http://localhost/ ; Help: http://localhost/help . No commit, push or production deployment was performed.
+Local validation recorded on 2026-10-27. Homepage: http://localhost/ ; Help: http://localhost/help . During that local implementation/validation phase, no commit, push or production deployment was performed. Subsequent release preparation is recorded separately under `../plans/2026-10-27-homepage-release.md` and the pinned candidate's CI/Pages release packet.
 
 ## Scope and provenance
 
