@@ -3,6 +3,8 @@ import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { VideoTutorials } from '../components/help/VideoTutorials'
 import { matchingTutorials } from '../lib/tutorials'
+import { QueueingLessons } from '../components/learning/QueueingLessons'
+import { matchingQueueingLessons } from '../lib/queueingLessons'
 import { HELP_FIGURES, HELP_GUIDES, helpFigureSrc, isHelpTopic, searchHelp } from '../lib/helpGuides'
 
 // Help center (spec 2026-10-09 §7.11, plan U8): search over the guides in the current language,
@@ -19,6 +21,7 @@ function HelpIndex() {
   const [query, setQuery] = useState('')
   const matches = searchHelp(query, t)
   const videoMatches = matchingTutorials(query, t)
+  const queueingMatches = matchingQueueingLessons(query, t)
   return (
     <div className="page-stack help-page">
       <header className="page-header">
@@ -40,10 +43,11 @@ function HelpIndex() {
                 </li>
               ))}
             </ul>
-          ) : videoMatches.length === 0 ? <p className="form-hint" role="status">{t('help.search_none')}</p> : null
+          ) : videoMatches.length === 0 && queueingMatches.length === 0 ? <p className="form-hint" role="status">{t('help.search_none')}</p> : null
         )}
       </section>
 
+      <QueueingLessons query={query} />
       <VideoTutorials query={query} />
 
       <section aria-label={t('help.guides_title')}>

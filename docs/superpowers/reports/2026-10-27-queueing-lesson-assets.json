@@ -1,0 +1,24 @@
+{
+  "status": "VERIFIED exact MP4 copy",
+  "assets": [
+    {
+      "id": "part1",
+      "original": "queueing-theory-101-part1-business.mp4",
+      "bytes": 3045141,
+      "sha256": "14076de82423998b05fd004368f8ff222d11cf8e896a7e6791c35b61fb7a7ade",
+      "duration_seconds": 144.6374603174603,
+      "language": "English synthetic narration and burned-in captions",
+      "data_status": "Fictional instructional examples, not company observations"
+    },
+    {
+      "id": "part2",
+      "original": "queueing-theory-101-part2-business.mp4",
+      "bytes": 5756460,
+      "sha256": "9dc12e479c57155e82fbcb10b507b1cc5e98d31ecc076f0608abd089186b4804",
+      "duration_seconds": 261.63832199546505,
+      "language": "English synthetic narration and burned-in captions",
+      "data_status": "Fictional instructional examples, not company observations"
+    }
+  ],
+  "field_sheets": "Headers only; not NovaQ upload templates"
+}

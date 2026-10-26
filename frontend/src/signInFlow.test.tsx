@@ -90,7 +90,7 @@ beforeEach(() => {
 })
 
 describe('public Home (spec §7.1)', () => {
-  it('has exactly one Start an analysis, a Sign in link and both line pictures', async () => {
+  it('keeps Start and Sign in destinations and exposes both pictures through the approved collapsed queue guide', async () => {
     renderAt('/')
     expect(await screen.findByRole('heading', { level: 1, name: /See how long your customers wait/ })).toBeInTheDocument()
     const starts = screen.getAllByRole('link', { name: 'Start an analysis' })
@@ -98,8 +98,15 @@ describe('public Home (spec §7.1)', () => {
     expect(starts[0]).toHaveAttribute('href', '/login?next=%2Fanalyses%2Fnew')
     expect(within(screen.getByRole('banner')).queryByRole('link', { name: 'Start an analysis' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
-    expect(screen.getByRole('img', { name: /one shared line/ })).toBeInTheDocument()
+    // The owner's 2026-10-27 layout keeps queue illustrations in a collapsed, looping guide.
+    const user = userEvent.setup()
+    const queueGuide = screen.getByRole('button', { name: /^Queue types/ })
+    expect(queueGuide).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('img', { name: /three separate lines/ })).not.toBeInTheDocument()
+    await user.click(queueGuide)
     expect(screen.getByRole('img', { name: /three separate lines/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next: Queue types' }))
+    expect(screen.getByRole('img', { name: /one shared line/ })).toBeInTheDocument()
     expect(screen.getByLabelText('Language')).toBeInTheDocument()
     // U10 F13: the hero's second action and its note (spec §7.1).
     const hero = screen.getByRole('region', { name: /See how long your customers wait/ })

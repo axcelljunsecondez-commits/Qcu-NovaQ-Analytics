@@ -1,0 +1,1 @@
+﻿observation_window_id,customer_id,queue_id,arrival_time,service_start,service_end,left_before_service_time,observation_end,outcome,leaving_reason_if_known,notes

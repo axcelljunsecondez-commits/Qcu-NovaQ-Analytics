@@ -1,0 +1,70 @@
+WEBVTT
+
+00:00:00.800 --> 00:00:05.704
+One checkout is open. A second cashier is available.
+
+00:00:05.854 --> 00:00:10.688
+The line is starting to grow. Do you open another checkout?
+
+00:00:10.838 --> 00:00:14.581
+Let's follow one customer and see what makes the wait.
+
+00:00:18.631 --> 00:00:24.125
+Here is Ben's visit from the start. He joins the line at nine oh one.
+
+00:00:24.275 --> 00:00:28.988
+Record his arrival here. His waiting time starts now.
+
+00:00:33.039 --> 00:00:35.553
+Cara joins behind Ben.
+
+00:00:35.703 --> 00:00:40.856
+The cashier is still helping Ana, so both customers wait in line.
+
+00:00:42.306 --> 00:00:46.645
+Ana finishes and leaves. It is Ben's turn.
+
+00:00:46.795 --> 00:00:50.759
+When his service begins, which clock should stop?
+
+00:00:55.709 --> 00:00:58.253
+His waiting clock stops.
+
+00:00:58.403 --> 00:01:04.527
+At nine oh two, the cashier starts serving Ben. Record service start.
+
+00:01:05.977 --> 00:01:08.301
+Ben is being served now.
+
+00:01:08.451 --> 00:01:13.965
+Only his service clock runs. His waiting time stays at one minute.
+
+00:01:15.477 --> 00:01:20.740
+At nine oh four, Ben's service ends. Record that time.
+
+00:01:20.890 --> 00:01:27.374
+He leaves, and Cara moves forward. Ben spent two minutes receiving service.
+
+00:01:30.477 --> 00:01:36.225
+Ben spent three minutes here: one minute waiting, then two minutes in service.
+
+00:01:36.375 --> 00:01:41.544
+Arrival, service start, and service end explain the difference.
+
+00:01:42.994 --> 00:01:51.822
+Lambda describes the arrival rate. Mu describes the service rate of one counter. C counts available counters.
+
+00:01:51.972 --> 00:01:56.985
+Queueing theory studies how these parts of the service process relate to waiting.
+
+00:01:59.735 --> 00:02:05.614
+If the second checkout is already staffed when Ben arrives, he can start immediately.
+
+00:02:05.764 --> 00:02:09.828
+His wait in this example changes from one minute to zero.
+
+00:02:11.435 --> 00:02:17.759
+That is the idea behind studying a queue: connect what you observe to the time people spend waiting.
+
+00:02:17.909 --> 00:02:23.387
+Next, we will collect the records behind those numbers in your own workplace.
