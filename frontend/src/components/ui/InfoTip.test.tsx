@@ -5,10 +5,10 @@ import { renderWithProviders } from '../../test/test-utils'
 import { InfoTip } from './InfoTip'
 
 function renderTip() {
-  return renderWithProviders(<><InfoTip stableInteraction name="Wait" text="Source explanation" /><button>Elsewhere</button></>)
+  return renderWithProviders(<><InfoTip name="Wait" text="Source explanation" /><button>Elsewhere</button></>)
 }
 
-describe('signed-in explanation interaction', () => {
+describe('shared explanation interaction', () => {
   it('keeps the first pointer activation open after hover and focus, then closes on the second', async () => {
     const user = userEvent.setup()
     renderTip()

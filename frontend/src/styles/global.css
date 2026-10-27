@@ -3695,40 +3695,15 @@ th {
   background: var(--bg-secondary);
 }
 
-/* Quick calculator (plan U9 + B2) */
-.info-tip {
-  position: relative;
-  display: inline-block;
-}
-
-.info-tip-button {
-  min-width: 1.6rem;
-  min-height: 1.6rem;
-  margin-left: var(--space-xs);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.info-tip-text {
-  position: absolute;
-  z-index: 20;
-  top: 100%;
-  left: 0;
-  width: max-content;
-  max-width: min(18rem, 80vw);
-  padding: var(--space-sm);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  font-weight: 400;
-  line-height: 1.4;
-}
+/* Shared explanations: the trigger stays as small as its actual button. */
+.info-tip { display: inline-flex; align-self: flex-start; flex: none; width: fit-content; vertical-align: middle; }
+.info-tip-button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; min-width: 32px; min-height: 32px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--color-action-link, var(--primary)); font-size: 1rem; cursor: pointer; }
+.info-tip-button:hover { background: transparent; }
+.floating-tooltip { position: fixed; z-index: 320; box-sizing: border-box; width: max-content; max-width: min(22rem, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overflow-wrap: anywhere; text-align: left; text-transform: none; line-height: 1.4; animation: tooltip-appear 80ms ease-out; }
+.info-tip-text { padding: var(--space-sm); border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); font-size: 0.875rem; font-weight: 400; box-shadow: var(--shadow-md); }
+@keyframes tooltip-appear { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .floating-tooltip { animation: none; } }
+@media (pointer: coarse) { .info-tip-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; } }
 
 .field-error {
   color: var(--danger);
@@ -3741,6 +3716,7 @@ th {
 
 /* Touch targets of at least 44 x 44 px below 768 px (spec §10, WCAG 2.5.8 at the AA level the spec sets). */
 @media (max-width: 767px) {
+  .info-tip-button { width: 44px; height: 44px; }
   .info-tip-button,
   .help-link {
     min-width: 44px;
@@ -4309,28 +4285,7 @@ th {
   display: inline-block;
 }
 
-.tooltip {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 8px);
-  z-index: 120;
-  transform: translateY(-50%);
-  padding: 5px 9px;
-  border-radius: 6px;
-  background: var(--navy-950);
-  color: #ffffff;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: var(--shadow-md);
-}
-
-.sidebar-header .tooltip {
-  top: calc(100% + 6px);
-  right: 0;
-  left: auto;
-  transform: none;
-}
+.tooltip { padding: 5px 9px; border-radius: 6px; background: var(--navy-950); color: #ffffff; font-size: 0.8125rem; font-weight: 600; box-shadow: var(--shadow-md); }
 
 .sidebar-footer {
   grid-template-columns: minmax(0, 1fr);
@@ -4528,13 +4483,6 @@ th {
   .sidebar.is-collapsed .sidebar-product-note,
   .sidebar.is-collapsed .account-email {
     display: none;
-  }
-
-  .sidebar.is-collapsed .sidebar-header .tooltip {
-    top: 50%;
-    right: auto;
-    left: calc(100% + 8px);
-    transform: translateY(-50%);
   }
 
   .sidebar.is-collapsed .nav-section-title {
@@ -5248,9 +5196,6 @@ summary.setup-step-title::before {
 .app-shell :is(.results-chart-values, .report-context) > div { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .app-shell :is(.results-chart-values, .report-context) dt { font-weight: 600; }
 .app-shell :is(.results-chart-values, .report-context) dd { margin: 0; }
-.app-shell .info-tip-stable { vertical-align: middle; }
-.app-shell .info-tip-stable .info-tip-button { min-width: 32px; min-height: 32px; color: var(--color-action-link); background: transparent; }
-.app-shell .info-tip-stable .info-tip-text { position: fixed; max-width: min(22rem, calc(100vw - 48px)); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: var(--shadow-md); text-align: left; }
 .app-shell .optimize-flow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .app-shell .optimize-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 16px; align-items: start; }
 .app-shell .optimize-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 16px; }
@@ -5265,7 +5210,6 @@ summary.setup-step-title::before {
   .app-shell .results-summary-list dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .app-shell .results-summary-list dt { color: var(--color-text-secondary); }
   .app-shell .results-summary-list dd { margin: 0; }
-  .app-shell .info-tip-stable .info-tip-button { min-width: 44px; min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

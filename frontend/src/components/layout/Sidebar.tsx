@@ -56,7 +56,7 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
       <div className="sidebar-header">
         <div className="sidebar-brand">Nova<b>Q</b></div>
         {onToggleCollapsed && (
-          <Tooltip label={hideLabel}>
+          <Tooltip label={hideLabel} placement={collapsed ? 'right' : 'bottom'}>
             <button
               type="button"
               className="sidebar-hide-toggle"
