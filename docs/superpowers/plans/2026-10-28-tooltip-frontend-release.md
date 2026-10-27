@@ -15,3 +15,7 @@ VERIFIED baseline: active worktree starts from `0b094a7868e5af22087f2b64caa01fe4
 9. Record exact CI/preview/main/production SHAs, deployment IDs, actual checks, failures and remaining limits in the private release evidence. Keep the pre-existing selected-load seed-stability expected failure open. Stop publication for failed/unknown required gates; do not weaken assertions, skip checks, or silently broaden protected scope.
 
 Status at this plan's commit: release preparation authorized; cloud CI, Preview and production publication remain pending. Final status is established by executed release evidence, not this plan.
+
+## Required security-gate repair discovered in CI
+
+The original tooltip candidate failed strict Python dependency audit on CVE-2026-114605 in dnspython 2.8.0. The separately proven defect and smallest 2.9.0 pin correction are scoped in [the dependency remediation specification](../specs/2026-10-28-dnspython-audit-remediation.md). Renew all exact-head gates after that source correction; do not suppress the advisory or relabel skipped jobs as passes. The frontend subtree must remain unchanged. Render/local running API images stay preserved, so runtime backend patching remains a separate follow-up rather than an implied part of frontend publication.
