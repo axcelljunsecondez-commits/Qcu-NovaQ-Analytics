@@ -1,0 +1,170 @@
+[
+  {
+    "lang": "en",
+    "topic": "start",
+    "size": [
+      1080,
+      808
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "b157ec47d652fa9a06ebced8cd45d9e1f25a171a17294d5fa07f8b92047a31e0",
+    "bytes": 54092
+  },
+  {
+    "lang": "en",
+    "topic": "data",
+    "size": [
+      1080,
+      653
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "00fcb60165caefb8d2dcff7115c9f41641df3e80bbfdb53b9a95f1b49f5d03a1",
+    "bytes": 48610
+  },
+  {
+    "lang": "en",
+    "topic": "results",
+    "size": [
+      1080,
+      1158
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "d1d353991838a56e5cc93bc81f41a7c91761025ce8b0e1dab08c4a1f7af0c63c",
+    "bytes": 75780
+  },
+  {
+    "lang": "en",
+    "topic": "plans",
+    "size": [
+      1080,
+      1678
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "04b353d634676fa9216173781b71c8b3b64b0674183ce7e63ea80b114cac33d1",
+    "bytes": 77010
+  },
+  {
+    "lang": "en",
+    "topic": "simulation",
+    "size": [
+      1080,
+      631
+    ],
+    "marks": 4,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "d1e35d86172621c580c8ed1a8a84ccde8d6640f3ec598adb8018a3b8b92c25a4",
+    "bytes": 44400
+  },
+  {
+    "lang": "en",
+    "topic": "checks",
+    "size": [
+      1080,
+      357
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "340c1b09db1e2fe7c58f93e7c5d009ba8757728739eaffce0258f9818822a0ff",
+    "bytes": 27880
+  },
+  {
+    "lang": "en",
+    "topic": "downloads",
+    "size": [
+      1080,
+      955
+    ],
+    "marks": 4,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "31712f9f595a8c3c24da0190988157a127c9cec1854746b581d441f807d87fe8",
+    "bytes": 57206
+  },
+  {
+    "lang": "tl",
+    "topic": "start",
+    "size": [
+      1080,
+      808
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "4602dc44a3996ed9cafde73daa44cd61ed85efd83435512c4161397fb3c21585",
+    "bytes": 61870
+  },
+  {
+    "lang": "tl",
+    "topic": "data",
+    "size": [
+      1080,
+      674
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "9dc114e0202ea87e4d9147218b022ed1c9e5d70199f92335526100920e22d207",
+    "bytes": 55872
+  },
+  {
+    "lang": "tl",
+    "topic": "results",
+    "size": [
+      1080,
+      1182
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "5d842ebcd8bda48cf1bc4270a8ebd70e5175cad9336909a7d264dee715735ab2",
+    "bytes": 93236
+  },
+  {
+    "lang": "tl",
+    "topic": "plans",
+    "size": [
+      1080,
+      1741
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "93abf05c8f9ad3e389ca2368fac9f3917f01653619fa365fc76bf35c261af1d7",
+    "bytes": 93310
+  },
+  {
+    "lang": "tl",
+    "topic": "simulation",
+    "size": [
+      1080,
+      684
+    ],
+    "marks": 4,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "1f6d73110c038fb11bb6745882b07343cec81a2ec2fe4c6293417ea4f006517f",
+    "bytes": 52896
+  },
+  {
+    "lang": "tl",
+    "topic": "checks",
+    "size": [
+      1080,
+      399
+    ],
+    "marks": 3,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "57243368550b9d650bb1e381862203dffa54c0124a6a2d2248d0ab45186b240b",
+    "bytes": 33292
+  },
+  {
+    "lang": "tl",
+    "topic": "downloads",
+    "size": [
+      1080,
+      955
+    ],
+    "marks": 4,
+    "scope": "Rendered compiled app with synthetic frontend-test fixtures; no company data or actual analytical run.",
+    "webp_sha256": "acdb5714df941d5029a48268f8f6aac0032f0a91669284a906edd08fe225f29d",
+    "bytes": 62348
+  }
+]

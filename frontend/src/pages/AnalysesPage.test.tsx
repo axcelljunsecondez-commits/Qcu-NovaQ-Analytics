@@ -98,7 +98,7 @@ describe('AnalysesPage', () => {
     renderWithProviders(<AnalysesPage />, { route: '/analyses' })
     expect(await screen.findByText('North checkout')).toBeInTheDocument()
     const badges = screen.getAllByTestId('analysis-structure-badge')
-    expect(badges.map((badge) => badge.textContent)).toEqual(['Everyone waits in one line', 'Each counter has its own line'])
+    expect(badges.map((badge) => badge.textContent)).toEqual(["Single Line-Queue for Multiple Counters", "Separate Line-Queue per Counter"])
   })
 
   it('filters analyses by queue structure', async () => {

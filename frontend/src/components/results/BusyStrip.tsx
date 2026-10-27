@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { UtilizationBand } from '../../lib/utilization'
 import { fmtDecimal, fmtPctDecimal } from '../../lib/format'
@@ -27,7 +28,7 @@ export function BusyStrip({ rows, planTarget, period, onPeriod, showNumbers = tr
   if (strip.length === 0) return null
   return (
     <section className="card" aria-labelledby="busy-strip-title">
-      <h2 id="busy-strip-title" className="section-title">{t('results.day_by_level')}</h2>
+      <h2 lang="en" id="busy-strip-title" className="section-title">{headingText(t, 'results.day_by_level')}</h2>
       <div className="busy-strip" role="group" aria-label={t('results.day_by_level')}>
         {strip.map((cell) => (
           <button
@@ -65,7 +66,7 @@ export function BusyStrip({ rows, planTarget, period, onPeriod, showNumbers = tr
 
       {showNumbers && period !== null && chosen.length > 0 && (
         <div className="busy-period" aria-live="polite">
-          <h3 className="card-title">{t('results.period_numbers', { period })}</h3>
+          <h3 lang="en" className="card-title">{headingText(t, 'results.period_numbers', { period })}</h3>
           <div className="table-scroll" role="region" aria-label={t('results.period_numbers', { period })} tabIndex={0}>
             <table>
               <thead>

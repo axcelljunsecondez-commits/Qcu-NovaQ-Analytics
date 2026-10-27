@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -45,7 +46,7 @@ export function SetupDataTemplates({ queueStructure }: SetupDataTemplatesProps) 
 
   return (
     <div className="card" style={{ marginTop: '12px' }}>
-      <h3 className="card-title">{t('template.prepare_title')}</h3>
+      <h3 lang="en" className="card-title">{headingText(t, 'template.prepare_title')}</h3>
       <p className="form-hint">{t('template.prepare_help')}</p>
       <div className="form-row" role="group" aria-label={t('template.schema_label')}>
         <button
@@ -83,7 +84,7 @@ export function SetupDataTemplates({ queueStructure }: SetupDataTemplatesProps) 
           {guide.isError && <div role="alert" className="alert alert-error">{t('errors.server')}</div>}
           {guide.data && (
             <>
-              <h4 className="section-title">{t('template.example_title')}</h4>
+              <h4 lang="en" className="section-title">{headingText(t, 'template.example_title')}</h4>
               <div className="card table-scroll" role="region" aria-label={t('template.example_title')} tabIndex={0}>
                 <table>
                   <thead>
@@ -100,7 +101,7 @@ export function SetupDataTemplates({ queueStructure }: SetupDataTemplatesProps) 
                   </tbody>
                 </table>
               </div>
-              <h4 className="section-title">{t('template.guide_title')}</h4>
+              <h4 lang="en" className="section-title">{headingText(t, 'template.guide_title')}</h4>
               <div className="card table-scroll" role="region" aria-label={t('template.guide_title')} tabIndex={0}>
                 <table>
                   <thead>

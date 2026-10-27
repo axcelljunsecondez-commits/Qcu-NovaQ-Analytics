@@ -243,10 +243,10 @@ describe('Queue simulation shell (D28)', () => {
   it('opens Key results with the run switch and page links that keep the address', async () => {
     const user = userEvent.setup()
     renderPage()
-    expect(await screen.findByRole('heading', { level: 1, name: 'Queue simulation' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: "Queue Simulation" })).toBeInTheDocument()
     const pages = await screen.findByRole('navigation', { name: 'Queue simulation pages' })
-    expect(within(pages).getAllByRole('link').map((link) => link.textContent)).toEqual(['Key results', 'Replay', 'Checks and decision'])
-    expect(within(pages).getByRole('link', { name: 'Key results' })).toHaveAttribute('aria-current', 'page')
+    expect(within(pages).getAllByRole('link').map((link) => link.textContent)).toEqual(["Key Results", 'Replay', 'Checks and Decisions'])
+    expect(within(pages).getByRole('link', { name: "Key Results" })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('button', { name: 'Suggested plan' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(screen.getByRole('button', { name: 'Current' }))
     expect(screen.getByTestId('where')).toHaveTextContent('/simulation/results?analysis=7&plan=current')
@@ -325,7 +325,7 @@ describe('the legacy shared path', () => {
     expect(older.getByRole('region', { name: 'Longest single line' })).toHaveTextContent('Current: 9')
     const served = older.getByRole('region', { name: 'Customers served' })
     expect(served).toHaveTextContent('Current: Unavailable')
-    expect(served).toHaveTextContent('Customer totals need one continuous run of the day')
+    expect(served).toHaveTextContent('Run the full day to see total customers.')
   })
 
   it('asks to run again when a stored run has no saved totals', async () => {
@@ -473,7 +473,7 @@ describe('the legacy shared path', () => {
     getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
     renderPage('/simulation/results?analysis=7&plan=suggested', 'tl')
     expect(await screen.findByText(tl['simulation.select_scenario_first'], { exact: false })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1, name: tl['nav.queue_simulation'] })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: en['nav.queue_simulation'] })).toBeInTheDocument()
     expect(en['simulation.run_full_operation']).toBe('Run full operation')
   })
 })
@@ -657,11 +657,11 @@ describe('a selected separate-lines plan', () => {
     renderPage()
     expect(await screen.findByRole('region', { name: 'Customers served' })).toHaveTextContent('Suggested plan: 90')
     expect(screen.getByRole('region', { name: 'Still in line or being served at closing' })).toHaveTextContent('Suggested plan: 2')
-    expect(screen.getByText('Customer conservation holds for every period.')).toBeInTheDocument()
+    expect(screen.getByText("Customer counts match in every period.")).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'People waiting, all lines together' })).toBeInTheDocument()
     expect(screen.getByText(/checked every 5 minutes/)).toBeInTheDocument()
     // The closing rule has one allowed value (drain_existing), so nothing offers to change it.
-    expect(screen.getByText('At closing time: counters finish the customers already in their line.')).toBeInTheDocument()
+    expect(screen.getByText("At closing, staff finish serving customers already in line")).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Change' })).not.toBeInTheDocument()
     // One continuous day places the breaks in time: no break notice.
     expect(screen.queryByTestId('break-notice')).not.toBeInTheDocument()
@@ -836,7 +836,7 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect(bar).toHaveTextContent('About 13 customers per day.')
     // Contextual help (plan U8).
     expect(within(bar).getByRole('link', { name: 'Help: Full-day run and period-by-period run' })).toHaveAttribute('href', '/help/simulation#methods')
-    expect(screen.getByRole('link', { name: 'Help: Queue simulation' })).toHaveAttribute('href', '/help/simulation')
+    expect(screen.getByRole('link', { name: 'Help: Queue Simulation' })).toHaveAttribute('href', '/help/simulation')
   })
 
   it('asks the two unanswered Setup questions instead of blaming features the user never turned on (U10 F12)', async () => {

@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PeriodFilter } from '../analysis/PeriodFilter'
@@ -39,7 +40,7 @@ export function ResultsSummary({ rows, period, line, onPeriod, onLine, reference
   return (
     <section className="card results-summary" aria-labelledby="results-summary-title">
       <div className="results-section-heading">
-        <h2 id="results-summary-title" className="section-title">{t('results.operation_by_period')}</h2>
+        <h2 lang="en" id="results-summary-title" className="section-title">{headingText(t, 'results.operation_by_period')}</h2>
         {referenceLink}
       </div>
       <PeriodFilter idPrefix="results" periods={rows.map((row) => row.time)} lines={rows.map((row) => row.queue_id)} period={period} line={line} onPeriod={onPeriod} onLine={onLine} />

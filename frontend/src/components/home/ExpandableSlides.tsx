@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Chevron, ExpandablePanel } from './ExpandablePanel'
 
 interface ExpandableSlidesProps {
   id?: string
@@ -12,15 +13,9 @@ interface ExpandableSlidesProps {
   footer?: ReactNode
 }
 
-export function Chevron({ direction }: { direction: 'left' | 'right' | 'down' }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={direction === 'left' ? 'm15 6-6 6 6 6' : direction === 'right' ? 'm9 6 6 6-6 6' : 'm6 9 6 6 6-6'} /></svg>
-}
-
 /** Presentation only. Slides retain their intrinsic maximum height; navigation never scrolls or moves focus. */
 export function ExpandableSlides({ id, title, description, open, onOpenChange, slides, className = '', footer }: ExpandableSlidesProps) {
   const { t } = useTranslation()
-  const uniqueId = useId()
-  const baseId = id ?? uniqueId
   const [index, setIndex] = useState(0)
   const current = useRef(0)
   const nodes = useRef<Array<HTMLElement | null>>([])
@@ -56,16 +51,7 @@ export function ExpandableSlides({ id, title, description, open, onOpenChange, s
     ]
   }
 
-  return <section className={`home-guide ${open ? 'is-open' : ''} ${className}`} data-guide={id}>
-    <h2 className="home-guide-heading">
-      <button id={`${baseId}-trigger`} type="button" className="home-guide-toggle" aria-expanded={open}
-        aria-controls={`${baseId}-panel`} aria-labelledby={`${baseId}-title`} aria-describedby={`${baseId}-description`} onClick={() => onOpenChange(!open)}>
-        <span><strong id={`${baseId}-title`}>{title}</strong><small id={`${baseId}-description`}>{description}</small></span><Chevron direction="down" />
-      </button>
-    </h2>
-    <div id={`${baseId}-panel`} className="home-guide-panel" role="region" aria-labelledby={`${baseId}-trigger`}
-      aria-hidden={!open} inert={!open}>
-      <div className="home-guide-inner"><div className="home-guide-body">
+  return <ExpandablePanel id={id} title={title} description={description} open={open} onOpenChange={onOpenChange} className={className}>
         <div className="home-guide-slides" role="group" aria-label={title}>
           {slides.map((slide, slideIndex) => <article key={slide.id} ref={(node) => { nodes.current[slideIndex] = node }}
             className="home-guide-slide" data-active={slideIndex === index} aria-hidden={slideIndex !== index}
@@ -77,7 +63,5 @@ export function ExpandableSlides({ id, title, description, open, onOpenChange, s
           <span aria-live="polite" aria-atomic="true">{t('queueing101.slide_status', { current: index + 1, total: slides.length })}</span>
           <button type="button" className="btn-ghost" aria-label={t('queueing101.next_named', { title })} onClick={() => navigate(1)}>{t('queueing101.next')}<Chevron direction="right" /></button>
         </div>
-      </div></div>
-    </div>
-  </section>
+  </ExpandablePanel>
 }

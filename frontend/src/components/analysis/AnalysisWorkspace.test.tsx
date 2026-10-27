@@ -97,7 +97,7 @@ describe('AnalysisWorkspace', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Page title')
     expect(screen.getByText('Step 2 of 6')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back: Data and setup' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Back: Data and Setup' })).toHaveAttribute(
       'href',
       '/analyses/1/data',
     )

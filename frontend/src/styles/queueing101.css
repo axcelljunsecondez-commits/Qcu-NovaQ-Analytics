@@ -2,6 +2,8 @@
 .home-learning-page { overflow-anchor: none; }
 .home-main.home-spotlight { max-width: 1160px; display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 28px; padding: 28px; }
 .home-spotlight-column { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.home-queue-comparison { grid-column: 1 / -1; }
+.home-queue-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .home-spotlight .home-hero h1 { font-size: clamp(28px, 3.4vw, 39px); line-height: 1.18; }
 .home-spotlight .home-hero .home-tagline { color: var(--primary); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin: 0 0 12px; }
 .home-header-actions .home-how-link { color: var(--text-on-hero); background: transparent; border: 0; padding: 0; width: auto; min-height: 44px; font: inherit; font-weight: 600; }
@@ -69,6 +71,11 @@
 .queueing-lesson-choice strong { font-size: 13px; line-height: 1.4; }
 .queueing-lesson-choice small { font-size: 11px; font-weight: 400; line-height: 1.55; }
 .queueing-lesson-topics { color: var(--primary); }
+.queueing-combined-description { padding: 16px; }
+.queueing-combined-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.queueing-combined-title h3 { font-size: 15px; margin: 0; }
+.queueing-combined-description p { font-size: 12px; margin: 8px 0 0; }
+.queueing-combined-duration { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .queueing-collection { margin: 0 16px; padding: 10px 0; border-top: 1px solid var(--border); }
 .queueing-checklist-trigger { width: auto; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--primary); text-align: left; font: inherit; font-size: 12px; }
 .queueing-checklist-trigger:hover { background: transparent; text-decoration: underline; }
@@ -92,6 +99,7 @@
 @media (max-width: 760px) {
   .home-main.home-spotlight { grid-template-columns: minmax(0, 1fr); padding: 24px 20px; gap: 30px; }
   .home-spotlight-column { gap: 24px; }
+  .home-queue-grid { grid-template-columns: minmax(0, 1fr); }
   .queueing-lesson-choices { grid-template-columns: minmax(0, 1fr); }
   .queueing-lesson-choice strong { font-size: 15px; }
   .queueing-lesson-choice small { font-size: 12px; }

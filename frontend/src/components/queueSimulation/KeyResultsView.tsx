@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import type { RunSummary, SelectedDesPeriod, SimDesOut, SimulationTrace } from '../../api/types'
@@ -26,7 +27,7 @@ function WaitingChart({ trace, origin, breaks }: { trace: SimulationTrace; origi
   const label = (hours: number) => (origin === null ? `${fmtDecimal(hours, 2)} h` : wallClock(origin, hours))
   return (
     <section className="card" aria-labelledby="waiting-chart-title">
-      <h2 id="waiting-chart-title" className="section-title">{t('simulation.chart_waiting')}</h2>
+      <h2 lang="en" id="waiting-chart-title" className="section-title">{headingText(t, 'simulation.chart_waiting')}</h2>
       <svg className="waiting-chart" viewBox="0 0 600 160" role="img" aria-label={t('simulation.chart_waiting_summary', { max })} preserveAspectRatio="none">
         {breaks.map((item, index) => (
           <rect key={index} className="waiting-chart-break" x={end > 0 ? (item.startHours / end) * 600 : 0} width={end > 0 ? Math.max(2, ((item.endHours - item.startHours) / end) * 600) : 0} y={0} height={160} />
@@ -45,7 +46,7 @@ function WaitByPeriod({ summary }: { summary: RunSummary }) {
   const max = Math.max(0, ...values.map((item) => item.minutes ?? 0))
   return (
     <section className="card" aria-labelledby="wait-period-title">
-      <h2 id="wait-period-title" className="section-title">{t('simulation.chart_wait_by_period')}</h2>
+      <h2 lang="en" id="wait-period-title" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2>
       <div className="hbar-chart" role="img" aria-labelledby="wait-period-title">
         {values.map((item) => (
           <div className="hbar-row" key={item.time}>
@@ -178,13 +179,13 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
         <div className="grid g2">
           {dayTrace
             ? <WaitingChart trace={dayTrace} origin={origin} breaks={breaks} />
-            : <section className="card"><h2 className="section-title">{t('simulation.chart_waiting')}</h2><p className="form-hint">{t('simulation.chart_waiting_needs_day')}</p></section>}
-          {shownSummary ? <WaitByPeriod summary={shownSummary} /> : <section className="card"><h2 className="section-title">{t('simulation.chart_wait_by_period')}</h2><p className="form-hint">{t('simulation.summary_rerun')}</p></section>}
+            : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_waiting')}</h2><p className="form-hint">{t('simulation.chart_waiting_needs_day')}</p></section>}
+          {shownSummary ? <WaitByPeriod summary={shownSummary} /> : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2><p className="form-hint">{t('simulation.summary_rerun')}</p></section>}
         </div>
       )}
       {shown && (
         <details className="card collapsible-card">
-          <summary><h2 className="section-title">{t('simulation.more_results')}</h2></summary>
+          <summary><h2 lang="en" className="section-title">{headingText(t, 'simulation.more_results')}</h2></summary>
           {shownSummary && <PeriodTable summary={shownSummary} />}
           {shown.kind === 'separate'
             ? shown.result.periods.map((period) => <LaneTable key={period.time} period={period} />)

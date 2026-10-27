@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -23,7 +24,7 @@ export function ResetPasswordPage() {
   }
   return <div className="login-page"><div className="card login-card">
     <LanguageSelect />
-    <h1 className="login-title">{t('auth.reset_title')}</h1>
+    <h1 lang="en" className="login-title">{headingText(t, 'auth.reset_title')}</h1>
     {state === 'form' && <form onSubmit={submit}>
       <div className="form-field"><label htmlFor="reset-password">{t('account.new_password')}</label><input id="reset-password" type="password" minLength={8} maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" /></div>
       <div className="form-field"><label htmlFor="reset-confirm">{t('auth.confirm_password')}</label><input id="reset-confirm" type="password" minLength={8} maxLength={128} value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" /></div>

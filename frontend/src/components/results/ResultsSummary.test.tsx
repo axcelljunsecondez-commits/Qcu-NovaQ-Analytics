@@ -19,7 +19,7 @@ describe('operational summary', () => {
   it('retains every field and overloaded/missing meaning in both presentations', () => {
     summary()
     const table = screen.getByRole('table')
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Period', 'Service line', 'Counters open', 'Estimated wait (min)', 'Busy level'])
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Period', "Service Line", "Current Open Counter", 'Estimated wait (min)', 'Busy level'])
     expect(within(table).getByText('15 min')).toBeInTheDocument()
     expect(within(table).getByText("Can't keep up")).toBeInTheDocument()
     expect(within(table).getByText('Unavailable')).toBeInTheDocument()
@@ -39,7 +39,7 @@ describe('operational summary', () => {
     expect(within(screen.getByRole('table')).queryByText('Lane B')).not.toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Current operation by period' })).queryByText('Lane B')).not.toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Time'), '09:00-10:00')
-    await user.selectOptions(screen.getByLabelText('Service line'), 'Lane B')
+    await user.selectOptions(screen.getByLabelText("Service Line"), 'Lane B')
     expect(onPeriod).toHaveBeenCalledWith('09:00-10:00')
     expect(onLine).toHaveBeenCalledWith('Lane B')
   })

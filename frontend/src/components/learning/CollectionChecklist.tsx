@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -27,10 +28,10 @@ export function CollectionChecklist() {
     <dialog ref={dialog} className="queueing-checklist-dialog" aria-labelledby={titleId}
       onCancel={(event) => { event.preventDefault(); setOpen(false) }}>
       {open && <>
-        <header><h2 id={titleId}>{t('queueing101.checklist_title')}</h2><button ref={close} type="button" className="btn-ghost" onClick={() => setOpen(false)}>{t('tutorials.close')}</button></header>
+        <header><h2 lang="en" id={titleId}>{headingText(t, 'queueing101.checklist_title')}</h2><button ref={close} type="button" className="btn-ghost" onClick={() => setOpen(false)}>{t('tutorials.close')}</button></header>
         <div className="queueing-checklist-columns">
-          <section><h3>{t('queueing101.per_customer')}</h3><ul>{['identity', 'arrival', 'service', 'leave', 'outcome', 'observation_end'].map((key) => <li key={key}>{t(`queueing101.collect.${key}`)}</li>)}</ul></section>
-          <section><h3>{t('queueing101.per_period')}</h3><ul>{['process', 'window', 'clock', 'structure', 'availability', 'breaks'].map((key) => <li key={key}>{t(`queueing101.collect.${key}`)}</li>)}</ul></section>
+          <section><h3 lang="en">{headingText(t, 'queueing101.per_customer')}</h3><ul>{['identity', 'arrival', 'service', 'leave', 'outcome', 'observation_end'].map((key) => <li key={key}>{t(`queueing101.collect.${key}`)}</li>)}</ul></section>
+          <section><h3 lang="en">{headingText(t, 'queueing101.per_period')}</h3><ul>{['process', 'window', 'clock', 'structure', 'availability', 'breaks'].map((key) => <li key={key}>{t(`queueing101.collect.${key}`)}</li>)}</ul></section>
         </div>
         <p className="form-hint">{t('queueing101.field_log_note')}</p>
         <div className="queueing-field-downloads"><a href="/queueing101/customer-field-log.csv" download>{t('queueing101.customer_sheet')}</a><a href="/queueing101/counter-availability-log.csv" download>{t('queueing101.availability_sheet')}</a></div>

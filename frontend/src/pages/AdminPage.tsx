@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -81,10 +82,10 @@ export function AdminPage() {
 
   return (
     <div>
-      <h1 className="page-title">{t('admin.title')}</h1>
+      <h1 lang="en" className="page-title">{headingText(t, 'admin.title')}</h1>
 
       <div className="card">
-        <h2 className="card-title">{t('admin.create')}</h2>
+        <h2 lang="en" className="card-title">{headingText(t, 'admin.create')}</h2>
         <form className="form-row" onSubmit={handleCreate}>
           <div className="form-field">
             <label htmlFor="admin-email">{t('login.email')}</label>

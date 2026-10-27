@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -116,7 +117,7 @@ function ValidationResult({ result }: { result: NamedValidateOut }) {
   const report = result.roster_report
   return (
     <section className="card" data-testid="named-validation" aria-label={t('simulation.named_validation_title')}>
-      <h3 className="section-title">{t('simulation.named_validation_title')}</h3>
+      <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_validation_title')}</h3>
       <p>
         <span className={`badge ${result.runnable ? 'badge-ok' : 'badge-bad'}`} data-testid="named-runnable">
           {t(result.runnable ? 'simulation.named_runnable' : 'simulation.named_not_runnable')}
@@ -153,7 +154,7 @@ function ValidationResult({ result }: { result: NamedValidateOut }) {
       )}
       {report && (
         <div data-testid="named-roster-report">
-          <h4>{t('simulation.named_roster_report_title', { status: report.status })}</h4>
+          <h4 lang="en">{headingText(t, 'simulation.named_roster_report_title', { status: report.status })}</h4>
           {report.violations.length > 0 && (
             <ul>{report.violations.map((item, index) => <li key={`v-${index}`}><code>{item.code}</code>: {item.message}</li>)}</ul>
           )}
@@ -240,7 +241,7 @@ export function NamedSharedQueueSimulation({ analysisId, modeSwitch }: Props) {
     <div className="topbar">
       <div>
         <div className="topbar-eyebrow">{t('simulation.workflow_eyebrow')}</div>
-        <h1 className="page-title">{t('simulation.named_title')}</h1>
+        <h1 lang="en" className="page-title">{headingText(t, 'simulation.named_title')}</h1>
         <p className="page-caption">{t('simulation.named_caption')}</p>
       </div>
     </div>
@@ -357,7 +358,7 @@ export function NamedSharedQueueSimulation({ analysisId, modeSwitch }: Props) {
       )}
 
       <section className="card simulation-controls" aria-label={t('simulation.named_run_title')}>
-        <h3 className="section-title">{t('simulation.named_run_title')}</h3>
+        <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_run_title')}</h3>
         <div className="form-row">
           <div className="form-field">
             <label htmlFor="named-replications">{t('simulation.named_replications')}</label>
@@ -392,7 +393,7 @@ export function NamedSharedQueueSimulation({ analysisId, modeSwitch }: Props) {
       </section>
 
       <section className="card" aria-label={t('simulation.named_runs_title')} data-testid="named-runs">
-        <h3 className="section-title">{t('simulation.named_runs_title')}</h3>
+        <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_runs_title')}</h3>
         {runs.isLoading && <ApiState.Loading />}
         {runs.isError && <ApiState.ErrorState />}
         {runs.data && runs.data.runs.length === 0 && <p className="form-hint">{t('simulation.named_runs_empty')}</p>}
@@ -442,7 +443,7 @@ export function NamedSharedQueueSimulation({ analysisId, modeSwitch }: Props) {
       {runDetail.isError && <RequestError error={namedApiError(runDetail.error)} />}
       {detail && provenance && (
         <section className="card" data-testid="named-run-evidence" aria-label={t('simulation.named_evidence_title', { id: detail.evidence.id })}>
-          <h3 className="section-title">{t('simulation.named_evidence_title', { id: detail.evidence.id })}</h3>
+          <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_evidence_title', { id: detail.evidence.id })}</h3>
           {!detail.setup_matches_current && (
             <p role="status" className="alert alert-warn">{t('simulation.named_setup_earlier_notice')}</p>
           )}
@@ -479,7 +480,7 @@ export function NamedSharedQueueSimulation({ analysisId, modeSwitch }: Props) {
 
       {selectedReplication !== null && detail && provenance && (
         <section data-testid="named-selected-replication" aria-label={t('simulation.named_selected_title', { index: selectedReplication })}>
-          <h3 className="section-title">{t('simulation.named_selected_title', { index: selectedReplication })}</h3>
+          <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_selected_title', { index: selectedReplication })}</h3>
           {replication.isFetching && <p role="status" data-testid="named-regenerating">{t('simulation.named_regenerating', { index: selectedReplication })}</p>}
           {replication.isError && <RequestError error={namedApiError(replication.error)} />}
           {replication.data && !replication.isFetching && (

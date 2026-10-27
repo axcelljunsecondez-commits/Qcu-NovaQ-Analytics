@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -64,7 +65,7 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     <header className="page-header simulation-header">
       <div>
         <p className="topbar-eyebrow">{t('nav.group_simulation')}</p>
-        <div className="title-row"><h1 className="page-title">{t('nav.queue_simulation')}</h1>{page === 'checks' ? <HelpLink topic="checks" /> : <HelpLink topic="simulation" section={page === 'replay' ? 'reading' : undefined} />}<TutorialWatch id="queue-simulation" /></div>
+        <div className="title-row"><h1 lang="en" className="page-title">{headingText(t, 'nav.queue_simulation')}</h1>{page === 'checks' ? <HelpLink topic="checks" /> : <HelpLink topic="simulation" section={page === 'replay' ? 'reading' : undefined} />}<TutorialWatch id="queue-simulation" /></div>
       </div>
       <AnalysisSelector id="simulation-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions}
         onChange={(value) => navigate(simulationHref(page, new URLSearchParams({ analysis: value })))} />
@@ -145,7 +146,7 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
           {/* B4a: one shared line runs the whole day continuously; the older per-period run stays, labelled. */}
           <ContinuousSection key={`continuous-${id}`} analysisId={id} run={run} page={page} />
           <section className="page-stack older-run" aria-labelledby="older-run-title">
-            <h2 id="older-run-title" className="section-title">{t('continuous.older_title')}</h2>
+            <h2 lang="en" id="older-run-title" className="section-title">{headingText(t, 'continuous.older_title')}</h2>
             <p className="form-hint">{t('continuous.older_hint')}</p>
             {periodRun}
           </section>

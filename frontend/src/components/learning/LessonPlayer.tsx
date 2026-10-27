@@ -88,7 +88,7 @@ export function LessonPlayer({ lesson }: { lesson: QueueingLesson }) {
           onEnded={() => setPlaying(false)} onError={() => { if (source) setError(true) }}
           onTimeUpdate={() => setPosition(video.current?.currentTime ?? 0)}
           onLoadedMetadata={() => { if (video.current && Number.isFinite(video.current.duration)) setDuration(video.current.duration) }}>
-          <track kind="captions" src={queueingLessonAsset(lesson, 'vtt')} srcLang="en" label="English" />
+          {lesson.captions && <track kind="captions" src={queueingLessonAsset(lesson, 'vtt')} srcLang="en" label="English" />}
         </video>
         {!source && <button type="button" className="queueing-lesson-cover" disabled={loading}
           aria-label={t('queueing101.play_named', { title: t(`queueing101.${lesson.id}.title`) })} onClick={togglePlay}>
@@ -102,7 +102,7 @@ export function LessonPlayer({ lesson }: { lesson: QueueingLesson }) {
         <label className="queueing-seek"><span className="queueing-sr-only">{t('queueing101.position')}</span>
           <input type="range" min="0" max={duration} step="0.1" value={Math.min(position, duration)} disabled={!source}
             onChange={(event) => seek(Number(event.target.value))} />
-          <span className="queueing-video-time" aria-live="off">{videoTime(position)} / {videoTime(Math.ceil(duration))}</span>
+          <span className="queueing-video-time" aria-live="off">{videoTime(position)} / {videoTime(Math.round(duration))}</span>
         </label>
         <label><span className="queueing-sr-only">{t('queueing101.speed')}</span>
           <select defaultValue="1" onChange={(event) => { if (video.current) { video.current.playbackRate = Number(event.target.value); video.current.preservesPitch = true } }}>
@@ -122,10 +122,10 @@ export function LessonPlayer({ lesson }: { lesson: QueueingLesson }) {
     {error && <p className="alert alert-warn" role="alert">{t('queueing101.video_error')}</p>}
     <div className="queueing-lesson-downloads">
       <a href={queueingLessonAsset(lesson, 'mp4')} download={`${lesson.id}.mp4`}>{t('tutorials.download_video')}</a>
-      <a href={queueingLessonAsset(lesson, 'vtt')} download={`${lesson.id}.vtt`}>{t('tutorials.download_captions')}</a>
+      {lesson.captions && <a href={queueingLessonAsset(lesson, 'vtt')} download={`${lesson.id}.vtt`}>{t('tutorials.download_captions')}</a>}
     </div>
-    <details className="queueing-lesson-transcript"><summary>{t('queueing101.transcript')}</summary>
+    {lesson.chapters.length > 0 && <details className="queueing-lesson-transcript"><summary>{t('queueing101.transcript')}</summary>
       {lesson.chapters.map((chapter) => <p key={chapter.seconds}><strong>{videoTime(chapter.seconds)} · {chapter.title}</strong><br />{chapter.text}</p>)}
-    </details>
+    </details>}
   </div>
 }

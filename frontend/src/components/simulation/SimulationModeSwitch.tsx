@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 
 export type SimulationMode = 'legacy' | 'named'
@@ -16,7 +17,7 @@ export function SimulationModeSwitch({ mode, onChange }: Props) {
   ]
   return (
     <fieldset className="card" data-testid="simulation-mode-switch" style={{ marginBottom: '12px' }}>
-      <legend className="section-title">{t('simulation.named_mode_label')}</legend>
+      <legend lang="en" className="section-title">{headingText(t, 'simulation.named_mode_label')}</legend>
       <div className="form-row">
         {options.map((option) => (
           <label key={option.id} className="form-field" style={{ flexDirection: 'row', alignItems: 'center', gap: '6px' }}>

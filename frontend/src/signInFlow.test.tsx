@@ -92,25 +92,24 @@ beforeEach(() => {
 describe('public Home (spec §7.1)', () => {
   it('keeps Start and Sign in destinations and exposes both pictures through the approved collapsed queue guide', async () => {
     renderAt('/')
-    expect(await screen.findByRole('heading', { level: 1, name: /See how long your customers wait/ })).toBeInTheDocument()
-    const starts = screen.getAllByRole('link', { name: 'Start an analysis' })
+    expect(await screen.findByRole('heading', { level: 1, name: /Smarter Staffing,.*Shorter Queues\./ })).toBeInTheDocument()
+    const starts = screen.getAllByRole('link', { name: "Start an Analysis" })
     expect(starts).toHaveLength(1)
     expect(starts[0]).toHaveAttribute('href', '/login?next=%2Fanalyses%2Fnew')
-    expect(within(screen.getByRole('banner')).queryByRole('link', { name: 'Start an analysis' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('banner')).queryByRole('link', { name: "Start an Analysis" })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
-    // The owner's 2026-10-27 layout keeps queue illustrations in a collapsed, looping guide.
+    // The revised layout reveals both illustrations in one full-width comparison.
     const user = userEvent.setup()
     const queueGuide = screen.getByRole('button', { name: /^Queue types/ })
     expect(queueGuide).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('img', { name: /three separate lines/ })).not.toBeInTheDocument()
     await user.click(queueGuide)
     expect(screen.getByRole('img', { name: /three separate lines/ })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Next: Queue types' }))
     expect(screen.getByRole('img', { name: /one shared line/ })).toBeInTheDocument()
     expect(screen.getByLabelText('Language')).toBeInTheDocument()
     // U10 F13: the hero's second action and its note (spec §7.1).
-    const hero = screen.getByRole('region', { name: /See how long your customers wait/ })
-    expect(within(hero).getByRole('link', { name: 'Try the quick calculator' })).toHaveAttribute('href', '/calculator')
+    const hero = screen.getByRole('region', { name: /Smarter Staffing,.*Shorter Queues\./ })
+    expect(within(hero).getByRole('link', { name: "Try Quick Calculator" })).toHaveAttribute('href', '/calculator')
     expect(within(hero).getByText('The calculator works without an account.')).toBeInTheDocument()
   })
 
@@ -119,14 +118,14 @@ describe('public Home (spec §7.1)', () => {
     renderAt('/')
     expect(await screen.findByRole('link', { name: 'Go to My analyses' })).toHaveAttribute('href', '/analyses')
     expect(screen.queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Start an analysis' })).toHaveAttribute('href', '/analyses/new')
+    expect(screen.getByRole('link', { name: "Start an Analysis" })).toHaveAttribute('href', '/analyses/new')
   })
 
   it('switches the page language from the dropdown', async () => {
     renderAt('/')
     const user = userEvent.setup()
     await user.selectOptions(await screen.findByLabelText('Language'), 'tl')
-    expect(await screen.findByRole('link', { name: 'Magsimula ng pagsusuri' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: "Magsimula ng Analysis" })).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Wika'), 'en')
   })
 })
@@ -135,7 +134,7 @@ describe('sign-in intent (spec §7.2)', () => {
   it('Start → sign in with a password → New analysis', async () => {
     const router = renderAt('/')
     const user = userEvent.setup()
-    await user.click(await screen.findByRole('link', { name: 'Start an analysis' }))
+    await user.click(await screen.findByRole('link', { name: "Start an Analysis" }))
     await waitFor(() => expect(where(router)).toBe('/login?next=%2Fanalyses%2Fnew'))
     await signInWithPassword()
     await waitFor(() => expect(where(router)).toBe('/analyses/new'))

@@ -60,9 +60,9 @@ beforeEach(() => {
 describe('Data and setup steps (spec §7.6)', () => {
   it('shows the numbered steps in order with Advanced settings closed once the structure is known', async () => {
     const { container } = renderPage()
-    expect(await screen.findByRole('heading', { level: 1, name: 'Data and setup' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: "Data and Setup" })).toBeInTheDocument()
     const titles = Array.from(container.querySelectorAll('.setup-step-title')).map((node) => node.textContent)
-    expect(titles).toEqual(['Get the template', 'Add your data', 'Review what NovaQ read', 'Advanced settings'])
+    expect(titles).toEqual(["Get the Template", 'Add your data', 'Review what NovaQ read', 'Advanced settings'])
     expect(container.querySelector('details.setup-advanced')).not.toHaveAttribute('open')
     expect(screen.getByRole('group', { name: 'This file is for:' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /Use for planning/ })).not.toBeChecked()

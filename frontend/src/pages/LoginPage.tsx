@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -60,8 +61,8 @@ export function LoginPage() {
         </div>
 
         <div className="login-hero">
-          <h1 id="login-hero-title">{t('login.hero_title')}<br /><span>{t('login.hero_accent')}</span></h1>
-          <h2>{t('login.hero_subtitle')}</h2>
+          <h1 lang="en" id="login-hero-title">{headingText(t, 'login.hero_title')}<br /><span>{headingText(t, 'login.hero_accent')}</span></h1>
+          <h2 lang="en">{headingText(t, 'login.hero_subtitle')}</h2>
           <p>{t('login.hero_desc')}</p>
           <ul className="login-checks">
             {['current', 'optimize', 'simulate', 'decision'].map((benefit) => (
@@ -90,7 +91,7 @@ export function LoginPage() {
             <div className="login-mobile-logo">Nova<b>Q</b></div>
             <LanguageSelect />
           </div>
-          <h2>{t('login.title')}</h2>
+          <h2 lang="en">{headingText(t, 'login.title')}</h2>
           <p className="sub">{t('login.subtitle')}</p>
 
           {/* Like password sign-in, wait until the signed-in user is known before leaving this page. */}

@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -84,7 +85,7 @@ export function NewAnalysisPage() {
 
   return (
     <div>
-      <h1 className="page-title">{t('analyses.new')}</h1>
+      <h1 lang="en" className="page-title">{headingText(t, 'analyses.new')}</h1>
       <p className="page-caption">{t('analyses.details_help')}</p>
       <form className="card" aria-label={t('analyses.new')} onSubmit={submit}>
         <div className="form-field"><label htmlFor="analysis-name">{t('analyses.name')}</label><input id="analysis-name" required value={name} onChange={(e) => setName(e.target.value)} /></div>
@@ -104,7 +105,7 @@ export function NewAnalysisPage() {
                     checked={choice === structure.value}
                     onChange={() => setChoice(structure.value)}
                   />
-                  <strong>{structureTitle(structure.value)}</strong>
+                  <strong lang="en">{headingText(t, structure.value === 'shared_queue' ? 'home.structure_shared_title' : 'home.structure_separate_title')}</strong>
                 </span>
                 <span>{t(`home.structure_${structure.variant}_desc`)}</span>
                 <span className="home-note">{t(`home.structure_${structure.variant}_example`)}</span>

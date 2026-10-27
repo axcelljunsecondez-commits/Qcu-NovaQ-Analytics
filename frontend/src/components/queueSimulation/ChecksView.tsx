@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import simulationDefaults from '../../api/simulation-defaults.json'
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -43,7 +44,7 @@ function CheckLine({ name, required, status, children }: { name: string; require
   return (
     <details className="card check-line">
       <summary>
-        <strong>{name}</strong>
+        <strong lang="en">{name}</strong>
         <span className="badge badge-neutral">{t(required ? 'simulation.check_required' : 'simulation.check_optional')}</span>
         <span className={`badge ${badge}`}>{t(`simulation.check_status_${status}`)}</span>
         <span className="form-hint">{t('simulation.check_details')}</span>
@@ -163,7 +164,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   return (
     <div className="page-stack">
       <section className="card" aria-labelledby="decision-title">
-        <h2 id="decision-title" className="section-title">{t('decision.plain.heading')}</h2>
+        <h2 lang="en" id="decision-title" className="section-title">{headingText(t, 'decision.plain.heading')}</h2>
         <p className="form-hint">{t('simulation.sep_selected_plan')}: {scenario.name}</p>
         {decision ? (
           <div>
@@ -181,9 +182,9 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
             <p>{t('decision.plain.selected_scope_details')}</p>
             {decision.headline && <p className="decision-headline">{decision.headline}</p>}
             {decision.recommendation && <p>{decision.recommendation}</p>}
-            <h3 className="section-title">{t('simulation.sep_decision_rationale')}</h3>
+            <h3 lang="en" className="section-title">{headingText(t, 'simulation.sep_decision_rationale')}</h3>
             <ul>{decision.rationale.map((line, index) => <li key={index}>{line}</li>)}</ul>
-            <h3 className="section-title">{t('simulation.sep_decision_evidence')}</h3>
+            <h3 lang="en" className="section-title">{headingText(t, 'simulation.sep_decision_evidence')}</h3>
             <div className="table-scroll" role="region" aria-label={t('simulation.sep_decision_evidence')} tabIndex={0}>
               <table><tbody>
                 <tr><th scope="row">{t('simulation.sep_lane')} Δ</th><td>{decision.facts?.lane_delta === null || decision.facts?.lane_delta === undefined ? '—' : String(decision.facts.lane_delta)}</td></tr>
@@ -192,7 +193,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
               </tbody></table>
             </div>
             {decision.failed_periods.length > 0 && (
-              <div><h3 className="section-title">{t('simulation.sep_decision_periods')}</h3><ul>{decision.failed_periods.map((time) => <li key={time}>{time}</li>)}</ul></div>
+              <div><h3 lang="en" className="section-title">{headingText(t, 'simulation.sep_decision_periods')}</h3><ul>{decision.failed_periods.map((time) => <li key={time}>{time}</li>)}</ul></div>
             )}
             </details>
             <div className="button-row">
@@ -208,7 +209,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </section>
 
-      <CheckLine name={t('simulation.check_variations')} required status={mcResult ? 'done' : 'not_run'}>
+      <CheckLine name={headingText(t, 'simulation.check_variations')} required status={mcResult ? 'done' : 'not_run'}>
         <p className="form-hint">{t('simulation.sep_mc_measured')} {t('simulation.variations_label')}</p>
         {thresholdBelowTarget && <div role="status" className="alert alert-warn">{t('simulation.sep_mc_threshold_below_target')}</div>}
         <McFields settings={settings} planTarget={planTarget} idPrefix="sel-mc" />
@@ -225,7 +226,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
         )}
       </CheckLine>
 
-      <CheckLine name={t('simulation.check_results')} required status={validationStatus}>
+      <CheckLine name={headingText(t, 'simulation.check_results')} required status={validationStatus}>
         <button type="button" className="btn-secondary" disabled={running || !hasDes || mcResult === null} onClick={() => { setError(null); validationRun.mutate() }}>{t('simulation.sep_run_validation')}</button>
         {(!hasDes || mcResult === null) && <p className="form-hint">{t('simulation.sep_need_validation_evidence')}</p>}
         {validationResult && (
@@ -266,7 +267,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
         )}
       </CheckLine>
 
-      <CheckLine name={t('simulation.sep_decision_title')} required status={decision ? 'done' : 'not_run'}>
+      <CheckLine name={headingText(t, 'simulation.sep_decision_title')} required status={decision ? 'done' : 'not_run'}>
         <button type="button" className="btn-secondary" disabled={running || validationResult === null} onClick={() => { setError(null); decisionRun.mutate() }}>{t('simulation.sep_run_decision')}</button>
         {validationResult === null && <p className="form-hint">{t('simulation.sep_need_validation')}</p>}
       </CheckLine>
@@ -346,7 +347,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   return (
     <div className="page-stack">
       <section className="card" aria-labelledby="legacy-decision-title">
-        <h2 id="legacy-decision-title" className="section-title">{t('decision.plain.heading')}</h2>
+        <h2 lang="en" id="legacy-decision-title" className="section-title">{headingText(t, 'decision.plain.heading')}</h2>
         {decision ? (
           <div className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`} role="status">
             <PlainAnswer plain={plainDecision({ status: decision.status, separate: false, failedPeriods: decision.facts?.failed_periods, failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence, inadequatePeriods: decision.facts?.insufficient_periods, todayOverloaded: decision.facts?.today_overloaded_periods })} />
@@ -363,7 +364,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
         <button type="button" className="btn-primary" onClick={() => void checkPlan()} disabled={running}>{running ? t('common.loading') : t('simulation.check_the_plan')}</button>
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </section>
-      <CheckLine name={t('simulation.check_results')} required={!fullDay} status={validationRows.length === 0 ? 'not_run' : passed ? 'pass' : 'fail'}>
+      <CheckLine name={headingText(t, 'simulation.check_results')} required={!fullDay} status={validationRows.length === 0 ? 'not_run' : passed ? 'pass' : 'fail'}>
         <p className="form-hint">{t('simulation.validation_saved_scenario')}</p>
         <div className="form-row">
           <div className="form-field"><label htmlFor="validation-hours">{t('simulation.validate_des_hours')}</label><input id="validation-hours" type="number" value={validationHours} onChange={(e) => setValidationHours(e.target.value)} /></div>
@@ -388,7 +389,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
           </>
         )}
       </CheckLine>
-      <CheckLine name={t('simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}>
+      <CheckLine name={headingText(t, 'simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}>
         <p className="form-hint">{t('simulation.variations_label')}</p>
         <McFields settings={settings} planTarget={null} idPrefix="mc" />
         <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
@@ -447,13 +448,13 @@ function CurrentChecks({ context }: { context: SimulationContext }) {
     <div className="page-stack">
       <p className="alert alert-info" role="status">{t('simulation.current_checks_note')}</p>
       {error && <div role="alert" className="alert alert-error">{error}</div>}
-      <CheckLine name={t('simulation.check_variations')} required={false} status={mcRows.length > 0 ? 'done' : 'not_run'}>
+      <CheckLine name={headingText(t, 'simulation.check_variations')} required={false} status={mcRows.length > 0 ? 'done' : 'not_run'}>
         <p className="form-hint">{t('simulation.variations_label')}</p>
         <McFields settings={settings} planTarget={null} idPrefix="mc" />
         <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
         {mcRows.length > 0 && <McTable rows={mcRows} />}
       </CheckLine>
-      <CheckLine name={t('simulation.check_results')} required={false} status={status}>
+      <CheckLine name={headingText(t, 'simulation.check_results')} required={false} status={status}>
         {!context.separate ? <p className="form-hint">{t('simulation.current_validation_separate_only')}</p> : validationRows.length > 0 ? (
           <>
             {verdict?.status === 'pass' && <div role="status" className="alert alert-ok">{t('simulation.passed')}</div>}

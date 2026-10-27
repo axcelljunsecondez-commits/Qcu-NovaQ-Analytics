@@ -64,8 +64,8 @@ describe('Help center (plan U8)', () => {
     renderHelp('/help')
     const guides = await screen.findByRole('region', { name: 'Guides' })
     expect(within(guides).getAllByRole('link').map((link) => link.textContent)).toEqual([
-      'Starting an analysis', 'Adding your data', 'Reading results', 'Comparing plans', 'Queue simulation',
-      'Checks and decision', 'Downloads', 'Problems'])
+      "Starting an Analysis", "Adding Your Data", "Reading Results", "Comparing Plans", "Queue Simulation",
+      'Checks and Decision', 'Downloads', 'Problems'])
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     expect(screen.queryByTestId('app-layout')).not.toBeInTheDocument()
   })
@@ -81,25 +81,25 @@ describe('Help center (plan U8)', () => {
   it('finds sections by every word of the search and links to them', async () => {
     const user = userEvent.setup()
     renderHelp('/help')
-    await user.type(await screen.findByLabelText('Find help'), 'closing time')
+    await user.type(await screen.findByLabelText("Find Help"), 'closing time')
     const results = screen.getByRole('list', { name: 'Search results' })
-    expect(within(results).getByRole('link', { name: 'Queue simulation: Closing time' })).toHaveAttribute('href', '/help/simulation#closing')
-    await user.clear(screen.getByLabelText('Find help'))
-    await user.type(screen.getByLabelText('Find help'), 'review only')
+    expect(within(results).getByRole('link', { name: 'Queue Simulation: Closing time' })).toHaveAttribute('href', '/help/simulation#closing')
+    await user.clear(screen.getByLabelText("Find Help"))
+    await user.type(screen.getByLabelText("Find Help"), 'review only')
     expect(within(screen.getByRole('list', { name: 'Search results' })).getByRole('link', {
-      name: 'Adding your data: Planning file or review-only file' })).toHaveAttribute('href', '/help/data#purpose')
-    await user.clear(screen.getByLabelText('Find help'))
-    await user.type(screen.getByLabelText('Find help'), 'closing zebra')
+      name: 'Adding Your Data: Planning file or review-only file' })).toHaveAttribute('href', '/help/data#purpose')
+    await user.clear(screen.getByLabelText("Find Help"))
+    await user.type(screen.getByLabelText("Find Help"), 'closing zebra')
     expect(screen.getByRole('status')).toHaveTextContent('No guide mentions all of these words.')
-    await user.clear(screen.getByLabelText('Find help'))
-    await user.type(screen.getByLabelText('Find help'), 'exponential')  // in a section's text, not its title
+    await user.clear(screen.getByLabelText("Find Help"))
+    await user.type(screen.getByLabelText("Find Help"), 'exponential')  // in a section's text, not its title
     expect(within(screen.getByRole('list', { name: 'Search results' })).getAllByRole('link').map((link) => link.textContent))
-      .toEqual(['Queue simulation: Service times'])
+      .toEqual(['Queue Simulation: Service times'])
   })
 
   it('opens a guide with what to do, why, the next step and its sections, at the linked section', async () => {
     renderHelp('/help/simulation#closing')
-    expect(await screen.findByRole('heading', { level: 1, name: 'Queue simulation' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: "Queue Simulation" })).toBeInTheDocument()
     expect(screen.getByText('What to do')).toBeInTheDocument()
     expect(screen.getByText('Open Queue simulation, choose Current or Suggested plan, and run it.')).toBeInTheDocument()
     expect(screen.getByText('Next step')).toBeInTheDocument()
@@ -119,7 +119,7 @@ describe('Help center (plan U8)', () => {
     const picture = await screen.findByRole('img', { name: en['help.guide.checks.figure_alt'] })
     expect(picture).toHaveAttribute('src', '/help-images/en/checks.webp')
     expect(picture).toHaveAttribute('width', '1080')
-    expect(picture).toHaveAttribute('height', '572')
+    expect(picture).toHaveAttribute('height', '357')
     const figure = picture.closest('figure')!
     expect(within(figure).getByText('Sample screen with made-up data. The numbers match the list below.')).toBeInTheDocument()
     expect(within(figure).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
@@ -133,7 +133,8 @@ describe('Help center (plan U8)', () => {
     renderHelp('/help/simulation', 'tl')
     const picture = await screen.findByRole('img', { name: tl['help.guide.simulation.figure_alt'] })
     expect(picture).toHaveAttribute('src', '/help-images/tl/simulation.webp')
-    expect(picture).toHaveAttribute('height', '830')
+    expect(picture).toHaveAttribute('height', '684')
+    expect(screen.getByRole('heading', { level: 1, name: 'Queue Simulation' })).toHaveAttribute('lang', 'en')
     const items = within(picture.closest('figure')!).getAllByRole('listitem')
     expect(items).toHaveLength(4)
     expect(items[3]).toHaveTextContent(tl['help.guide.simulation.figure_mark_4'])

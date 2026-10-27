@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { headingText } from '../../lib/headingText'
 import { makePeriods, MAX_PERIODS, PERIOD_LENGTHS, type Period } from '../../lib/periods'
 
 interface MakePeriodsHelperProps {
@@ -27,7 +28,7 @@ export function MakePeriodsHelper({ hasSegments, onMake }: MakePeriodsHelperProp
 
   return (
     <fieldset className="form-field setup-make-periods">
-      <legend>{t('setup.make_periods_title')}</legend>
+      <legend lang="en">{headingText(t, 'setup.make_periods_title')}</legend>
       <p className="page-caption">{t('setup.make_periods_help')}</p>
       <div className="form-row">
         <div className="form-field"><label htmlFor="make-periods-start">{t('setup.make_periods_start')}</label><input id="make-periods-start" type="time" step="900" value={start} onChange={(e) => setStart(e.target.value)} /></div>

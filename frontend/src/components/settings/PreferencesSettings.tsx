@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -81,7 +82,7 @@ export function PreferencesSettings() {
 
   return (
     <div>
-      <h1 className="page-title">{t('settings.section_preferences')}</h1>
+      <h1 lang="en" className="page-title">{headingText(t, 'settings.section_preferences')}</h1>
       {saved.isLoading && <ApiState.Loading />}
       {saved.isError && <ApiState.ErrorState error={saved.error} />}
       {saved.data && (

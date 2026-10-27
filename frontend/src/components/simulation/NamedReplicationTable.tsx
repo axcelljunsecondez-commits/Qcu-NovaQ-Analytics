@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { NamedReplicationRow, NamedRunSummary, OutcomeCount } from '../../api/sharedNamed'
 import { fmtDecimal } from '../../lib/format'
@@ -80,7 +81,7 @@ export function NamedReplicationTable({ rows, summary, selectedIndex, onSelect }
       </div>
 
       <section className="card" data-testid="named-aggregate" aria-label={t('simulation.named_aggregate_title')}>
-        <h3 className="section-title">{t('simulation.named_aggregate_title')}</h3>
+        <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_aggregate_title')}</h3>
         <p className="form-hint">{t('simulation.named_aggregate_help')}</p>
         <dl>
           <dt>{t('simulation.named_agg_replications')}</dt>

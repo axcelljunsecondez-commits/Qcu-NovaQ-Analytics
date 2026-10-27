@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -110,7 +111,7 @@ export function QuickCalculatorPage() {
     <div className="page-stack quick-calculator">
       <header className="page-header">
         <p className="topbar-eyebrow">{t('calculator.eyebrow')}</p>
-        <h1 className="page-title">{t('calculator.title')}</h1>
+        <h1 lang="en" className="page-title">{headingText(t, 'calculator.title')}</h1>
         <p className="page-caption">{t('calculator.note')} <Link to={startPath}>{t('calculator.start')}</Link></p>
       </header>
 
@@ -164,7 +165,7 @@ function Results({ calculation, stableInteraction }: { calculation: Calculation;
   if (situation === 'leaving') cards.push({ key: 'leaving', value: fmtPctDecimal(s.leaving) })
   return (
     <section className="card" aria-label={t('calculator.results')}>
-      <h2 className="card-title">{t('calculator.results')}</h2>
+      <h2 lang="en" className="card-title">{headingText(t, 'calculator.results')}</h2>
       <p className="form-hint">{t('calculator.model_used', { model: t(`calculator.model.${main.model}`) })}</p>
       <div className="card-grid">
         {cards.map((card) => {
@@ -177,7 +178,7 @@ function Results({ calculation, stableInteraction }: { calculation: Calculation;
           )
         })}
       </div>
-      <h3 className="card-title">{t('calculator.what_this_means')}</h3>
+      <h3 lang="en" className="card-title">{headingText(t, 'calculator.what_this_means')}</h3>
       <ul className="calculator-meaning" data-testid="calculator-meaning">
         <li>{meaning(t, situation, main)}</li>
         {calculation.fewer && <li>{meaning(t, situation, calculation.fewer)}</li>}

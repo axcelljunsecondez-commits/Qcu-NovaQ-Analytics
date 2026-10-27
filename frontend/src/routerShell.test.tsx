@@ -100,6 +100,6 @@ describe('unknown paths', () => {
     meMock.mockResolvedValue({ user: null })
     const router = renderAt('/no-such-page')
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-    expect(await screen.findByRole('heading', { level: 1, name: /See how long your customers wait/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: /Smarter Staffing,.*Shorter Queues\./ })).toBeInTheDocument()
   })
 })

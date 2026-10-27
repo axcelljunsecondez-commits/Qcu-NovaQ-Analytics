@@ -54,13 +54,14 @@ describe('Queueing lessons (media/native dialog are explicitly stubbed in JSDOM)
     expect(document.querySelector('video')).not.toHaveAttribute('autoplay')
     expect(fetchClip).not.toHaveBeenCalled()
     expect(play).not.toHaveBeenCalled()
-    expect(screen.getByText(en['queueing101.language'])).toBeInTheDocument()
+    expect(screen.getByText(en['queueing101.combined.language'])).toBeInTheDocument()
+    expect(document.querySelectorAll('video')).toHaveLength(1)
+    expect(document.querySelector('.queueing-lesson-choices')).toBeNull()
   })
 
-  it.each(QUEUEING_LESSONS)('loads the full $id clip only after Play and preserves download/caption mapping', async (lesson) => {
+  it.each(QUEUEING_LESSONS)('loads the full $id clip only after Play and preserves its exact download', async (lesson) => {
     const user = userEvent.setup()
     renderWithProviders(<QueueingLessons />)
-    await user.click(within(screen.getByRole('group', { name: en['queueing101.choose'] })).getByRole('button', { name: new RegExp(en[`queueing101.${lesson.id}.title`]) }))
     await user.click(screen.getByRole('button', { name: 'Play' }))
     const node = document.querySelector('video')!
     await waitFor(() => expect(node).toHaveAttribute('src', expect.stringMatching(/^blob:/)))
@@ -69,41 +70,41 @@ describe('Queueing lessons (media/native dialog are explicitly stubbed in JSDOM)
     fireEvent.canPlay(node);fireEvent.canPlay(node)
     expect(play).toHaveBeenCalledOnce()
     expect(screen.getByRole('link', { name: 'Download video' })).toHaveAttribute('href', queueingLessonAsset(lesson, 'mp4'))
-    expect(screen.getByRole('link', { name: 'Download captions' })).toHaveAttribute('href', queueingLessonAsset(lesson, 'vtt'))
+    expect(screen.queryByRole('link', { name: 'Download captions' })).not.toBeInTheDocument()
+    expect(node.querySelector('track')).toBeNull()
+    expect(screen.queryByText(en['queueing101.transcript'])).not.toBeInTheDocument()
     expect(node).not.toHaveAttribute('controls')
   })
 
-  it('aborts a pending download and ignores late body completion when switching lessons', async () => {
+  it('aborts a pending download and ignores late body completion when search hides the lesson', async () => {
     let finish!: (value: Blob) => void
     const body = new Promise<Blob>((resolve) => { finish = resolve })
     const clipResponse = response(QUEUEING_LESSONS[0].bytes)
     vi.spyOn(clipResponse, 'blob').mockReturnValue(body)
     fetchClip.mockResolvedValue(clipResponse)
     const user = userEvent.setup()
-    renderWithProviders(<QueueingLessons />)
+    const view = renderWithProviders(<QueueingLessons />)
     await user.click(screen.getByRole('button', { name: 'Play' }))
     await waitFor(() => expect(clipResponse.blob).toHaveBeenCalled())
     const signal = fetchClip.mock.calls[0][1]!.signal!
-    await user.click(screen.getByRole('button', { name: /What your team should record/ }))
+    view.rerender(<QueueingLessons query="no-such-lesson" />)
     expect(signal.aborted).toBe(true)
     await act(async () => finish(await response(QUEUEING_LESSONS[0].bytes).blob()))
     expect(createUrl).not.toHaveBeenCalled()
-    expect(document.querySelector('video')).not.toHaveAttribute('src')
-    expect(document.querySelector('video')).toHaveAttribute('poster', queueingLessonAsset(QUEUEING_LESSONS[1], 'webp'))
+    expect(document.querySelector('video')).toBeNull()
     expect(play).not.toHaveBeenCalled()
   })
 
-  it('pauses, aborts and revokes the loaded source on replacement, including StrictMode', async () => {
+  it('pauses, aborts and revokes the loaded source on unmount, including StrictMode', async () => {
     const user = userEvent.setup()
     const view = renderWithProviders(<StrictMode><QueueingLessons /></StrictMode>)
     await user.click(screen.getByRole('button', { name: 'Play' }))
     await waitFor(() => expect(document.querySelector('video')).toHaveAttribute('src', expect.stringMatching(/^blob:/)))
     const signal = fetchClip.mock.calls[0][1]!.signal!
-    await user.click(screen.getByRole('button', { name: /What your team should record/ }))
+    view.unmount()
     expect(signal.aborted).toBe(true)
     expect(pause).toHaveBeenCalled()
     expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:https://novaq.test/queueing-lesson')
-    view.unmount()
   })
 
   it.each([[7, 'video/mp4'], [QUEUEING_LESSONS[0].bytes, 'text/html']])('rejects a mismatched body (%s, %s)', async (bytes, type) => {
@@ -132,16 +133,16 @@ describe('Queueing lessons (media/native dialog are explicitly stubbed in JSDOM)
 
   it('filters by all search terms, including the spelled-out parameter names', () => {
     renderWithProviders(<QueueingLessons query="theta variance" />)
-    expect(matchingQueueingLessons('theta variance', testI18n().t).map((item) => item.id)).toEqual(['part2'])
-    expect(within(screen.getByRole('group', { name: en['queueing101.choose'] })).getByRole('button', { name: /What your team should record/ })).toBeInTheDocument()
+    expect(matchingQueueingLessons('theta variance', testI18n().t).map((item) => item.id)).toEqual(['combined'])
+    expect(screen.getByRole('heading', { name: en['queueing101.combined.title'] })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Follow Ben/ })).not.toBeInTheDocument()
   })
 
-  it('has symmetric localized keys and unchanged approved full-media hashes', () => {
+  it('has symmetric localized keys and the exact owner-supplied combined media hash', () => {
     const keys = Object.keys(en).filter((key) => key.startsWith('queueing101.')).sort()
     expect(keys).toEqual(Object.keys(tl).filter((key) => key.startsWith('queueing101.')).sort())
     for (const key of keys) expect((en[key as keyof typeof en].match(/{{[^}]+}}/g) ?? []).sort()).toEqual((tl[key as keyof typeof tl].match(/{{[^}]+}}/g) ?? []).sort())
-    const pinned = ['14076de82423998b05fd004368f8ff222d11cf8e896a7e6791c35b61fb7a7ade', '9dc12e479c57155e82fbcb10b507b1cc5e98d31ecc076f0608abd089186b4804']
+    const pinned = ['97dd4cf89fa58093c63d88955dc1feb555f9a4b936eaf7bd6fd1b67e7b6bc597']
     QUEUEING_LESSONS.forEach((lesson, index) => {
       const bytes = readFileSync(join(__dirname, '../../../public/queueing101', `${lesson.id}.mp4`))
       expect(bytes.length).toBe(lesson.bytes)

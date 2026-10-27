@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { NamedPlayback, NamedPlaybackEvent, PlaybackPeriod } from '../../api/sharedNamed'
@@ -96,7 +97,7 @@ export function NamedSharedQueuePlayback({ playback, horizonStartMinute }: Props
 
   return (
     <section className="card" data-testid="named-playback" aria-label={t('simulation.named_playback_title')}>
-      <h3 className="section-title">{t('simulation.named_playback_title')}</h3>
+      <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_playback_title')}</h3>
       <p className="form-hint">
         <span className={`badge ${playback.validation.valid ? 'badge-ok' : 'badge-bad'}`} data-testid="named-playback-validation">
           {t(playback.validation.valid ? 'simulation.named_playback_valid' : 'simulation.named_playback_invalid')}
@@ -151,7 +152,7 @@ export function NamedSharedQueuePlayback({ playback, horizonStartMinute }: Props
       )}
 
       <div data-testid="named-lanes" aria-label={t('simulation.named_lanes_title')}>
-        <h4>{t('simulation.named_lanes_title')}</h4>
+        <h4 lang="en">{headingText(t, 'simulation.named_lanes_title')}</h4>
         {lanes.map((lane) => (
           <div key={lane.id} data-testid="named-lane" style={{ display: 'grid', gridTemplateColumns: '9rem 12rem 1fr', gap: '8px', alignItems: 'center' }}>
             <strong>{lane.id}</strong>
@@ -228,7 +229,7 @@ export function NamedSharedQueuePlayback({ playback, horizonStartMinute }: Props
       </div>
 
       <section className="card" data-testid="named-not-represented" aria-label={t('simulation.named_not_represented_title')}>
-        <h4>{t('simulation.named_not_represented_title')}</h4>
+        <h4 lang="en">{headingText(t, 'simulation.named_not_represented_title')}</h4>
         <p className="form-hint">{playback.not_represented_by_events.definition}</p>
         <p>{t('simulation.named_unfulfilled_breaks', { count: playback.not_represented_by_events.unfulfilled_breaks.length })}</p>
         <ul>

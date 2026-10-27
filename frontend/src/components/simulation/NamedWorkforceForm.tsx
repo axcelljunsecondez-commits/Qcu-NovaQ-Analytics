@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DatasetOut } from '../../api/types'
@@ -48,7 +49,7 @@ function Field({ id, label, value, onChange, placeholder, disabled, hint }: {
 function Section({ title, children, hint }: { title: string; children: ReactNode; hint?: string }) {
   return (
     <fieldset className="card" style={{ marginBottom: '12px' }}>
-      <legend className="section-title">{title}</legend>
+      <legend lang="en" className="section-title">{title}</legend>
       {hint && <p className="form-hint">{hint}</p>}
       {children}
     </fieldset>
@@ -67,7 +68,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
 
   return (
     <div data-testid="named-workforce-form">
-      <Section title={t('simulation.named_dataset_title')} hint={t('simulation.named_dataset_help')}>
+      <Section title={headingText(t, 'simulation.named_dataset_title')} hint={t('simulation.named_dataset_help')}>
         <div className="form-field">
           <label htmlFor="named-dataset">{t('simulation.named_dataset_label')}</label>
           <select id="named-dataset" value={form.dataset_id} disabled={disabled}
@@ -83,7 +84,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         {processed.length === 0 && <p role="status" className="form-hint">{t('simulation.named_dataset_empty')}</p>}
       </Section>
 
-      <Section title={t('simulation.named_horizon_title')} hint={t('simulation.named_horizon_help')}>
+      <Section title={headingText(t, 'simulation.named_horizon_title')} hint={t('simulation.named_horizon_help')}>
         <div className="form-row">
           <Field id="named-horizon-start" label={t('simulation.named_opening')} value={form.horizon.start} placeholder={clock}
             disabled={disabled} onChange={(value) => set((draft) => { draft.horizon.start = value })} />
@@ -92,7 +93,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         </div>
       </Section>
 
-      <Section title={t('simulation.named_required_staffing_title')} hint={t('simulation.named_required_staffing_help')}>
+      <Section title={headingText(t, 'simulation.named_required_staffing_title')} hint={t('simulation.named_required_staffing_help')}>
         {form.required_staffing.map((segment, index) => (
           <div className="form-row" key={`segment-${index}`} data-testid="named-segment-row">
             <Field id={`named-seg-${index}-id`} label={t('simulation.named_segment_id')} value={segment.segment_id} disabled={disabled}
@@ -115,12 +116,12 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         </button>
       </Section>
 
-      <Section title={t('simulation.named_registers_title')}>
+      <Section title={headingText(t, 'simulation.named_registers_title')}>
         <Field id="named-registers" label={t('simulation.named_register_count')} value={form.register_count} disabled={disabled}
           onChange={(value) => set((draft) => { draft.register_count = value })} />
       </Section>
 
-      <Section title={t('simulation.named_shift_rules_title')}>
+      <Section title={headingText(t, 'simulation.named_shift_rules_title')}>
         <div className="form-row">
           <Field id="named-sr-earliest" label={t('simulation.named_sr_earliest_start')} value={form.shift_rules.earliest_start}
             placeholder={clock} disabled={disabled} onChange={(value) => set((draft) => { draft.shift_rules.earliest_start = value })} />
@@ -140,7 +141,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         </div>
       </Section>
 
-      <Section title={t('simulation.named_break_rules_title')} hint={t('simulation.named_break_rules_help')}>
+      <Section title={headingText(t, 'simulation.named_break_rules_title')} hint={t('simulation.named_break_rules_help')}>
         {form.break_rules.map((rule, index) => (
           <div key={`rule-${index}`} className="card" data-testid="named-break-rule" style={{ marginBottom: '8px' }}>
             <div className="form-row">
@@ -190,7 +191,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         </button>
       </Section>
 
-      <Section title={t('simulation.named_employees_title')} hint={t('simulation.named_employees_help')}>
+      <Section title={headingText(t, 'simulation.named_employees_title')} hint={t('simulation.named_employees_help')}>
         {form.employees.map((employee, index) => (
           <div key={`employee-${index}`} className="card" data-testid="named-employee" style={{ marginBottom: '8px' }}>
             <div className="form-row">
@@ -241,7 +242,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         </button>
       </Section>
 
-      <Section title={t('simulation.named_roster_title')} hint={t('simulation.named_roster_help')}>
+      <Section title={headingText(t, 'simulation.named_roster_title')} hint={t('simulation.named_roster_help')}>
         {form.roster.map((shift, index) => (
           <div key={`shift-${index}`} className="card" data-testid="named-roster-shift" style={{ marginBottom: '8px' }}>
             <div className="form-row">
@@ -285,7 +286,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         </button>
       </Section>
 
-      <Section title={t('simulation.named_closing_policy_title')}>
+      <Section title={headingText(t, 'simulation.named_closing_policy_title')}>
         <div role="radiogroup" aria-label={t('simulation.named_closing_policy_title')}>
           {contract.closing_policies.map((policy) => (
             <label key={policy} className="form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: '6px' }}>
@@ -299,7 +300,7 @@ export function NamedWorkforceForm({ form, onChange, contract, datasets, disable
         </div>
       </Section>
 
-      <Section title={t('simulation.named_employee_policy_title')} hint={t('simulation.named_employee_policy_help')}>
+      <Section title={headingText(t, 'simulation.named_employee_policy_title')} hint={t('simulation.named_employee_policy_help')}>
         <dl data-testid="named-employee-policy">
           {Object.entries(contract.employee_policy).map(([name, item]) => (
             <div key={name} style={{ marginBottom: '6px' }}>

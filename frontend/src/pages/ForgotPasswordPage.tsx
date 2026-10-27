@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -25,7 +26,7 @@ export function ForgotPasswordPage() {
   }
   return <div className="login-page"><div className="card login-card">
     <LanguageSelect />
-    <h1 className="login-title">{t('auth.forgot_title')}</h1>
+    <h1 lang="en" className="login-title">{headingText(t, 'auth.forgot_title')}</h1>
     {sent ? <div className="alert alert-ok">{t('auth.reset_sent')}</div> : <form onSubmit={submit}>
       <div className="form-field"><label htmlFor="forgot-email">{t('login.email')}</label><input id="forgot-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></div>
       {error && <div role="alert" className="alert alert-error">{error}</div>}

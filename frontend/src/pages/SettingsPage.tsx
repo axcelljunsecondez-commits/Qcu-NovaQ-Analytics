@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { NavLink, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/useAuth'
@@ -13,11 +14,11 @@ function AppearanceSettings() {
   const { t } = useTranslation()
   return (
     <div>
-      <h1 className="page-title">{t('settings.section_appearance')}</h1>
+      <h1 lang="en" className="page-title">{headingText(t, 'settings.section_appearance')}</h1>
       <div className="card settings-appearance">
-        <h2 className="card-title">{t('settings.theme')}</h2>
+        <h2 lang="en" className="card-title">{headingText(t, 'settings.theme')}</h2>
         <ThemeToggle />
-        <h2 className="card-title">{t('language.label')}</h2>
+        <h2 lang="en" className="card-title">{headingText(t, 'language.label')}</h2>
         <LanguageSelector />
         <p className="form-hint">{t('settings.saved_on_device')}</p>
       </div>

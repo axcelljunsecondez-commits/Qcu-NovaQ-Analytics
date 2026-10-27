@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -96,7 +97,7 @@ export function ResultsPage() {
   const header = (
     <header className="page-header results-header">
       <div>
-        <div className="title-row"><h1 ref={heading} tabIndex={-1} className="page-title">{t(reference ? 'results.reference_title' : 'nav.analysis_results')}</h1><HelpLink topic="results" /><TutorialWatch id="key-metrics" /></div>
+        <div className="title-row"><h1 lang="en" ref={heading} tabIndex={-1} className="page-title">{headingText(t, reference ? 'results.reference_title' : 'nav.analysis_results')}</h1><HelpLink topic="results" /><TutorialWatch id="key-metrics" /></div>
       </div>
       <AnalysisSelector id="results-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions} onChange={(value) => navigate(`/results?analysis=${value}`)} />
     </header>
@@ -141,7 +142,7 @@ export function ResultsPage() {
             period={period} line={line} onPeriod={(value) => update({ period: value })} onLine={(value) => update({ line: value })} />
         </> : <>
           <section aria-labelledby="key-results-title">
-            <h2 id="key-results-title" className="section-title">{t('results.key_results')}</h2>
+            <h2 lang="en" id="key-results-title" className="section-title">{headingText(t, 'results.key_results')}</h2>
             <KeyResults
               rows={rows}
               kpis={current.data.kpis}

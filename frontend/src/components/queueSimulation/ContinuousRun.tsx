@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -146,7 +147,7 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
   const blocking = view.reasons.filter((reason) => reason.code !== 'no_closing_policy')
   return (
     <section className="card run-bar" aria-label={t('continuous.title')}>
-      <div className="title-row"><h2 className="section-title">{t('continuous.title')} <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2><HelpLink topic="simulation" section="methods" /></div>
+      <div className="title-row"><h2 className="section-title"><span lang="en">{headingText(t, 'continuous.title')}</span> <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2><HelpLink topic="simulation" section="methods" /></div>
       <div className="run-bar-row">
         <span>{hours ? t('simulation.operating_hours', { hours }) : t('simulation.operating_hours_unknown')}</span>
         <ClosingRule analysisId={analysisId} rule={rule} />
@@ -267,7 +268,7 @@ function DayCharts({ playback, startMinute, day, days }: { playback: ContinuousP
       <p className="form-hint">{t('continuous.chart_day', { day: day + 1, total: days })}</p>
       <div className="grid g2">
         <section className="card" aria-labelledby="continuous-waiting-title">
-          <h2 id="continuous-waiting-title" className="section-title">{t('continuous.chart_waiting')}</h2>
+          <h2 lang="en" id="continuous-waiting-title" className="section-title">{headingText(t, 'continuous.chart_waiting')}</h2>
           <svg className="waiting-chart" viewBox="0 0 600 160" role="img" aria-label={t('continuous.chart_waiting_summary', { max: peak })} preserveAspectRatio="none">
             <line className="waiting-chart-close" x1={x(playback.playback.closing.closing_hours)} x2={x(playback.playback.closing.closing_hours)} y1={0} y2={160} />
             <path className="waiting-chart-line" fill="none" d={path} />
@@ -275,7 +276,7 @@ function DayCharts({ playback, startMinute, day, days }: { playback: ContinuousP
           <p className="form-hint">{t('continuous.chart_waiting_axis', { start: clockAt(startMinute, 0), end: clockAt(startMinute, end), max: peak })}</p>
         </section>
         <section className="card" aria-labelledby="continuous-period-title">
-          <h2 id="continuous-period-title" className="section-title">{t('simulation.chart_wait_by_period')}</h2>
+          <h2 lang="en" id="continuous-period-title" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2>
           <div className="hbar-chart" role="img" aria-labelledby="continuous-period-title">
             {playback.by_period.map((period) => (
               <div className="hbar-row" key={period.period_id}>
@@ -333,7 +334,7 @@ function ShownDay({ analysisId, shown }: { analysisId: number; shown: Continuous
       )}
       {playback.data && (
         <details className="card collapsible-card">
-          <summary><h2 className="section-title">{t('simulation.more_results')}</h2></summary>
+          <summary><h2 lang="en" className="section-title">{headingText(t, 'simulation.more_results')}</h2></summary>
           <div className="table-scroll" role="region" aria-label={t('continuous.period_table', { day: day + 1 })} tabIndex={0}>
             <table>
               <caption>{t('continuous.period_table', { day: day + 1 })}</caption>
@@ -400,7 +401,7 @@ function ContinuousReplay({ analysisId, shown }: { analysisId: number; shown: Co
   }
   return (
     <section className="card" aria-label={t('continuous.replay_title')}>
-      <h2 className="section-title">{t('continuous.replay_title')} <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2>
+      <h2 className="section-title"><span lang="en">{headingText(t, 'continuous.replay_title')}</span> <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2>
       <DayPicker days={shown.evidence.params.replications} day={day} onChange={(value) => { setDay(value); setTime(0); setPlaying(false) }} />
       {playback.isLoading && <p className="form-hint">{t('common.loading')}</p>}
       {playback.isError && <div role="alert" className="alert alert-error">{requestError(playback.error, t('errors.server'))}</div>}
@@ -454,7 +455,7 @@ function ContinuousChecks({ shown }: { shown: ContinuousRunOut | null }) {
   ] : []
   return (
     <section className="card" aria-label={t('continuous.checks_title')}>
-      <h2 className="section-title">{t('continuous.checks_title')}</h2>
+      <h2 lang="en" className="section-title">{headingText(t, 'continuous.checks_title')}</h2>
       <p role="status" className="alert alert-info" data-testid="continuous-decision-rule">{t('continuous.decision_rule')}</p>
       {shown ? (
         <div className="table-scroll" role="region" aria-label={t('continuous.ranges_title')} tabIndex={0}>

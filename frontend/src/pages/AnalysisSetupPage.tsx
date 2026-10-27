@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -231,7 +232,7 @@ export function AnalysisSetupPage() {
     <div className="setup-page">
       <header className="page-header">
         <p className="topbar-eyebrow">{t('setup.canonical_eyebrow')}</p>
-        <div className="title-row"><h1 className="page-title">{t('setup.data_title')}</h1><HelpLink topic="data" /></div>
+        <div className="title-row"><h1 lang="en" className="page-title">{headingText(t, 'setup.data_title')}</h1><HelpLink topic="data" /></div>
         <p className="page-caption">{t('setup.data_description')}</p>
       </header>
       {setup.queue_structure === 'unknown' && (
@@ -249,16 +250,16 @@ export function AnalysisSetupPage() {
       )}
       <ol className="setup-steps">
         <li className="setup-step">
-          <h2 className="setup-step-title">{t('setup.step_template')}</h2>
+          <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_template')}</h2>
           <p className="page-caption">{t('setup.step_template_help')}</p>
           {setup.queue_structure === 'shared_queue' || setup.queue_structure === 'separate_queues'
             ? <SetupDataTemplates queueStructure={setup.queue_structure} />
             : <p className="form-hint">{t('setup.step_template_needs_structure')}</p>}
         </li>
         <li className="setup-step">
-          <h2 className="setup-step-title">{t('setup.step_add_data')}</h2>
+          <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_add_data')}</h2>
           <div className="card">
-            <h3 className="card-title">{t('analyses.upload')}</h3>
+            <h3 lang="en" className="card-title">{headingText(t, 'analyses.upload')}</h3>
             <p className="page-caption">{t('analyses.upload_help')}</p>
             <fieldset className="form-field setup-purpose">
               <legend>{t('setup.purpose_question')}</legend><HelpLink topic="data" section="purpose" />
@@ -292,10 +293,10 @@ export function AnalysisSetupPage() {
           {savedIsShared && <ManualEntry disabled={purpose === null || upload.isPending || checking} onUpload={(selected) => { setFile(selected); void processFile(selected) }} />}
         </li>
         <li className="setup-step">
-          <h2 className="setup-step-title">{t('setup.step_review')}</h2>
+          <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_review')}</h2>
           {preview && read && (
             <section className="card" aria-label={t('analyses.upload_read_title')}>
-              <h3 className="card-title">{t('analyses.upload_read_title')}</h3>
+              <h3 lang="en" className="card-title">{headingText(t, 'analyses.upload_read_title')}</h3>
               <dl>
                 <dt>{t('analyses.upload_read_queues')}</dt>
                 <dd>{read.queue_ids.join(', ')}</dd>
@@ -310,17 +311,17 @@ export function AnalysisSetupPage() {
               </dl>
             </section>
           )}
-          {current.data && <div className="card"><h3 className="card-title">{t('analyses.why_model')}</h3><p><strong>{current.data.selected_model}</strong></p><details className="collapsible-inline"><summary>{t('filters.show_per_period', { count: current.data.explanations.length })}</summary>{current.data.explanations.map((item, index) => <details key={`${item.time}-${item.queue_id ?? ''}-${index}`}><summary>{item.time}{item.queue_id ? ` · ${item.queue_id}` : ''}: {item.selected_model}</summary><p>{item.selection_reason}</p><h4>{t('analyses.operational_facts')}</h4><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4>{t('analyses.measured')}</h4><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4>{t('analyses.assumptions')}</h4><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}</details><Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link></div>}
+          {current.data && <div className="card"><h3 lang="en" className="card-title">{headingText(t, 'analyses.why_model')}</h3><p><strong>{current.data.selected_model}</strong></p><details className="collapsible-inline"><summary>{t('filters.show_per_period', { count: current.data.explanations.length })}</summary>{current.data.explanations.map((item, index) => <details key={`${item.time}-${item.queue_id ?? ''}-${index}`}><summary>{item.time}{item.queue_id ? ` · ${item.queue_id}` : ''}: {item.selected_model}</summary><p>{item.selection_reason}</p><h4 lang="en">{headingText(t, 'analyses.operational_facts')}</h4><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4 lang="en">{headingText(t, 'analyses.measured')}</h4><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4 lang="en">{headingText(t, 'analyses.assumptions')}</h4><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}</details><Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link></div>}
           {!current.data && !(preview && read) && (
             <p className="form-hint">{t(currentId === null && (datasets.data?.datasets.length ?? 0) > 0 ? 'setup.only_review_files' : 'setup.step_review_empty')}</p>
           )}
         </li>
         <li className="setup-step">
           <details className="setup-advanced" open={setup.queue_structure === 'unknown' || advancedOpen || undefined} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
-            <summary className="setup-step-title">{t('setup.step_advanced')}</summary>
+            <summary lang="en" className="setup-step-title">{headingText(t, 'setup.step_advanced')}</summary>
             <p className="page-caption">{t('setup.step_advanced_help')}</p>
             <form className="card" onSubmit={submit}>
-              <h3 className="card-title">{t('analyses.queue_setup')}</h3>
+              <h3 lang="en" className="card-title">{headingText(t, 'analyses.queue_setup')}</h3>
               {setup.queue_structure === 'unknown' ? (
                 <div className="form-field"><label htmlFor="queue-structure">{t('analyses.queue_structure')}</label><select id="queue-structure" aria-describedby="queue-structure-help" value={setup.queue_structure} onChange={(e) => changeQueueStructure(e.target.value as QueueSetup['queue_structure'])}><option value="unknown">{t('analyses.unknown')}</option><option value="shared_queue">{t('analyses.shared')}</option><option value="single_server">{t('analyses.single')}</option><option value="separate_queues">{t('analyses.separate')}</option></select><span id="queue-structure-help" className="form-hint">{t('setup.queue_structure_help')}</span></div>
               ) : (
@@ -332,7 +333,7 @@ export function AnalysisSetupPage() {
               {setup.queue_structure === 'shared_queue' && <CounterBreakEditor breaks={setup.counter_breaks ?? []} onChange={(breaks) => set('counter_breaks', breaks)} />}
               <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
               <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>
-              {periodLayout && <div className="card"><h4 className="card-title">{t('analyses.segments')}</h4>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{separate && setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<MakePeriodsHelper hasSegments={setup.segments.length > 0} onMake={(periods) => set('segments', periods.map((period, index) => ({ id: `segment_${index + 1}`, start_time: period.start, end_time: period.end, active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null })))} /><button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
+              {periodLayout && <div className="card"><h4 lang="en" className="card-title">{headingText(t, 'analyses.segments')}</h4>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{separate && setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<MakePeriodsHelper hasSegments={setup.segments.length > 0} onMake={(periods) => set('segments', periods.map((period, index) => ({ id: `segment_${index + 1}`, start_time: period.start, end_time: period.end, active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null })))} /><button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
               <div className="form-field"><label htmlFor="capacity-mode">{t('analyses.capacity')}</label><select id="capacity-mode" value={setup.capacity_mode} onChange={(e) => { const value = e.target.value as QueueSetup['capacity_mode']; setSetup((old) => ({ ...old, capacity_mode: value, ...(value !== 'finite' ? { total_system_capacity: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="unlimited">{t('analyses.unlimited')}</option><option value="finite">{t('analyses.finite')}</option></select></div>
               {setup.capacity_mode === 'finite' && <div className="form-field"><label htmlFor="capacity-total">{t('analyses.total_capacity')}</label><input id="capacity-total" type="number" min="1" value={setup.total_system_capacity ?? ''} onChange={(e) => set('total_system_capacity', e.target.value ? Number(e.target.value) : null)} /></div>}
               <div className="form-field"><label htmlFor="abandonment-mode">{t('analyses.abandonment')}</label><select id="abandonment-mode" value={setup.abandonment_mode} onChange={(e) => { const value = e.target.value as QueueSetup['abandonment_mode']; setSetup((old) => ({ ...old, abandonment_mode: value, ...(value !== 'modeled' ? { patience_rate_per_hour: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="not_modeled">{t('analyses.not_modeled')}</option><option value="modeled">{t('analyses.modeled')}</option></select></div>
@@ -345,7 +346,7 @@ export function AnalysisSetupPage() {
         </li>
         {savedIsSeparate && (
           <li className="setup-step">
-            <h2 className="setup-step-title">{t('setup.step_download_setup')}</h2>
+            <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_download_setup')}</h2>
             <button type="button" className="btn-secondary" onClick={() => void exportWorkbook()}>{t('analyses.setup_workbook_download')}</button>
             <p className="form-hint">{t('analyses.setup_workbook_help')}</p>
           </li>

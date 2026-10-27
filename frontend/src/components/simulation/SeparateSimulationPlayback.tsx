@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SimulationTrace } from '../../api/types'
@@ -171,7 +172,7 @@ export function SeparateSimulationPlayback(
         <header className="live-floor-header">
           <div>
             <div className="live-floor-eyebrow" data-testid="replay-period">{periodLabel ?? segment.time} · {segment.selected_model ?? '—'}</div>
-            <h3 className="section-title">{t('simulation.playback_view_separate')}</h3>
+            <h3 lang="en" className="section-title">{headingText(t, 'simulation.playback_view_separate')}</h3>
             <p className="form-hint">
               {t('simulation.live_event_progress', { current: processedCount, total: trace.event_count })}
             </p>
