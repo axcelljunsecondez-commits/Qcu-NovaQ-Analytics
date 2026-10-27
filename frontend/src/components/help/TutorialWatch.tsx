@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TUTORIALS, tutorialDuration, tutorialFile, tutorialSteps, type Tutorial, type TutorialId } from '../../lib/tutorials'
@@ -92,7 +93,7 @@ export function TutorialWatch({ id, compact = false }: { id: TutorialId; compact
       }}>
       {open && <>
         <header className="tutorial-dialog-heading">
-          <div><h2 id={titleId} className="section-title">{t(`tutorials.${id}.title`)}</h2>
+          <div><h2 lang="en" id={titleId} className="section-title">{headingText(t, `tutorials.${id}.title`)}</h2>
             <p id={metaId} className="form-hint">{tutorialDuration(tutorial)} · {t('tutorials.language')}</p></div>
           <button ref={close} type="button" className="btn-ghost" onClick={() => setOpen(false)}>{t('tutorials.close')}</button>
         </header>

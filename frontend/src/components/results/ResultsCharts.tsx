@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { ObservedWaitPeriod, PeriodArrivals } from '../../api/types'
 import { summarizeCashierWorkload } from '../../lib/cashierWorkload'
@@ -16,7 +17,7 @@ export function ArrivalsChart({ periods }: { periods: PeriodArrivals[] | undefin
   const max = Math.max(0, ...values.map((item) => item.value ?? 0))
   return (
     <section className="card" aria-labelledby="results-arrivals-title">
-      <h2 id="results-arrivals-title" className="section-title">{t('results.arrivals_chart')}</h2>
+      <h2 lang="en" id="results-arrivals-title" className="section-title">{headingText(t, 'results.arrivals_chart')}</h2>
       <p className="key-result-source">{t('results.source_data')}</p>
       {values.length === 0 ? <p className="empty-state">{t('results.arrivals_unavailable')}</p> : (
           <ul className="hbar-chart results-chart-list" aria-labelledby="results-arrivals-title">
@@ -42,7 +43,7 @@ export function WaitByPeriodChart({ periods }: { periods: ObservedWaitPeriod[] }
   const text = (value: number | null) => (value !== null ? `${fmtDecimal(value, 1)} ${unit}` : unavailable)
   return (
     <section className="card" aria-labelledby="results-wait-title">
-      <h2 id="results-wait-title" className="section-title">{t('results.wait_chart')}</h2>
+      <h2 lang="en" id="results-wait-title" className="section-title">{headingText(t, 'results.wait_chart')}</h2>
       <ul className="hbar-legend">
         <li><span className="hbar-legend-bar" aria-hidden="true" />{t('results.recorded')}</li>
         <li><span className="hbar-legend-bar hbar-legend-alt" aria-hidden="true" />{t('results.estimated')}</li>
@@ -71,7 +72,7 @@ export function WorkloadChart({ rows, separate }: { rows: ResultRow[]; separate:
   if (!separate) {
     return (
       <section className="card" aria-labelledby="results-workload-title">
-        <h2 id="results-workload-title" className="section-title">{t('results.workload_chart')}</h2>
+        <h2 lang="en" id="results-workload-title" className="section-title">{headingText(t, 'results.workload_chart')}</h2>
         <p className="chart-summary">{t('results.workload_shared')}</p>
       </section>
     )
@@ -80,7 +81,7 @@ export function WorkloadChart({ rows, separate }: { rows: ResultRow[]; separate:
   const scale = Math.max(1, ...workload.map((cashier) => cashier.peakRho))
   return (
     <section className="card" aria-labelledby="results-workload-title">
-      <h2 id="results-workload-title" className="section-title">{t('results.workload_chart')}</h2>
+      <h2 lang="en" id="results-workload-title" className="section-title">{headingText(t, 'results.workload_chart')}</h2>
       <p className="key-result-source">{t('results.source_estimate')} · {t('results.not_performance_score')}</p>
       {workload.length === 0 ? <p className="empty-state">{t('current.workload_unavailable')}</p> : (
         <>

@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 /**
  * NovaQ Insights - Plain language explanations of queue analysis results.
  */
@@ -43,13 +44,13 @@ export function NovaQInsights({ insights }: NovaQInsightsProps) {
 
   return (
     <div className="novaq-insights" role="status">
-      <h2 className="insights-title">{t('insights.title')}</h2>
+      <h2 lang="en" className="insights-title">{headingText(t, 'insights.title')}</h2>
       <div className="insights-list">
         {insights.map((insight, index) => (
           <div key={index} className={`insight-card ${getInsightClass(insight.type)}`}>
             <div className="insight-header">
               <span className="insight-icon" aria-hidden="true">{getInsightIcon(insight.type)}</span>
-              <h3 className="insight-title">{insight.title}</h3>
+              <h3 lang="en" className="insight-title">{insight.title}</h3>
             </div>
             <p className="insight-message">{insight.message}</p>
             {insight.action && (

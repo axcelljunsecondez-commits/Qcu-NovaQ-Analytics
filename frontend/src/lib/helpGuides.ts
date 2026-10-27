@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next'
+import { headingText } from './headingText'
 
 // Help center guides (spec 2026-10-09 §7.11, plan U8). Text lives in the locale files under
 // help.guide.<topic>.*; each guide states its action, purpose and next step, then its sections.
@@ -25,17 +26,17 @@ export interface HelpFigure {
   size: Record<HelpLanguage, readonly [number, number]>
 }
 
-// Annotated screenshots (plan U10): public/help-images/<lang>/<topic>.webp, taken by
-// scripts/help-screenshots.mjs from a scratch app with clearly synthetic data. Problems has none:
-// it covers several screens.
+// Annotated screenshots (plan U10): public/help-images/<lang>/<topic>.webp. The October 27
+// recapture used isolated synthetic browser fixtures; see docs/wording/2026-10-27-local-wording-report.md.
+// scripts/help-screenshots.mjs also supports a scratch app. Problems covers several screens and has no image.
 export const HELP_FIGURES: Partial<Record<HelpTopic, HelpFigure>> = {
-  start: { marks: 3, size: { en: [1080, 787], tl: [1080, 808] } },
-  data: { marks: 3, size: { en: [1080, 695], tl: [1080, 737] } },
-  results: { marks: 3, size: { en: [1080, 666], tl: [1080, 730] } },
-  plans: { marks: 3, size: { en: [1080, 922], tl: [1080, 1004] } },
-  simulation: { marks: 4, size: { en: [1080, 777], tl: [1080, 830] } },
-  checks: { marks: 3, size: { en: [1080, 572], tl: [1080, 614] } },
-  downloads: { marks: 4, size: { en: [1080, 981], tl: [1080, 1002] } },
+  start: { marks: 3, size: { en: [1080, 808], tl: [1080, 808] } },
+  data: { marks: 3, size: { en: [1080, 653], tl: [1080, 674] } },
+  results: { marks: 3, size: { en: [1080, 1158], tl: [1080, 1182] } },
+  plans: { marks: 3, size: { en: [1080, 1678], tl: [1080, 1741] } },
+  simulation: { marks: 4, size: { en: [1080, 631], tl: [1080, 684] } },
+  checks: { marks: 3, size: { en: [1080, 357], tl: [1080, 399] } },
+  downloads: { marks: 4, size: { en: [1080, 955], tl: [1080, 955] } },
 }
 
 export function helpFigureSrc(topic: HelpTopic, language: HelpLanguage): string {
@@ -63,13 +64,13 @@ export function searchHelp(query: string, t: TFunction): HelpMatch[] {
   const matches: HelpMatch[] = []
   for (const guide of HELP_GUIDES) {
     const base = `help.guide.${guide.topic}`
-    const guideTitle = t(`${base}.title`)
-    if (has([guideTitle, t(`${base}.action`), t(`${base}.purpose`), t(`${base}.next`)].join(' '))) {
+    const guideTitle = headingText(t, `${base}.title`)
+    if (has([guideTitle, t(`${base}.title`), t(`${base}.action`), t(`${base}.purpose`), t(`${base}.next`)].join(' '))) {
       matches.push({ topic: guide.topic, section: null, title: guideTitle })
     }
     for (const section of guide.sections) {
-      const title = t(`${base}.${section}.title`)
-      if (has(`${title} ${t(`${base}.${section}.body`)}`)) matches.push({ topic: guide.topic, section, title: `${guideTitle}: ${title}` })
+      const title = headingText(t, `${base}.${section}.title`)
+      if (has(`${title} ${t(`${base}.${section}.title`)} ${t(`${base}.${section}.body`)}`)) matches.push({ topic: guide.topic, section, title: `${guideTitle}: ${title}` })
     }
   }
   return matches

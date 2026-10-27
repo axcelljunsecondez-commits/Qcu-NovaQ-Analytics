@@ -102,8 +102,8 @@ describe('My analyses search (spec §7.4)', () => {
     expect(within(pharmacy).getByText('Operating window 08:00–18:00')).toBeInTheDocument()
     const north = screen.getByRole('heading', { name: 'North checkout' }).closest('article') as HTMLElement
     expect(within(north).queryByText(/Operating window/)).not.toBeInTheDocument()
-    expect(within(north).getByText('Everyone waits in one line')).toBeInTheDocument()
-    expect(within(pharmacy).getByText('Each counter has its own line')).toBeInTheDocument()
+    expect(within(north).getByText("Single Line-Queue for Multiple Counters")).toBeInTheDocument()
+    expect(within(pharmacy).getByText("Separate Line-Queue per Counter")).toBeInTheDocument()
   })
 })
 

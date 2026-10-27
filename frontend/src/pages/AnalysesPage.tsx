@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -83,7 +84,7 @@ export function AnalysesPage() {
     <div>
       <div className="page-heading-row">
         <div>
-          <h1 className="page-title">{t('analyses.title')}</h1>
+          <h1 lang="en" className="page-title">{headingText(t, 'analyses.title')}</h1>
           <p className="page-caption">{t('analyses.caption')}</p>
         </div>
         <div className="tutorial-heading-actions"><TutorialWatch id="analysis-workflow" /><Link className="button-link" to="/analyses/new">{t('analyses.new')}</Link></div>
@@ -162,7 +163,7 @@ export function AnalysesPage() {
       )}
       {confirming && (
         <ConfirmDialog
-          title={t('analyses.archive_confirm_title', { name: confirming.name })}
+          title={headingText(t, 'analyses.archive_confirm_title', { name: confirming.name })}
           message={t('analyses.archive_confirm_message')}
           confirmLabel={t('analyses.archive')}
           cancelLabel={t('common.cancel')}

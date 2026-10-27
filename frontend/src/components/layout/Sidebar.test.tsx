@@ -52,7 +52,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     expect(within(nav).getAllByText(/^(Workspace|Insights|Simulation|Tools)$/).map((node) => node.textContent))
       .toEqual(['Workspace', 'Insights', 'Simulation', 'Tools'])
     expect(within(nav).getAllByRole('link').map((link) => link.textContent))
-      .toEqual(['My analyses', 'Analysis results', 'Reports', 'Queue simulation', 'Quick calculator'])
+      .toEqual(['My analyses', 'Analysis results', 'Reports', "Queue Simulation", "Quick Calculator"])
   })
 
   it('moves Help, Settings, language and Log out out of the link list into the account menu', async () => {
@@ -71,8 +71,8 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     await navLinks()
     expect(await screen.findByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
     expect(screen.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports?analysis=7')
-    expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/simulation/results?analysis=7')
-    expect(screen.getByRole('link', { name: 'Quick calculator' })).toHaveAttribute('href', '/tools/calculator')
+    expect(screen.getByRole('link', { name: "Queue Simulation" })).toHaveAttribute('href', '/simulation/results?analysis=7')
+    expect(screen.getByRole('link', { name: "Quick Calculator" })).toHaveAttribute('href', '/tools/calculator')
   })
 
   it('follows the analysis the user opens without waiting for another navigation', async () => {
@@ -103,13 +103,13 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     })
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
-    expect(screen.getByRole('link', { name: 'Queue simulation' })).toHaveAttribute('href', '/simulation/results')
+    expect(screen.getByRole('link', { name: "Queue Simulation" })).toHaveAttribute('href', '/simulation/results')
   })
 
   it('keeps an explicit translated name on every collapsed link', async () => {
     renderWithProviders(<Sidebar collapsed onToggleCollapsed={() => undefined} />, { route: '/analyses' })
     const nav = await navLinks()
-    for (const name of ['My analyses', 'Analysis results', 'Reports', 'Queue simulation', 'Quick calculator']) {
+    for (const name of ['My analyses', 'Analysis results', 'Reports', "Queue Simulation", "Quick Calculator"]) {
       expect(within(nav).getByRole('link', { name })).toHaveAttribute('aria-label', name)
     }
   })
@@ -119,7 +119,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     renderWithProviders(<Sidebar />, { route: '/simulation/replay?analysis=7' })
     const nav = await navLinks()
     const current = within(nav).getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')
-    expect(current.map((link) => link.textContent)).toEqual(['Queue simulation'])
+    expect(current.map((link) => link.textContent)).toEqual(["Queue Simulation"])
   })
 
   it.each([
@@ -128,9 +128,9 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     ['/results?analysis=7', 'Analysis results'],
     ['/results?analysis=7&file=12&period=08%3A00', 'Analysis results'],
     ['/analyses/7/reports', 'Reports'],
-    ['/analyses/7/decision', 'Queue simulation'],
-    ['/simulation/checks?analysis=7&plan=current', 'Queue simulation'],
-    ['/tools/calculator', 'Quick calculator'],
+    ['/analyses/7/decision', "Queue Simulation"],
+    ['/simulation/checks?analysis=7&plan=current', "Queue Simulation"],
+    ['/tools/calculator', "Quick Calculator"],
   ])('highlights the right destination on %s', async (route, name) => {
     renderWithProviders(<Sidebar />, { route })
     await navLinks()

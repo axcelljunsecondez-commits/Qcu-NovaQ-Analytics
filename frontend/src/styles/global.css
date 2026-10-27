@@ -1652,6 +1652,12 @@ button.btn-good:hover {
   letter-spacing: 0.03em;
 }
 
+/* The calculator uses submitted label case and sentence-case tooltip explanations. */
+.quick-calculator .kpi-label,
+.quick-calculator .info-tip-text {
+  text-transform: none;
+}
+
 .kpi-value {
   font-size: 22px;
   font-weight: 800;

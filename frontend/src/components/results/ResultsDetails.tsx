@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { ModelExplanation } from '../../api/types'
 import { PeriodFilter } from '../analysis/PeriodFilter'
@@ -22,7 +23,7 @@ export function ResultsDetails({ rows, explanations, selectedModel, period, line
   const visibleExplanations = explanations.filter((item) => matchesFilter(item.time, item.queue_id, period, line))
   return (
     <section className="card results-reference" aria-labelledby="results-details-title">
-      <h2 className="section-title" id="results-details-title">{t('results.details')}</h2>
+      <h2 lang="en" className="section-title" id="results-details-title">{headingText(t, 'results.details')}</h2>
       <p className="form-hint">{t('filters.showing', { shown: visible.length, total: rows.length })}</p>
       <PeriodFilter idPrefix="results" periods={rows.map((row) => row.time)} lines={rows.map((row) => row.queue_id)} period={period} line={line} onPeriod={onPeriod} onLine={onLine} />
       {rows.length > 0 && visible.length === 0 ? <p className="empty-state">{t('filters.no_match')}</p> : (
@@ -67,15 +68,15 @@ export function ResultsDetails({ rows, explanations, selectedModel, period, line
       )}
       {explanations.length > 0 && (
         <div className="results-models">
-          <h3 className="card-title">{t('analyses.model_explanation')}</h3>
+          <h3 lang="en" className="card-title">{headingText(t, 'analyses.model_explanation')}</h3>
           <p className="chart-summary">{selectedModel ? t('current.selected_model', { model: selectedModel }) : t('current.model_unavailable')}</p>
           {visibleExplanations.map((explanation, index) => (
             <details key={`${explanation.time}-${explanation.selected_model}-${typeof explanation.queue_id === 'string' ? explanation.queue_id : ''}-${index}`} className="explanation-block">
               <summary>{explanation.time}{typeof explanation.queue_id === 'string' && explanation.queue_id.trim() !== '' ? ` · ${explanation.queue_id}` : ''}: {explanation.selected_model}</summary>
               <p className="explanation-reason">{explanation.selection_reason}</p>
-              {explanation.operational_facts.length > 0 && <div className="explanation-section"><h4>{t('analyses.operational_facts')}</h4><ul>{explanation.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
-              {explanation.measured_characteristics.length > 0 && <div className="explanation-section"><h4>{t('analyses.measured_characteristics')}</h4><ul>{explanation.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
-              {explanation.model_assumptions.length > 0 && <div className="explanation-section"><h4>{t('analyses.model_assumptions')}</h4><ul>{explanation.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
+              {explanation.operational_facts.length > 0 && <div className="explanation-section"><h4 lang="en">{headingText(t, 'analyses.operational_facts')}</h4><ul>{explanation.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
+              {explanation.measured_characteristics.length > 0 && <div className="explanation-section"><h4 lang="en">{headingText(t, 'analyses.measured_characteristics')}</h4><ul>{explanation.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
+              {explanation.model_assumptions.length > 0 && <div className="explanation-section"><h4 lang="en">{headingText(t, 'analyses.model_assumptions')}</h4><ul>{explanation.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></div>}
             </details>
           ))}
         </div>

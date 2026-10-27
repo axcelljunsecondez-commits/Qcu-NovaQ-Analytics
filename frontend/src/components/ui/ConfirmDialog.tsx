@@ -52,7 +52,7 @@ export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onCon
         aria-describedby={messageId}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId} className="card-title">{title}</h2>
+        <h2 lang="en" id={titleId} className="card-title">{title}</h2>
         <p id={messageId}>{message}</p>
         <div className="form-row">
           <button ref={cancelRef} type="button" className="btn-ghost" onClick={onCancel}>{cancelLabel}</button>

@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next'
+import { headingText } from './headingText'
 import steps from './tutorialSteps.json'
 
 export const TUTORIALS = [
@@ -25,7 +26,7 @@ export function tutorialSteps(id: TutorialId): Array<{ time: string; caption: st
 export function matchingTutorials(query: string, t: TFunction): Tutorial[] {
   const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean)
   return TUTORIALS.filter((item) => {
-    const text = `${t(`tutorials.${item.id}.title`)} ${t(`tutorials.${item.id}.description`)}`.toLocaleLowerCase()
+    const text = `${headingText(t, `tutorials.${item.id}.title`)} ${t(`tutorials.${item.id}.title`)} ${t(`tutorials.${item.id}.description`)}`.toLocaleLowerCase()
     return words.every((word) => text.includes(word))
   })
 }

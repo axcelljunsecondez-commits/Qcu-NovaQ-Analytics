@@ -28,7 +28,7 @@ export function generateOptimizationInsights(
     if (optimizedCashiers > currentCashiers) {
       insights.push({
         type: 'recommendation',
-        title: t('insights.staffing_increase_title'),
+        title: t('insights.staffing_increase_title', { lng: 'en' }),
         message: t('insights.staffing_increase_message', {
           current: currentCashiers,
           recommended: optimizedCashiers,
@@ -39,7 +39,7 @@ export function generateOptimizationInsights(
     if (optimizedCashiers < currentCashiers) {
       insights.push({
         type: 'success',
-        title: t('insights.staffing_reduction_title'),
+        title: t('insights.staffing_reduction_title', { lng: 'en' }),
         message: t('insights.staffing_reduction_message', {
           current: currentCashiers,
           recommended: optimizedCashiers,
@@ -53,7 +53,7 @@ export function generateOptimizationInsights(
     if (waitReduction > 20) {
       insights.push({
         type: 'success',
-        title: t('insights.wait_improvement_title'),
+        title: t('insights.wait_improvement_title', { lng: 'en' }),
         message: t('insights.wait_improvement_message', {
           reduction: Math.round(waitReduction),
         }),
@@ -66,7 +66,7 @@ export function generateOptimizationInsights(
     && ['Critical', 'Unstable'].includes(utilizationBand(currentUtilization))) {
     insights.push({
       type: 'warning',
-      title: t('insights.high_utilization_title'),
+      title: t('insights.high_utilization_title', { lng: 'en' }),
       message: t('insights.high_utilization_message', {
         utilization: fmtDecimal(currentUtilization * 100),
       }),

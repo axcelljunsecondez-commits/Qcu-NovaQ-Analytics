@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
+import { headingText } from '../../lib/headingText'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
@@ -13,7 +14,7 @@ export function AnalysisEntry({ destination }: { destination: AnalysisDestinatio
   const [search, setSearch] = useState('')
   const stored = useSyncExternalStore(subscribeLastAnalysis, storedLastAnalysis, () => null)
   const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses })
-  const title = t(destination === 'results' ? 'nav.analysis_results' : destination === 'reports' ? 'nav.reports' : 'nav.queue_simulation')
+  const title = headingText(t, destination === 'results' ? 'nav.analysis_results' : destination === 'reports' ? 'nav.reports' : 'nav.queue_simulation')
   const last = !analyses.isError && resolveLastAnalysis(analyses.data?.analyses, stored)
   if (!analyses.isLoading && last && !params.has('analysis') && params.get('choose') !== '1') {
     return <Navigate to={analysisDestinationHref(destination, last)} replace />
@@ -26,7 +27,7 @@ export function AnalysisEntry({ destination }: { destination: AnalysisDestinatio
   return (
     <div className="page-stack">
       <header className="page-header">
-        <div><h1 className="page-title">{title}</h1><p className="page-caption">{t('analysis_entry.caption')}</p></div>
+        <div><h1 lang="en" className="page-title">{title}</h1><p className="page-caption">{t('analysis_entry.caption')}</p></div>
         <Link className="button-link" to={`/analyses/new?continue=${encodeURIComponent(destination)}`}>{t('analyses.new')}</Link>
       </header>
       {analyses.isLoading ? <ApiState.Loading /> : analyses.isError ? (

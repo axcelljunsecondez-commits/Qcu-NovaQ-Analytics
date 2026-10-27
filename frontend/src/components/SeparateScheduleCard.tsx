@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import type { SeparateSchedule } from '../api/types'
@@ -22,7 +23,7 @@ export function SeparateScheduleCard({ schedule }: { schedule: SeparateSchedule 
       borderRadius: '13px',
       padding: '18px',
     }}>
-      <h3 className="section-title">{t('optimize.sep_estimated_plan')}</h3>
+      <h3 lang="en" className="section-title">{headingText(t, 'optimize.sep_estimated_plan')}</h3>
       <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>
         <span>{t('optimize.sep_target')}: {fmtPctDecimal(schedule.target_utilization)}</span>
         {' · '}<span>{t('optimize.sep_method')}</span>

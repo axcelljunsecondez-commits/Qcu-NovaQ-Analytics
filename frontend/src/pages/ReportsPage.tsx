@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -99,7 +100,7 @@ export function ReportsPage() {
     <header className="page-header results-header">
       <div>
         <p className="topbar-eyebrow">{t('nav.group_insights')}</p>
-        <div className="title-row"><h1 className="page-title">{t('reports.title')}</h1><HelpLink topic="downloads" /></div>
+        <div className="title-row"><h1 lang="en" className="page-title">{headingText(t, 'reports.title')}</h1><HelpLink topic="downloads" /></div>
       </div>
       <AnalysisSelector id="reports-analysis" label={t('results.analysis_label')} value={String(id)} options={analysisOptions} onChange={(value) => navigate(`/reports?analysis=${value}`)} />
     </header>
@@ -142,7 +143,7 @@ export function ReportsPage() {
       <section className="card" aria-label={t('reports.page.level')} data-testid="report-stamp">
         {stamp === 'no_plan' && (
           <>
-            <h2 className="card-title">{t('reports.page.no_plan_title')}</h2>
+            <h2 lang="en" className="card-title">{headingText(t, 'reports.page.no_plan_title')}</h2>
             <p>{t('reports.page.no_plan_body')}</p>
             <Link className="button-link" to={`/analyses/${id}/plans`}>{t('reports.page.go_to_plans')}</Link>
           </>
@@ -186,7 +187,7 @@ export function ReportsPage() {
         <div className="card-grid">
           {(['pdf', 'excel'] as const).map((kind) => (
             <section key={kind} className="card" aria-label={t(`reports.page.${kind}_title`)} data-testid={`report-card-${kind}`}>
-              <h2 className="card-title">{t(`reports.page.${kind}_title`)}</h2>
+              <h2 lang="en" className="card-title">{headingText(t, `reports.page.${kind}_title`)}</h2>
               <p className="form-hint">{t(`reports.page.${kind}_for`)}</p>
               <ul className="report-contents">
                 {preview.contents[kind].map((item) => <li key={item}>{item}</li>)}
@@ -205,7 +206,7 @@ export function ReportsPage() {
       )}
 
       <section className="card" aria-label={t('reports.page.data_title')} data-testid="report-card-data">
-        <h2 className="card-title">{t('reports.page.data_title')}</h2>
+        <h2 lang="en" className="card-title">{headingText(t, 'reports.page.data_title')}</h2>
         <p className="form-hint">{t('reports.page.data_body')}</p>
         {chosenFile ? (
           <>

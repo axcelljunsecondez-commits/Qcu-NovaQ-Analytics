@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -88,7 +89,7 @@ function CalculatedResult({ analysisId, changes, waitNow, waitPlan, costNow, cos
   }
   return (
     <section className="card calculated-result" aria-labelledby="calculated-result-title">
-      <h2 id="calculated-result-title" className="section-title">{t('results.calculated_title')}</h2>
+      <h2 lang="en" id="calculated-result-title" className="section-title">{headingText(t, 'results.calculated_title')}</h2>
       <p className="badge badge-warn">{t('results.calculated_label')}</p>
       <p>
         {changes.length === 0
@@ -140,7 +141,7 @@ function Section({ children, note }: { children: ReactNode; note?: string }) {
   const { t } = useTranslation()
   return (
     <section className="card" aria-labelledby="plan-changes-title">
-      <h2 id="plan-changes-title" className="section-title">{t('results.plan_changes')}</h2>
+      <h2 lang="en" id="plan-changes-title" className="section-title">{headingText(t, 'results.plan_changes')}</h2>
       <p className="form-hint">{note ?? t('results.plans_use_planning_file')}</p>
       {children}
     </section>
@@ -194,7 +195,7 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
         .map((item) => ({ id: Number(item.id), name: item.name }))
     return (
       <section className="card" aria-labelledby="plan-none-title">
-        <h2 id="plan-none-title" className="section-title">{t('results.plan_changes')}</h2>
+        <h2 lang="en" id="plan-none-title" className="section-title">{headingText(t, 'results.plan_changes')}</h2>
         <p>{t(options.length > 0 ? 'results.saved_plan_available' : 'results.no_plan_selected')}</p>
         {options.length > 0 && <Switcher key={analysisId} options={options} selectedId={null} analysisId={analysisId} />}
         <Link className="button-link" to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>

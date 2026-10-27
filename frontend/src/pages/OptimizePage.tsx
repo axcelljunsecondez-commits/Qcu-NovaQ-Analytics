@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 /**
  * OptimizePage — Two-column layout matching reference design.
  * Left: controls panel (goal presets, settings, run button)
@@ -304,7 +305,7 @@ export function OptimizePage() {
       <div className="topbar">
         <div>
           <div className="topbar-eyebrow">{t('optimize.eyebrow')}</div>
-          <div className="title-row"><h1 className="page-title">{t('optimize.title')}</h1><HelpLink topic="plans" /></div>
+          <div className="title-row"><h1 lang="en" className="page-title">{headingText(t, 'optimize.title')}</h1><HelpLink topic="plans" /></div>
           <p className="page-caption">{t('optimize.description')}</p>
         </div>
       </div>
@@ -337,7 +338,7 @@ export function OptimizePage() {
           {/* Goal Presets (shared optimizer only: preset targets sit outside the Separate range) */}
           {(
           <div className="card" style={{ padding: '18px' }}>
-            <h3 className="section-title">{t('optimize.constraint_presets')}</h3>
+            <h3 lang="en" className="section-title">{headingText(t, 'optimize.constraint_presets')}</h3>
             <div className="goal-presets">
               {GOAL_PRESETS.map((preset) => (
                 <button
@@ -376,7 +377,7 @@ export function OptimizePage() {
 
           {/* Source Dataset */}
           <div className="card" style={{ padding: '18px' }}>
-            <h3 className="section-title">{t('page1.data_source')}</h3>
+            <h3 lang="en" className="section-title">{headingText(t, 'page1.data_source')}</h3>
             <div className="form-row">
               <div className="form-field" style={{ flex: 1 }}>
                 <label htmlFor="opt-dataset" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.source_dataset')}</label>
@@ -400,7 +401,7 @@ export function OptimizePage() {
 
           {/* Advanced Settings */}
           <div className="card" style={{ padding: '18px' }}>
-            <h3 className="section-title">{t('optimize.advanced_settings')}</h3>
+            <h3 lang="en" className="section-title">{headingText(t, 'optimize.advanced_settings')}</h3>
             <p className="form-hint">{t('plans.defaults_note', {
               target: fmtPctDecimal(DEFAULT_OPTIONS.target_utilization ?? 0),
               serverCost: DEFAULT_OPTIONS.server_cost_per_hr,
@@ -527,7 +528,7 @@ export function OptimizePage() {
             borderRadius: '13px',
             padding: '18px',
           }}>
-            <h3 className="section-title">{t('optimize.candidate_plan')}</h3>
+            <h3 lang="en" className="section-title">{headingText(t, 'optimize.candidate_plan')}</h3>
             {rows && totals ? (
               <>
                 <div style={{ display: 'flex', gap: '14px', marginTop: '8px' }}>
@@ -633,7 +634,7 @@ export function OptimizePage() {
                     background: 'var(--info-bg)',
                     border: '1px solid var(--color-info-border)',
                   }}>
-                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{t('optimize.candidate_explanation')}</div>
+                    <div lang="en" style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 700 }}>{headingText(t, 'optimize.candidate_explanation')}</div>
                     <p style={{ fontSize: '14px', color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.5 }}>
                       {rows[0]?.explanation || rows[0]?.recommendation || t('optimize.review_candidate')}
                     </p>
@@ -652,7 +653,7 @@ export function OptimizePage() {
           {/* What-If Card */}
           {rows && (
             <div className="card" style={{ padding: '18px' }}>
-              <h3 className="section-title">{t('page2.what_if')}</h3>
+              <h3 lang="en" className="section-title">{headingText(t, 'page2.what_if')}</h3>
               <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
                 <div className="form-field" style={{ flex: 1 }}>
                   <label htmlFor="opt-mult" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.lambda_multiplier')}</label>
@@ -681,7 +682,7 @@ export function OptimizePage() {
           {/* Save Scenario Card */}
           {!isSeparateStaffing && rows && (
             <div className="card" style={{ padding: '18px' }}>
-              <h3 className="section-title">{t('page2.save_scenario')}</h3>
+              <h3 lang="en" className="section-title">{headingText(t, 'page2.save_scenario')}</h3>
               <div className="form-row" style={{ alignItems: 'flex-end', gap: '10px' }}>
                 <div className="form-field" style={{ flex: 1 }}>
                   <label htmlFor="opt-scenario" style={{ fontSize: '14px', fontWeight: 800 }}>{t('optimize.scenario_name')}</label>
@@ -762,7 +763,7 @@ export function OptimizePage() {
       {/* Staffing Table */}
       {rows && (
         <div className="card" style={{ marginTop: '12px', padding: '18px' }}>
-          <h3 className="section-title">{t('optimize.staffing_table')}</h3>
+          <h3 lang="en" className="section-title">{headingText(t, 'optimize.staffing_table')}</h3>
           <div className="status-legend" aria-label={t('optimize.status_legend')} style={{ marginBottom: '10px' }}>
             <StatusBadge status="Lean" />
             <span>{'< 60%'}</span>

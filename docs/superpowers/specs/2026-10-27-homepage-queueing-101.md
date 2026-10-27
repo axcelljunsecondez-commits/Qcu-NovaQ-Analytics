@@ -1,5 +1,7 @@
 # Queueing Theory 101: approved local homepage and Help integration
 
+Follow-up: the later [combined-video and placement specification](2026-10-27-combined-video-and-homepage-placement.md) supersedes this document's two-video selection and right-column Queue Types carousel. The original authorization and verification below describe the earlier version.
+
 ## Authorization and source
 
 The owner approved the interactive Hero spotlight preview and explicitly requested local application on 2026-10-27. The accepted layout places the headline and How it works disclosure on the left; the two-part lesson player and Queue types disclosure on the right. Both disclosures start closed, reveal smoothly, and offer manually controlled Previous/Next slides that wrap. No automatic scrolling, anchor navigation, timed slide advance, or programmatic focus movement is added to the disclosures.

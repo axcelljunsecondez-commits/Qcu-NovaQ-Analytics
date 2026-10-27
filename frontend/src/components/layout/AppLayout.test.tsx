@@ -72,9 +72,9 @@ describe('AppLayout hide-sidebar (D10)', () => {
     expect(await screen.findByTestId('tooltip')).toHaveTextContent('Analysis results')
     await user.keyboard('{Escape}')
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
-    await user.hover(screen.getByRole('link', { name: 'Quick calculator' }))
-    expect(await screen.findByTestId('tooltip')).toHaveTextContent('Quick calculator')
-    await user.unhover(screen.getByRole('link', { name: 'Quick calculator' }))
+    await user.hover(screen.getByRole('link', { name: "Quick Calculator" }))
+    expect(await screen.findByTestId('tooltip')).toHaveTextContent("Quick Calculator")
+    await user.unhover(screen.getByRole('link', { name: "Quick Calculator" }))
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
   })
 

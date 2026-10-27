@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useState, type ChangeEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -74,11 +75,11 @@ export function DatasetsPage() {
 
   return (
     <div>
-      <h1 className="page-title">{t('datasets.title')}</h1>
+      <h1 lang="en" className="page-title">{headingText(t, 'datasets.title')}</h1>
       <p className="page-caption">{t('datasets.upload_hint')}</p>
 
       <div className="card">
-        <h2 className="card-title">{t('datasets.upload')}</h2>
+        <h2 lang="en" className="card-title">{headingText(t, 'datasets.upload')}</h2>
         <div className="form-row">
           <div className="form-field">
             <label htmlFor="dataset-file">{t('datasets.upload')}</label>

@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 
 interface QueueIdEditorProps {
@@ -29,7 +30,7 @@ export function QueueIdEditor({ ids, onChange, inputIdPrefix = 'queue-id' }: Que
 
   return (
     <div className="card">
-      <h3 className="card-title">{t('analyses.queue_ids_title')}</h3>
+      <h3 lang="en" className="card-title">{headingText(t, 'analyses.queue_ids_title')}</h3>
       <p className="form-hint">{t('analyses.queue_ids_help')}</p>
       {ids.map((id, index) => {
         const inputId = `${inputIdPrefix}-${index}`

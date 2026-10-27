@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import Plotly from 'plotly.js'
@@ -13,7 +14,7 @@ function ChartFrame({ testId, title, children }: { testId: string; title?: strin
   const titleId = useId()
   return (
     <div className="plotly-wrap" data-testid={testId} role="figure" aria-labelledby={title ? titleId : undefined}>
-      {title && <h4 id={titleId}>{title}</h4>}
+      {title && <h4 lang="en" id={titleId}>{title}</h4>}
       {children}
     </div>
   )
@@ -42,7 +43,7 @@ export function UtilizationHeatmap({ rows }: { rows: SimDesOut[] }) {
     return { z, xs, cs }
   }, [rows])
   return (
-    <ChartFrame testId="chart-utilization-heatmap" title={t('simulation.heatmap.title')}>
+    <ChartFrame testId="chart-utilization-heatmap" title={headingText(t, 'simulation.heatmap.title')}>
       <Plot
         data={[
           {
@@ -74,7 +75,7 @@ export function UtilizationHeatmap({ rows }: { rows: SimDesOut[] }) {
 export function RhoLqLines({ rows }: { rows: SimDesOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-rho-lq-lines" title={t('simulation.rho_lq')}>
+    <ChartFrame testId="chart-rho-lq-lines" title={headingText(t, 'simulation.rho_lq')}>
       <Plot
         data={[
           {
@@ -115,7 +116,7 @@ export function RhoLqLines({ rows }: { rows: SimDesOut[] }) {
 export function MaxQueueBars({ rows }: { rows: SimDesOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-max-queue-bars" title={t('simulation.max_queue')}>
+    <ChartFrame testId="chart-max-queue-bars" title={headingText(t, 'simulation.max_queue')}>
       <Plot
         data={[
           {
@@ -145,7 +146,7 @@ export function LqHistogram({ rows }: { rows: SimDesOut[] }) {
   const { t } = useTranslation()
   const values = rows.map((r) => r.Lq_sim).filter((v): v is number => v !== null && v !== undefined)
   return (
-    <ChartFrame testId="chart-lq-histogram" title={t('simulation.lq_hist')}>
+    <ChartFrame testId="chart-lq-histogram" title={headingText(t, 'simulation.lq_hist')}>
       <Plot
         data={[
           {
@@ -174,7 +175,7 @@ export function LqHistogram({ rows }: { rows: SimDesOut[] }) {
 export function RhoMeanP95Lines({ rows }: { rows: SimMcOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-rho-mean-p95-lines" title={t('simulation.rho_p95')}>
+    <ChartFrame testId="chart-rho-mean-p95-lines" title={headingText(t, 'simulation.rho_p95')}>
       <Plot
         data={[
           {
@@ -213,7 +214,7 @@ export function RhoMeanP95Lines({ rows }: { rows: SimMcOut[] }) {
 export function FailureRateBars({ rows }: { rows: SimMcOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-failure-rate-bars" title={t('simulation.failure_rate')}>
+    <ChartFrame testId="chart-failure-rate-bars" title={headingText(t, 'simulation.failure_rate')}>
       <Plot
         data={[
           {
@@ -242,7 +243,7 @@ export function FailureRateBars({ rows }: { rows: SimMcOut[] }) {
 export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-utilization-compare" title={t('compare.utilization')}>
+    <ChartFrame testId="chart-utilization-compare" title={headingText(t, 'compare.utilization')}>
       <Plot
         data={[
           {
@@ -280,7 +281,7 @@ export function UtilizationCompareBars({ rows }: { rows: OptimizationOut[] }) {
 export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-server-compare" title={t('compare.servers')}>
+    <ChartFrame testId="chart-server-compare" title={headingText(t, 'compare.servers')}>
       <Plot
         data={[
           {
@@ -318,7 +319,7 @@ export function ServerCompareBars({ rows }: { rows: OptimizationOut[] }) {
 export function WaitTimeLines({ rows }: { rows: OptimizationOut[] }) {
   const { t } = useTranslation()
   return (
-    <ChartFrame testId="chart-wait-time-lines" title={t('compare.waiting')}>
+    <ChartFrame testId="chart-wait-time-lines" title={headingText(t, 'compare.waiting')}>
       <Plot
         data={[
           {
@@ -367,7 +368,7 @@ export function CostWaterfall({ rows }: { rows: OptimizationOut[] }) {
   const curTotal = completeFiniteTotal(rows.map((r) => r.cost_current))
   const optTotal = completeFiniteTotal(rows.map((r) => r.cost_optimal))
   return (
-    <ChartFrame testId="chart-cost-waterfall" title={t('compare.waterfall')}>
+    <ChartFrame testId="chart-cost-waterfall" title={headingText(t, 'compare.waterfall')}>
       <Plot
         data={[
           {
@@ -408,7 +409,7 @@ export function ScenarioCompareBars({
   const { t } = useTranslation()
   const colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#3B1F2B']
   return (
-    <ChartFrame testId="chart-scenario-compare" title={t('compare.scenario')}>
+    <ChartFrame testId="chart-scenario-compare" title={headingText(t, 'compare.scenario')}>
       <Plot
         data={scenarios.map((sc, idx) => ({
           type: 'bar',

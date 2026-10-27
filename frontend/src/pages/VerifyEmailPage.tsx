@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -18,7 +19,7 @@ export function VerifyEmailPage() {
   }, [])
   return <div className="login-page"><div className="card login-card">
     <LanguageSelect />
-    <h1 className="login-title">{t('auth.verify_title')}</h1>
+    <h1 lang="en" className="login-title">{headingText(t, 'auth.verify_title')}</h1>
     <div className={`alert ${state === 'success' ? 'alert-ok' : state === 'invalid' ? 'alert-error' : ''}`}>
       {t(`auth.verify_${state}`)}
     </div>

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { generateOptimizationInsights } from './insights'
 
-const t = (key: string, params?: Record<string, string | number>) =>
-  params ? `${key} ${JSON.stringify(params)}` : key
+const t = (key: string, options?: Record<string, string | number>) => {
+  const { lng: _language, ...params } = options ?? {}
+  return Object.keys(params).length ? `${key} ${JSON.stringify(params)}` : key
+}
 
 function titles(current: number | null, optimized: number | null) {
   return generateOptimizationInsights(current, optimized, null, null, null, t)

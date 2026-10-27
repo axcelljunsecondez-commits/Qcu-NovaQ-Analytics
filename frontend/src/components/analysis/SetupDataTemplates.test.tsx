@@ -53,7 +53,7 @@ describe('SetupDataTemplates', () => {
   it('switches between totals and events schemas', async () => {
     const user = userEvent.setup()
     renderWithProviders(<SetupDataTemplates queueStructure="shared_queue" />)
-    await user.click(screen.getByRole('button', { name: 'Customer events' }))
+    await user.click(screen.getByRole('button', { name: "Customer Events" }))
     await user.click(screen.getByRole('button', { name: 'View Example and Field Guide' }))
     expect(getTemplateGuideMock).toHaveBeenCalledWith('shared_queue', 'events')
   })

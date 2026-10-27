@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { CounterBreak } from '../../api/types'
 
@@ -20,7 +21,7 @@ export function CounterBreakEditor({ breaks, onChange }: CounterBreakEditorProps
 
   return (
     <div className="card" data-testid="counter-breaks">
-      <h3 className="card-title">{t('analyses.counter_breaks_title')}</h3>
+      <h3 lang="en" className="card-title">{headingText(t, 'analyses.counter_breaks_title')}</h3>
       <p className="form-hint">{t('analyses.counter_breaks_help')}</p>
       {breaks.map((entry, index) => (
         <div className="form-row" key={`counter-break-${index}`} style={{ alignItems: 'flex-end', gap: '10px', marginTop: '8px' }}>

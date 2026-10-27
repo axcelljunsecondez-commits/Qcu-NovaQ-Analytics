@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { WorkflowDecision } from '../../api/workflow'
 import { plainDecision } from '../../lib/decisionPlain'
@@ -32,7 +33,7 @@ export function DecisionEndpoint({
       <div className="topbar">
         <div>
           <div className="topbar-eyebrow">{t('decision.eyebrow')}</div>
-          <h1 className="page-title">{t('decision.plain.heading')}</h1>
+          <h1 lang="en" className="page-title">{headingText(t, 'decision.plain.heading')}</h1>
           <p className="page-caption">{t('decision.plain.description')}</p>
         </div>
         <button type="button" className="btn-primary" disabled={isPending} onClick={onDerive}>
@@ -47,7 +48,7 @@ export function DecisionEndpoint({
       )}
       {(!decision || decisionStale) && (
         <div className="card">
-          <h2 className="card-title">{t('decision.no_decision')}</h2>
+          <h2 lang="en" className="card-title">{headingText(t, 'decision.no_decision')}</h2>
           <p className="form-hint">{t('decision.no_decision_help')}</p>
         </div>
       )}
@@ -56,13 +57,13 @@ export function DecisionEndpoint({
           <span className={`badge ${statusClasses[decision.status]}`}>
             {t(`decision.status.${decision.status}`)}
           </span>
-          <h2 className="decision-title" data-testid="decision-plain">{(() => {
+          <h2 lang="en" className="decision-title" data-testid="decision-plain">{(() => {
             const plain = plainDecision({ status: decision.status, separate, failedPeriods: separate ? decision.failed_periods : decision.facts?.failed_periods,
               failedCount: separate ? decision.facts?.failed_checks : decision.facts?.failed_intervals,
               totalCount: separate ? decision.facts?.validation_checks : decision.facts?.validation_intervals,
               missing: decision.missing_evidence, inadequatePeriods: separate ? decision.inadequate_periods : decision.facts?.insufficient_periods,
               todayOverloaded: decision.facts?.today_overloaded_periods })
-            return plain ? t(plain.key, plain.params) : decision.headline
+            return plain ? headingText(t, plain.key, plain.params) : decision.headline
           })()}</h2>
           {separate && <p className="alert alert-warn" data-testid="selected-decision-scope">
             <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
@@ -70,14 +71,14 @@ export function DecisionEndpoint({
           <p className="decision-headline">{decision.headline}</p>
           <p className="decision-recommendation">{decision.recommendation}</p>
 
-          <h3 className="section-title">{t('decision.evidence')}</h3>
+          <h3 lang="en" className="section-title">{headingText(t, 'decision.evidence')}</h3>
           <ul className="decision-evidence">
             {decision.rationale.map((item) => <li key={item}>{item}</li>)}
           </ul>
 
           {decision.missing_evidence.length > 0 && (
             <>
-              <h3 className="section-title">{t('decision.missing')}</h3>
+              <h3 lang="en" className="section-title">{headingText(t, 'decision.missing')}</h3>
               <ul className="decision-evidence">
                 {decision.missing_evidence.map((item) => <li key={item}>{item}</li>)}
               </ul>

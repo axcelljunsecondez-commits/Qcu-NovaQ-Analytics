@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -57,7 +58,7 @@ export function GuidedSetupPage() {
         <div className="topbar">
           <div>
             <div className="topbar-eyebrow">{t('analyses.queue_setup')}</div>
-            <h1 className="page-title">{t('guided.title')}</h1>
+            <h1 lang="en" className="page-title">{headingText(t, 'guided.title')}</h1>
           </div>
         </div>
         <div className="card">
@@ -101,7 +102,7 @@ export function GuidedSetupPage() {
       <div className="topbar">
         <div>
           <div className="topbar-eyebrow">{t('analyses.queue_setup')}</div>
-          <h1 className="page-title">{t('guided.title')}</h1>
+          <h1 lang="en" className="page-title">{headingText(t, 'guided.title')}</h1>
           <p className="page-caption">{t('guided.caption')}</p>
           <p className="form-hint">{t('guided.unknown_stays')}</p>
         </div>

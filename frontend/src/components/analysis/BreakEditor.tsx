@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import type { QueueBreak } from '../../api/types'
@@ -57,7 +58,7 @@ export function BreakEditor({ queueIds, breaks, onChange }: BreakEditorProps) {
 
   return (
     <div className="card">
-      <h3 className="card-title">{t('analyses.breaks_title')}</h3>
+      <h3 lang="en" className="card-title">{headingText(t, 'analyses.breaks_title')}</h3>
       <p className="form-hint">{t('analyses.breaks_help')}</p>
       {breaks.map((entry, index) => (
         <div className="form-row" key={`break-${index}`} style={{ alignItems: 'flex-end', gap: '10px', marginTop: '8px' }}>

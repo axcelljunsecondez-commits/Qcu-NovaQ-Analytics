@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -83,7 +84,7 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
         <nav className="sidebar-nav" aria-label={t('nav.global_navigation')}>
           {navGroups.map((group) => (
             <div key={group.key} className="nav-section">
-              <div className="nav-section-title">{t(`nav.group_${group.key}`)}</div>
+              <div lang="en" className="nav-section-title">{headingText(t, `nav.group_${group.key}`)}</div>
               {group.items.map((item) => {
                 const active = item.matches(location.pathname)
                 const label = t(`nav.${item.key}`)

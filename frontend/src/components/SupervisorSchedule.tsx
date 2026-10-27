@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -157,7 +158,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
     }}>
       <div className="topbar">
         <div><div className="topbar-eyebrow">{t('supervisor.eyebrow')}</div>
-          <div className="title-row"><h1 className="page-title">{t('supervisor.title')}</h1><HelpLink topic="plans" /></div>
+          <div className="title-row"><h1 lang="en" className="page-title">{headingText(t, 'supervisor.title')}</h1><HelpLink topic="plans" /></div>
           <p className="page-caption">{t('supervisor.description')}</p>
         </div>
       </div>
@@ -179,7 +180,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
       {stale && <div role="alert" className="alert alert-warn">{t('supervisor.stale')}</div>}
       <section className="card supervisor-panel supervisor-settings" role="tabpanel" tabIndex={0}
         id={`${panelId}-panel-0`} aria-labelledby={`${panelId}-tab-0`} hidden={step !== 0}>
-        <h2>{t('supervisor.settings')}</h2>
+        <h2 lang="en">{headingText(t, 'supervisor.settings')}</h2>
         <form onSubmit={check} noValidate>
         <fieldset disabled={!!busy}>
           <div className="supervisor-settings-grid">
@@ -249,7 +250,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
       </section>
       <section className="card supervisor-panel supervisor-review" role="tabpanel" tabIndex={0}
         id={`${panelId}-panel-1`} aria-labelledby={`${panelId}-tab-1`} hidden={step !== 1}>
-        <h2>{t('supervisor.review')}</h2>
+        <h2 lang="en">{headingText(t, 'supervisor.review')}</h2>
         {!result ? <>
           <p>{t('supervisor.check_first')}</p>
           <button type="button" className="btn-ghost" onClick={() => goStep(0)}>{t('supervisor.back_settings')}</button>
@@ -310,14 +311,14 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
       </section>
       <section className="card supervisor-panel supervisor-confirm" role="tabpanel" tabIndex={0}
         id={`${panelId}-panel-2`} aria-labelledby={`${panelId}-tab-2`} hidden={step !== 2}>
-        <h2>{t('supervisor.confirm')}</h2>
+        <h2 lang="en">{headingText(t, 'supervisor.confirm')}</h2>
         {!result ? <>
           <p>{t('supervisor.check_first')}</p>
           <button type="button" className="btn-ghost" onClick={() => goStep(0)}>{t('supervisor.back_settings')}</button>
         </> : <>
         {checked?.applied ? <p role="status" className="alert alert-success">{t('supervisor.applied')}</p> :
           breaks && breaks.moves.length > 0 ? <>
-            <h3>{t('supervisor.confirm_title')}</h3>
+            <h3 lang="en">{headingText(t, 'supervisor.confirm_title')}</h3>
             <p>{t('supervisor.confirm_message')}</p>
             <div className="supervisor-actions">
               <button type="button" disabled={!canApply} aria-busy={busy === 'apply'} onClick={() => void apply()}>
@@ -327,7 +328,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
             </div>
           </> : <p>{t('supervisor.no_break_changes')}</p>}
         <div className="supervisor-save">
-          <h3>{t('page2.save_scenario')}</h3>
+          <h3 lang="en">{headingText(t, 'page2.save_scenario')}</h3>
           <label htmlFor="sup-name">{t('optimize.scenario_name')}</label>
           <input id="sup-name" value={name} onChange={e => setName(e.target.value)} disabled={!!busy} />
           {pendingMoves && <p className="form-hint">{t('supervisor.save_after_apply')}</p>}

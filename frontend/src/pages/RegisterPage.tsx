@@ -1,3 +1,4 @@
+import { headingText } from '../lib/headingText'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -41,7 +42,7 @@ export function RegisterPage() {
   return (
     <div className="login-page"><div className="card login-card">
       <LanguageSelect />
-      <h1 className="login-title">{t(resend ? 'auth.resend_title' : 'auth.register_title')}</h1>
+      <h1 lang="en" className="login-title">{headingText(t, resend ? 'auth.resend_title' : 'auth.register_title')}</h1>
       {sent ? <div className="alert alert-ok">{t('auth.verification_sent')}</div> : (
         <form onSubmit={submit}>
           <div className="form-field"><label htmlFor="register-email">{t('login.email')}</label><input id="register-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></div>

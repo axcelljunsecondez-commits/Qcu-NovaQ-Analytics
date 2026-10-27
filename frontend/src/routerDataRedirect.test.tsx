@@ -62,7 +62,7 @@ describe('Data and setup address (spec §5)', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/analyses/7/data'))
     expect(router.state.location.search).toBe('?from=email')
     expect(router.state.location.hash).toBe('#upload')
-    expect(await screen.findByRole('heading', { level: 1, name: 'Data and setup' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: "Data and Setup" })).toBeInTheDocument()
   })
 
   it('opens Data and setup for a bare analysis address', async () => {
@@ -102,7 +102,7 @@ describe('Data and setup address (spec §5)', () => {
   it('shows Data and setup | Suggested plans as tabs that are links', async () => {
     renderAt('/analyses/7/plans')
     const tabs = await screen.findByRole('navigation', { name: 'Analysis sections' })
-    expect(within(tabs).getByRole('link', { name: 'Data and setup' })).toHaveAttribute('href', '/analyses/7/data')
+    expect(within(tabs).getByRole('link', { name: "Data and Setup" })).toHaveAttribute('href', '/analyses/7/data')
     const plans = within(tabs).getByRole('link', { name: 'Suggested plans' })
     expect(plans).toHaveAttribute('href', '/analyses/7/plans')
     expect(plans).toHaveAttribute('aria-current', 'page')

@@ -1,0 +1,3226 @@
+{
+  "source": "overall-revision-2.pdf",
+  "sha256": "49c5b160798df6535c5c99ac810371605dba41fa030777c6bcb80fd68b75deac",
+  "policy": "Apply submitted PDF copy; built-in headings resolve English at usage sites. No editorial recommendations applied.",
+  "adaptations": [
+    "Split combined PDF blocks into existing title/body keys.",
+    "Preserve dynamic {{hours}}; screenshot hours are not defaults.",
+    "R061 maps to the separate-lines Busiest period tooltip, as shown in the document image.",
+    "R080 explicitly names the tab; its Checks and Decisions wording takes precedence over R071 for simulation.page_checks.",
+    "Report file section and workbook sheet identifiers remain unchanged.",
+    "PDF page 2: exclude the separate How it works section heading from home.pictures_note in Filipino; verified from the rendered original page."
+  ],
+  "records": [
+    {
+      "key": "home.hero_title",
+      "language": "en",
+      "document_ids": [
+        "R001"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "See how long your customers wait.",
+      "requested": "Smarter Staffing,",
+      "applied": "Smarter Staffing,",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.hero_title",
+      "language": "tl",
+      "document_ids": [
+        "R001"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Tingnan kung gaano katagal naghihintay ang iyong mga customer.",
+      "requested": "Smarter Staffing,",
+      "applied": "Smarter Staffing,",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.hero_accent",
+      "language": "en",
+      "document_ids": [
+        "R001"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Find a better way to staff your counters.",
+      "requested": "Shorter Queues.",
+      "applied": "Shorter Queues.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.hero_accent",
+      "language": "tl",
+      "document_ids": [
+        "R001"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Humanap ng mas mahusay na paraan ng pag-staff ng iyong mga counter.",
+      "requested": "Shorter Queues.",
+      "applied": "Shorter Queues.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.hero_desc",
+      "language": "en",
+      "document_ids": [
+        "R002"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Upload your customer records. NovaQ shows when lines get long, suggests how many counters to open, and replays your day so you can see the difference.",
+      "requested": "Upload Data, Replay your day, and Fix your counters with NovaQ.",
+      "applied": "Upload Data, Replay your day, and Fix your counters with NovaQ.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.hero_desc",
+      "language": "tl",
+      "document_ids": [
+        "R002"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "I-upload ang iyong mga talaan ng customer. Ipinapakita ng NovaQ kung kailan humahaba ang pila, nagmumungkahi kung ilang counter ang bubuksan, at pinapanood muli ang iyong araw para makita mo ang pagkakaiba.",
+      "requested": "Mag-upload ng data, balikan ang iyong araw, at ayusin ang iyong mga counter gamit ang NovaQ.",
+      "applied": "Mag-upload ng data, balikan ang iyong araw, at ayusin ang iyong mga counter gamit ang NovaQ.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.start",
+      "language": "en",
+      "document_ids": [
+        "R003"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Start an analysis",
+      "requested": "Start an Analysis",
+      "applied": "Start an Analysis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.start",
+      "language": "tl",
+      "document_ids": [
+        "R003"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Magsimula ng pagsusuri",
+      "requested": "Magsimula ng Analysis",
+      "applied": "Magsimula ng Analysis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.try_calculator",
+      "language": "en",
+      "document_ids": [
+        "R004"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Try the quick calculator",
+      "requested": "Try Quick Calculator",
+      "applied": "Try Quick Calculator",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.try_calculator",
+      "language": "tl",
+      "document_ids": [
+        "R004"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Subukan ang Mabilisang Calculator",
+      "requested": "Subukan ang Quick Calculator",
+      "applied": "Subukan ang Quick Calculator",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structures_title",
+      "language": "en",
+      "document_ids": [
+        "R005"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "How do your customers line up?",
+      "requested": "How do your Customers line up?",
+      "applied": "How do your Customers line up?",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structures_title",
+      "language": "tl",
+      "document_ids": [
+        "R005"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Paano pumipila ang iyong mga customer?",
+      "requested": "Paano pumipila ang iyong mga Customer?",
+      "applied": "Paano pumipila ang iyong mga Customer?",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_shared_title",
+      "language": "en",
+      "document_ids": [
+        "R006"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Everyone waits in one line",
+      "requested": "Single Line-Queue for Multiple Counters",
+      "applied": "Single Line-Queue for Multiple Counters",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_shared_title",
+      "language": "tl",
+      "document_ids": [
+        "R006"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Iisang pila para sa lahat",
+      "requested": "Isang Pila sa Maraming Counter",
+      "applied": "Isang Pila sa Maraming Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_shared_desc",
+      "language": "en",
+      "document_ids": [
+        "R007"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "The next person walks to whichever counter is free.",
+      "requested": "Customers wait in one line and take the first free counter.",
+      "applied": "Customers wait in one line and take the first free counter.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_shared_desc",
+      "language": "tl",
+      "document_ids": [
+        "R007"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Ang susunod na tao ay pupunta sa kahit anong counter na bakante.",
+      "requested": "Ang mga customer ay pumipila sa isang linya at pumupunta sa unang bakanteng counter.",
+      "applied": "Ang mga customer ay pumipila sa isang linya at pumupunta sa unang bakanteng counter.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_shared_example",
+      "language": "en",
+      "document_ids": [
+        "R008"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Like a bank, a pharmacy, or \"next please\" service.",
+      "requested": "Ex.: Airport Check-in/Security, Banks, Pharmacies etc.",
+      "applied": "Ex.: Airport Check-in/Security, Banks, Pharmacies etc.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_shared_example",
+      "language": "tl",
+      "document_ids": [
+        "R008"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Tulad ng bangko, botika, o serbisyong \"next please\".",
+      "requested": "Ex.: Airport Check-in/Security, Banks, Pharmacies etc.",
+      "applied": "Ex.: Airport Check-in/Security, Banks, Pharmacies etc.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_separate_title",
+      "language": "en",
+      "document_ids": [
+        "R009"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Each counter has its own line",
+      "requested": "Separate Line-Queue per Counter",
+      "applied": "Separate Line-Queue per Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_separate_title",
+      "language": "tl",
+      "document_ids": [
+        "R009"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "May sariling pila ang bawat counter",
+      "requested": "Magkakahiwalay na pila bawat counter",
+      "applied": "Magkakahiwalay na pila bawat counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_separate_desc",
+      "language": "en",
+      "document_ids": [
+        "R010"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "People pick a line and stay in it, even if another line moves faster.",
+      "requested": "Customers pick a line and stay in it until served, regardless of speed.",
+      "applied": "Customers pick a line and stay in it until served, regardless of speed.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_separate_desc",
+      "language": "tl",
+      "document_ids": [
+        "R010"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Pumipili ang tao ng pila at nananatili roon, kahit mas mabilis ang ibang pila.",
+      "requested": "Pumipili ang mga customer ng pila at nananatili rito hanggang sa mapagsilbihan, anuman ang bilis ng proseso.",
+      "applied": "Pumipili ang mga customer ng pila at nananatili rito hanggang sa mapagsilbihan, anuman ang bilis ng proseso.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_separate_example",
+      "language": "en",
+      "document_ids": [
+        "R011"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Like supermarket checkout lanes.",
+      "requested": "Ex.: Supermarket, Grocery Stores, Fast Food Chains etc.",
+      "applied": "Ex.: Supermarket, Grocery Stores, Fast Food Chains etc.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.structure_separate_example",
+      "language": "tl",
+      "document_ids": [
+        "R011"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Tulad ng mga checkout lane sa supermarket.",
+      "requested": "Ex.: Supermarket, Grocery Stores, Fast Food Chains etc.",
+      "applied": "Ex.: Supermarket, Grocery Stores, Fast Food Chains etc.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.pictures_note",
+      "language": "en",
+      "document_ids": [
+        "R012"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "The pictures are drawings to show the idea, not results.",
+      "requested": "The images are visualizations only of ideas, not results.",
+      "applied": "The images are visualizations only of ideas, not results.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.pictures_note",
+      "language": "tl",
+      "document_ids": [
+        "R012"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Mga guhit lamang ang mga larawan para ipakita ang ideya, hindi mga resulta.",
+      "requested": "Ang mga larawan ay mga biswal na representasyon lamang ng mga ideya, hindi mga resulta.",
+      "applied": "Ang mga larawan ay mga biswal na representasyon lamang ng mga ideya, hindi mga resulta.",
+      "status": "applied",
+      "reason": "",
+      "extraction_correction": "Verified against PDF page 2: the separate underlined How it works section heading is not part of the Filipino note. Corrected during homepage placement verification."
+    },
+    {
+      "key": "home.how_it_works",
+      "language": "en",
+      "document_ids": [
+        "R013"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "How it works",
+      "requested": "How It Works",
+      "applied": "How It Works",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.how_it_works",
+      "language": "tl",
+      "document_ids": [
+        "R013"
+      ],
+      "pages": [
+        2
+      ],
+      "before": "Paano ito gumagana",
+      "requested": "Paano Ito Gumagana",
+      "applied": "Paano Ito Gumagana",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_records_title",
+      "language": "en",
+      "document_ids": [
+        "R014"
+      ],
+      "pages": [
+        2,
+        3
+      ],
+      "before": "Add your records",
+      "requested": "Add your Records",
+      "applied": "Add your Records",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_records_title",
+      "language": "tl",
+      "document_ids": [
+        "R014"
+      ],
+      "pages": [
+        2,
+        3
+      ],
+      "before": "Idagdag ang iyong mga talaan",
+      "requested": "Idagdag ang iyong mga rekord",
+      "applied": "Idagdag ang iyong mga rekord",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_records_desc",
+      "language": "en",
+      "document_ids": [
+        "R014"
+      ],
+      "pages": [
+        2,
+        3
+      ],
+      "before": "Upload customer records or counts per period, using NovaQ's CSV or Excel template.",
+      "requested": "Upload customer records or counts per period, using NovaQ's CSV or Excel template.",
+      "applied": "Upload customer records or counts per period, using NovaQ's CSV or Excel template.",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "home.step_records_desc",
+      "language": "tl",
+      "document_ids": [
+        "R014"
+      ],
+      "pages": [
+        2,
+        3
+      ],
+      "before": "Mag-upload ng mga talaan ng customer o bilang bawat yugto, gamit ang CSV o Excel template ng NovaQ.",
+      "requested": "Mag-upload ng mga rekord ng customer o bilang bawat panahon (period), gamit ang CSV o Excel template ng NovaQ.",
+      "applied": "Mag-upload ng mga rekord ng customer o bilang bawat panahon (period), gamit ang CSV o Excel template ng NovaQ.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_plans_title",
+      "language": "en",
+      "document_ids": [
+        "R015"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "See suggested plans",
+      "requested": "See Suggested Plans",
+      "applied": "See Suggested Plans",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_plans_title",
+      "language": "tl",
+      "document_ids": [
+        "R015"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Tingnan ang mga mungkahing plano",
+      "requested": "Tingnan ang mga suggested na plano",
+      "applied": "Tingnan ang mga suggested na plano",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_plans_desc",
+      "language": "en",
+      "document_ids": [
+        "R015"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "See how many counters to open in each period of the day.",
+      "requested": "See how many counters to open in each period of the day.",
+      "applied": "See how many counters to open in each period of the day.",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "home.step_plans_desc",
+      "language": "tl",
+      "document_ids": [
+        "R015"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Tingnan kung ilang counter ang bubuksan sa bawat yugto ng araw.",
+      "requested": "Alamin kung ilang counter ang dapat buksan sa bawat bahagi ng araw.",
+      "applied": "Alamin kung ilang counter ang dapat buksan sa bawat bahagi ng araw.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_watch_title",
+      "language": "en",
+      "document_ids": [
+        "R016"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Watch your day",
+      "requested": "Watch the Simulation",
+      "applied": "Watch the Simulation",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_watch_title",
+      "language": "tl",
+      "document_ids": [
+        "R016"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Panoorin ang iyong araw",
+      "requested": "Panoorin ang Simulation",
+      "applied": "Panoorin ang Simulation",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "home.step_watch_desc",
+      "language": "en",
+      "document_ids": [
+        "R016"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Replay customers arriving, waiting and being served.",
+      "requested": "Replay customers arriving, waiting and being served.",
+      "applied": "Replay customers arriving, waiting and being served.",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "home.step_watch_desc",
+      "language": "tl",
+      "document_ids": [
+        "R016"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Panoorin muli ang mga customer na dumarating, naghihintay, at pinagsisilbihan.",
+      "requested": "I-replay ang pagdating, paghihintay, at paglilingkod sa mga customer.",
+      "applied": "I-replay ang pagdating, paghihintay, at paglilingkod sa mga customer.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.title",
+      "language": "en",
+      "document_ids": [
+        "R017"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Quick calculator",
+      "requested": "Quick Calculator",
+      "applied": "Quick Calculator",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.title",
+      "language": "tl",
+      "document_ids": [
+        "R017"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Mabilis na calculator",
+      "requested": "Mabilisang Calculator",
+      "applied": "Mabilisang Calculator",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "nav.quick_calculator",
+      "language": "en",
+      "document_ids": [
+        "R017"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Quick calculator",
+      "requested": "Quick Calculator",
+      "applied": "Quick Calculator",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "nav.quick_calculator",
+      "language": "tl",
+      "document_ids": [
+        "R017"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Mabilisang Calculator",
+      "requested": "Mabilisang Calculator",
+      "applied": "Mabilisang Calculator",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "calculator.note",
+      "language": "en",
+      "document_ids": [
+        "R018"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "A quick estimate for one typical hour. It assumes customers arrive at random. Start an analysis to use your real records.",
+      "requested": "Calculates a quick estimate based on random arrival patterns. Start an Analysis to use your actual record.",
+      "applied": "Calculates a quick estimate based on random arrival patterns. Start an Analysis to use your actual record.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.note",
+      "language": "tl",
+      "document_ids": [
+        "R018"
+      ],
+      "pages": [
+        3
+      ],
+      "before": "Mabilis na tantiya para sa isang karaniwang oras. Ipinagpapalagay nitong random ang pagdating ng mga customer. Magsimula ng analysis para magamit ang totoo mong records.",
+      "requested": "Nagbibigay ng mabilis na estimation batay sa mga random na pattern ng pagdating. Magsimula ng Analysis upang magamit ang iyong aktwal na mga record.",
+      "applied": "Nagbibigay ng mabilis na estimation batay sa mga random na pattern ng pagdating. Magsimula ng Analysis upang magamit ang iyong aktwal na mga record.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.lambda",
+      "language": "en",
+      "document_ids": [
+        "R019",
+        "R026",
+        "R033",
+        "R041"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Customers arriving per hour",
+      "requested": "Customer Arriving per hour",
+      "applied": "Customer Arriving per hour",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.lambda",
+      "language": "tl",
+      "document_ids": [
+        "R019",
+        "R026",
+        "R033",
+        "R041"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Customer na dumarating bawat oras",
+      "requested": "Dumarating na customer kada oras",
+      "applied": "Dumarating na customer kada oras",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.mu",
+      "language": "en",
+      "document_ids": [
+        "R020",
+        "R027",
+        "R034",
+        "R042"
+      ],
+      "pages": [
+        4,
+        5,
+        7,
+        8
+      ],
+      "before": "Customers one counter serves per hour",
+      "requested": "Customer Served per hour (one counter only)",
+      "applied": "Customer Served per hour (one counter only)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.mu",
+      "language": "tl",
+      "document_ids": [
+        "R020",
+        "R027",
+        "R034",
+        "R042"
+      ],
+      "pages": [
+        4,
+        5,
+        7,
+        8
+      ],
+      "before": "Customer na nasisilbihan ng isang counter bawat oras",
+      "requested": "Bilang ng kostumer na pinagsilbihan kada oras (isang counter lamang)",
+      "applied": "Bilang ng kostumer na pinagsilbihan kada oras (isang counter lamang)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.c",
+      "language": "en",
+      "document_ids": [
+        "R021",
+        "R028",
+        "R035",
+        "R043"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Counters open",
+      "requested": "Current Open Counter",
+      "applied": "Current Open Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.c",
+      "language": "tl",
+      "document_ids": [
+        "R021",
+        "R028",
+        "R035",
+        "R043"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Bukas na counter",
+      "requested": "Kasalukuyang bukas na Counter",
+      "applied": "Kasalukuyang bukas na Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field_info.lambda",
+      "language": "en",
+      "document_ids": [
+        "R022"
+      ],
+      "pages": [
+        4
+      ],
+      "before": "λ (lambda): the average number of customers who arrive in one hour.",
+      "requested": "λ (lambda): Number of customers arriving within an hour. (on Average)",
+      "applied": "λ (lambda): Number of customers arriving within an hour. (on Average)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field_info.lambda",
+      "language": "tl",
+      "document_ids": [
+        "R022"
+      ],
+      "pages": [
+        4
+      ],
+      "before": "λ (lambda): ang karaniwang bilang ng customer na dumarating sa isang oras.",
+      "requested": "λ (lambda): Bilang ng mga customer na dumarating sa loob ng isang oras. (sa Average)",
+      "applied": "λ (lambda): Bilang ng mga customer na dumarating sa loob ng isang oras. (sa Average)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field_info.mu",
+      "language": "en",
+      "document_ids": [
+        "R023"
+      ],
+      "pages": [
+        5
+      ],
+      "before": "μ (mu): how many customers one counter finishes in one hour; 60 ÷ the average service time in minutes.",
+      "requested": "μ (mu): Number of customers in a counter that checked out within an hour. (60 ÷ the average service time in minutes.)",
+      "applied": "μ (mu): Number of customers in a counter that checked out within an hour. (60 ÷ the average service time in minutes.)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field_info.mu",
+      "language": "tl",
+      "document_ids": [
+        "R023"
+      ],
+      "pages": [
+        5
+      ],
+      "before": "μ (mu): ilang customer ang natatapos ng isang counter sa isang oras; 60 ÷ karaniwang tagal ng serbisyo sa minuto.",
+      "requested": "μ (mu): Bilang ng mga customer sa isang counter na nakatapos ng transaksyon sa loob ng isang oras. (60 ÷ karaniwang tagal ng serbisyo sa minuto.)",
+      "applied": "μ (mu): Bilang ng mga customer sa isang counter na nakatapos ng transaksyon sa loob ng isang oras. (60 ÷ karaniwang tagal ng serbisyo sa minuto.)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation.variable",
+      "language": "en",
+      "document_ids": [
+        "R024"
+      ],
+      "pages": [
+        5
+      ],
+      "before": "Service time varies",
+      "requested": "Service Time Varies",
+      "applied": "Service Time Varies",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation.variable",
+      "language": "tl",
+      "document_ids": [
+        "R024"
+      ],
+      "pages": [
+        5
+      ],
+      "before": "Nag-iiba ang tagal ng serbisyo",
+      "requested": "Paiba-ibang Tagal ng Serbisyo",
+      "applied": "Paiba-ibang Tagal ng Serbisyo",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation_help.variable",
+      "language": "en",
+      "document_ids": [
+        "R025"
+      ],
+      "pages": [
+        5
+      ],
+      "before": "Use this when you know how much service times spread around their average.",
+      "requested": "Use this to expand which service time durations vary from their average.",
+      "applied": "Use this to expand which service time durations vary from their average.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation_help.variable",
+      "language": "tl",
+      "document_ids": [
+        "R025"
+      ],
+      "pages": [
+        5
+      ],
+      "before": "Gamitin ito kapag alam mo kung gaano kalawak nag-iiba ang tagal ng serbisyo sa paligid ng average.",
+      "requested": "Gamitin ito kapag alam mo kung gaano nag-iiba ang tagal ng serbisyo mula sa average nito.",
+      "applied": "Gamitin ito kapag alam mo kung gaano nag-iiba ang tagal ng serbisyo mula sa average nito.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.spread",
+      "language": "en",
+      "document_ids": [
+        "R029"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "Typical spread of service time (minutes)",
+      "requested": "Time Consistency (in minutes)",
+      "applied": "Time Consistency (in minutes)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.spread",
+      "language": "tl",
+      "document_ids": [
+        "R029"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "Karaniwang lawak ng pag-iiba ng tagal ng serbisyo (minuto)",
+      "requested": "Pagkakapareho ng oras (sa minuto) LABEL’s TOOL TIP (copy the other tool tip that repeats written before this)",
+      "applied": "Pagkakapareho ng oras (sa minuto) LABEL’s TOOL TIP (copy the other tool tip that repeats written before this)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field_info.spread",
+      "language": "en",
+      "document_ids": [
+        "R030"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "The standard deviation of service time. NovaQ uses the variance σ² = (spread ÷ 60)² hours². 0 means every service takes exactly the average time. With limited waiting space, leave it empty to assume random service times.",
+      "requested": "Consistency of service time. NovaQ uses the variance σ² = (spread ÷ 60)² hours². 0 means every service takes exactly the average time. With limited waiting space, leave it empty to assume random service times.",
+      "applied": "Consistency of service time. NovaQ uses the variance σ² = (spread ÷ 60)² hours². 0 means every service takes exactly the average time. With limited waiting space, leave it empty to assume random service times.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field_info.spread",
+      "language": "tl",
+      "document_ids": [
+        "R030"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "Ang standard deviation ng tagal ng serbisyo. Ginagamit ng NovaQ ang variance σ² = (lawak ÷ 60)² oras². Ang 0 ay nangangahulugang eksaktong average ang tagal ng bawat serbisyo. Sa limitadong lugar ng paghihintay, iwanang blangko para ipagpalagay na random ang tagal ng serbisyo.",
+      "requested": "Pagkakapareho ng tagal ng serbisyo. Gumagamit ang NovaQ ng variance na σ² = (spread ÷ 60)² hours². Ang halagang 0 ay nangangahulugang ang bawat serbisyo ay tumatagal nang eksakto ayon sa karaniwang tagal. Dahil limitado ang espasyo para sa paghihintay, iwanang blangko ito upang ipagpalagay na ang tagal ng serbisyo ay random.",
+      "applied": "Pagkakapareho ng tagal ng serbisyo. Gumagamit ang NovaQ ng variance na σ² = (spread ÷ 60)² hours². Ang halagang 0 ay nangangahulugang ang bawat serbisyo ay tumatagal nang eksakto ayon sa karaniwang tagal. Dahil limitado ang espasyo para sa paghihintay, iwanang blangko ito upang ipagpalagay na ang tagal ng serbisyo ay random.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation.limited",
+      "language": "en",
+      "document_ids": [
+        "R031"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "Limited waiting space",
+      "requested": "Limited Queue Capacity",
+      "applied": "Limited Queue Capacity",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation.limited",
+      "language": "tl",
+      "document_ids": [
+        "R031"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "Limitado ang lugar ng paghihintay",
+      "requested": "Limitadong Kapasidad ng Pila",
+      "applied": "Limitadong Kapasidad ng Pila",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation_help.limited",
+      "language": "en",
+      "document_ids": [
+        "R032"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "Use this when only so many customers fit inside; a customer arriving when it is full is turned away.",
+      "requested": "Use this if there is a limited number of customers in the waiting space.",
+      "applied": "Use this when only so many customers fit inside; a customer arriving when it is full is turned away.",
+      "status": "retained_conflict",
+      "reason": "K includes customers being served; the requested description defines only waiting-space capacity."
+    },
+    {
+      "key": "calculator.situation_help.limited",
+      "language": "tl",
+      "document_ids": [
+        "R032"
+      ],
+      "pages": [
+        6
+      ],
+      "before": "Gamitin ito kapag limitado ang kasya sa loob; tinatanggihan ang customer na dumarating kapag puno na.",
+      "requested": "Gamitin ito kung limitado ang bilang ng mga customer sa lugar na pinaghihintayan.",
+      "applied": "Gamitin ito kapag limitado ang kasya sa loob; tinatanggihan ang customer na dumarating kapag puno na.",
+      "status": "retained_conflict",
+      "reason": "K includes customers being served; the requested description defines only waiting-space capacity."
+    },
+    {
+      "key": "calculator.field.capacity",
+      "language": "en",
+      "document_ids": [
+        "R036"
+      ],
+      "pages": [
+        7
+      ],
+      "before": "Most customers inside at once",
+      "requested": "Maximum Customer in waiting space.",
+      "applied": "Most customers inside at once",
+      "status": "retained_conflict",
+      "reason": "K is total system capacity, not waiting-area capacity."
+    },
+    {
+      "key": "calculator.field.capacity",
+      "language": "tl",
+      "document_ids": [
+        "R036"
+      ],
+      "pages": [
+        7
+      ],
+      "before": "Pinakamaraming customer sa loob nang sabay",
+      "requested": "Pinakamataas na bilang ng mga customer sa waiting area.",
+      "applied": "Pinakamaraming customer sa loob nang sabay",
+      "status": "retained_conflict",
+      "reason": "K is total system capacity, not waiting-area capacity."
+    },
+    {
+      "key": "calculator.field.spread_optional",
+      "language": "en",
+      "document_ids": [
+        "R037"
+      ],
+      "pages": [
+        7
+      ],
+      "before": "Typical spread of service time (minutes, optional)",
+      "requested": "Time Consistency in minutes. (Optional)",
+      "applied": "Time Consistency in minutes. (Optional)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.spread_optional",
+      "language": "tl",
+      "document_ids": [
+        "R037"
+      ],
+      "pages": [
+        7
+      ],
+      "before": "Karaniwang lawak ng pag-iiba ng tagal ng serbisyo (minuto, opsyonal)",
+      "requested": "Pagkakapareho ng oras sa minuto. (Optional)",
+      "applied": "Pagkakapareho ng oras sa minuto. (Optional)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field_info.capacity",
+      "language": "en",
+      "document_ids": [
+        "R038"
+      ],
+      "pages": [
+        7
+      ],
+      "before": "K: customers waiting plus customers being served. A customer arriving when it is full is turned away. At least the number of counters open.",
+      "requested": "K: The number of customers waiting + the number checked out. Customers leave when the queue is full. This should be at least equal to the number of open counters.",
+      "applied": "K: customers waiting plus customers being served. A customer arriving when it is full is turned away. At least the number of counters open.",
+      "status": "retained_conflict",
+      "reason": "Checked-out customers have left; K includes customers currently being served."
+    },
+    {
+      "key": "calculator.field_info.capacity",
+      "language": "tl",
+      "document_ids": [
+        "R038"
+      ],
+      "pages": [
+        7
+      ],
+      "before": "K: mga naghihintay kasama ang mga sinisilbihan. Tinatanggihan ang customer na dumarating kapag puno na. Hindi bababa sa bilang ng bukas na counter.",
+      "requested": "K: Ang bilang ng mga customer na naghihintay + ang bilang ng mga customer na kasalukuyang pinagsisilbihan. Umaalis ang mga customer kapag puno na ang pila. Ang bilang na ito ay dapat na hindi bababa sa bilang ng mga bukas na counter.",
+      "applied": "K: Ang bilang ng mga customer na naghihintay + ang bilang ng mga customer na kasalukuyang pinagsisilbihan. Umaalis ang mga customer kapag puno na ang pila. Ang bilang na ito ay dapat na hindi bababa sa bilang ng mga bukas na counter.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation.leaving",
+      "language": "en",
+      "document_ids": [
+        "R039"
+      ],
+      "pages": [
+        7,
+        8
+      ],
+      "before": "Some people leave",
+      "requested": "Line Leaving Rates",
+      "applied": "Line Leaving Rates",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation.leaving",
+      "language": "tl",
+      "document_ids": [
+        "R039"
+      ],
+      "pages": [
+        7,
+        8
+      ],
+      "before": "May mga umaalis",
+      "requested": "Dami ng Umaalis",
+      "applied": "Dami ng Umaalis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation_help.leaving",
+      "language": "en",
+      "document_ids": [
+        "R040"
+      ],
+      "pages": [
+        8
+      ],
+      "before": "Use this when some waiting customers give up and leave before they are served.",
+      "requested": "Use this to model customers who leave the queue before reaching the counter",
+      "applied": "Use this to model customers who leave the queue before reaching the counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.situation_help.leaving",
+      "language": "tl",
+      "document_ids": [
+        "R040"
+      ],
+      "pages": [
+        8
+      ],
+      "before": "Gamitin ito kapag may mga naghihintay na sumusuko at umaalis bago masilbihan.",
+      "requested": "Gamitin ito para sa mga customer na hindi nakapaghintay at umalis na lang",
+      "applied": "Gamitin ito para sa mga customer na hindi nakapaghintay at umalis na lang",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.field.patience",
+      "language": "en",
+      "document_ids": [
+        "R044"
+      ],
+      "pages": [
+        8
+      ],
+      "before": "Average patience before leaving (minutes)",
+      "requested": "Patience per minute",
+      "applied": "Average patience before leaving (minutes)",
+      "status": "retained_conflict",
+      "reason": "Input is a duration in minutes, not a rate per minute."
+    },
+    {
+      "key": "calculator.field.patience",
+      "language": "tl",
+      "document_ids": [
+        "R044"
+      ],
+      "pages": [
+        8
+      ],
+      "before": "Karaniwang pasensiya bago umalis (minuto)",
+      "requested": "Pasensya kada minuto",
+      "applied": "Karaniwang pasensiya bago umalis (minuto)",
+      "status": "retained_conflict",
+      "reason": "Input is a duration in minutes, not a rate per minute."
+    },
+    {
+      "key": "calculator.field_info.patience",
+      "language": "en",
+      "document_ids": [
+        "R045"
+      ],
+      "pages": [
+        8
+      ],
+      "before": "NovaQ uses θ (theta) = 60 ÷ average patience in minutes: how quickly waiting customers give up, per hour.",
+      "requested": "θ (theta): The average patience duration the customer have (in minute) before leaving the queue. NovaQ calculates it as 60 ÷ average patience in minutes .",
+      "applied": "NovaQ uses θ (theta) = 60 ÷ average patience in minutes: how quickly waiting customers give up, per hour.",
+      "status": "retained_conflict",
+      "reason": "Theta is the derived per-hour abandonment rate, not the input patience duration."
+    },
+    {
+      "key": "calculator.field_info.patience",
+      "language": "tl",
+      "document_ids": [
+        "R045"
+      ],
+      "pages": [
+        8
+      ],
+      "before": "Ginagamit ng NovaQ ang θ (theta) = 60 ÷ karaniwang pasensiya sa minuto: kung gaano kabilis sumuko ang mga naghihintay, bawat oras.",
+      "requested": "θ (theta): Ang karaniwang tagal ng pasensya ng isang customer (sa minuto) bago ito umalis sa pila. Kinakalkula ito ng NovaQ sa pamamagitan ng 60 ÷ karaniwang tagal ng pasensya (sa minuto) .",
+      "applied": "Ginagamit ng NovaQ ang θ (theta) = 60 ÷ karaniwang pasensiya sa minuto: kung gaano kabilis sumuko ang mga naghihintay, bawat oras.",
+      "status": "retained_conflict",
+      "reason": "Theta is the derived per-hour abandonment rate, not the input patience duration."
+    },
+    {
+      "key": "help.search_label",
+      "language": "en",
+      "document_ids": [
+        "R046"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "Find help",
+      "requested": "Find Help",
+      "applied": "Find Help",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.search_label",
+      "language": "tl",
+      "document_ids": [
+        "R046"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "Maghanap ng tulong",
+      "requested": "Humanap ng Tulong",
+      "applied": "Humanap ng Tulong",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.search_placeholder",
+      "language": "en",
+      "document_ids": [
+        "R047"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "For example: closing time, review only",
+      "requested": "Ex.: Closing Time",
+      "applied": "Ex.: Closing Time",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.search_placeholder",
+      "language": "tl",
+      "document_ids": [
+        "R047"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "Halimbawa: oras ng pagsara, review lang",
+      "requested": "Ex.: Closing Time",
+      "applied": "Ex.: Closing Time",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "tutorials.analysis-workflow.title",
+      "language": "en",
+      "document_ids": [
+        "R048"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "Start and add data",
+      "requested": "Start and add Data",
+      "applied": "Start and add Data",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "tutorials.analysis-workflow.title",
+      "language": "tl",
+      "document_ids": [
+        "R048"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "Simulan at magdagdag ng data",
+      "requested": "Magsimula at Mag-lagay ng Data",
+      "applied": "Magsimula at Mag-lagay ng Data",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "tutorials.key-metrics.title",
+      "language": "en",
+      "document_ids": [
+        "R049"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "Analysis key metrics",
+      "requested": "Analysis Key Metric",
+      "applied": "Analysis Key Metric",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "tutorials.key-metrics.title",
+      "language": "tl",
+      "document_ids": [
+        "R049"
+      ],
+      "pages": [
+        10
+      ],
+      "before": "Mga pangunahing sukatan ng analysis",
+      "requested": "Pangunahing Sukatan para sa Analysis",
+      "applied": "Pangunahing Sukatan para sa Analysis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "tutorials.queue-simulation.title",
+      "language": "en",
+      "document_ids": [
+        "R050",
+        "R069"
+      ],
+      "pages": [
+        10,
+        11,
+        23
+      ],
+      "before": "Queue simulation",
+      "requested": "Queue Simulation",
+      "applied": "Queue Simulation",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "tutorials.queue-simulation.title",
+      "language": "tl",
+      "document_ids": [
+        "R050",
+        "R069"
+      ],
+      "pages": [
+        10,
+        11,
+        23
+      ],
+      "before": "Simulation ng pila",
+      "requested": "Simulasyon ng Pila",
+      "applied": "Simulasyon ng Pila",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.title",
+      "language": "en",
+      "document_ids": [
+        "R050",
+        "R069"
+      ],
+      "pages": [
+        10,
+        11,
+        23
+      ],
+      "before": "Simulation",
+      "requested": "Queue Simulation",
+      "applied": "Queue Simulation",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.title",
+      "language": "tl",
+      "document_ids": [
+        "R050",
+        "R069"
+      ],
+      "pages": [
+        10,
+        11,
+        23
+      ],
+      "before": "Simulation",
+      "requested": "Simulasyon ng Pila",
+      "applied": "Simulasyon ng Pila",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "nav.queue_simulation",
+      "language": "en",
+      "document_ids": [
+        "R050",
+        "R069"
+      ],
+      "pages": [
+        10,
+        11,
+        23
+      ],
+      "before": "Queue simulation",
+      "requested": "Queue Simulation",
+      "applied": "Queue Simulation",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "nav.queue_simulation",
+      "language": "tl",
+      "document_ids": [
+        "R050",
+        "R069"
+      ],
+      "pages": [
+        10,
+        11,
+        23
+      ],
+      "before": "Simulasyon ng Pila",
+      "requested": "Simulasyon ng Pila",
+      "applied": "Simulasyon ng Pila",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.start.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Starting an analysis",
+      "requested": "Starting an Analysis",
+      "applied": "Starting an Analysis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.start.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Pagsisimula ng analysis",
+      "requested": "Magsimula ng Analysis",
+      "applied": "Magsimula ng Analysis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.start.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "An analysis keeps one queue's files, plans, simulations and reports together.",
+      "requested": "Keeps all files, plans, simulations, and reports for one queue together.",
+      "applied": "Keeps all files, plans, simulations, and reports for one queue together.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.start.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Pinagsasama ng isang analysis ang mga file, plano, simulation at report ng isang pila.",
+      "requested": "Pinagsama ang mga file, plano, simulation, at ulat para sa isang pila.",
+      "applied": "Pinagsama ang mga file, plano, simulation, at ulat para sa isang pila.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.data.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Adding your data",
+      "requested": "Adding Your Data",
+      "applied": "Adding Your Data",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.data.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Pagdaragdag ng data",
+      "requested": "Ilagay ang iyong Data",
+      "applied": "Ilagay ang iyong Data",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.data.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Plans, simulations and checks all start from your planning file and your Setup.",
+      "requested": "For Plans, Simulations, and Checks, use your planning file and setup.",
+      "applied": "For Plans, Simulations, and Checks, use your planning file and setup.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.data.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Nagsisimula ang mga plano, simulation at check sa iyong planning file at Setup.",
+      "requested": "Ginagamit ang planning file at setup para sa mga plano at simulation.",
+      "applied": "Ginagamit ang planning file at setup para sa mga plano at simulation.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.results.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Reading results",
+      "requested": "Reading Results",
+      "applied": "Reading Results",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.results.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Pagbasa ng resulta",
+      "requested": "Resulta ng Reading",
+      "applied": "Resulta ng Reading",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.results.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "See how busy each period is today and what the selected plan would change.",
+      "requested": "View current activity and how the selected plan may improve it.",
+      "applied": "View current activity and how the selected plan may improve it.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.results.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Makita kung gaano kaabala ang bawat period ngayon at ano ang babaguhin ng napiling plano.",
+      "requested": "Tingnan ang kasalukuyang pila at posibleng epekto ng napiling plano.",
+      "applied": "Tingnan ang kasalukuyang pila at posibleng epekto ng napiling plano.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.plans.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Comparing plans",
+      "requested": "Comparing Plans",
+      "applied": "Comparing Plans",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.plans.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Paghahambing ng mga plano",
+      "requested": "Pagkumpara ng Plano",
+      "applied": "Pagkumpara ng Plano",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.plans.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Find the counters for each period with the lowest cost among the options that meet your limits.",
+      "requested": "Find the lowest-cost counter setup that meets your limits.",
+      "applied": "Find the lowest-cost counter setup that meets your limits.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.plans.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Hanapin ang bilang ng counter bawat period na may pinakamababang gastos sa mga opsiyong pasok sa iyong limitasyon.",
+      "requested": "Hanapin ang pinakamaliit na bilang ng mga kahera na pasok sa mga limitasyon.",
+      "applied": "Hanapin ang bilang ng counter bawat period na may pinakamababang gastos sa mga opsiyong pasok sa iyong limitasyon.",
+      "status": "retained_conflict",
+      "reason": "The optimizer minimizes configured total cost, which is not always the fewest cashiers."
+    },
+    {
+      "key": "help.guide.simulation.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Queue simulation",
+      "requested": "Queue Simulation",
+      "applied": "Queue Simulation",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.simulation.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Queue simulation",
+      "requested": "Queue Simulation",
+      "applied": "Queue Simulation",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.simulation.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Watch customers arrive, wait and get served, instead of relying on averages alone.",
+      "requested": "Simulate customer arrivals, waiting, and service.",
+      "applied": "Simulate customer arrivals, waiting, and service.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.simulation.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Panoorin ang pagdating, paghihintay at pagsisilbi sa mga customer, sa halip na umasa lang sa average.",
+      "requested": "Subukan ang pagdating, paghihintay, at pagseserbisyo sa mga customer.",
+      "applied": "Subukan ang pagdating, paghihintay, at pagseserbisyo sa mga customer.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.checks.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Checks and decision",
+      "requested": "Checks and Decision",
+      "applied": "Checks and Decision",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.checks.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Mga check at decision",
+      "requested": "Checks and Decision",
+      "applied": "Checks and Decision",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.checks.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Test the plan before you decide.",
+      "requested": "Test the plan before making a decision.",
+      "applied": "Test the plan before making a decision.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.checks.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Subukan ang plano bago magpasya.",
+      "requested": "Subukan ang plano bago magdesisyon.",
+      "applied": "Subukan ang plano bago magdesisyon.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.downloads.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Downloads",
+      "requested": "Downloads",
+      "applied": "Downloads",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.downloads.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Mga download",
+      "requested": "Downloads",
+      "applied": "Downloads",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.downloads.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Take the evidence with you, in the sections each file lists.",
+      "requested": "Download supporting files and reports.",
+      "applied": "Download supporting files and reports.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.downloads.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Dalhin ang ebidensiya, sa mga seksiyong nakalista sa bawat file.",
+      "requested": "I-download ang mga file at reports.",
+      "applied": "I-download ang mga file at reports.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.problems.title",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Problems",
+      "requested": "Problems",
+      "applied": "Problems",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.problems.title",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Mga problema",
+      "requested": "Problema",
+      "applied": "Problema",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.problems.purpose",
+      "language": "en",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Most problems have a short fix.",
+      "requested": "Find solutions to common issues.",
+      "applied": "Find solutions to common issues.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.problems.purpose",
+      "language": "tl",
+      "document_ids": [
+        "R051"
+      ],
+      "pages": [
+        11,
+        12,
+        13
+      ],
+      "before": "Mabilis ayusin ang karamihan ng problema.",
+      "requested": "Humanap ng solusyon sa mga karaniwang isyu.",
+      "applied": "Humanap ng solusyon sa mga karaniwang isyu.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.data_title",
+      "language": "en",
+      "document_ids": [
+        "R052"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Data and setup",
+      "requested": "Data and Setup",
+      "applied": "Data and Setup",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.data_title",
+      "language": "tl",
+      "document_ids": [
+        "R052"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Data at setup",
+      "requested": "Data and Setup",
+      "applied": "Data and Setup",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.step_template",
+      "language": "en",
+      "document_ids": [
+        "R053"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Get the template",
+      "requested": "Get the Template",
+      "applied": "Get the Template",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.step_template",
+      "language": "tl",
+      "document_ids": [
+        "R053"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Kunin ang template",
+      "requested": "Kunin ang Template",
+      "applied": "Kunin ang Template",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.prepare_title",
+      "language": "en",
+      "document_ids": [
+        "R054"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Prepare your operational data",
+      "requested": "Prepare your Operational Data",
+      "applied": "Prepare your Operational Data",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.prepare_title",
+      "language": "tl",
+      "document_ids": [
+        "R054"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Ihanda ang iyong operational data",
+      "requested": "Ihanda ang iyong Operational Data",
+      "applied": "Ihanda ang iyong Operational Data",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.prepare_help",
+      "language": "en",
+      "document_ids": [
+        "R055"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Download a template with the exact columns NovaQ accepts, or view the field guide and a filled example.",
+      "requested": "Download a template, or view the field guide and example.",
+      "applied": "Download a template, or view the field guide and example.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.prepare_help",
+      "language": "tl",
+      "document_ids": [
+        "R055"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Mag-download ng template na may eksaktong mga column na tinatanggap ng NovaQ, o tingnan ang field guide at isang halimbawa.",
+      "requested": "Mag-download ng template, o tingnan ang field guide at halimbawa.",
+      "applied": "Mag-download ng template, o tingnan ang field guide at halimbawa.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.schema_aggregate",
+      "language": "en",
+      "document_ids": [
+        "R056"
+      ],
+      "pages": [
+        15
+      ],
+      "before": "Totals and rates",
+      "requested": "Totals and Rates",
+      "applied": "Totals and Rates",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.schema_aggregate",
+      "language": "tl",
+      "document_ids": [
+        "R056"
+      ],
+      "pages": [
+        15
+      ],
+      "before": "Mga kabuuan at rate",
+      "requested": "Totals at Rates",
+      "applied": "Totals at Rates",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.schema_events",
+      "language": "en",
+      "document_ids": [
+        "R057"
+      ],
+      "pages": [
+        15
+      ],
+      "before": "Customer events",
+      "requested": "Customer Events",
+      "applied": "Customer Events",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "template.schema_events",
+      "language": "tl",
+      "document_ids": [
+        "R057"
+      ],
+      "pages": [
+        15
+      ],
+      "before": "Mga customer event",
+      "requested": "Customer Events",
+      "applied": "Customer Events",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_recorded",
+      "language": "en",
+      "document_ids": [
+        "R058"
+      ],
+      "pages": [
+        16
+      ],
+      "before": "The average time customers waited between arriving and starting service, taken from every customer record in this file.",
+      "requested": "The average time customers waited between arriving and starting service, based on all customer records in the file.",
+      "applied": "The average time customers waited between arriving and starting service, based on all customer records in the file.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_recorded",
+      "language": "tl",
+      "document_ids": [
+        "R058"
+      ],
+      "pages": [
+        16
+      ],
+      "before": "Ang karaniwang tagal ng paghihintay ng mga customer mula pagdating hanggang pagsisimula ng serbisyo, mula sa bawat tala ng customer sa file na ito.",
+      "requested": "Ang average na oras na hinintay ng mga customer mula sa kanyang pagdating hanggang sa pagsisimula ng kanilang serbisyo, batay sa lahat ng lista ng mga customer sa file na ito.",
+      "applied": "Ang average na oras na hinintay ng mga customer mula sa kanyang pagdating hanggang sa pagsisimula ng kanilang serbisyo, batay sa lahat ng lista ng mga customer sa file na ito.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_estimated_separate",
+      "language": "en",
+      "document_ids": [
+        "R059"
+      ],
+      "pages": [
+        17
+      ],
+      "before": "NovaQ's queue model estimates each line's average wait from your uploaded inputs, then weights every line and period by its arrivals. If counters can't keep up anywhere, no average is shown.",
+      "requested": "NOVAQ’s queueing model estimates the average waiting time for each line using the uploaded data, then calculates the overall average by weighting each line and time period according to customer arrivals. If any counter cannot handle the incoming demand, the overall average is not displayed.",
+      "applied": "NOVAQ’s queueing model estimates the average waiting time for each line using the uploaded data, then calculates the overall average by weighting each line and time period according to customer arrivals. If any counter cannot handle the incoming demand, the overall average is not displayed.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_estimated_separate",
+      "language": "tl",
+      "document_ids": [
+        "R059"
+      ],
+      "pages": [
+        17
+      ],
+      "before": "Tinatantiya ng queue model ng NovaQ ang karaniwang paghihintay ng bawat linya mula sa iyong na-upload na input, saka tinitimbang ang bawat linya at period ayon sa dami ng dumating. Kung may period na hindi nakakasabay ang mga counter, walang average na ipinapakita.",
+      "requested": "Ginagamit ng NOVAQ ang na-upload na data para malaman kung gaano katagal maghihintay ang mga customer sa bawat pila. Kinucompute rin nito ang kabuuang average na oras ng paghihintay, batay sa dami ng mga customer sa bawat pila at oras. Pero kung may counter na hindi na kayang pagsilbihan ang dami ng mga dumarating na customer, hindi ipapakita ang kabuuang average na oras ng paghihintay.",
+      "applied": "Ginagamit ng NOVAQ ang na-upload na data para malaman kung gaano katagal maghihintay ang mga customer sa bawat pila. Kinucompute rin nito ang kabuuang average na oras ng paghihintay, batay sa dami ng mga customer sa bawat pila at oras. Pero kung may counter na hindi na kayang pagsilbihan ang dami ng mga dumarating na customer, hindi ipapakita ang kabuuang average na oras ng paghihintay.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_attention",
+      "language": "en",
+      "document_ids": [
+        "R060"
+      ],
+      "pages": [
+        18
+      ],
+      "before": "Periods where counters can't keep up come first. Then NovaQ names the period with the highest estimated average wait.",
+      "requested": "Periods when counters cannot keep up with customer demand are prioritized. NOVAQ then identifies the period with the highest estimated average waiting time.",
+      "applied": "Periods when counters cannot keep up with customer demand are prioritized. NOVAQ then identifies the period with the highest estimated average waiting time.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_attention",
+      "language": "tl",
+      "document_ids": [
+        "R060"
+      ],
+      "pages": [
+        18
+      ],
+      "before": "Inuuna ang mga period na hindi nakakasabay ang mga counter. Pagkatapos, binabanggit ng NovaQ ang period na may pinakamataas na tinatayang karaniwang paghihintay.",
+      "requested": "Unang tinutukoy ng NOVAQ ang mga oras kung kailan hindi na kayang tugunan ng mga counter ang dami ng mga customer. Pagkatapos, tinutukoy nito ang oras na may pinakamataas na tinatayang average na paghihintay ng mga customer.",
+      "applied": "Unang tinutukoy ng NOVAQ ang mga oras kung kailan hindi na kayang tugunan ng mga counter ang dami ng mga customer. Pagkatapos, tinutukoy nito ang oras na may pinakamataas na tinatayang average na paghihintay ng mga customer.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_busiest_separate",
+      "language": "en",
+      "document_ids": [
+        "R061"
+      ],
+      "pages": [
+        19
+      ],
+      "before": "The period with the most customers arriving per hour in your data, with every line added together.",
+      "requested": "The period with the highest total number of customer arrivals per hour across all lines in your data.",
+      "applied": "The period with the highest total number of customer arrivals per hour across all lines in your data.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.how_busiest_separate",
+      "language": "tl",
+      "document_ids": [
+        "R061"
+      ],
+      "pages": [
+        19
+      ],
+      "before": "Ang period na may pinakamaraming customer na dumarating bawat oras sa iyong data, pinagsama ang lahat ng linya.",
+      "requested": "Ang oras na may pinakamataas na kabuuang bilang ng mga customer na dumarating bawat oras sa lahat ng pila, batay sa iyong data.",
+      "applied": "Ang oras na may pinakamataas na kabuuang bilang ng mga customer na dumarating bawat oras sa lahat ng pila, batay sa iyong data.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "analyses.service_line",
+      "language": "en",
+      "document_ids": [
+        "R062"
+      ],
+      "pages": [
+        20
+      ],
+      "before": "Service line",
+      "requested": "Service Line",
+      "applied": "Service Line",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "analyses.service_line",
+      "language": "tl",
+      "document_ids": [
+        "R062"
+      ],
+      "pages": [
+        20
+      ],
+      "before": "Service line",
+      "requested": "Service Line",
+      "applied": "Service Line",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.col_level",
+      "language": "en",
+      "document_ids": [
+        "R063",
+        "R068"
+      ],
+      "pages": [
+        20,
+        22
+      ],
+      "before": "Busy level",
+      "requested": "Crowd Level",
+      "applied": "Busy level",
+      "status": "retained_conflict",
+      "reason": "The indicator is utilization, not crowd size or density."
+    },
+    {
+      "key": "results.col_level",
+      "language": "tl",
+      "document_ids": [
+        "R063",
+        "R068"
+      ],
+      "pages": [
+        20,
+        22
+      ],
+      "before": "Antas ng abala",
+      "requested": "Gaano ka-busy",
+      "applied": "Gaano ka-busy",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.reference_scope",
+      "language": "en",
+      "document_ids": [
+        "R064"
+      ],
+      "pages": [
+        20
+      ],
+      "before": "Inputs, estimates and model explanations for the file shown here. Plan workbooks in Reports cover the selected plan and its saved inputs; they may use different demand and do not include every model explanation.",
+      "requested": "This section contains the inputs, estimates, and model explanations for the selected file. The plan workbooks in the Reports section include the selected plan and its saved inputs. However, they may use different demand levels and may not include all model explanations.",
+      "applied": "This section contains the inputs, estimates, and model explanations for the selected file. The plan workbooks in the Reports section include the selected plan and its saved inputs. However, they may use different demand levels and may not include all model explanations.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.reference_scope",
+      "language": "tl",
+      "document_ids": [
+        "R064"
+      ],
+      "pages": [
+        20
+      ],
+      "before": "Mga input, pagtataya at paliwanag ng modelo para sa file na ito. Ang mga workbook sa Reports ay para sa napiling plano at mga naka-save nitong input; maaaring iba ang demand at hindi kasama ang lahat ng paliwanag ng modelo.",
+      "requested": "Makikita sa seksiyong ito ang mga input, resulta, at paliwanag ng modelong ginamit para sa napiling file. Sa Reports, makikita ang mga workbook para sa napiling plano at ang mga naka-save na data nito. Pero maaaring iba ang demand na ginamit sa bawat plano, at hindi lahat ng paliwanag tungkol sa modelo ay kasama sa mga workbook.",
+      "applied": "Makikita sa seksiyong ito ang mga input, resulta, at paliwanag ng modelong ginamit para sa napiling file. Sa Reports, makikita ang mga workbook para sa napiling plano at ang mga naka-save na data nito. Pero maaaring iba ang demand na ginamit sa bawat plano, at hindi lahat ng paliwanag tungkol sa modelo ay kasama sa mga workbook.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "decision.plain.conditional_separate",
+      "language": "en",
+      "document_ids": [
+        "R065"
+      ],
+      "pages": [
+        21
+      ],
+      "before": "Saved checks passed for this run. Savings cannot be compared. Review the estimated loads and costs before using the plan.",
+      "requested": "The plan passed all the required checks, but the cost savings for each line could not be calculated. Only use this plan if you are comfortable with the potential costs.",
+      "applied": "Saved checks passed for this run. Savings cannot be compared. Review the estimated loads and costs before using the plan.",
+      "status": "retained_conflict",
+      "reason": "PDF wording is based on an older message and removes the current saved-run boundary."
+    },
+    {
+      "key": "decision.plain.conditional_separate",
+      "language": "tl",
+      "document_ids": [
+        "R065"
+      ],
+      "pages": [
+        21
+      ],
+      "before": "Pumasa ang mga naka-save na pagsusuri para sa run na ito. Hindi maikumpara ang matitipid. Suriin ang tinatayang dami ng customer at gastos bago gamitin ang plano.",
+      "requested": "Pumasa ang plano sa lahat ng analysis, pero hindi pa matukoy kung magkano ang matitipid sa bawat pila. Gamitin lamang ang planong ito kung handa kang tanggapin ang mga posibleng gastos.",
+      "applied": "Pumasa ang mga naka-save na pagsusuri para sa run na ito. Hindi maikumpara ang matitipid. Suriin ang tinatayang dami ng customer at gastos bago gamitin ang plano.",
+      "status": "retained_conflict",
+      "reason": "PDF wording is based on an older message and removes the current saved-run boundary."
+    },
+    {
+      "key": "reports.page.pdf_title",
+      "language": "en",
+      "document_ids": [
+        "R066"
+      ],
+      "pages": [
+        21
+      ],
+      "before": "PDF summary",
+      "requested": "PDF Summary",
+      "applied": "PDF Summary",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "reports.page.pdf_title",
+      "language": "tl",
+      "document_ids": [
+        "R066"
+      ],
+      "pages": [
+        21
+      ],
+      "before": "Buod na PDF",
+      "requested": "PDF Summary",
+      "applied": "PDF Summary",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "reports.page.excel_title",
+      "language": "en",
+      "document_ids": [
+        "R067"
+      ],
+      "pages": [
+        21
+      ],
+      "before": "Excel calculations",
+      "requested": "Excel Calculations",
+      "applied": "Excel Calculations",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "reports.page.excel_title",
+      "language": "tl",
+      "document_ids": [
+        "R067"
+      ],
+      "pages": [
+        21
+      ],
+      "before": "Mga kalkulasyon sa Excel",
+      "requested": "Excel Calculations",
+      "applied": "Excel Calculations",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.page_results",
+      "language": "en",
+      "document_ids": [
+        "R070"
+      ],
+      "pages": [
+        23
+      ],
+      "before": "Key results",
+      "requested": "Key Results",
+      "applied": "Key Results",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.page_results",
+      "language": "tl",
+      "document_ids": [
+        "R070"
+      ],
+      "pages": [
+        23
+      ],
+      "before": "Mga pangunahing resulta",
+      "requested": "Pangunahing Resulta",
+      "applied": "Pangunahing Resulta",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.key_results",
+      "language": "en",
+      "document_ids": [
+        "R070"
+      ],
+      "pages": [
+        23
+      ],
+      "before": "Key results",
+      "requested": "Key Results",
+      "applied": "Key Results",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.key_results",
+      "language": "tl",
+      "document_ids": [
+        "R070"
+      ],
+      "pages": [
+        23
+      ],
+      "before": "Mga pangunahing resulta",
+      "requested": "Pangunahing Resulta",
+      "applied": "Pangunahing Resulta",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.page_checks",
+      "language": "en",
+      "document_ids": [
+        "R080"
+      ],
+      "pages": [
+        25
+      ],
+      "before": "Checks and decision",
+      "requested": "Checks and Decisions",
+      "applied": "Checks and Decisions",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.page_checks",
+      "language": "tl",
+      "document_ids": [
+        "R080"
+      ],
+      "pages": [
+        25
+      ],
+      "before": "Mga pagsusuri at desisyon",
+      "requested": "Mga Pagsusuri at Desisyon",
+      "applied": "Mga Pagsusuri at Desisyon",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.operating_hours",
+      "language": "en",
+      "document_ids": [
+        "R072",
+        "R075"
+      ],
+      "pages": [
+        23,
+        24
+      ],
+      "before": "Operating hours: {{hours}}",
+      "requested": "Operating hours: {{hours}}.",
+      "applied": "Operating hours: {{hours}}.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.operating_hours",
+      "language": "tl",
+      "document_ids": [
+        "R072",
+        "R075"
+      ],
+      "pages": [
+        23,
+        24
+      ],
+      "before": "Oras ng operasyon: {{hours}}",
+      "requested": "Oras ng operasyon: {{hours}}.",
+      "applied": "Oras ng operasyon: {{hours}}.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.closing_rule_separate",
+      "language": "en",
+      "document_ids": [
+        "R072",
+        "R075"
+      ],
+      "pages": [
+        23,
+        24
+      ],
+      "before": "At closing time: counters finish the customers already in their line.",
+      "requested": "At closing, staff finish serving customers already in line",
+      "applied": "At closing, staff finish serving customers already in line",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.closing_rule_separate",
+      "language": "tl",
+      "document_ids": [
+        "R072",
+        "R075"
+      ],
+      "pages": [
+        23,
+        24
+      ],
+      "before": "Sa oras ng pagsasara: tinatapos ng mga counter ang mga customer na nasa pila na nila.",
+      "requested": "Sa oras ng pagsasara, tatapusin muna ng mga cashier ang pagsisilbi sa mga nakapilang customer.",
+      "applied": "Sa oras ng pagsasara, tatapusin muna ng mga cashier ang pagsisilbi sa mga nakapilang customer.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.per_period_totals_note",
+      "language": "en",
+      "document_ids": [
+        "R073"
+      ],
+      "pages": [
+        24
+      ],
+      "before": "Customer totals need one continuous run of the day; a run of one period at a time shows them as unavailable.",
+      "requested": "Run the full day to see total customers. Running one period at a time will not show the totals.",
+      "applied": "Run the full day to see total customers. Running one period at a time will not show the totals.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.per_period_totals_note",
+      "language": "tl",
+      "document_ids": [
+        "R073"
+      ],
+      "pages": [
+        24
+      ],
+      "before": "Kailangan ng iisang tuloy-tuloy na takbo ng araw para sa kabuuang bilang ng customer; hindi ito available sa takbong isang period sa bawat pagkakataon.",
+      "requested": "Patakbuhin ang buong araw upang makita ang kabuuang bilang ng mga customer. Hindi ito makikita kung isang period lang ang patatakbuhin.",
+      "applied": "Patakbuhin ang buong araw upang makita ang kabuuang bilang ng mga customer. Hindi ito makikita kung isang period lang ang patatakbuhin.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_conservation_ok",
+      "language": "en",
+      "document_ids": [
+        "R074"
+      ],
+      "pages": [
+        24
+      ],
+      "before": "Customer conservation holds for every period.",
+      "requested": "Customer counts match in every period.",
+      "applied": "Customer counts match in every period.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_conservation_ok",
+      "language": "tl",
+      "document_ids": [
+        "R074"
+      ],
+      "pages": [
+        24
+      ],
+      "before": "Napanatili ang customer conservation sa bawat period.",
+      "requested": "Tugma ang bilang ng mga customer sa bawat period.",
+      "applied": "Tugma ang bilang ng mga customer sa bawat period.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_need_des",
+      "language": "en",
+      "document_ids": [
+        "R076"
+      ],
+      "pages": [
+        24
+      ],
+      "before": "Run selected-plan DES before Monte Carlo.",
+      "requested": "Run the selected plan's DES before Monte Carlo.",
+      "applied": "Run the selected plan's DES before Monte Carlo.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_need_des",
+      "language": "tl",
+      "document_ids": [
+        "R076"
+      ],
+      "pages": [
+        24
+      ],
+      "before": "Patakbuhin muna ang selected-plan DES bago ang Monte Carlo.",
+      "requested": "Patakbuhin muna ang DES ng napiling plano bago ang Monte Carlo.",
+      "applied": "Patakbuhin muna ang DES ng napiling plano bago ang Monte Carlo.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_mc_measured",
+      "language": "en",
+      "document_ids": [
+        "R077"
+      ],
+      "pages": [
+        24,
+        25
+      ],
+      "before": "Monte Carlo lanes use DES-measured loads from the same selected scenario.",
+      "requested": "Monte Carlo lanes use DES-measured loads from the same selected scenario.",
+      "applied": "Monte Carlo lanes use DES-measured loads from the same selected scenario.",
+      "status": "already_matches",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_mc_measured",
+      "language": "tl",
+      "document_ids": [
+        "R077"
+      ],
+      "pages": [
+        24,
+        25
+      ],
+      "before": "Gumagamit ang Monte Carlo lanes ng DES-measured loads mula sa parehong napiling scenario.",
+      "requested": "Gumagamit ang Monte Carlo ng mga load na nasukat sa DES mula sa parehong napiling scenario.",
+      "applied": "Gumagamit ang Monte Carlo ng mga load na nasukat sa DES mula sa parehong napiling scenario.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.variations_label",
+      "language": "en",
+      "document_ids": [
+        "R077"
+      ],
+      "pages": [
+        24,
+        25
+      ],
+      "before": "Calculated estimate (many variations), not simulated days.",
+      "requested": "This is a calculated estimate based on many variations, not simulated days.",
+      "applied": "This is a calculated estimate based on many variations, not simulated days.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.variations_label",
+      "language": "tl",
+      "document_ids": [
+        "R077"
+      ],
+      "pages": [
+        24,
+        25
+      ],
+      "before": "Kalkuladong tantiya (maraming bersyon), hindi mga sinimulate na araw.",
+      "requested": "Ito ay kalkuladong tantiya batay sa maraming variation, hindi mga araw na aktuwal na sinimulate.",
+      "applied": "Ito ay kalkuladong tantiya batay sa maraming variation, hindi mga araw na aktuwal na sinimulate.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_need_validation_evidence",
+      "language": "en",
+      "document_ids": [
+        "R078"
+      ],
+      "pages": [
+        25
+      ],
+      "before": "Run selected-plan DES and Monte Carlo before validation.",
+      "requested": "Run the selected plan's DES and Monte Carlo before validation.",
+      "applied": "Run the selected plan's DES and Monte Carlo before validation.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_need_validation_evidence",
+      "language": "tl",
+      "document_ids": [
+        "R078"
+      ],
+      "pages": [
+        25
+      ],
+      "before": "Patakbuhin muna ang selected-plan DES at Monte Carlo bago ang validation.",
+      "requested": "Patakbuhin muna ang DES (Discrete Event Simulation) at Monte Carlo ng napiling plano bago ang validation (balidasyon).",
+      "applied": "Patakbuhin muna ang DES (Discrete Event Simulation) at Monte Carlo ng napiling plano bago ang validation (balidasyon).",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_need_validation",
+      "language": "en",
+      "document_ids": [
+        "R079"
+      ],
+      "pages": [
+        25
+      ],
+      "before": "Run selected-plan Validation before deciding.",
+      "requested": "Run the selected plan's validation before deciding.",
+      "applied": "Run the selected plan's validation before deciding.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "simulation.sep_need_validation",
+      "language": "tl",
+      "document_ids": [
+        "R079"
+      ],
+      "pages": [
+        25
+      ],
+      "before": "Patakbuhin muna ang selected-plan Validation bago mag-decision.",
+      "requested": "Patakbuhin muna ang validation ng napiling plano bago magpasya.",
+      "applied": "Patakbuhin muna ang validation ng napiling plano bago magpasya.",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.start",
+      "language": "en",
+      "document_ids": [
+        "R003"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Start an analysis",
+      "requested": "Start an Analysis",
+      "applied": "Start an Analysis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "calculator.start",
+      "language": "tl",
+      "document_ids": [
+        "R003"
+      ],
+      "pages": [
+        1
+      ],
+      "before": "Magsimula ng analysis",
+      "requested": "Magsimula ng Analysis",
+      "applied": "Magsimula ng Analysis",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.manual_arrivals",
+      "language": "en",
+      "document_ids": [
+        "R019",
+        "R026",
+        "R033",
+        "R041"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Customers arriving per hour",
+      "requested": "Customer Arriving per hour",
+      "applied": "Customer Arriving per hour",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.manual_arrivals",
+      "language": "tl",
+      "document_ids": [
+        "R019",
+        "R026",
+        "R033",
+        "R041"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Mga customer na dumarating bawat oras",
+      "requested": "Dumarating na customer kada oras",
+      "applied": "Dumarating na customer kada oras",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.manual_served",
+      "language": "en",
+      "document_ids": [
+        "R020",
+        "R027",
+        "R034",
+        "R042"
+      ],
+      "pages": [
+        4,
+        5,
+        7,
+        8
+      ],
+      "before": "Customers one counter serves per hour",
+      "requested": "Customer Served per hour (one counter only)",
+      "applied": "Customer Served per hour (one counter only)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.manual_served",
+      "language": "tl",
+      "document_ids": [
+        "R020",
+        "R027",
+        "R034",
+        "R042"
+      ],
+      "pages": [
+        4,
+        5,
+        7,
+        8
+      ],
+      "before": "Mga customer na napagsisilbihan ng isang counter bawat oras",
+      "requested": "Bilang ng kostumer na pinagsilbihan kada oras (isang counter lamang)",
+      "applied": "Bilang ng kostumer na pinagsilbihan kada oras (isang counter lamang)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.col_service_rate",
+      "language": "en",
+      "document_ids": [
+        "R020",
+        "R027",
+        "R034",
+        "R042"
+      ],
+      "pages": [
+        4,
+        5,
+        7,
+        8
+      ],
+      "before": "Customers one counter serves per hour",
+      "requested": "Customer Served per hour (one counter only)",
+      "applied": "Customer Served per hour (one counter only)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.col_service_rate",
+      "language": "tl",
+      "document_ids": [
+        "R020",
+        "R027",
+        "R034",
+        "R042"
+      ],
+      "pages": [
+        4,
+        5,
+        7,
+        8
+      ],
+      "before": "Customer na napagsisilbihan ng isang counter bawat oras",
+      "requested": "Bilang ng kostumer na pinagsilbihan kada oras (isang counter lamang)",
+      "applied": "Bilang ng kostumer na pinagsilbihan kada oras (isang counter lamang)",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.manual_counters",
+      "language": "en",
+      "document_ids": [
+        "R021",
+        "R028",
+        "R035",
+        "R043"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Counters open",
+      "requested": "Current Open Counter",
+      "applied": "Current Open Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "setup.manual_counters",
+      "language": "tl",
+      "document_ids": [
+        "R021",
+        "R028",
+        "R035",
+        "R043"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Mga bukas na counter",
+      "requested": "Kasalukuyang bukas na Counter",
+      "applied": "Kasalukuyang bukas na Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.summary_counters",
+      "language": "en",
+      "document_ids": [
+        "R021",
+        "R028",
+        "R035",
+        "R043"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Counters open",
+      "requested": "Current Open Counter",
+      "applied": "Current Open Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "results.summary_counters",
+      "language": "tl",
+      "document_ids": [
+        "R021",
+        "R028",
+        "R035",
+        "R043"
+      ],
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "before": "Mga bukas na counter",
+      "requested": "Kasalukuyang bukas na Counter",
+      "applied": "Kasalukuyang bukas na Counter",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "nav.data_setup",
+      "language": "en",
+      "document_ids": [
+        "R052"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Data and setup",
+      "requested": "Data and Setup",
+      "applied": "Data and Setup",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "nav.data_setup",
+      "language": "tl",
+      "document_ids": [
+        "R052"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Data at setup",
+      "requested": "Data and Setup",
+      "applied": "Data and Setup",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.data.template.title",
+      "language": "en",
+      "document_ids": [
+        "R053"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Get the template",
+      "requested": "Get the Template",
+      "applied": "Get the Template",
+      "status": "applied",
+      "reason": ""
+    },
+    {
+      "key": "help.guide.data.template.title",
+      "language": "tl",
+      "document_ids": [
+        "R053"
+      ],
+      "pages": [
+        14
+      ],
+      "before": "Kunin ang template",
+      "requested": "Kunin ang Template",
+      "applied": "Kunin ang Template",
+      "status": "applied",
+      "reason": ""
+    }
+  ]
+}

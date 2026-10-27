@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { AttributionClosing, NamedAttribution } from '../../api/sharedNamed'
 import { fmtDecimal } from '../../lib/format'
@@ -33,7 +34,7 @@ export function NamedAttributionTables({ attribution }: Props) {
   const stateHeaders = STATES.map((state) => <th scope="col" key={state}><code>{state}</code></th>)
   return (
     <section className="card" data-testid="named-attribution" aria-label={t('simulation.named_attribution_title')}>
-      <h3 className="section-title">{t('simulation.named_attribution_title')}</h3>
+      <h3 lang="en" className="section-title">{headingText(t, 'simulation.named_attribution_title')}</h3>
       <p role="note" className="alert alert-warn">{t('simulation.named_attribution_note')}</p>
       <p className="form-hint">{t('simulation.named_attribution_units')}</p>
 

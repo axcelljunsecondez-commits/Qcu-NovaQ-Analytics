@@ -1,3 +1,4 @@
+import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 
 export function Loading() {
@@ -26,7 +27,7 @@ export function Forbidden() {
   const { t } = useTranslation()
   return (
     <div className="card error-state" role="alert">
-      <h2>{t('errors.forbidden')}</h2>
+      <h2 lang="en">{headingText(t, 'errors.forbidden')}</h2>
     </div>
   )
 }

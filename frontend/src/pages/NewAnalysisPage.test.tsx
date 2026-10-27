@@ -50,9 +50,9 @@ describe('NewAnalysisPage structure selection', () => {
   })
   it('offers exactly two primary structures plus help, no model jargon', async () => {
     renderPage()
-    expect(await screen.findByRole('radio', { name: /Everyone waits in one line/ })).toBeChecked()
-    expect(screen.getAllByRole('radio', { name: /line/ })).toHaveLength(2)
-    expect(screen.getByRole('radio', { name: /Each counter has its own line/ })).toBeInTheDocument()
+    expect(await screen.findByRole('radio', { name: /Single Line-Queue for Multiple Counters/ })).toBeChecked()
+    expect(screen.getAllByRole('radio', { name: /Line-Queue/ })).toHaveLength(2)
+    expect(screen.getByRole('radio', { name: /Separate Line-Queue per Counter/ })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /one shared line/ })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /three separate lines/ })).toBeInTheDocument()
     expect(screen.getByText('Not sure which one? Answer two questions')).toBeInTheDocument()
@@ -76,7 +76,7 @@ describe('NewAnalysisPage structure selection', () => {
     const user = userEvent.setup()
     renderPage()
     await user.type(await screen.findByLabelText('Analysis name'), 'separate shop')
-    await user.click(screen.getByRole('radio', { name: /Each counter has its own line/ }))
+    await user.click(screen.getByRole('radio', { name: /Separate Line-Queue per Counter/ }))
     expect(screen.getByRole('button', { name: 'Continue to queue setup' })).toBeDisabled()
     await user.type(screen.getByLabelText('Queue ID 1'), 'cashier_a')
     await user.click(screen.getByRole('button', { name: 'Add queue' }))
@@ -112,14 +112,14 @@ describe('NewAnalysisPage structure selection', () => {
   })
 
   it.each([
-    ['yes', null, 'Everyone waits in one line'],
-    ['no', 'yes', 'Each counter has its own line'],
-    ['unsure', 'yes', 'Each counter has its own line'],
+    ['yes', null, "Single Line-Queue for Multiple Counters"],
+    ['no', 'yes', "Separate Line-Queue per Counter"],
+    ['unsure', 'yes', "Separate Line-Queue per Counter"],
     ['no', 'no', null],
     ['no', 'unsure', null],
     ['unsure', 'unsure', null],
   ] as const)('inline helper answers %s / %s the same way as Guided setup', async (q1, q2, expected) => {
-    expect(recommend(q1, q2)).toBe(expected === null ? null : expected.startsWith('Everyone') ? 'shared_queue' : 'separate_queues')
+    expect(recommend(q1, q2)).toBe(expected === null ? null : expected.startsWith('Single') ? 'shared_queue' : 'separate_queues')
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByText('Not sure which one? Answer two questions'))
