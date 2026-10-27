@@ -45,7 +45,7 @@ export function ResultsSummary({ rows, period, line, onPeriod, onLine, reference
       </div>
       <PeriodFilter idPrefix="results" periods={rows.map((row) => row.time)} lines={rows.map((row) => row.queue_id)} period={period} line={line} onPeriod={onPeriod} onLine={onLine} />
       <p className="form-hint">{t('filters.showing', { shown: visible.length, total: rows.length })}{' '}
-        <InfoTip stableInteraction name={t('results.col_level')} text={`${levels}. ${t('results.levels_note')}`} />
+        <InfoTip name={t('results.col_level')} text={`${levels}. ${t('results.levels_note')}`} />
       </p>
       {visible.length === 0 ? <p className="empty-state">{t(rows.length > 0 ? 'filters.no_match' : 'results.no_periods')}</p> : (
         <>

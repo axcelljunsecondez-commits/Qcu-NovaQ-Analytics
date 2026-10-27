@@ -132,7 +132,7 @@ export function QuickCalculatorPage() {
             return (
               <div className="form-field" key={field}>
                 <label htmlFor={`calculator-${field}`}>{label}</label>
-                <InfoTip stableInteraction={Boolean(user)} name={label} text={t(`calculator.field_info.${field}`)} />
+                <InfoTip name={label} text={t(`calculator.field_info.${field}`)} />
                 <input id={`calculator-${field}`} type="number" inputMode="decimal" min={field === 'c' || field === 'capacity' ? 1 : 0}
                   step={field === 'c' || field === 'capacity' ? 1 : 'any'} value={values[field]} aria-invalid={problems.includes(field)}
                   aria-describedby={problems.includes(field) ? `calculator-${field}-error` : undefined}
@@ -146,12 +146,12 @@ export function QuickCalculatorPage() {
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </form>
 
-      {calculation && <Results calculation={calculation} stableInteraction={Boolean(user)} />}
+      {calculation && <Results calculation={calculation} />}
     </div>
   )
 }
 
-function Results({ calculation, stableInteraction }: { calculation: Calculation; stableInteraction: boolean }) {
+function Results({ calculation }: { calculation: Calculation }) {
   const { t } = useTranslation()
   const { situation, main } = calculation
   const s = main.summary
@@ -172,7 +172,7 @@ function Results({ calculation, stableInteraction }: { calculation: Calculation;
           const label = card.key === 'wait' && situation === 'leaving' ? 'workload' : card.key
           return (
             <div className="card kpi-card" key={card.key} data-testid={`calculator-${card.key}`}>
-              <span className="kpi-label">{t(`calculator.result.${label}`)} <InfoTip stableInteraction={stableInteraction} name={t(`calculator.result.${label}`)} text={t(`calculator.result_info.${label}`)} /></span>
+              <span className="kpi-label">{t(`calculator.result.${label}`)} <InfoTip name={t(`calculator.result.${label}`)} text={t(`calculator.result_info.${label}`)} /></span>
               <strong className="kpi-value">{card.value}</strong>
             </div>
           )

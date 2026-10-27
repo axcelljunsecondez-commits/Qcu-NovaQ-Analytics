@@ -8,7 +8,7 @@ import { InfoTip } from '../ui/InfoTip'
 function KeyResult({ id, label, source, how, compact = false, children }: { id: string; label: string; source: string; how: string; compact?: boolean; children: ReactNode }) {
   return (
     <section className={`card key-result${compact ? ' key-result-compact' : ''}`} aria-labelledby={`${id}-label`}>
-      <div className="results-metric-heading"><h3 id={`${id}-label`} className="kpi-label">{label}</h3><InfoTip stableInteraction name={label} text={how} /></div>
+      <div className="results-metric-heading"><h3 id={`${id}-label`} className="kpi-label">{label}</h3><InfoTip name={label} text={how} /></div>
       <div className="key-result-value">{children}</div>
       <p className="key-result-source">{source}</p>
     </section>

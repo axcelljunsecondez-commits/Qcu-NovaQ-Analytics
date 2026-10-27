@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { renderWithProviders } from '../../test/test-utils'
@@ -68,20 +68,21 @@ describe('AppLayout hide-sidebar (D10)', () => {
     renderLayout()
     const link = await screen.findByRole('link', { name: 'Analysis results' })
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
-    link.focus()
+    act(() => link.focus())
     expect(await screen.findByTestId('tooltip')).toHaveTextContent('Analysis results')
     await user.keyboard('{Escape}')
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
     await user.hover(screen.getByRole('link', { name: "Quick Calculator" }))
     expect(await screen.findByTestId('tooltip')).toHaveTextContent("Quick Calculator")
     await user.unhover(screen.getByRole('link', { name: "Quick Calculator" }))
-    expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
+    // Allow the short trigger-to-popup crossing grace, but retain the dismissal assertion.
+    await waitFor(() => expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument())
   })
 
   it('does not repeat link names as tooltips while the sidebar is shown', async () => {
     renderLayout()
     const link = await screen.findByRole('link', { name: 'Analysis results' })
-    link.focus()
+    act(() => link.focus())
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
   })
 })

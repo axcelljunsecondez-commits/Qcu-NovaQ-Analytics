@@ -1,5 +1,12 @@
 # NovaQ Current Handoff
 
+## Shared tooltip frontend activated in local Docker (2026-10-28)
+
+- Owner requested the Docker rebuild and resumed after an account-review limit. [Actual local activation report](docs/superpowers/reports/2026-10-28-tooltip-docker-activation.md). Status: COMPLETE for this local frontend activation; source changes remain uncommitted and no production action occurred.
+- Web image `novaq-local-web:20261028-tooltips-0213beee8153` (`sha256:1a2d613111cedc194f15b8c406fd5b161b8efba6d39744d530616a8f9fb7f44d`), container `0e24c83236646d2c6d8a732fb10a2dfa91a8089b825ab76b43302082edc7b619`, healthy at `http://localhost/`. The same existing API/database containers were started; API image/settings/ports and PostgreSQL volume preserved. Migration/bootstrap were not rerun; database revision `0007` and all 10 complete table count/content fingerprints matched after final QA.
+- Fresh Docker typecheck/lint/build passed; candidate 76 browser assertions / 96 HTTP checks; activated localhost 10 real-browser assertions / 96 HTTP checks. All 87 static files matched the built image. Real guest M/M/1 reference returned 40 minutes for explicitly synthetic lambda=2/hour, mu=3/hour, c=1 inputs, without saving records. Earlier full source gates are linked in the report and were not relabeled as newly rerun.
+- Encrypted Windows-user backup restored into an owned disposable database with exact fingerprints; that test database and the owned candidate container were removed. Prior web image/tag/archive retained; operational rollback remains NOT TESTED. Existing selected-load/Decision statistical finding remains OPEN under its separate scope. Physical touch, other browser engines and an authenticated company-data workflow were NOT TESTED here.
+
 ## Selected-load revision 2: isolated research complete, source repair still OPEN (2026-10-19)
 
 - Owner approved isolated revision-2 proof/prototype/calibration only. [Actual research report](docs/superpowers/reports/2026-10-19-selected-load-revision-2-validation.md); [proposed integration scope](docs/superpowers/plans/2026-10-19-selected-load-revision-2-integration-proposal.md). No application/test/fixture/Docker changes, commit or push. Prior rejected t candidate remains rejected; no silently substituted production estimator.
