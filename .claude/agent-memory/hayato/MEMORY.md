@@ -1,4 +1,4 @@
-# Gokudera backend agent memory index
+# Hayato backend agent memory index
 
 ## How to resume
 

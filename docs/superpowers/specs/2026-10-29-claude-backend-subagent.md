@@ -2,6 +2,8 @@
 
 Date: 2026-10-29 (Asia/Shanghai).
 
+Current identity update: the backend agent is now `hayato`, with memory at `.claude/agent-memory/hayato/MEMORY.md`; the new reviewer is `kyoya`. See the [first-name and reviewer specification](2026-10-29-kyoya-reviewer-and-hayato-rename.md). The earlier `gokudera` names and setup results below are a historical record of the original configuration, not the current roster.
+
 ## Requested outcome
 
 The owner requested a Claude subagent for NovaQ's backend to reduce repeated work and repeated context explanations. Implement a project-scoped Claude Code definition with project-scoped persistent memory. The original identifier was `novaq-backend`; the Vongola naming follow-up below changes it to `gokudera`. This authorizes configuration and documentation only; no backend task has been assigned by this request.

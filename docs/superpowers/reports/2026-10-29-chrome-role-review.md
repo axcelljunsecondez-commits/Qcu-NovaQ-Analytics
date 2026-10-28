@@ -2,6 +2,8 @@
 
 Date: 2026-10-29 (Asia/Shanghai).
 
+Current identity update: the backend was subsequently renamed from `gokudera` to `hayato`, preserving its memory, and reviewer `kyoya` was added. See the [current roster and usage](../plans/2026-10-29-kyoya-reviewer-and-hayato-rename.md). The review observations and earlier execution records below retain their original two-agent context. Chrome's proposed enhancements remain unapplied.
+
 ## Outcome and scope
 
 VERIFIED: the active root checkout was `C:/Users/Administrator/Desktop/QUEUING_THEORY_NOVAMART/NovaQ`, branch `main`, HEAD `3ee8fe2c5d3f1521e37255959f2383e67e374b4c`. This review concerns the two local agent definitions, not a claim about other worktrees, GitHub or production.
@@ -66,7 +68,7 @@ The role already specifies owner-controlled EN/TL wording, no fabricated marketi
 
 ## Proposed implementation package
 
-If the owner requests application, add project memory, one concise task-start/resume section and the two source-specific corrections. Keep all current protected-behavior and wording constraints. Refer to Gokudera by identifier `gokudera`. Do not add new agents, nested workers, frameworks, telemetry or product features as part of that package. The optional general-frontend scope decision is separate.
+If the owner requests application, add project memory, one concise task-start/resume section and the two source-specific corrections. Keep all current protected-behavior and wording constraints. Refer to the backend agent by its current identifier `hayato` (previously `gokudera`). Do not add new agents, nested workers, frameworks, telemetry or product features as part of that package. The optional general-frontend scope decision is separate.
 
 ## Verification
 

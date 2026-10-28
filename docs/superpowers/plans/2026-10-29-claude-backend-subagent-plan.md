@@ -2,6 +2,8 @@
 
 Date: 2026-10-29 (Asia/Shanghai).
 
+Current identity update: use `hayato` for the backend and `kyoya` for the independent reviewer. Backend memory is now `.claude/agent-memory/hayato/MEMORY.md`. See the [current roster and reviewer plan](2026-10-29-kyoya-reviewer-and-hayato-rename.md). Earlier names and verification records below describe the configuration before this follow-up.
+
 Specification: [Claude backend subagent](../specs/2026-10-29-claude-backend-subagent.md).
 
 ## File scope
@@ -24,7 +26,7 @@ Add only:
 
 Open Claude Code in the checkout containing these files, then ask:
 
-> Use the gokudera subagent for this backend task: [describe the task]. Read its project memory and the current handoff first, resume any matching unfinished work, and give it exclusive ownership of the assigned backend files. Return actual changes, verification and remaining work, then save a concise task record.
+> Use the hayato subagent for this backend task: [describe the task]. Read its project memory and the current handoff first, resume any matching unfinished work, and give it exclusive ownership of the assigned backend files. Return actual changes, verification and remaining work, then save a concise task record.
 
 Within the same conversation, ask the parent to resume the existing backend agent for related follow-ups. In a later conversation, the agent uses its memory records and the repository's current state. If it is not discovered, restart Claude Code in this checkout. A different Git worktree needs the definition and memory made available there; setup does not copy them to other worktrees.
 
