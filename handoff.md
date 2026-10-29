@@ -1,5 +1,42 @@
 # NovaQ Current Handoff
 
+## Simulated wait intervals stop at 0: separate and shared lines (2026-10-29; committed locally, NOT pushed)
+
+- **Approvals (REPORTED, relayed by the parent session):**
+  - two-part wait-range fix approved 2026-10-29: Part A is the chart display cut, done in the chart redesign; Part B is the engine;
+  - shared lines: "N1 and N2 apply your recommendation";
+  - OD-W1: "Option 1, leave them as they are";
+  - OD-S2/S3: "S2 and S3 apply your recommendation".
+- **Commits** on branch `claude/friendly-bell-4801f0` (worktree `clever-boyd-87ff32`, base `3ee8fe2c`), local only, owner asked for separate commits:
+  - `8b0f2eab`: separate lines, [spec](docs/superpowers/specs/2026-10-29-separate-wait-interval-floor.md).
+  - `6d17ab9a`: shared lines, [spec](docs/superpowers/specs/2026-10-29-shared-wait-interval-floor.md).
+  - `07554826`: docs only, records OD-S2/S3.
+- **Rule** (protected statistics, AGENTS.md §5; precedent U10 F16 for cost): for a quantity that cannot be negative, the 95% Student-t lower bound is max(0, mean − t·SE). Coverage is unchanged. Means, upper bounds, SD, SE and n are unchanged.
+- **Separate lines** (`separate_optimization.py`): plan `waiting_time`, per-lane `Wq` and per-lane `waiting_end` are floored. Not floored: utilization, arrivals, served (OD-W2). Costs were already floored.
+- **Shared lines** (`shared_replications.py`, `shared_named_replications.py`):
+  - Floored: waits, waiting customer-hours, queue lengths, customers left unserved or waiting at closing, costs, and the mean of replication means.
+  - Never floored: `server_hours_above_schedule_in_horizon` (can be negative).
+  - Left plain (OD-S2 DECIDED): arrivals, served, utilization, and capacity, staffing, employee, overrun and break values.
+  - The interval-method text stored with each run states the rule.
+  - `frontend/src/test/fixtures/sharedNamed.json` changed only in its 9 floored bounds and the method text (×2 run copies).
+- **Versions:**
+  - Separate lines (OD-W1 DECIDED): no engine version change. Saved v4/v5 plans keep their negative bounds, so the chart's cut-at-0 marker stays for them.
+  - Shared lines (OD-S1 OPEN, implemented as no change): a named `METHOD_VERSION` bump would block playback of every stored named run (`shared_named_playback.py:1233`). Stored shared runs keep their negative bounds.
+- **OD-S3 DECIDED:** the parent session's main UI build adds a short "range cut at 0" note to the named-staff interval text (`NamedReplicationTable.tsx:96-104`). No frontend code change in these commits.
+- **Verification (VERIFIED, local Windows, SQLite):**
+  - Hand-computed reference cases; new tests red before the change, green after.
+  - Mutation: separate 3/3 floor sites killed, shared 7/7 floor groups killed.
+  - Full `python -m pytest tests/ -x --tb=short`: 3303 passed, 125 skipped (PostgreSQL), 1 xfailed.
+  - `ruff check .` passed. `mypy .` shows 1 error at `backend/api/shared_continuous.py:447`, pre-existing on `3ee8fe2c`.
+  - Frontend: typecheck, lint and build passed; `npm test` 745/745.
+  - Independent read-only review (subagent) found no defect.
+- **NOT TESTED / UNKNOWN:**
+  - PostgreSQL;
+  - a NovaMart rerun of the separate-lines example (REPORTED −1.44 to 3.05 min becomes 0 to 3.05 min by arithmetic);
+  - CI. CI's mypy is unpinned, so whether it reports the pre-existing error is UNKNOWN.
+- **Save check (INFERRED):** a separate plan calculated before a deploy of `8b0f2eab` and saved after it fails the save check once with "Results do not match"; recalculating fixes it.
+- **Next:** owner decision on OD-S1, and push/PR/release only on the owner's word. Pushing `main` is a production release.
+
 ## Shared tooltip frontend activated in local Docker (2026-10-28)
 
 - Owner requested the Docker rebuild and resumed after an account-review limit. [Actual local activation report](docs/superpowers/reports/2026-10-28-tooltip-docker-activation.md). Status: COMPLETE for this local frontend activation; source changes remain uncommitted and no production action occurred.

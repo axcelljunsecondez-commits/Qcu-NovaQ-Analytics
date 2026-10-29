@@ -358,14 +358,24 @@ def named_replication_row(result: dict[str, Any], replication_index: int) -> dic
 # ── Aggregation (descriptive only) ──────────────────────────────────────────
 
 
-def _summaries(values: list[Any]) -> Any:
+# Spec 2026-10-29-shared-wait-interval-floor §3: quantities never negative in any replication, whose
+# interval lower bound stops at 0. Paths are (block, key) inside a replication row.
+ZERO_FLOOR_PATHS = frozenset({
+    ("waiting", "wait_sum_hours"), ("waiting", "mean_wait_hours"), ("waiting", "customer_hours_in_horizon"),
+    ("waiting", "customer_hours_after_closing"), ("waiting", "customer_hours_total"),
+    ("waiting", "max_queue_in_horizon"), ("closing", "waiting_at_close"), ("customers", "unserved"),
+    ("customers", "unserved_hard_cutoff"), ("customers", "unserved_no_eligible_employee"),
+})
+
+
+def _summaries(values: list[Any], path: tuple[str, ...] = ()) -> Any:
     """Across-replication statistics of every scalar in a nested block (``None`` = undefined, never 0)."""
     first = values[0]
     if isinstance(first, dict):
         if any(not isinstance(value, dict) or value.keys() != first.keys() for value in values):
             raise SharedSegmentError(["Replication rows do not share the same quantities."])
-        return {key: _summaries([value[key] for value in values]) for key in first}
-    return summarize_metric(values)
+        return {key: _summaries([value[key] for value in values], (*path, key)) for key in first}
+    return summarize_metric(values, floor=0.0 if path in ZERO_FLOOR_PATHS else None)
 
 
 def aggregate_named_replications(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -384,11 +394,11 @@ def aggregate_named_replications(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "customers": {
             "totals": {key: sum(row["customers"][key] for row in rows) for key in rows[0]["customers"]},
             "conserved_in_every_replication": all(row["customer_conservation"] for row in rows),
-            "per_replication": _summaries([row["customers"] for row in rows]),
+            "per_replication": _summaries([row["customers"] for row in rows], ("customers",)),
         },
         "waiting_time": {
             "mean_of_replication_means_hours": {
-                **summarize_metric([row["waiting"]["mean_wait_hours"] for row in rows]),
+                **summarize_metric([row["waiting"]["mean_wait_hours"] for row in rows], floor=0.0),
                 "definition": (
                     "Mean over replications of each replication's mean wait of served customers; replications "
                     "with no served customer are undefined and counted in n_undefined."
@@ -402,7 +412,7 @@ def aggregate_named_replications(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "interval": "Not computed.",
             },
         },
-        "metrics": {block: _summaries([row[block] for row in rows])
+        "metrics": {block: _summaries([row[block] for row in rows], (block,))
                     for block in ("waiting", "closing", "staffing", "employees")},
         "outcome_counts": {
             "definition": "Descriptive frequencies over all replications, not failure rates.",

@@ -80,8 +80,16 @@ PARAMETER_UNCERTAINTY = (
 CONTINUOUS_INTERVAL_METHOD = (
     "Mean, sample SD (n - 1), SE = SD / sqrt(n), and a two-sided Student-t interval at the configured "
     "confidence level over replications where the value is defined (the NovaQ DES-replication "
-    "convention). n < 2 gives a mean only. Undefined values are counted in n_undefined, never zero-filled."
+    "convention). n < 2 gives a mean only. Undefined values are counted in n_undefined, never zero-filled. "
+    "For a quantity that cannot be negative (waits, waiting customer-hours, queue lengths, customers left "
+    "unserved or waiting at closing, and costs) the lower bound is max(0, mean - t*SE), which keeps the "
+    "coverage; ci_half_width stays t*SE."
 )
+# Spec 2026-10-29-shared-wait-interval-floor §3: metrics that are never negative in any replication.
+ZERO_FLOOR_METRICS = frozenset({
+    "wait_sum_hours", "mean_wait_hours", "waiting_hours_before_close", "waiting_hours_after_close",
+    "total_waiting_hours", "time_average_queue_in_horizon", "max_queue_in_horizon",
+})
 PROPORTION_INTERVAL_METHOD = "Wilson score interval (statistics.proportions.wilson_ci)."
 
 METRIC_DEFINITIONS = {
@@ -274,8 +282,13 @@ def replication_row(
     return row
 
 
-def summarize_metric(values: Sequence[float | None]) -> dict[str, Any]:
-    """Across-replication statistics of one continuous metric (``None`` = undefined, never 0)."""
+def summarize_metric(values: Sequence[float | None], floor: float | None = None) -> dict[str, Any]:
+    """Across-replication statistics of one continuous metric (``None`` = undefined, never 0).
+
+    ``floor`` is a value the true mean cannot go below (0 for a wait, a queue, a count of customers
+    left, or a cost): the lower bound becomes max(floor, mean - half width), which keeps the
+    interval's coverage. ``ci_half_width`` stays t*SE.
+    """
     defined = [float(value) for value in values if value is not None]
     count = len(defined)
     base: dict[str, Any] = {
@@ -291,8 +304,9 @@ def summarize_metric(values: Sequence[float | None]) -> dict[str, Any]:
     sd = statistics.stdev(defined)
     se = sd / math.sqrt(count)
     half_width = float(student_t.ppf(_UPPER, count - 1)) * se
+    lower = mean - half_width if floor is None else max(floor, mean - half_width)
     base.update({
-        "sd": sd, "se": se, "ci_lower": mean - half_width, "ci_upper": mean + half_width, "ci_half_width": half_width,
+        "sd": sd, "se": se, "ci_lower": lower, "ci_upper": mean + half_width, "ci_half_width": half_width,
     })
     return base
 
@@ -357,14 +371,14 @@ def _cost_summary(rows: list[dict[str, Any]], rates: DayCostRates | None, refere
         costs = [row["cost"]["components"][name] for row in rows]
         components[name] = {
             **{key: item[key] for key in ("status", "rate_field", "rate", "applies", "unit", "note")},
-            "per_replication": summarize_metric(costs) if item["status"] == COSTED else None,
+            "per_replication": summarize_metric(costs, floor=0.0) if item["status"] == COSTED else None,
         }
     return {
         "evaluated": True,
         "rates": asdict(rates),
         "method": "Each replication is costed with services.shared_day_cost first; the costs are then aggregated.",
         "components": components,
-        "total_cost": summarize_metric(totals) if all(complete) else None,
+        "total_cost": summarize_metric(totals, floor=0.0) if all(complete) else None,
         "total_withheld_reason": reference["total_withheld_reason"],
         "server_hours_note": SERVER_HOURS_NOTE,
         "currency": "The caller's currency; no currency is assumed.",
@@ -388,11 +402,13 @@ def aggregate_replications(
             "served": served,
             "unserved": sum(row["unserved"] for row in rows),
             "conserved_in_every_replication": all(row["customer_conservation"] for row in rows),
-            "per_replication": {key: summarize_metric([row[key] for row in rows]) for key in ("arrivals", "served", "unserved")},
+            "per_replication": {key: summarize_metric([row[key] for row in rows],
+                                                      floor=0.0 if key == "unserved" else None)
+                                for key in ("arrivals", "served", "unserved")},
         },
         "waiting_time": {
             "mean_of_replication_means_hours": {
-                **summarize_metric([row["mean_wait_hours"] for row in rows]),
+                **summarize_metric([row["mean_wait_hours"] for row in rows], floor=0.0),
                 "definition": (
                     "Mean over replications of each replication's mean wait of served customers; replications "
                     "with no served customer are undefined and counted in n_undefined."
@@ -406,7 +422,9 @@ def aggregate_replications(
                 "interval": "Not computed.",
             },
         },
-        "metrics": {key: summarize_metric([row[key] for row in rows]) for key in CONTINUOUS_METRICS},
+        "metrics": {key: summarize_metric([row[key] for row in rows],
+                                          floor=0.0 if key in ZERO_FLOOR_METRICS else None)
+                    for key in CONTINUOUS_METRICS},
         "outcome_counts": {
             "definition": "Descriptive frequencies, not failure rates.",
             "replications_with_unserved_customers": sum(1 for row in rows if row["unserved"] > 0),
