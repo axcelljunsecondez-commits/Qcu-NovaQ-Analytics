@@ -323,9 +323,22 @@ describe('the legacy shared path', () => {
     expect(wait).toHaveTextContent('Current: 6 min')
     expect(wait).toHaveTextContent('Suggested plan: 3 min')
     expect(older.getByRole('region', { name: 'Longest Single Line' })).toHaveTextContent('Current: 9')
+    // Spec 2026-10-29 §7.3 (B5): two cards, no arrow; Customer Served sits under More results with an
+    // explanation instead of the old "Run the full day" note (the shared older section points to the full-day run).
+    expect(within(older.getByRole('group', { name: 'Key Results' })).getAllByRole('region')).toHaveLength(2)
+    expect(older.getByRole('group', { name: 'Key Results' })).not.toHaveTextContent('→')
     const served = older.getByRole('region', { name: 'Customer Served' })
+    expect(served.closest('details')).not.toBeNull()
     expect(served).toHaveTextContent('Current: Unavailable')
-    expect(served).toHaveTextContent('Run the full day to see total customers.')
+    expect(served).not.toHaveTextContent('Run the full day to see total customers.')
+    const why = within(served).getAllByRole('button', { name: 'Why this is unavailable' })
+    expect(why).toHaveLength(2)
+    await userEvent.setup().hover(why[0])
+    expect(screen.getByRole('tooltip')).toHaveTextContent(en['charts.key_unavailable_explain_shared'])
+    // Both runs simulate one period at a time: no basis explanation, and the same-basis takeaway.
+    expect(older.queryByRole('button', { name: 'Why these are not the same basis' })).not.toBeInTheDocument()
+    expect(older.getByTestId('key-take')).toHaveTextContent('Simulated average wait: Current 6 min, Suggested plan 3 min.')
+    expect(older.queryByTestId('closing-alert')).not.toBeInTheDocument()
   })
 
   it('asks to run again when a stored run has no saved totals', async () => {
@@ -413,6 +426,40 @@ describe('the legacy shared path', () => {
     await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
     await waitFor(() => expect(runMcMock).toHaveBeenCalledTimes(1))
     expect(runMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.75 })
+  })
+
+  it('explains shared Many variations with the STORED threshold, not the form (C5)', async () => {
+    const user = userEvent.setup()
+    const stored = { num_trials: 2000, failure_threshold: 0.85, failure_rate_cap: 0.05, failure_rate: 0, failure_rate_ci_lower: 0, failure_rate_ci_upper: 0.0019 }
+    getWorkflowMock.mockResolvedValue(workflow({ mc: job('workflow_mc', { results: [{ ...mcRow, ...stored }, { ...mcRow, ...stored, time: '09:00-10:00' }] }) }))
+    const { container } = renderPage('/simulation/checks?analysis=7')
+    const threshold = await screen.findByLabelText('Failure threshold (ρ)')
+    expect(threshold).toHaveValue(0.75)
+    const info = screen.getByRole('button', { name: 'What is Many variations?' })
+    await user.hover(info)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('A version fails when Utilization Rate is above 85%.')
+    await user.unhover(info)
+    await user.clear(threshold)
+    await user.type(threshold, '0.6')
+    await user.hover(info)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('above 85%.')
+    const chart = screen.getByTestId('many-variations-chart')
+    // One row per period and no cashier name on a shared line.
+    expect(within(chart).getAllByTestId('row-chart-row')).toHaveLength(2)
+    expect(chart).toHaveTextContent('A variation fails when the counters’ Utilization Rate is above 85%.')
+    expect(within(chart).getByTestId('mc-take')).toHaveTextContent('Closest to the 5% cap: 08:00-09:00, with 0% of 2,000 variations failing.')
+    const table = screen.getByRole('region', { name: 'Monte Carlo simulation results by interval' })
+    expect(within(table).getAllByRole('row')[1]).toHaveTextContent('0% – 0.19%')
+    expect(container.querySelector('.plotly')).toBeNull()
+  })
+
+  it('leaves out the Many variations explanation when the stored rows disagree', async () => {
+    const stored = { num_trials: 2000, failure_rate_cap: 0.05 }
+    getWorkflowMock.mockResolvedValue(workflow({ mc: job('workflow_mc', { results: [{ ...mcRow, ...stored, failure_threshold: 0.85 }, { ...mcRow, ...stored, time: '09:00-10:00', failure_threshold: 0.75 }] }) }))
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('many-variations-chart')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'What is Many variations?' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('many-variations-chart')).not.toHaveTextContent('A variation fails')
   })
 
   it('keeps the 0.75 default for a shared plan with no recorded target', async () => {
@@ -695,7 +742,9 @@ describe('a selected separate-lines plan', () => {
     selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
     renderPage()
     expect(await screen.findByRole('region', { name: 'Customer Served' })).toHaveTextContent('Suggested plan: 90')
-    expect(screen.getByRole('region', { name: 'Still in line or being served at closing' })).toHaveTextContent('Suggested plan: 2')
+    // B5: the plan's customers still in line at closing are an alert, not a two-sided card.
+    expect(screen.queryByRole('region', { name: 'Still in line or being served at closing' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('closing-alert')).toHaveTextContent('2 customers still in line or being served at closing in the plan’s simulated day.')
     expect(screen.getByText("Customer counts match in every period.")).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Combined Waiting Line' })).toBeInTheDocument()
     expect(screen.getByText(/checked every 5 minutes/)).toBeInTheDocument()
@@ -709,7 +758,7 @@ describe('a selected separate-lines plan', () => {
   it('places breaks in time for a per-date plan run one day per date (B13)', async () => {
     selected({ des: job('workflow_des', perDateResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
     renderPage()
-    expect(await screen.findByText('One continuous run per date', { exact: false })).toBeInTheDocument()
+    expect(await within(await screen.findByRole('region', { name: en['simulation.run_bar'] })).findByText('One continuous run per date', { exact: false })).toBeInTheDocument()
     expect(screen.queryByTestId('break-notice')).not.toBeInTheDocument()
     expect(screen.getByTestId('dates-note')).toHaveTextContent('Customer totals add up all 2 dates; each date starts empty.')
   })
@@ -739,7 +788,7 @@ describe('a selected separate-lines plan', () => {
     renderPage('/simulation/replay?analysis=7&t=08:15')
     expect(await screen.findByTestId('replay-clock')).toHaveTextContent('08:15')
     // The merged day is labelled with the day's hours, not the first period's.
-    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^08:00–10:00 · /)
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^08:00 - 10:00 · /)
     // lane-A is opened only for 09:00, so at 08:15 it is not staffed; never shown as a break.
     expect(screen.getByTestId('state-lane-A')).toHaveTextContent('Closed / not staffed')
     expect(screen.getByRole('group', { name: 'Scheduled break (from your setup)' })).toHaveTextContent('east-07: 09:30–09:45')
@@ -754,7 +803,7 @@ describe('a selected separate-lines plan', () => {
     selected({ des: job('workflow_des', perDateResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
     renderPage('/simulation/replay?analysis=7&t=08:15')
     expect(await screen.findByTestId('replay-clock')).toHaveTextContent('08:15')
-    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^2026-09-08 · 08:00–10:00 · /)
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^2026-09-08 · 08:00 - 10:00 · /)
     await user.selectOptions(screen.getByLabelText('Date'), '2026-09-09')
     expect(screen.getByTestId('where')).toHaveTextContent('date=2026-09-09')
     expect(screen.getByTestId('where')).not.toHaveTextContent('t=')
@@ -837,11 +886,84 @@ describe('a selected separate-lines plan', () => {
     expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
 
+  it('shows the operating hours as a 24-hour chip, in English and Tagalog (A6)', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    const { unmount } = renderPage()
+    const chip = (await screen.findByText('Operating hours: 08:00 - 10:00.')).closest('.hours-chip')
+    expect(chip).not.toBeNull()
+    expect(chip?.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    unmount()
+    renderPage('/simulation/results?analysis=7', 'tl')
+    expect(await screen.findByText(tl['simulation.operating_hours'].replace('{{hours}}', '08:00 - 10:00'))).toBeInTheDocument()
+  })
+
+  it('gives the Combined Waiting Line a legend with Breaks only when the Setup has breaks (A7)', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    const { unmount } = renderPage()
+    const legend = await screen.findByTestId('waiting-legend')
+    expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Combined Waiting Line', 'Breaks'])
+    expect(screen.queryByText(en['simulation.chart_breaks_marked'], { exact: false })).not.toBeInTheDocument()
+    unmount()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, breaks: [] })
+    renderPage()
+    expect(within(await screen.findByTestId('waiting-legend')).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Combined Waiting Line'])
+  })
+
+  it('explains Wq and ρ on the More results lane tables by hover, focus and click; Escape closes (A8)', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    renderPage()
+    const [wq] = await screen.findAllByRole('button', { name: 'Wq (min)' })
+    await user.hover(wq)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(en['simulation.tip_wq'])
+    await user.unhover(wq)
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument())
+    const [rho] = screen.getAllByRole('button', { name: 'ρ' })
+    rho.focus()
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(en['simulation.tip_rho'])
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    await user.click(wq)
+    expect(wq).toHaveAttribute('aria-expanded', 'true')
+    await user.click(wq)
+    expect(wq).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('draws a stored separate Many variations run against its cap and names the highest-risk cashier (B7, B8)', async () => {
+    const user = userEvent.setup()
+    const stored = { num_trials: 2000, failure_threshold: 0.85, failure_rate_cap: 0.05, arrival_noise_fraction: 0.2, service_noise_fraction: 0.1 }
+    const rows = [
+      { ...mcRow, ...stored, time: '08:00', queue_id: 'east-07', failure_rate: 0, failure_rate_ci_lower: 0, failure_rate_ci_upper: 0.0019 },
+      { ...mcRow, ...stored, time: '08:00', queue_id: 'lane-A', failure_rate: 0.003, failure_rate_ci_lower: 0.0014, failure_rate_ci_upper: 0.0065 },
+      { ...mcRow, ...stored, time: '09:00', queue_id: 'east-07', failure_rate: 0.0019, failure_rate_ci_lower: 0, failure_rate_ci_upper: 0.004 },
+    ]
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', { ...mcResult, results: rows }, { scenario_id: 9, seed: 42 }) })
+    const { container } = renderPage('/simulation/checks?analysis=7')
+    const chart = await screen.findByTestId('many-variations-chart')
+    expect(within(chart).getByTestId('mc-take')).toHaveTextContent('Closest to the 5% cap: 08:00, lane-A, with 0.3% of 2,000 variations failing.')
+    expect(within(chart).getAllByTestId('row-chart-row')).toHaveLength(2)
+    expect(within(chart).getByTestId('row-chart-reference')).toHaveTextContent('5%')
+    // The stored threshold is the plan's target, so the chip may say so.
+    expect(chart).toHaveTextContent('A variation fails when a cashier’s Utilization Rate is above 85%, the plan’s target.')
+    // Tap (here: click) a row to see every cashier of that period.
+    await user.click(within(chart).getAllByTestId('row-chart-row')[0])
+    const detail = within(chart).getByTestId('mc-detail')
+    expect(within(detail).getAllByRole('row').slice(1).map((row) => row.textContent)).toEqual(['east-070%0% – 0.19%', 'lane-A0.3%0.14% – 0.65%'])
+    // The stored table now prints percentages with the decimal rule.
+    const table = screen.getByRole('region', { name: 'Monte Carlo' })
+    expect(within(table).getAllByRole('row')[3]).toHaveTextContent('0.19%')
+    const info = screen.getByRole('button', { name: 'What is Many variations?' })
+    await user.hover(info)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('NovaQ calculates 2,000 what-if versions of each period')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('above 85%. The period passes when no more than 5% of versions fail.')
+    expect(container.querySelector('.plotly')).toBeNull()
+  })
+
   it('never shows another plan\'s stored run', async () => {
     selected({ des: job('workflow_des', { ...dayResult, scenario_id: 99 }, { scenario_id: 99 }) })
     renderPage()
     expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
-    expect(screen.getByRole('region', { name: 'Customer Served' })).toHaveTextContent('Suggested plan: Not run')
+    expect(screen.getByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: Not run')
   })
 })
 
@@ -870,7 +992,7 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect(await screen.findByTestId('closing-rule')).toHaveTextContent('At closing time: counters on duty keep serving everyone already in line.')
     expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument()
     const bar = screen.getByRole('region', { name: 'Full-day run' })
-    expect(bar).toHaveTextContent('Operating hours: 08:00–10:00')
+    expect(bar).toHaveTextContent('Operating hours: 08:00 - 10:00.')
     expect(bar).toHaveTextContent('Simulated · preview')
     expect(bar).toHaveTextContent('About 13 customers per day.')
     // Contextual help (plan U8).
@@ -985,7 +1107,7 @@ describe('the continuous full-day run (B4a preview)', () => {
     expect(createContinuousRunMock).not.toHaveBeenCalled()
   })
 
-  it('shows both stored runs on the four cards, from their own summaries', async () => {
+  it('shows both stored runs on the cards and under More results, from their own summaries', async () => {
     listContinuousRunsMock.mockResolvedValue({ runs: [
       { id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN', setup_matches_current: true, dataset_is_current: true, plan_is_selected: true },
       { id: 30, plan: 'current', replications: 5, seed: 42, closing_policy: 'DRAIN', setup_matches_current: true, dataset_is_current: true, plan_is_selected: null },
@@ -997,10 +1119,15 @@ describe('the continuous full-day run (B4a preview)', () => {
     const cards = await screen.findByRole('group', { name: 'Full-day key results' })
     await waitFor(() => expect(within(cards).getByRole('region', { name: 'Average wait' })).toHaveTextContent('Current: 6 min (3 min–6 min)'))
     expect(within(cards).getByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: 3 min (3 min–6 min)')
-    expect(within(cards).getByRole('region', { name: 'Customer Served' })).toHaveTextContent('Current: 11 (10–16)')
+    // C3 + OD-2: Average wait, Longest Single Line and the kept Not served at closing card; Customer Served moved.
+    expect(within(cards).getAllByRole('region').map((region) => region.getAttribute('aria-label'))).toEqual(['Average wait', 'Longest Single Line', 'Not served at closing'])
     expect(within(cards).getByRole('region', { name: 'Not served at closing' })).toHaveTextContent('Suggested plan: 0')
     expect(getContinuousRunMock).not.toHaveBeenCalledWith(7, 12)
     expect(await screen.findByRole('heading', { name: 'People waiting through the day' })).toBeInTheDocument()
+    const served = screen.getByRole('region', { name: 'Customer Served' })
+    expect(served.closest('details')).not.toBeNull()
+    expect(served).toHaveTextContent('Current: 11 (10–16)')
+    expect(served).toHaveTextContent('Suggested plan: 13 (10–16)')
     expect(screen.getByText('The charts show repeated day 1 of 5.')).toBeInTheDocument()
     expect(getContinuousPlaybackMock).toHaveBeenCalledWith(7, 31, 0)
     const byPeriod = screen.getByRole('region', { name: 'Day 1 by period' })
