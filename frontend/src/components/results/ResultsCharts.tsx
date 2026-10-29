@@ -1,9 +1,9 @@
 import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
-import type { ObservedWaitPeriod, PeriodArrivals } from '../../api/types'
+import type { PeriodArrivals } from '../../api/types'
 import { summarizeCashierWorkload } from '../../lib/cashierWorkload'
 import { fmtDecimal, fmtPctDecimal } from '../../lib/format'
-import { finiteNumber, lineOf, minutes, timeOf, type ResultRow } from '../../lib/results'
+import { finiteNumber, lineOf, timeOf, type ResultRow } from '../../lib/results'
 
 function width(value: number | null, max: number): string {
   return value !== null && max > 0 ? `${Math.max(0, value) / max * 100}%` : '0%'
@@ -29,39 +29,6 @@ export function ArrivalsChart({ periods }: { periods: PeriodArrivals[] | undefin
             ))}
           </ul>
       )}
-    </section>
-  )
-}
-
-/** Recorded vs estimated wait by period (customer-record uploads only). */
-export function WaitByPeriodChart({ periods }: { periods: ObservedWaitPeriod[] }) {
-  const { t } = useTranslation()
-  const unavailable = t('results.unavailable')
-  const unit = t('results.min')
-  const items = periods.map((period) => ({ time: period.time, recorded: minutes(period.observed_wait), estimated: minutes(period.modeled_wait), flagged: period.flagged }))
-  const max = Math.max(0, ...items.flatMap((item) => [item.recorded ?? 0, item.estimated ?? 0]))
-  const text = (value: number | null) => (value !== null ? `${fmtDecimal(value, 1)} ${unit}` : unavailable)
-  return (
-    <section className="card" aria-labelledby="results-wait-title">
-      <h2 lang="en" id="results-wait-title" className="section-title">{headingText(t, 'results.wait_chart')}</h2>
-      <ul className="hbar-legend">
-        <li><span className="hbar-legend-bar" aria-hidden="true" />{t('results.recorded')}</li>
-        <li><span className="hbar-legend-bar hbar-legend-alt" aria-hidden="true" />{t('results.estimated')}</li>
-      </ul>
-      <ul className="hbar-chart results-chart-list" aria-labelledby="results-wait-title">
-        {items.map((item) => (
-          <li className={`hbar-row${item.flagged ? ' row-warning' : ''}`} key={item.time}>
-            <div className="hbar-head"><span className="hbar-label">{item.time}</span></div>
-            <dl className="results-chart-values">
-              <div><dt>{t('results.recorded')}</dt><dd>{text(item.recorded)}</dd></div>
-              <div><dt>{t('results.estimated')}</dt><dd>{text(item.estimated)}</dd></div>
-            </dl>
-            {item.flagged && <span className="status-badge status-critical">{t('current.observed_flagged')}</span>}
-            <span className="hbar-track" aria-hidden="true"><span className="hbar-fill" style={{ width: width(item.recorded, max) }} /></span>
-            <span className="hbar-track" aria-hidden="true"><span className="hbar-fill hbar-fill-alt" style={{ width: width(item.estimated, max) }} /></span>
-          </li>
-        ))}
-      </ul>
     </section>
   )
 }
