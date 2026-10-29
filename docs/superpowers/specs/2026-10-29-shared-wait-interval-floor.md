@@ -1,6 +1,6 @@
 # Shared lines: simulated wait intervals stop at 0 (OD-W3 / N2)
 
-Status: IMPLEMENTED and committed 2026-10-29 on branch `claude/friendly-bell-4801f0` (base `3ee8fe2c`; owner asked for both changes to be committed separately), NOT pushed. OD-S1..S3 remain open; OD-S1 is implemented as option (a). Protected statistics change (AGENTS.md §5).
+Status: IMPLEMENTED and committed 2026-10-29 on branch `claude/friendly-bell-4801f0` (base `3ee8fe2c`; owner asked for both changes to be committed separately), NOT pushed. OD-S1 remains open (implemented as option (a)); OD-S2 and OD-S3 DECIDED 2026-10-29 (§8). Protected statistics change (AGENTS.md §5).
 
 Approval: the owner approved, quoted verbatim as relayed by the parent session on 2026-10-29: "N1 and N2 apply your recommendation". The recommendation was: "fix shared-line ranges below 0 as a separate tested change, the same way as the separate-line fix." This is REPORTED; it was not typed in this session.
 
@@ -74,7 +74,7 @@ Not floored (plain interval as before):
 | `server_hours_above_schedule_in_horizon` | "Available minus scheduled" (`shared_continuous_des.py:686, 717`). It can be below 0 when a server is absent for part of a scheduled segment (INFERRED from the definition), so it must never be floored. |
 | `arrivals`, `served`, named `served_after_closing` | OD-W2 parity. |
 | `utilization_in_horizon`, `utilization_whole_run`, `period_utilization` | OD-W2 parity. |
-| Busy, available, overtime and scheduled server-hours; `overrun_hours`; breaks; named `in_service_at_close`, `drain_crew_size`, `run_after_closing_hours`; every `staffing` and `employees` value | Outside the approved scope. Many are ≥ 0 too; open item OD-S2. |
+| Busy, available, overtime and scheduled server-hours; `overrun_hours`; breaks; named `in_service_at_close`, `drain_crew_size`, `run_after_closing_hours`; every `staffing` and `employees` value | Outside the approved scope. Many are ≥ 0 too; OD-S2 decided they stay plain. |
 
 Proportions (Wilson) are unchanged: they are already within [0, 1].
 
@@ -153,5 +153,5 @@ Results 2026-10-29 (local Windows, Python 3.13.13, SQLite; PostgreSQL not run):
 ## 8. Open items for the owner
 
 - OD-S1: version (§5). Implemented as (a); recommendation (a).
-- OD-S2: also floor the other non-negative quantities (server-hours, overrun, breaks, staffing, employees)? Not done.
-- OD-S3: screen wording note for a floored lower end (§4). The text is unchanged; the owner supplies en and tl if wanted.
+- OD-S2: also floor the other non-negative quantities (server-hours, overrun, breaks, staffing, employees)? DECIDED 2026-10-29 (owner, "S2 and S3 apply your recommendation", REPORTED via the parent session): leave them unfloored. No further engine change.
+- OD-S3: screen wording note for a floored lower end (§4). DECIDED 2026-10-29 (same owner words, REPORTED): the parent session's main UI build adds a short "range cut at 0" note to the named-staff interval text (`NamedReplicationTable.tsx:96-104`). It reuses the chart redesign's range-cut ⓘ text. This change makes no frontend change for it.
