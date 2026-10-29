@@ -21,7 +21,7 @@
   - `frontend/src/test/fixtures/sharedNamed.json` changed only in its 9 floored bounds and the method text (×2 run copies).
 - **Versions:**
   - Separate lines (OD-W1 DECIDED): no engine version change. Saved v4/v5 plans keep their negative bounds, so the chart's cut-at-0 marker stays for them.
-  - Shared lines (OD-S1 OPEN, implemented as no change): a named `METHOD_VERSION` bump would block playback of every stored named run (`shared_named_playback.py:1233`). Stored shared runs keep their negative bounds.
+  - Shared lines (OD-S1 DECIDED 2026-10-29, owner "S1 yes, commit the spec update", REPORTED; recorded in `f6d0e8ca`): no version change, as implemented. a named `METHOD_VERSION` bump would block playback of every stored named run (`shared_named_playback.py:1233`). Stored shared runs keep their negative bounds.
 - **OD-S3 DECIDED:** the parent session's main UI build adds a short "range cut at 0" note to the named-staff interval text (`NamedReplicationTable.tsx:96-104`). No frontend code change in these commits.
 - **Verification (VERIFIED, local Windows, SQLite):**
   - Hand-computed reference cases; new tests red before the change, green after.
@@ -35,7 +35,7 @@
   - a NovaMart rerun of the separate-lines example (REPORTED −1.44 to 3.05 min becomes 0 to 3.05 min by arithmetic);
   - CI. CI's mypy is unpinned, so whether it reports the pre-existing error is UNKNOWN.
 - **Save check (INFERRED):** a separate plan calculated before a deploy of `8b0f2eab` and saved after it fails the save check once with "Results do not match"; recalculating fixes it.
-- **Next:** owner decision on OD-S1, and push/PR/release only on the owner's word. Pushing `main` is a production release.
+- **Next:** no owner decision open. Push/PR/release only on the owner's word. Pushing `main` is a production release.
 
 ## Shared tooltip frontend activated in local Docker (2026-10-28)
 
