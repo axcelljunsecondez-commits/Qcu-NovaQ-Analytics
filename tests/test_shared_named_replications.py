@@ -704,7 +704,10 @@ def test_aggregation_counts_every_replication_and_matches_independent_statistics
     low, high = student_t.interval(0.95, len(values) - 1, loc=mean, scale=sd / math.sqrt(len(values)))
     assert (stats["n"], stats["n_undefined"]) == (12, 0)
     assert stats["mean"] == pytest.approx(mean, rel=1e-12) and stats["sd"] == pytest.approx(sd, rel=1e-12)
-    assert (stats["ci_lower"], stats["ci_upper"]) == (pytest.approx(low, rel=1e-9), pytest.approx(high, rel=1e-9))
+    # Waiting customer-hours cannot be negative, so the lower bound stops at 0
+    # (spec 2026-10-29-shared-wait-interval-floor §3).
+    assert (stats["ci_lower"], stats["ci_upper"]) == (pytest.approx(max(0.0, low), rel=1e-9),
+                                                      pytest.approx(high, rel=1e-9))
     served = sum(row["customers"]["served"] for row in rows)
     weighted = summary["waiting_time"]["customer_weighted_mean_hours"]
     assert weighted["denominator_served_customers"] == served
