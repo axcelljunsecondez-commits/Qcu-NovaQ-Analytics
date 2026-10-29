@@ -1,5 +1,22 @@
 import type { ContinuousEvent, ContinuousPlan, ContinuousRunListItem, MetricSummary } from '../api/continuous'
 
+/** Choose whole replications from the server's default and request budget; null means invalid metadata. */
+export function automaticReplications(
+  expectedCustomers: number | null,
+  defaultCount: number,
+  limits: { max_replications: number; max_expected_customers_per_run: number },
+): number | null {
+  const maxCount = limits.max_replications
+  const customerBudget = limits.max_expected_customers_per_run
+  if (!Number.isInteger(defaultCount) || defaultCount < 1 || !Number.isInteger(maxCount) || maxCount < 1
+    || !Number.isFinite(customerBudget) || customerBudget <= 0
+    || expectedCustomers === null || !Number.isFinite(expectedCustomers) || expectedCustomers < 0) return null
+  const affordable = expectedCustomers === 0 ? maxCount : Math.floor(customerBudget / expectedCustomers)
+  const count = Math.min(defaultCount, maxCount, affordable)
+  // Match the API's multiplication check at a floating-point budget boundary.
+  return count * expectedCustomers > customerBudget ? Math.max(0, count - 1) : count
+}
+
 /** "HH:MM" for whole minutes since midnight (the run's horizon). */
 export function clockOfMinutes(minutes: number): string {
   const total = Math.max(0, Math.floor(minutes + 1e-6))

@@ -143,13 +143,14 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
       )}
       {context.separate ? periodRun : (
         <>
-          {/* B4a: one shared line runs the whole day continuously; the older per-period run stays, labelled. */}
+          {/* Shared results and replay use the continuous day; keep the existing check/evidence contracts. */}
           <ContinuousSection key={`continuous-${id}`} analysisId={id} run={run} page={page} />
-          <section className="page-stack older-run" aria-labelledby="older-run-title">
+          {shared && page === 'checks' && <ChecksView key={`checks-${id}-${run}`} context={context} run={run} />}
+          {!shared && <section className="page-stack older-run" aria-labelledby="older-run-title">
             <h2 lang="en" id="older-run-title" className="section-title">{headingText(t, 'continuous.older_title')}</h2>
             <p className="form-hint">{t('continuous.older_hint')}</p>
             {periodRun}
-          </section>
+          </section>}
         </>
       )}
     </div>
