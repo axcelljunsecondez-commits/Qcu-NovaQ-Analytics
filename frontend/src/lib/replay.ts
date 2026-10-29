@@ -17,12 +17,12 @@ export function dayOrigin(setup: Pick<QueueSetup, 'segments'> | null | undefined
   return starts.length > 0 ? Math.min(...starts) : null
 }
 
-/** "08:00–10:00": first segment start to last segment end, or null when the setup has no clock times. */
+/** "08:00 - 10:00" (24-hour, owner decision A6): first segment start to last segment end, or null when the setup has no clock times. */
 export function operatingHours(setup: Pick<QueueSetup, 'segments'> | null | undefined): string | null {
   const origin = dayOrigin(setup)
   const ends = (setup?.segments ?? []).map((segment) => clockMinutes(segment.end_time)).filter((value): value is number => value !== null)
   if (origin === null || ends.length === 0) return null
-  return `${wallClock(0, origin / 60)}–${wallClock(0, Math.max(...ends) / 60)}`
+  return `${wallClock(0, origin / 60)} - ${wallClock(0, Math.max(...ends) / 60)}`
 }
 
 /** "HH:MM" on the store clock for a run time in hours. */

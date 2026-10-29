@@ -17,7 +17,7 @@ import {
   type CheckVerdict,
   type FullDayPeriod,
 } from '../../api/workflow'
-import { fmt, fmtDecimal, fmtFrCi, fmtPct, fmtPctDecimal } from '../../lib/format'
+import { fmt, fmtDecimal, fmtPct, fmtPctDecimal } from '../../lib/format'
 import {
   MC_MAX_TRIALS,
   decisionStatusLabel,
@@ -33,18 +33,21 @@ import {
   validationVerdictLabel,
 } from '../../lib/simulationEvidence'
 import { plainDecision, type PlainDecision } from '../../lib/decisionPlain'
-import { FailureRateBars, RhoMeanP95Lines } from '../charts/Charts'
+import { ManyVariationsChart, ManyVariationsInfo } from './ManyVariationsChart'
+import { mcRangeText } from '../../lib/manyVariations'
 import { suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 type Status = 'done' | 'not_run' | 'pass' | 'fail' | 'insufficient'
 
-function CheckLine({ name, required, status, children }: { name: string; required: boolean; status: Status; children?: ReactNode }) {
+function CheckLine({ name, required, status, info, children }: { name: string; required: boolean; status: Status; info?: ReactNode; children?: ReactNode }) {
   const { t } = useTranslation()
   const badge = status === 'pass' || status === 'done' ? 'badge-ok' : status === 'fail' ? 'badge-bad' : status === 'insufficient' ? 'badge-warn' : 'badge-neutral'
   return (
     <details className="card check-line">
       <summary>
         <strong lang="en">{name}</strong>
+        {/* The explanation sits next to the heading; using it never opens or closes the check (spec 2026-10-29 §8.1). */}
+        {info && <span className="cv-head-row" onClick={(event) => event.preventDefault()}>{info}</span>}
         <span className="badge badge-neutral">{t(required ? 'simulation.check_required' : 'simulation.check_optional')}</span>
         <span className={`badge ${badge}`}>{t(`simulation.check_status_${status}`)}</span>
         <span className="form-hint">{t('simulation.check_details')}</span>
@@ -96,18 +99,16 @@ function mcError(settings: McSettings, t: (key: string, options?: Record<string,
   return null
 }
 
+/** The stored Many variations rows as a table (the chart's table alternative); percentages use the decimal rule (B8). */
 function McTable({ rows }: { rows: SimMcOut[] }) {
   const { t } = useTranslation()
   const showLine = rows.some((row) => typeof row.queue_id === 'string' && row.queue_id.trim() !== '')
   return (
-    <>
-      <div className="table-scroll" role="region" aria-label={t('simulation.mc_table_caption')} tabIndex={0}>
-        <table><caption className="sr-only">{t('simulation.mc_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th>{showLine && <th scope="col">{t('analyses.service_line')}</th>}<th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.rho_mean')}</th><th scope="col">{t('simulation.rho_p95_label')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.failure_rate_ci')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
-          <tbody>{rows.map((row, index) => <tr key={`${row.time}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`}><th scope="row">{row.time}</th>{showLine && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}<td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmtDecimal(row.rho_mean)}</td><td>{fmtDecimal(row.rho_p95)}</td><td>{fmtPct(row.failure_rate)}</td><td>{fmtFrCi(row.failure_rate_ci_lower, row.failure_rate_ci_upper)}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
-        </table>
-      </div>
-      <div className="card-grid"><div className="card"><RhoMeanP95Lines rows={rows} /></div><div className="card"><FailureRateBars rows={rows} /></div></div>
-    </>
+    <div className="table-scroll" role="region" aria-label={t('simulation.mc_table_caption')} tabIndex={0}>
+      <table><caption className="sr-only">{t('simulation.mc_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th>{showLine && <th scope="col">{t('analyses.service_line')}</th>}<th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.rho_mean')}</th><th scope="col">{t('simulation.rho_p95_label')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.failure_rate_ci')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
+        <tbody>{rows.map((row, index) => <tr key={`${row.time}-${typeof row.queue_id === 'string' ? row.queue_id : ''}-${index}`}><th scope="row">{row.time}</th>{showLine && <td>{typeof row.queue_id === 'string' && row.queue_id.trim() !== '' ? row.queue_id : '—'}</td>}<td><span className={`badge ${row.status === 'PASS' ? 'badge-ok' : 'badge-bad'}`}>{row.status}</span></td><td>{fmtDecimal(row.rho_mean)}</td><td>{fmtDecimal(row.rho_p95)}</td><td>{fmtPctDecimal(row.failure_rate)}</td><td>{mcRangeText(row) ?? '—'}</td><td><PrecisionBadge level={row.failure_rate_precision} /></td></tr>)}</tbody>
+      </table>
+    </div>
   )
 }
 
@@ -209,20 +210,22 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </section>
 
-      <CheckLine name={headingText(t, 'simulation.check_variations')} required status={mcResult ? 'done' : 'not_run'}>
+      <CheckLine name={headingText(t, 'simulation.check_variations')} required status={mcResult ? 'done' : 'not_run'} info={mcResult ? <ManyVariationsInfo rows={mcResult.results} /> : undefined}>
         <p className="form-hint">{t('simulation.sep_mc_measured')} {t('simulation.variations_label')}</p>
         {thresholdBelowTarget && <div role="status" className="alert alert-warn">{t('simulation.sep_mc_threshold_below_target')}</div>}
         <McFields settings={settings} planTarget={planTarget} idPrefix="sel-mc" />
         <button type="button" className="btn-secondary" disabled={running || !hasDes} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.sep_run_mc')}</button>
         {mcResult && (
-          <div className="table-scroll" role="region" aria-label={t('simulation.tabs.mc')} tabIndex={0}>
-            <table>
-              <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.sep_lane')}</th><th scope="col">λ</th><th scope="col">ρ</th><th scope="col">Wq (min)</th><th scope="col">{t('simulation.sep_mc_failure')}</th></tr></thead>
-              <tbody>{mcResult.results.map((row, index) => (
-                <tr key={`${row.time}-${row.queue_id ?? index}`}><th scope="row">{row.time}</th><td>{row.queue_id ?? '—'}</td><td>{fmt(row.lambda)}</td><td>{fmtDecimal(row.rho_mean)}</td><td>{fmt(row.Wq_mean === null ? null : row.Wq_mean * 60)}</td><td>{fmt(row.failure_rate)}</td></tr>
-              ))}</tbody>
-            </table>
-          </div>
+          <ManyVariationsChart rows={mcResult.results} separate run="plan" planTarget={planTarget} seed={mcEvidence?.params.seed}>
+            <div className="table-scroll" role="region" aria-label={t('simulation.tabs.mc')} tabIndex={0}>
+              <table>
+                <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.sep_lane')}</th><th scope="col">λ</th><th scope="col">ρ</th><th scope="col">Wq (min)</th><th scope="col">{t('simulation.sep_mc_failure')}</th></tr></thead>
+                <tbody>{mcResult.results.map((row, index) => (
+                  <tr key={`${row.time}-${row.queue_id ?? index}`}><th scope="row">{row.time}</th><td>{row.queue_id ?? '—'}</td><td>{fmt(row.lambda)}</td><td>{fmtDecimal(row.rho_mean)}</td><td>{fmt(row.Wq_mean === null ? null : row.Wq_mean * 60)}</td><td>{fmtPctDecimal(row.failure_rate)}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </ManyVariationsChart>
         )}
       </CheckLine>
 
@@ -310,6 +313,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   })
   const decisionRun = useMutation({ mutationFn: () => createWorkflowDecision(analysisId), onSuccess: refresh, onError })
   const mcRows = mcRun.data?.evidence.result.results ?? workflow.mc?.result.results ?? []
+  const mcSeed = (mcRun.data?.evidence ?? workflow.mc)?.params.seed
   const validationEvidence = validationRun.data?.evidence ?? workflow.validation
   const validationRows = validationEvidence?.result.results ?? []
   const savedCapValue = validationEvidence?.params.mc_failure_rate_cap
@@ -397,11 +401,14 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
           </>
         )}
       </CheckLine>
-      <CheckLine name={headingText(t, 'simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}>
+      <CheckLine name={headingText(t, 'simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}
+        info={mcRows.length > 0 ? <ManyVariationsInfo rows={mcRows} /> : undefined}>
         <p className="form-hint">{t('simulation.variations_label')}</p>
         <McFields settings={settings} planTarget={planTarget} idPrefix="mc" />
         <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
-        {mcRows.length > 0 && <McTable rows={mcRows} />}
+        {mcRows.length > 0 && (
+          <ManyVariationsChart rows={mcRows} separate={false} run="plan" planTarget={planTarget} seed={mcSeed}><McTable rows={mcRows} /></ManyVariationsChart>
+        )}
       </CheckLine>
     </div>
   )
@@ -447,6 +454,7 @@ function CurrentChecks({ context }: { context: SimulationContext }) {
   })
   const validationRun = useMutation({ mutationFn: () => runWorkflowValidationCurrent(analysisId), onSuccess: refresh, onError })
   const mcRows = mcRun.data?.evidence.result.results ?? workflow.mc_current?.result.results ?? []
+  const mcSeed = (mcRun.data?.evidence ?? workflow.mc_current)?.params.seed
   const validation = validationRun.data?.evidence ?? workflow.validation_current
   const validationRows = validation?.result.results ?? []
   const verdict = validation?.result.verdict ?? null
@@ -460,7 +468,10 @@ function CurrentChecks({ context }: { context: SimulationContext }) {
         <p className="form-hint">{t('simulation.variations_label')}</p>
         <McFields settings={settings} planTarget={null} idPrefix="mc" />
         <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
-        {mcRows.length > 0 && <McTable rows={mcRows} />}
+        {/* No "What is Many variations?" here: its text speaks of the plan, and this run checks today's staffing. */}
+        {mcRows.length > 0 && (
+          <ManyVariationsChart rows={mcRows} separate={context.separate} run="current" planTarget={null} seed={mcSeed}><McTable rows={mcRows} /></ManyVariationsChart>
+        )}
       </CheckLine>
       <CheckLine name={headingText(t, 'simulation.check_results')} required={false} status={status}>
         {!context.separate ? <p className="form-hint">{t('simulation.current_validation_separate_only')}</p> : validationRows.length > 0 ? (
