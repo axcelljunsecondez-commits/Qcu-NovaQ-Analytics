@@ -58,7 +58,7 @@ describe('Approved homepage learning behavior', () => {
   it('uses Filipino labels while identifying the videos as English', () => {
     renderWithProviders(<HomePage />, { lang: 'tl' })
     expect(screen.getByRole('button', { name: 'Queue types' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'How a queue works and what to record' })).toHaveAttribute('lang', 'en')
+    expect(screen.getByRole('heading', { name: 'How does Queueing works and what to record' })).toHaveAttribute('lang', 'en')
     expect(screen.getByText('Isang video · Parts 1 at 2')).toBeInTheDocument()
     expect(screen.getByText(/Narration at captions sa video sa English/)).toBeInTheDocument()
   })
@@ -67,7 +67,7 @@ describe('Approved homepage learning behavior', () => {
     const user = userEvent.setup()
     renderWithProviders(<HelpPage />)
     await user.type(screen.getByLabelText("Find Help"), 'theta variance')
-    expect(screen.getByRole('heading', { name: 'How a queue works and what to record' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'How does Queueing works and what to record' })).toBeInTheDocument()
     expect(document.querySelectorAll('video')).toHaveLength(1)
     expect(screen.queryByText('No guide mentions all of these words.')).not.toBeInTheDocument()
   })

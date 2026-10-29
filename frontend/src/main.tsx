@@ -7,6 +7,7 @@ import { queryClient } from './lib/queryClient'
 import { savedTheme } from './lib/theme'
 import { router } from './App'
 import './styles/global.css'
+import './styles/charts.css'
 
 initI18n()
 

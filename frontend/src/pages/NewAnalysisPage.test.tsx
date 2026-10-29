@@ -35,7 +35,7 @@ describe('NewAnalysisPage structure selection', () => {
   it.each([['results', 'Results destination'], ['simulation/replay', 'Replay destination']])('returns a newly created analysis to %s', async (destination, expected) => {
     const user = userEvent.setup()
     renderPage(`/analyses/new?continue=${encodeURIComponent(destination)}`)
-    await user.type(await screen.findByLabelText('Analysis name'), 'new test workspace')
+    await user.type(await screen.findByLabelText('Analysis Name'), 'new test workspace')
     await user.click(screen.getByRole('button', { name: 'Create analysis' }))
     expect(await screen.findByText(expected)).toBeInTheDocument()
     expect(createAnalysisMock).toHaveBeenCalledTimes(1)
@@ -44,7 +44,7 @@ describe('NewAnalysisPage structure selection', () => {
   it.each(['https://example.com', '//example.com', 'login', 'results?analysis=99'])('rejects the unsupported continuation %s', async (destination) => {
     const user = userEvent.setup()
     renderPage(`/analyses/new?continue=${encodeURIComponent(destination)}`)
-    await user.type(await screen.findByLabelText('Analysis name'), 'new test workspace')
+    await user.type(await screen.findByLabelText('Analysis Name'), 'new test workspace')
     await user.click(screen.getByRole('button', { name: 'Continue to queue setup' }))
     expect(await screen.findByText('Canonical setup')).toBeInTheDocument()
   })
@@ -63,7 +63,7 @@ describe('NewAnalysisPage structure selection', () => {
   it('creates a shared analysis with persisted structure', async () => {
     const user = userEvent.setup()
     renderPage()
-    await user.type(await screen.findByLabelText('Analysis name'), 'shared shop')
+    await user.type(await screen.findByLabelText('Analysis Name'), 'shared shop')
     await user.click(screen.getByRole('button', { name: 'Continue to queue setup' }))
     await waitFor(() => expect(createAnalysisMock).toHaveBeenCalled())
     expect(createAnalysisMock.mock.calls[0][0]).toEqual(
@@ -75,7 +75,7 @@ describe('NewAnalysisPage structure selection', () => {
   it('requires named queues for separate and persists queue ids', async () => {
     const user = userEvent.setup()
     renderPage()
-    await user.type(await screen.findByLabelText('Analysis name'), 'separate shop')
+    await user.type(await screen.findByLabelText('Analysis Name'), 'separate shop')
     await user.click(screen.getByRole('radio', { name: /Separate Line-Queue per Counter/ }))
     expect(screen.getByRole('button', { name: 'Continue to queue setup' })).toBeDisabled()
     await user.type(screen.getByLabelText('Queue ID 1'), 'cashier_a')
@@ -99,7 +99,7 @@ describe('NewAnalysisPage structure selection', () => {
       analysis: { id: 12, queue_setup: { queue_structure: 'unknown' } },
     })
     renderPage()
-    await user.type(await screen.findByLabelText('Analysis name'), 'unsure shop')
+    await user.type(await screen.findByLabelText('Analysis Name'), 'unsure shop')
     await user.click(screen.getByText('Not sure which one? Answer two questions'))
     await user.click(within(screen.getByRole('group', { name: /one common waiting line/ })).getByRole('radio', { name: "I'm not sure" }))
     await user.click(within(screen.getByRole('group', { name: /its own line/ })).getByRole('radio', { name: "I'm not sure" }))

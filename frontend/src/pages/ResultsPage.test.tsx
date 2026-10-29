@@ -203,7 +203,7 @@ describe('Analysis results: the planning file', () => {
   it('opens the planning file with its dates, tags and key results from the server', async () => {
     renderResults()
     expect(await screen.findByRole('heading', { name: 'Recorded average wait' })).toBeInTheDocument()
-    const picker = screen.getByLabelText('View results from')
+    const picker = screen.getByLabelText('View Results from')
     expect(picker).toHaveValue('11')
     expect(within(picker).getAllByRole('option').map((option) => option.textContent)).toEqual([
       'feb_totals.csv · Data period unavailable · Review only',
@@ -233,7 +233,7 @@ describe('Analysis results: the planning file', () => {
   it('says when no plan is selected and flags no plan target', async () => {
     renderResults()
     expect(await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toBeInTheDocument()
-    const strip = screen.getByRole('heading', { name: 'Your day, by busy level' }).closest('section') as HTMLElement
+    const strip = screen.getByRole('heading', { name: 'Your day, by Busy Level' }).closest('section') as HTMLElement
     expect(within(strip).getByRole('status')).toHaveTextContent("09:00-10:00: Can't keep up (100% or more)")
     expect(screen.queryByText(/above this plan's target/)).not.toBeInTheDocument()
     expect(screen.queryByText('Calculated result · not yet checked by simulation')).not.toBeInTheDocument()
@@ -314,7 +314,7 @@ describe('Analysis results: another file', () => {
       await new Promise<void>((resolve) => { release = resolve })
       return currentFor(datasetId === 12 ? reviewFile : planningFile)
     })
-    await user.selectOptions(screen.getByLabelText('View results from'), '12')
+    await user.selectOptions(screen.getByLabelText('View Results from'), '12')
     expect(screen.getByTestId('where')).toHaveTextContent('/results?analysis=7&file=12')
     expect(screen.queryByRole('heading', { name: 'Busiest period by customer arrivals' })).not.toBeInTheDocument()
     expect(screen.queryByText('6 min')).not.toBeInTheDocument()
@@ -341,7 +341,7 @@ describe('Analysis results: another file', () => {
 
   it('falls back to the planning file when the address names a file that is not processed', async () => {
     renderResults('/results?analysis=7&file=13')
-    expect(await screen.findByLabelText('View results from')).toHaveValue('11')
+    expect(await screen.findByLabelText('View Results from')).toHaveValue('11')
     expect(getCurrentMock).not.toHaveBeenCalledWith(7, 13)
   })
 })
@@ -358,7 +358,7 @@ describe('Inputs and model reference', () => {
     const back = screen.getByRole('link', { name: 'Return to analysis results' })
     expect(back).toHaveAttribute('href', '/results?analysis=7&file=12&period=07%3A00-08%3A00&line=queue_a')
     await user.click(back)
-    expect(screen.getByRole('heading', { level: 1, name: 'Analysis results' })).toHaveFocus()
+    expect(screen.getByRole('heading', { level: 1, name: 'Analysis Results' })).toHaveFocus()
     for (const mock of [getWorkflowMock, listScenariosMock, getSeparateMock, selectMock]) expect(mock).not.toHaveBeenCalled()
     expect(getCurrentMock).toHaveBeenCalledWith(7, 12)
   })
@@ -388,7 +388,7 @@ describe('Inputs and model reference', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     const arrivals = screen.getByRole('list', { name: 'Customers per hour, by period' })
     expect(within(arrivals).getByText('40 customers per hour')).toBeInTheDocument()
-    const chart = screen.getByRole('list', { name: 'Recorded vs estimated wait, by period' })
+    const chart = screen.getByRole('list', { name: 'Recorded vs Estimated Wait, by period' })
     expect(within(chart).getByText('7.2 min')).toBeInTheDocument()
     expect(within(chart).getByText('3 min')).toBeInTheDocument()
     expect(within(chart).getByText('Much longer than modeled')).toBeInTheDocument()

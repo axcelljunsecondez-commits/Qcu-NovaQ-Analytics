@@ -134,10 +134,10 @@ describe('calculation integrity', () => {
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     await screen.findByText('401.31')
-    await user.type(screen.getByLabelText('Scenario name'), 'stale plan')
+    await user.type(screen.getByLabelText('Scenario Name'), 'stale plan')
     await user.selectOptions(screen.getByLabelText('Source dataset'), '')
     expect(screen.getByRole('button', { name: 'Save without using' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Use this plan' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeDisabled()
     expect(screen.getByRole('alert')).toHaveTextContent('Inputs changed')
   })
 
@@ -151,7 +151,7 @@ describe('calculation integrity', () => {
     await screen.findByText('401.31')
     await user.type(screen.getByLabelText('λ multiplier'), '1.5')
     await user.click(screen.getByRole('button', { name: 'Run what-if' }))
-    await user.type(screen.getByLabelText('Scenario name'), 'what if')
+    await user.type(screen.getByLabelText('Scenario Name'), 'what if')
     await user.click(screen.getByRole('button', { name: 'Save without using' }))
     expect(createScenarioMock).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({
       calculation: expect.objectContaining({ what_if_multiplier: 1.5, input_segments: [expect.objectContaining({ lambda: 45 })] }),
@@ -171,7 +171,7 @@ describe('calculation integrity', () => {
     expect(screen.getByText('Staffing totals are unavailable until every segment has a current, feasible recommendation.')).toBeInTheDocument()
     expect(screen.queryByText('0 cashiers')).not.toBeInTheDocument()
     expect(screen.queryByText(/→ null/)).not.toBeInTheDocument()
-    await user.type(screen.getByLabelText('Scenario name'), 'Incomplete plan')
+    await user.type(screen.getByLabelText('Scenario Name'), 'Incomplete plan')
     expect(screen.getByRole('button', { name: 'Save without using' })).toBeEnabled()
     await user.click(screen.getByRole('button', { name: 'Save without using' }))
     expect(await screen.findByText('Scenario saved.')).toBeInTheDocument()
@@ -434,7 +434,7 @@ describe('OptimizePage', () => {
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     await screen.findByText('Add 1 server at 08:00-09:00.')
-    await user.type(screen.getByLabelText('Scenario name'), 'plan A')
+    await user.type(screen.getByLabelText('Scenario Name'), 'plan A')
     await user.click(screen.getByRole('button', { name: 'Save without using' }))
     await waitFor(() => {
       expect(createScenarioMock).toHaveBeenCalledWith(
@@ -565,7 +565,7 @@ describe('Use this plan (spec §7.6, D4)', () => {
     await user.selectOptions(screen.getByLabelText('Source dataset'), '1')
     await user.click(screen.getByRole('button', { name: 'Optimize' }))
     await screen.findByText('Add 1 server at 08:00-09:00.')
-    await user.type(screen.getByLabelText('Scenario name'), 'plan A')
+    await user.type(screen.getByLabelText('Scenario Name'), 'plan A')
   }
 
   function withoutTimestamp(payload: { settings: { calculation: Record<string, unknown> } }) {
@@ -587,7 +587,7 @@ describe('Use this plan (spec §7.6, D4)', () => {
     queryClient.setQueryData(['workflow', 7], { selection: null })
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
     await optimizeShared(user)
-    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenCalledWith(7, 41))
     expect(createScenarioMock).toHaveBeenCalledTimes(2)
     expect(withoutTimestamp(createScenarioMock.mock.calls[1][0])).toEqual(withoutTimestamp(createScenarioMock.mock.calls[0][0]))
@@ -604,7 +604,7 @@ describe('Use this plan (spec §7.6, D4)', () => {
     const user = userEvent.setup()
     renderPlans()
     await optimizeShared(user)
-    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('The plan was saved but not selected: Scenario provenance is not verified.')
     expect(alert).toHaveTextContent('You can select it in Analysis results.')
@@ -617,7 +617,7 @@ describe('Use this plan (spec §7.6, D4)', () => {
     const user = userEvent.setup()
     renderPlans()
     await optimizeShared(user)
-    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     expect(await screen.findByText('Scenario calculation inputs are incomplete.')).toBeInTheDocument()
     expect(selectWorkflowScenarioMock).not.toHaveBeenCalled()
   })

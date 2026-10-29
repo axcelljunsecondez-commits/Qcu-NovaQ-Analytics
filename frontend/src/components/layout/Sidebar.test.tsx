@@ -52,7 +52,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     expect(within(nav).getAllByText(/^(Workspace|Insights|Simulation|Tools)$/).map((node) => node.textContent))
       .toEqual(['Workspace', 'Insights', 'Simulation', 'Tools'])
     expect(within(nav).getAllByRole('link').map((link) => link.textContent))
-      .toEqual(['My analyses', 'Analysis results', 'Reports', "Queue Simulation", "Quick Calculator"])
+      .toEqual(['My analyses', 'Analysis Results', 'Reports', "Queue Simulation", "Quick Calculator"])
   })
 
   it('moves Help, Settings, language and Log out out of the link list into the account menu', async () => {
@@ -69,7 +69,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     localStorage.setItem(LAST_ANALYSIS_KEY, '7')
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
-    expect(await screen.findByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
+    expect(await screen.findByRole('link', { name: 'Analysis Results' })).toHaveAttribute('href', '/results?analysis=7')
     expect(screen.getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports?analysis=7')
     expect(screen.getByRole('link', { name: "Queue Simulation" })).toHaveAttribute('href', '/simulation/results?analysis=7')
     expect(screen.getByRole('link', { name: "Quick Calculator" })).toHaveAttribute('href', '/tools/calculator')
@@ -79,9 +79,9 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
     await vi.waitFor(() => expect(listAnalysesMock).toHaveBeenCalled())
-    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results')
+    expect(screen.getByRole('link', { name: 'Analysis Results' })).toHaveAttribute('href', '/results')
     act(() => rememberLastAnalysis(7))
-    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
+    expect(screen.getByRole('link', { name: 'Analysis Results' })).toHaveAttribute('href', '/results?analysis=7')
     expect(localStorage.getItem(LAST_ANALYSIS_KEY)).toBe('7')
   })
 
@@ -94,7 +94,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     renderWithProviders(<Sidebar />, { route: '/analyses' })
     await navLinks()
     await vi.waitFor(() => expect(listAnalysesMock).toHaveBeenCalled())
-    expect(screen.getByRole('link', { name: 'Analysis results' })).toHaveAttribute('href', '/results')
+    expect(screen.getByRole('link', { name: 'Analysis Results' })).toHaveAttribute('href', '/results')
   })
 
   it('opens the Simulation picker when storage cannot be read', async () => {
@@ -109,7 +109,7 @@ describe('Sidebar global navigation (spec §7.3)', () => {
   it('keeps an explicit translated name on every collapsed link', async () => {
     renderWithProviders(<Sidebar collapsed onToggleCollapsed={() => undefined} />, { route: '/analyses' })
     const nav = await navLinks()
-    for (const name of ['My analyses', 'Analysis results', 'Reports', "Queue Simulation", "Quick Calculator"]) {
+    for (const name of ['My analyses', 'Analysis Results', 'Reports', "Queue Simulation", "Quick Calculator"]) {
       expect(within(nav).getByRole('link', { name })).toHaveAttribute('aria-label', name)
     }
   })
@@ -125,8 +125,8 @@ describe('Sidebar global navigation (spec §7.3)', () => {
   it.each([
     ['/analyses/7/setup', 'My analyses'],
     ['/analyses/7/data', 'My analyses'],
-    ['/results?analysis=7', 'Analysis results'],
-    ['/results?analysis=7&file=12&period=08%3A00', 'Analysis results'],
+    ['/results?analysis=7', 'Analysis Results'],
+    ['/results?analysis=7&file=12&period=08%3A00', 'Analysis Results'],
     ['/analyses/7/reports', 'Reports'],
     ['/analyses/7/decision', "Queue Simulation"],
     ['/simulation/checks?analysis=7&plan=current', "Queue Simulation"],
