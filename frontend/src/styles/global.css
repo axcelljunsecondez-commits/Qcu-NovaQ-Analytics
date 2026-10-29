@@ -721,16 +721,6 @@ button.btn-good:hover {
   cursor: pointer;
 }
 
-.plotly-wrap {
-  margin-bottom: 1rem;
-}
-
-.plotly-wrap h4 {
-  margin: 0 0 0.5rem;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-}
-
 /* ===== Login Page (Split Layout) ===== */
 .login-page {
   min-height: 100vh;
