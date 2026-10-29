@@ -7,11 +7,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, getAnalysisCurrent, listAnalyses, listAnalysisDatasets } from '../api/analyses'
 import { getObservedWait } from '../api/workflow'
 import { ApiState } from '../components/ui/ApiState'
-import { BusyStrip } from '../components/results/BusyStrip'
 import { FileSelector } from '../components/results/FileSelector'
 import { KeyResults } from '../components/results/KeyResults'
-import { PlanChanges } from '../components/results/PlanChanges'
-import { ArrivalsChart, WaitByPeriodChart, WorkloadChart } from '../components/results/ResultsCharts'
+import { NoPlanPrompt, PlanChanges } from '../components/results/PlanChanges'
+import { ResultsChartTabs, type ChartTab } from '../components/results/ResultsChartTabs'
+import { ArrivalsChart, WorkloadChart } from '../components/results/ResultsCharts'
 import { ResultsDetails } from '../components/results/ResultsDetails'
 import { useSelectedPlan } from '../components/results/useSelectedPlan'
 import { currentDatasetId } from '../lib/datasets'
@@ -26,7 +26,7 @@ import { ResultsSummary } from '../components/results/ResultsSummary'
 /**
  * Analysis results (spec 2026-10-09 §7.7, D14–D21, D31): the results of any successfully
  * processed file, read-only, plus "What the plan changes" for the planning file.
- * URL: /results?analysis=:id&file=:datasetId&period=&line=
+ * URL: /results?analysis=:id&file=:datasetId&period=&line=&chart=wait|level (chart tab, spec 2026-10-29 §5.1)
  */
 export function ResultsPage() {
   const { t } = useTranslation()
@@ -118,6 +118,9 @@ export function ResultsPage() {
   const rows = current.data?.rows ?? []
   const separateRows = rows.some((row) => lineOf(row) !== null)
   const planTarget = isPlanningFile && (plan.kind === 'shared' || plan.kind === 'separate') ? plan.target : null
+  const observedPeriods = records && observed.data?.available && observed.data.dataset_id === selected.id && observed.data.periods.length > 0 ? observed.data.periods : null
+  // D21 / OD-4: with no selected plan, the wait tab shows today's view with the no-plan prompt under it.
+  const promptInChart = isPlanningFile && plan.kind === 'none' && observedPeriods !== null
 
   return (
     <div className="page-stack">
@@ -153,13 +156,15 @@ export function ResultsPage() {
           </section>
           <ResultsSummary rows={rows} period={period} line={line} planTarget={planTarget} onPeriod={(value) => update({ period: value })} onLine={(value) => update({ line: value })}
             referenceLink={<Link to={`/results?${referenceParams}`}>{t('results.reference_title')}</Link>} />
-          {new Set(rows.map((row) => row.time)).size > 1 && <BusyStrip showNumbers={false} rows={rows} planTarget={planTarget} period={period === ALL ? null : period} onPeriod={(time) => update({ period: time })} />}
+          <ResultsChartTabs chart={params.get('chart')} onChart={(tab: ChartTab) => update({ chart: tab })} observed={observedPeriods} rows={rows}
+            selectedModel={current.data.selected_model} separate={separate} separateRows={separateRows} plan={plan} planTarget={planTarget}
+            period={period === ALL ? null : period} onPeriod={(time) => update({ period: time })}
+            noPlanPrompt={promptInChart ? <NoPlanPrompt analysisId={id} plan={plan} /> : undefined} />
           <div className="results-patterns">
             <ArrivalsChart periods={current.data.arrivals_by_period} />
             <WorkloadChart rows={rows} separate={separateRows} />
           </div>
-          {records && observed.data?.available && observed.data.dataset_id === selected.id && <WaitByPeriodChart periods={observed.data.periods} />}
-          {isPlanningFile && <PlanChanges analysisId={id} plan={plan} />}
+          {isPlanningFile && <PlanChanges analysisId={id} plan={plan} dataset={selected} periodBasis={analysis.data.analysis.queue_setup.event_period_basis} promptShown={promptInChart} />}
         </>
       )}
     </div>

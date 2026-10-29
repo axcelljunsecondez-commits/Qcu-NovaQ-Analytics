@@ -99,6 +99,9 @@ export interface DatasetValidation {
   message: string
   /** Present only for customer-event uploads (per period/queue observed means). */
   derived_statistics?: Record<string, unknown>[]
+  /** Representative-day customer-event uploads only: the basis and how many dates were pooled. */
+  period_basis?: string
+  observation_days?: number
 }
 
 /** One failed eligibility check, as the server reports it (4c, 4f). */
