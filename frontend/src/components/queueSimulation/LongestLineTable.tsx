@@ -68,13 +68,15 @@ export function LongestLineTable({ matrix, kind, chips }: { matrix: LongestMatri
     if (!period) return []
     if (col === matrix.lanes.length) return [period.time, `${t('simulation.longest_line')}: ${period.max ?? unavailable}`]
     const cell = period.cells[col]
-    if (!cell.staffed) return [`${period.time} · ${cell.lane}`, closed]
+    if (cell.staffed === false) return [`${period.time} · ${cell.lane}`, closed]
     return [`${period.time} · ${cell.lane}`, `${t('charts.longest_tip_max')}: ${cell.value ?? unavailable}`,
       `${t('results.col_workload')}: ${cell.rho === null ? unavailable : fmtPctDecimal(cell.rho)}`]
   }
   const readout = active ? lines(active.row, active.col) : []
 
   const where = matrix.peaks.map((peak) => `${peak.lane} ${t('charts.conn_during')} ${peak.time}`).join('; ')
+  // The hatching key only where "not staffed" is known (a Current run whose Setup staffing is unknown has none).
+  const showClosedKey = matrix.staffingKnown || matrix.rows.some((period) => period.cells.some((cell) => cell.staffed === false))
   const takeaway = matrix.dayMax === null ? null
     : t(kind === 'current' ? 'charts.longest_take_current' : 'charts.longest_take_plan', { count: matrix.dayMax, where })
 
@@ -85,7 +87,7 @@ export function LongestLineTable({ matrix, kind, chips }: { matrix: LongestMatri
       {takeaway && <p className="cv-takeaway" data-testid="longest-take">{takeaway}</p>}
       <ul className="cv-legend">
         <li className="cv-legend-item"><span className="cv-swatch" aria-hidden="true" style={{ background: tint(1, 1), borderRadius: 3 }} />{t('charts.longest_legend_number')}</li>
-        <li className="cv-legend-item"><span className="cv-swatch" aria-hidden="true" style={{ background: CLOSED_SWATCH, borderRadius: 3 }} />{closed}</li>
+        {showClosedKey && <li className="cv-legend-item"><span className="cv-swatch" aria-hidden="true" style={{ background: CLOSED_SWATCH, borderRadius: 3 }} />{closed}</li>}
         <li className="cv-legend-item">{t('charts.longest_legend_max')}</li>
       </ul>
       <div ref={wrap} className="table-scroll">
@@ -109,8 +111,12 @@ export function LongestLineTable({ matrix, kind, chips }: { matrix: LongestMatri
                     onKeyDown: (event: KeyboardEvent<HTMLTableCellElement>) => onKeyDown(event, row, col),
                     onFocus: () => setActive({ row, col }), onMouseEnter: () => setActive({ row, col }), onClick: () => focusCell(row, col) }
                   const isActive = active?.row === row && active.col === col ? ' active' : ''
-                  if (!cell.staffed) {
+                  if (cell.staffed === false) {
                     return <td key={cell.lane} className={`cv-closed${isActive}`} {...focus}><span aria-hidden="true">—</span><span className="sr-only">{closed}</span></td>
+                  }
+                  if (cell.staffed === null) {
+                    // Staffing unknown: no value and no hatching.
+                    return <td key={cell.lane} className={isActive.trim() || undefined} {...focus}><span aria-hidden="true">—</span><span className="sr-only">{unavailable}</span></td>
                   }
                   return (
                     <td key={cell.lane} className={isActive.trim() || undefined} style={cell.value === null ? undefined : { background: tint(cell.value, matrix.dayMax) }} {...focus}>

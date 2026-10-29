@@ -21,7 +21,7 @@ export function ResultsSummary({ rows, period, line, onPeriod, onLine, reference
   const separate = rows.some((row) => lineOf(row) !== null)
   const visible = rows.filter((row) => matchesFilter(row.time, row.queue_id, period, line))
   const unavailable = t('results.unavailable')
-  // Multi-period warnings are already in BusyStrip; a single period still needs its target warning.
+  // Multi-period warnings are already in the Busy Level tab (BusyLevelCard); a single period still needs its target warning.
   const strip = dayStrip(rows)
   const warnings = strip.length === 1 ? periodWarnings(strip, planTarget) : []
   const levels = ['lean', 'normal', 'peak', 'critical', 'unstable']

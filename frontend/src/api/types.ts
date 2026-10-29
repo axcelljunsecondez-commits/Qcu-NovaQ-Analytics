@@ -292,6 +292,8 @@ export interface SimDesOut {
   simulation_supported?: boolean
   time: string
   queue_id?: string | null
+  /** Separate lines: the Setup segment of the row (engine id: the segment's id, else segment_<n>). */
+  segment_id?: string | number | null
   lambda: number
   mu: number
   c: number

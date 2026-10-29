@@ -24,6 +24,7 @@ const matrix: LongestMatrix = {
   ],
   dayMax: 4,
   peaks: [{ time: '06:00-07:00', lane: 'cashier_2' }],
+  staffingKnown: true,
 }
 
 const width = window.innerWidth
@@ -50,6 +51,31 @@ describe('LongestLineTable', () => {
     // A staffed zero is printed as 0, not hatched.
     expect(within(screen.getByRole('row', { name: /^06:00-07:00/ })).getAllByRole('cell')[0]).toHaveTextContent('0')
     expect(screen.getByTestId('longest-take')).toHaveTextContent('Longest line in today’s simulated run: 4 people, at cashier_2 during 06:00-07:00.')
+  })
+
+  it('shows an unknown-staffing cell as "—" without hatching and leaves the hatching key out', () => {
+    const unknown: LongestMatrix = {
+      ...matrix, staffingKnown: false,
+      rows: [{ time: '05:00-06:00', max: 1, cells: [
+        { lane: 'cashier_1', staffed: true, value: 1, rho: 0.5 },
+        { lane: 'cashier_2', staffed: null, value: null, rho: null },
+        { lane: 'cashier_3', staffed: true, value: 0, rho: 0 },
+      ] }],
+      dayMax: 1, peaks: [{ time: '05:00-06:00', lane: 'cashier_1' }],
+    }
+    renderTable('current', unknown)
+    const cells = within(screen.getByRole('row', { name: /^05:00-06:00/ })).getAllByRole('cell')
+    expect(cells[1]).toHaveTextContent('—')
+    expect(cells[1]).not.toHaveClass('cv-closed')
+    expect(within(cells[1]).getByText('Unavailable')).toHaveClass('sr-only')
+    const table = screen.getByTestId('longest-line-table')
+    expect(table.querySelector('.cv-closed')).toBeNull()
+    expect(within(table).queryByText(en['simulation.state_closed'])).not.toBeInTheDocument()
+  })
+
+  it('keeps the hatching key when staffing is known', () => {
+    renderTable()
+    expect(within(screen.getByTestId('longest-line-table')).getAllByText(en['simulation.state_closed'])[0].closest('li')).not.toBeNull()
   })
 
   it('uses the singular takeaway and the plan wording for the plan run', () => {

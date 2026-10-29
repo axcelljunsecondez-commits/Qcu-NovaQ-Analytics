@@ -50,9 +50,11 @@ interface Options {
   breaks?: boolean
   now?: RunSummary | null
   plan?: RunSummary | null
+  /** Per-date plan days (server field `days`). */
+  days?: unknown[]
 }
 
-function renderView(run: RunChoice, { separate = true, basis = 'representative_day', breaks = true, now = perPeriod, plan = continuousDay }: Options = {}, lang: 'en' | 'tl' = 'en') {
+function renderView(run: RunChoice, { separate = true, basis = 'representative_day', breaks = true, now = perPeriod, plan = continuousDay, days }: Options = {}, lang: 'en' | 'tl' = 'en') {
   const analysis = {
     id: 7, name: 'Checkout',
     queue_setup: {
@@ -64,7 +66,7 @@ function renderView(run: RunChoice, { separate = true, basis = 'representative_d
   const scenario = separate
     ? { id: 9, name: 'Plan', dataset_id: 2, provenance: 'verified_snapshot', settings: { calculation: { schema_version: 2, options: { target_utilization: 0.85 } } } }
     : { id: 9, name: 'Plan', dataset_id: 2, provenance: 'verified_snapshot' }
-  const planRun = plan === null ? null : separate ? planResult(plan) : { ...emptyTrace, results: [], summary: plan }
+  const planRun = plan === null ? null : separate ? planResult(plan, days) : { ...emptyTrace, results: [], summary: plan }
   const workflow = {
     analysis_id: 7, selection: null, scenario,
     des: planRun ? job('workflow_des', planRun, { scenario_id: 9, seed: 42 }) : null,
@@ -122,6 +124,31 @@ describe('closing alert (B5)', () => {
     unmount()
     renderView('suggested', { plan: { ...continuousDay, in_system_at_close: 2 } })
     expect(screen.getByTestId('closing-alert')).toHaveTextContent('2 customers still in line or being served at closing in the plan’s simulated day.')
+  })
+
+  // A per-date plan's in_system_at_close is the server's total over all dates (workflow.py at_close_total),
+  // so the "plan's simulated day" alert is shown only for one simulated day.
+  const day = (date: string, atClose: number) => ({ date, admitted: 30, served: 30 - atClose, in_system_at_close: atClose, customer_conservation: true, day_hours: 1 })
+
+  it('is not shown for a per-date plan over several dates; the total stays in More Results', () => {
+    renderView('suggested', { basis: 'per_date', plan: { ...continuousDay, in_system_at_close: 3 }, days: [day('2026-10-01', 1), day('2026-10-02', 2)] })
+    expect(screen.queryByTestId('closing-alert')).not.toBeInTheDocument()
+    const atClose = screen.getByRole('region', { name: en['simulation.not_served_at_close'] })
+    expect(atClose.closest('details')).not.toBeNull()
+    expect(atClose).toHaveTextContent('Current: Unavailable')
+    expect(atClose).toHaveTextContent('Suggested plan: 3')
+    expect(atClose).toHaveTextContent(en['simulation.totals_all_dates'].replace('{{dates}}', '2'))
+  })
+
+  it('is shown for a per-date plan with one date', () => {
+    renderView('suggested', { basis: 'per_date', plan: { ...continuousDay, in_system_at_close: 2 }, days: [day('2026-10-01', 2)] })
+    expect(screen.getByTestId('closing-alert')).toHaveTextContent('2 customers still in line or being served at closing in the plan’s simulated day.')
+    expect(screen.queryByRole('region', { name: en['simulation.not_served_at_close'] })).not.toBeInTheDocument()
+  })
+
+  it('is not shown for a per-date plan whose days are missing', () => {
+    renderView('suggested', { basis: 'per_date', plan: { ...continuousDay, in_system_at_close: 2 } })
+    expect(screen.queryByTestId('closing-alert')).not.toBeInTheDocument()
   })
 
   // Spec §14 plural risk: i18next picks the TL "one" form for 1, 2 and 3; both TL forms read for any count.

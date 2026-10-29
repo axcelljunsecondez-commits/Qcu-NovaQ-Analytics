@@ -191,7 +191,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
     return pick(summary) ?? unavailable
   }
   const minutesOf = (summary: RunSummary) => (summary.average_wait_hours === null ? null : `${fmtDecimal(summary.average_wait_hours * 60, 1)} ${t('results.min')}`)
-  const count = (field: 'served' | 'longest_line') => (summary: RunSummary) => (summary[field] === null ? null : String(summary[field]))
+  const count = (field: 'served' | 'longest_line' | 'in_system_at_close') => (summary: RunSummary) => (summary[field] === null ? null : String(summary[field]))
 
   const basisKey = basisTextKey(context, nowSummary, planSummary)
   const basisInfo = basisKey ? <InfoTip name={t('charts.info_basis_name')} ariaLabel={t('charts.info_basis_name')} text={t(basisKey)} /> : undefined
@@ -201,6 +201,11 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
     ? t(nowSummary.basis === planSummary.basis ? 'charts.key_take_same_basis' : 'charts.key_take', { current: nowWait, plan: planWait })
     : null
   const atClose = planSummary?.in_system_at_close
+  // The alert says "in the plan's simulated day". A per-date plan's value is the server's total over all
+  // dates (workflow.py at_close_total), so the alert is true only for one simulated day; with more dates the
+  // value stays in More Results under its own label, beside the "totals add up all dates" note.
+  const planDays = suggested?.kind === 'separate' ? suggested.result.days?.length ?? 0 : 0
+  const oneSimulatedDay = context.perDateDays ? planDays === 1 : planDays <= 1
   // The "Unavailable" explanation is true only for a side that simulates one period at a time.
   const unavailableInfo = (summary: RunSummary | null) => (summary?.basis === 'per_period' && summary.served === null
     ? <InfoTip name={t('charts.info_unavailable_name')} ariaLabel={t('charts.info_unavailable_name')}
@@ -215,7 +220,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
 
   const matrix = !context.separate || !shown ? null
     : shown.kind === 'separate' ? (chosenDay ? planMatrix(chosenDay.periods, setup.queue_ids ?? []) : null)
-      : currentMatrix(shown.result.results ?? [], setup.queue_ids ?? [])
+      : currentMatrix(shown.result.results ?? [], setup)
   const longestChips = run === 'current'
     ? [t('simulation.run_current'), t('simulation.run_basis_per_period'), t('charts.longest_chip_runs'), t('charts.longest_chip_breaks'), seedChip(context.workflow.des_current?.params.seed)]
     : planChips
@@ -227,7 +232,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
         <Card label={t('simulation.average_wait')} now={value(nowSummary, current !== null, minutesOf)} plan={value(planSummary, suggested !== null, minutesOf)} mid={basisInfo} />
         <Card label={t('simulation.longest_line')} now={value(nowSummary, current !== null, count('longest_line'))} plan={value(planSummary, suggested !== null, count('longest_line'))} mid={basisInfo} />
       </div>
-      {typeof atClose === 'number' && atClose > 0 && (
+      {oneSimulatedDay && typeof atClose === 'number' && atClose > 0 && (
         <p role="status" className="alert alert-warn" data-testid="closing-alert">{t('charts.closing_alert', { count: atClose })}</p>
       )}
       {(current || suggested) && (
@@ -264,6 +269,14 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
             <Pair now={value(nowSummary, current !== null, count('served'))} plan={value(planSummary, suggested !== null, count('served'))}
               nowInfo={unavailableInfo(nowSummary)} planInfo={unavailableInfo(planSummary)} />
           </section>
+          {!oneSimulatedDay && typeof atClose === 'number' && (
+            <section className="key-result" aria-label={t('simulation.not_served_at_close')} data-testid="more-at-close">
+              <h3 className="kpi-label">{t('simulation.not_served_at_close')}</h3>
+              <Pair now={value(nowSummary, current !== null, count('in_system_at_close'))} plan={value(planSummary, suggested !== null, count('in_system_at_close'))}
+                nowInfo={unavailableInfo(nowSummary)} />
+              {planDays > 1 && <p className="form-hint">{t('simulation.totals_all_dates', { dates: planDays })}</p>}
+            </section>
+          )}
           {shownSummary && <PeriodTable summary={shownSummary} />}
           {shown.kind === 'separate'
             ? shown.result.periods.map((period) => <LaneTable key={period.time} period={period} />)
