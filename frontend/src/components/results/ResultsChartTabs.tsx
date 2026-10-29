@@ -1,13 +1,15 @@
 import { useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ObservedWaitPeriod } from '../../api/types'
+import type { StaffingSetup } from '../../lib/longestLine'
 import { headingText } from '../../lib/headingText'
-import { timeOf, type ResultRow } from '../../lib/results'
+import { chartTabs, type ChartTab } from '../../lib/resultsTabs'
+import type { ResultRow } from '../../lib/results'
 import { BusyLevelCard } from './BusyLevelCard'
 import type { SelectedPlan } from './useSelectedPlan'
 import { WaitByHourCard } from './WaitByHourCard'
 
-export type ChartTab = 'wait' | 'level'
+export type { ChartTab }
 
 const LABELS: Record<ChartTab, string> = { wait: 'results.plan_changes', level: 'results.day_by_level' }
 
@@ -16,7 +18,7 @@ const LABELS: Record<ChartTab, string> = { wait: 'results.plan_changes', level: 
  * first, "Your day, by Busy Level" second. One panel shows one card. A tab with nothing to show is
  * left out; a single remaining card renders without a tablist. The chosen tab lives in `?chart=`.
  */
-export function ResultsChartTabs({ chart, onChart, observed, rows, selectedModel, separate, separateRows, plan, planTarget, period, onPeriod, noPlanPrompt }: {
+export function ResultsChartTabs({ chart, onChart, observed, rows, selectedModel, separate, separateRows, plan, planTarget, period, onPeriod, staffing, noPlanPrompt }: {
   /** `?chart=` from the address; absent or invalid opens the first available tab. */
   chart: string | null
   onChart: (tab: ChartTab) => void
@@ -31,20 +33,18 @@ export function ResultsChartTabs({ chart, onChart, observed, rows, selectedModel
   planTarget: number | null
   period: string | null
   onPeriod: (time: string | null) => void
-  /** The no-plan prompt shown under the wait chart (planning file, no plan selected). */
+  /** Separate lines: the Setup and the file's records, for the Today view's staffed-cashier counts. */
+  staffing?: { setup: StaffingSetup; records: Record<string, unknown>[] | null }
+  /** The no-plan prompt shown under the wait chart (planning file, no plan selected); the page passes it only while the wait tab is open. */
   noPlanPrompt?: ReactNode
 }) {
   const { t } = useTranslation()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
-  const planUsable = (plan.kind === 'separate' || plan.kind === 'shared') && plan.usable
-  const available: ChartTab[] = []
-  if (observed !== null || planUsable) available.push('wait')
-  if (new Set(rows.map(timeOf)).size > 1) available.push('level')
-  if (available.length === 0) return null
-  const active: ChartTab = available.find((tab) => tab === chart) ?? available[0]
+  const { available, active } = chartTabs(chart, observed, rows, plan)
+  if (active === null) return null
 
   const panel = active === 'wait'
-    ? <WaitByHourCard observed={observed} rows={rows} selectedModel={selectedModel} separate={separate} plan={plan} footer={noPlanPrompt} />
+    ? <WaitByHourCard observed={observed} rows={rows} selectedModel={selectedModel} separate={separate} plan={plan} staffing={staffing} footer={noPlanPrompt} />
     : <BusyLevelCard rows={rows} separate={separateRows} plan={plan} planTarget={planTarget} period={period} onPeriod={onPeriod} />
   if (available.length === 1) return panel
 

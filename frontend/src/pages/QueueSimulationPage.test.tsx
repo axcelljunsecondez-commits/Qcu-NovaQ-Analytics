@@ -432,10 +432,18 @@ describe('the legacy shared path', () => {
     const user = userEvent.setup()
     const stored = { num_trials: 2000, failure_threshold: 0.85, failure_rate_cap: 0.05, failure_rate: 0, failure_rate_ci_lower: 0, failure_rate_ci_upper: 0.0019 }
     getWorkflowMock.mockResolvedValue(workflow({ mc: job('workflow_mc', { results: [{ ...mcRow, ...stored }, { ...mcRow, ...stored, time: '09:00-10:00' }] }) }))
-    const { container } = renderPage('/simulation/checks?analysis=7')
+    renderPage('/simulation/checks?analysis=7')
     const threshold = await screen.findByLabelText('Failure threshold (ρ)')
     expect(threshold).toHaveValue(0.75)
     const info = screen.getByRole('button', { name: 'What is Many variations?' })
+    // N3 / K-UC-9: the ⓘ is not nested in the check's <summary>, and using it does not open or close the check.
+    expect(info.closest('summary')).toBeNull()
+    const check = info.closest('.check-line-frame')?.querySelector('details') as HTMLDetailsElement
+    expect(check.querySelector('summary .check-line-info-slot')).not.toBeNull()
+    const openBefore = check.open
+    await user.click(info)
+    expect(check.open).toBe(openBefore)
+    await user.click(document.body)
     await user.hover(info)
     expect(screen.getByRole('tooltip')).toHaveTextContent('A version fails when Utilization Rate is above 85%.')
     await user.unhover(info)
@@ -450,7 +458,8 @@ describe('the legacy shared path', () => {
     expect(within(chart).getByTestId('mc-take')).toHaveTextContent('Closest to the 5% cap: 08:00-09:00, with 0% of 2,000 variations failing.')
     const table = screen.getByRole('region', { name: 'Monte Carlo simulation results by interval' })
     expect(within(table).getAllByRole('row')[1]).toHaveTextContent('0% – 0.19%')
-    expect(container.querySelector('.plotly')).toBeNull()
+    // The new SVG row chart is drawn (positive check; Plotly is no longer imported here).
+    expect(within(chart).getByTestId('mc-chart')).toBeInTheDocument()
   })
 
   it('leaves out the Many variations explanation when the stored rows disagree', async () => {
@@ -579,10 +588,12 @@ describe('Current runs', () => {
     })
     renderPage()
     expect(await screen.findByRole('button', { name: 'Current' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.queryByRole('button', { name: 'Run full operation' })).not.toBeInTheDocument()
-    expect(screen.getByText('Not run yet. Use Run period by period.')).toBeInTheDocument()
-    expect(screen.queryByText('Not run yet. Use Run full operation.')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Run period by period' }))
+    // Separate lines: the Current run is one continuous run without breaks (K-UC-3), never "period by period".
+    expect(screen.queryByRole('button', { name: 'Run period by period' })).not.toBeInTheDocument()
+    expect(screen.getByText('Not run yet. Use Run full operation.')).toBeInTheDocument()
+    expect(screen.queryByText('Not run yet. Use Run period by period.')).not.toBeInTheDocument()
+    expect(screen.getByText(en['simulation.run_basis_continuous_no_breaks'])).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Run full operation' }))
     await waitFor(() => expect(runDesCurrentMock).toHaveBeenCalledTimes(1))
     expect(runDesCurrentMock).toHaveBeenCalledWith(7, { sim_hours: 24, queue_overload_threshold: 20, max_events: 3000, seed: null, carryover: true })
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
@@ -611,7 +622,7 @@ describe('Current runs', () => {
     expect(getAnalysisCurrentMock).not.toHaveBeenCalled()
   })
 
-  it('replays a separate Current run in the separate layout, one period at a time', async () => {
+  it('replays a separate Current run in the separate layout as one continuous run', async () => {
     const separateTrace = {
       ...trace,
       trace: [{ t: 0.1, type: 'arrival', segment_id: 's1', customer_id: 1, server_id: null, queue_id: 'queue_1', queue_len_after: 1 }],
@@ -620,7 +631,8 @@ describe('Current runs', () => {
     getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null, des_current: job('workflow_des_current', separateTrace, { scenario_id: null }) }))
     renderPage('/simulation/replay?analysis=7')
     expect(await screen.findByTestId('lane-queue_1')).toBeInTheDocument()
-    expect(screen.getByText('This run simulates one period at a time; it is not one continuous day.')).toBeInTheDocument()
+    expect(screen.getByText(en['simulation.one_run_notice_separate'])).toBeInTheDocument()
+    expect(screen.queryByText('This run simulates one period at a time; it is not one continuous day.')).not.toBeInTheDocument()
   })
 
   it('gates the Results check on Many variations and shows the per-queue verdict', async () => {
@@ -938,7 +950,7 @@ describe('a selected separate-lines plan', () => {
       { ...mcRow, ...stored, time: '09:00', queue_id: 'east-07', failure_rate: 0.0019, failure_rate_ci_lower: 0, failure_rate_ci_upper: 0.004 },
     ]
     selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', { ...mcResult, results: rows }, { scenario_id: 9, seed: 42 }) })
-    const { container } = renderPage('/simulation/checks?analysis=7')
+    renderPage('/simulation/checks?analysis=7')
     const chart = await screen.findByTestId('many-variations-chart')
     expect(within(chart).getByTestId('mc-take')).toHaveTextContent('Closest to the 5% cap: 08:00, lane-A, with 0.3% of 2,000 variations failing.')
     expect(within(chart).getAllByTestId('row-chart-row')).toHaveLength(2)
@@ -956,7 +968,7 @@ describe('a selected separate-lines plan', () => {
     await user.hover(info)
     expect(screen.getByRole('tooltip')).toHaveTextContent('NovaQ calculates 2,000 what-if versions of each period')
     expect(screen.getByRole('tooltip')).toHaveTextContent('above 85%. The period passes when no more than 5% of versions fail.')
-    expect(container.querySelector('.plotly')).toBeNull()
+    expect(within(chart).getByTestId('mc-chart')).toBeInTheDocument()
   })
 
   it('never shows another plan\'s stored run', async () => {

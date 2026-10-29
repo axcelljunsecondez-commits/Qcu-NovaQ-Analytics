@@ -3,6 +3,7 @@
 // only (OD-1): every value comes from a server response, kinds are kept apart, and a missing
 // value stays null so the chart draws a labelled gap.
 import type { ObservedWaitPeriod, OptimizationOut, SeparateComparison, SeparatePlanComparison } from '../api/types'
+import { setupStaffing, type StaffingSetup } from './longestLine'
 import { finiteNumber, minutes, timeOf, type ResultRow } from './results'
 
 export type WaitView = 'today' | 'plan'
@@ -49,6 +50,34 @@ export function countersByPeriod(rows: ResultRow[]): Map<string, number | null> 
     const c = finiteNumber(row.c)
     const before = counters.has(time) ? counters.get(time) ?? null : 0
     counters.set(time, before === null || c === null ? null : before + c)
+  }
+  return counters
+}
+
+/**
+ * Separate lines, Today view (review K-UC-5): the cashiers the Setup staffs in each period, resolved by
+ * setupStaffing (the same resolver as the Current-run table). The /current rows exist only for cashiers
+ * with recorded customers, so adding their `c` would undercount. A period is mapped to its Setup segment
+ * through the planning file's records (`time` → `segment_id`, analysis_ingestion.py); when staffing varies
+ * and the period names no single known segment, its count is null (shown as "—").
+ */
+export function setupCountersByPeriod(times: readonly string[], setup: StaffingSetup, records: readonly Record<string, unknown>[] | null | undefined): Map<string, number | null> {
+  const staffing = setupStaffing(setup)
+  const segmentsOf = new Map<string, Set<string>>()
+  for (const record of records ?? []) {
+    const time = timeOf(record)
+    const segment = record.segment_id === undefined || record.segment_id === null ? '' : String(record.segment_id)
+    segmentsOf.set(time, (segmentsOf.get(time) ?? new Set<string>()).add(segment))
+  }
+  const counters = new Map<string, number | null>()
+  for (const time of times) {
+    if (staffing.all) {
+      counters.set(time, staffing.all.size > 0 ? staffing.all.size : null)
+      continue
+    }
+    const ids = [...(segmentsOf.get(time) ?? [])]
+    const active = ids.length === 1 && ids[0] !== '' ? staffing.bySegment.get(ids[0]) ?? null : null
+    counters.set(time, active ? active.size : null)
   }
   return counters
 }

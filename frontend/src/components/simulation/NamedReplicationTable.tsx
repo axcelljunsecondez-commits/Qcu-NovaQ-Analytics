@@ -22,7 +22,10 @@ export function NamedReplicationTable({ rows, summary, selectedIndex, onSelect }
   const means = summary.waiting_time.mean_of_replication_means_hours
   const weighted = summary.waiting_time.customer_weighted_mean_hours
   const totals = summary.customers.totals
-  const lower = fmtDecimal(minutes(shownLower(means.ci_lower)))
+  const lowerShown = shownLower(means.ci_lower)
+  const lower = fmtDecimal(minutes(lowerShown))
+  // The note says the range is cut at 0: only when the shown bound IS 0, not when a small positive value prints as "0".
+  const cutAtZero = lowerShown === 0
   return (
     <div data-testid="named-replication-table">
       <div className="card table-scroll" role="region" aria-label={t('simulation.named_replications_caption')} tabIndex={0}>
@@ -106,7 +109,7 @@ export function NamedReplicationTable({ rows, summary, selectedIndex, onSelect }
               n: means.n,
               undefined: means.n_undefined,
             })}
-            {lower === fmtDecimal(0) && (
+            {cutAtZero && (
               <span className="form-hint" data-testid="named-agg-clip"> {t('charts.clip_legend')}{' '}
                 <InfoTip name={t('charts.clip_legend')} ariaLabel={t('charts.info_clip_name')} text={t('charts.clip_text')} />
               </span>

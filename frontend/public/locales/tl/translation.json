@@ -2169,5 +2169,14 @@
   "charts.key_take_same_basis": "Simulated na average wait: Ngayon {{current}}, Mungkahing plano {{plan}}.",
   "charts.mc_chip_fail_current": "Bumabagsak ang variation kapag lampas sa {{threshold}} ang Utilization Rate ng cashier.",
   "charts.wait_axis_note_period": "Isang period ang bawat row; nagsisimula sa 0 ang axis.",
-  "results.suggests_wait_separate": "Paghihintay (average ng mga period): Kalkuladong tantiya {{now}} min → Mungkahing plano, simulated {{plan}} min."
+  "results.suggests_wait_separate": "Paghihintay (average ng mga period): Kalkuladong tantiya {{now}} min → Mungkahing plano, simulated {{plan}} min.",
+  "charts.key_basis_separate": "Hindi pareho ang basehan: iisang tuloy-tuloy na simulation ng mga period sa Setup ang Ngayon, walang break, at humihinto ito sa pagsasara; iisang tuloy-tuloy na araw na may break ang plano, at tinatapos ng mga cashier ang pagsisilbi sa mga nakapilang customer sa pagsasara.",
+  "charts.key_basis_no_breaks_separate": "Hindi pareho ang basehan: iisang tuloy-tuloy na simulation ng mga period sa Setup ang Ngayon, at humihinto ito sa pagsasara; iisang tuloy-tuloy na araw ang plano, at tinatapos ng mga cashier ang pagsisilbi sa mga nakapilang customer sa pagsasara.",
+  "charts.key_basis_per_date_separate": "Hindi pareho ang basehan: iisang tuloy-tuloy na simulation ng mga period sa Setup ang Ngayon, at humihinto ito sa pagsasara; isang tuloy-tuloy na takbo bawat petsa ang plano, at tinatapos ng mga cashier ang pagsisilbi sa mga nakapilang customer sa pagsasara.",
+  "charts.key_unavailable_explain_separate": "Walang kabuuang bilang ng customer para sa buong araw ang run na ito. Inaasahan ito, hindi error. Ihambing gamit ang Karaniwang paghihintay at Pinaka Mahabang Pila.",
+  "simulation.run_basis_continuous_no_breaks": "Iisang tuloy-tuloy na takbo, walang break",
+  "simulation.chart_waiting_needs_plan_day": "Ipinapakita para sa simulated na araw ng Mungkahing plano.",
+  "simulation.one_run_notice_separate": "Sinisimulate ng takbong ito ang mga period sa Setup bilang iisang tuloy-tuloy na takbo, walang break.",
+  "charts.mc_take_separate_above": "Pinakamataas na risk, lampas sa {{cap}} cap: {{time}}, {{lane}}, {{rate}} ng {{trials}} na variation ang bumagsak.",
+  "charts.mc_take_shared_above": "Pinakamataas na risk, lampas sa {{cap}} cap: {{time}}, {{rate}} ng {{trials}} na variation ang bumagsak."
 }

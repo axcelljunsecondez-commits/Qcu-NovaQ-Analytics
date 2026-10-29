@@ -33,14 +33,31 @@ function Card({ label, now, plan, mid }: { label: string; now: string; plan: str
 }
 
 /**
- * The basis ⓘ text, only where it is true (spec §7.3, App. B W12): Current always simulates one period
- * at a time without breaks; the plan's continuous day includes the Setup's breaks.
+ * The basis ⓘ text, only where it is true (spec §7.3, App. B W12): the plan's continuous day includes the
+ * Setup's breaks and staff finish serving the customers in line at closing. Separate lines (review K-UC-3):
+ * the Current run is ONE continuous simulation over the Setup's periods, without breaks, that stops at
+ * closing (simulation.py _simulate_parallel_segments_core, one env.run(until=horizon)); its summary says
+ * "per_period" only because it reports no whole-day customer counts. The shared Current run does simulate
+ * one period at a time (_simulate_segments_core), so shared keeps the per-period texts.
  */
 function basisTextKey(context: SimulationContext, now: RunSummary | null, plan: RunSummary | null): string | null {
   if (!now || !plan || now.basis === plan.basis) return null
   if (now.basis !== 'per_period' || plan.basis !== 'continuous_day') return null
+  const breaks = (context.analysis.queue_setup.breaks ?? []).length > 0
+  if (context.separate) {
+    if (context.perDateDays) return 'charts.key_basis_per_date_separate'
+    return breaks ? 'charts.key_basis_separate' : 'charts.key_basis_no_breaks_separate'
+  }
   if (context.perDateDays) return 'charts.key_basis_per_date'
-  return (context.analysis.queue_setup.breaks ?? []).length > 0 ? 'charts.key_basis' : 'charts.key_basis_no_breaks'
+  return breaks ? 'charts.key_basis' : 'charts.key_basis_no_breaks'
+}
+
+/** The "Unavailable" ⓘ text for a side without whole-day customer counts; true for that side's run only. */
+function unavailableTextKey(context: SimulationContext, side: RunChoice): string {
+  if (!context.separate) return 'charts.key_unavailable_explain_shared'
+  // Separate Current: one continuous run without customer totals. A separate plan with basis per_period
+  // (per-date data without operating segments) does simulate each period alone.
+  return side === 'current' ? 'charts.key_unavailable_explain_separate' : 'charts.key_unavailable_explain'
 }
 
 function WaitingChart({ trace, origin, breaks }: { trace: SimulationTrace; origin: number | null; breaks: ScheduledBreak[] }) {
@@ -207,24 +224,23 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
   // value stays in More Results under its own label, beside the "totals add up all dates" note.
   const planDays = suggested?.kind === 'separate' ? suggested.result.days?.length ?? 0 : 0
   const oneSimulatedDay = context.perDateDays ? planDays === 1 : planDays <= 1
-  // The "Unavailable" explanation is true only for a side that simulates one period at a time.
-  const unavailableInfo = (summary: RunSummary | null) => (summary?.basis === 'per_period' && summary.served === null
-    ? <InfoTip name={t('charts.info_unavailable_name')} ariaLabel={t('charts.info_unavailable_name')}
-      text={t(context.separate ? 'charts.key_unavailable_explain' : 'charts.key_unavailable_explain_shared')} />
+  // The "Unavailable" explanation is shown only for a side whose run reports no whole-day customer counts.
+  const unavailableInfo = (summary: RunSummary | null, side: RunChoice) => (summary?.basis === 'per_period' && summary.served === null
+    ? <InfoTip name={t('charts.info_unavailable_name')} ariaLabel={t('charts.info_unavailable_name')} text={t(unavailableTextKey(context, side))} />
     : undefined)
 
   const seedChip = (seed: unknown) => (typeof seed === 'number' ? `${t('simulation.seed')}: ${seed}` : t('charts.chip_seed_not_saved'))
   // Only the selected separate-lines plan models the Setup's breaks; Current and the legacy shared run have none.
   const planBreaksKey = context.selectedSeparate && (setup.breaks ?? []).length > 0 ? 'charts.chip_breaks_included' : 'charts.chip_no_breaks'
-  const currentChips = [t('simulation.run_current'), t(runBasisKey(context, 'current')), t('charts.chip_no_breaks'), seedChip(context.workflow.des_current?.params.seed)]
+  // Separate Current's basis chip already says "no breaks" (simulation.run_basis_continuous_no_breaks).
+  const currentChips = [t('simulation.run_current'), t(runBasisKey(context, 'current')), ...(context.separate ? [] : [t('charts.chip_no_breaks')]), seedChip(context.workflow.des_current?.params.seed)]
   const planChips = [t('simulation.run_suggested'), t(runBasisKey(context, 'suggested')), t(planBreaksKey), seedChip(context.workflow.des?.params.seed)]
 
   const matrix = !context.separate || !shown ? null
     : shown.kind === 'separate' ? (chosenDay ? planMatrix(chosenDay.periods, setup.queue_ids ?? []) : null)
       : currentMatrix(shown.result.results ?? [], setup)
-  const longestChips = run === 'current'
-    ? [t('simulation.run_current'), t('simulation.run_basis_per_period'), t('charts.longest_chip_runs'), t('charts.longest_chip_breaks'), seedChip(context.workflow.des_current?.params.seed)]
-    : planChips
+  // The table is separate lines only; its Current run is one continuous run without breaks (K-UC-3).
+  const longestChips = run === 'current' ? currentChips : planChips
 
   return (
     <div className="page-stack">
@@ -258,7 +274,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
         <div className="grid g2">
           {dayTrace
             ? <WaitingChart trace={dayTrace} origin={origin} breaks={breaks} />
-            : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_waiting')}</h2><p className="form-hint">{t('simulation.chart_waiting_needs_day')}</p></section>}
+            : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_waiting')}</h2><p className="form-hint">{t(context.separate && run === 'current' ? 'simulation.chart_waiting_needs_plan_day' : 'simulation.chart_waiting_needs_day')}</p></section>}
           {shownSummary ? <WaitByPeriod summary={shownSummary} /> : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2><p className="form-hint">{t('simulation.summary_rerun')}</p></section>}
         </div>
       )}
@@ -268,13 +284,13 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
           <section className="key-result" aria-label={t('simulation.served_customers')} data-testid="more-served">
             <h3 className="kpi-label">{t('simulation.served_customers')}</h3>
             <Pair now={value(nowSummary, current !== null, count('served'))} plan={value(planSummary, suggested !== null, count('served'))}
-              nowInfo={unavailableInfo(nowSummary)} planInfo={unavailableInfo(planSummary)} />
+              nowInfo={unavailableInfo(nowSummary, 'current')} planInfo={unavailableInfo(planSummary, 'suggested')} />
           </section>
           {!oneSimulatedDay && typeof atClose === 'number' && (
             <section className="key-result" aria-label={t('simulation.not_served_at_close')} data-testid="more-at-close">
               <h3 className="kpi-label">{t('simulation.not_served_at_close')}</h3>
               <Pair now={value(nowSummary, current !== null, count('in_system_at_close'))} plan={value(planSummary, suggested !== null, count('in_system_at_close'))}
-                nowInfo={unavailableInfo(nowSummary)} />
+                nowInfo={unavailableInfo(nowSummary, 'current')} />
               {planDays > 1 && <p className="form-hint">{t('simulation.totals_all_dates', { dates: planDays })}</p>}
             </section>
           )}

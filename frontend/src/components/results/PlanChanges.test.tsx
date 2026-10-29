@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import type { ScenarioOut } from '../../api/scenarios'
-import type { DatasetOut, SeparateComparison, SeparatePlanComparison } from '../../api/types'
+import type { AnalysisSegment, DatasetOut, SeparateComparison, SeparatePlanComparison } from '../../api/types'
 import { renderWithProviders } from '../../test/test-utils'
 import { PlanChanges } from './PlanChanges'
 import type { SelectedPlan } from './useSelectedPlan'
@@ -14,6 +14,11 @@ const dataset: DatasetOut = {
   validation: { ok: true, message: 'Input data is valid.', period_basis: 'representative_day', observation_days: 14 },
   data_dates: { first: '2000-01-03', last: '2000-01-16', source: 'stored_at_upload' },
 }
+
+const hourly: AnalysisSegment[] = [
+  { id: 'morning', start_time: '08:00', end_time: '09:00', active_queue_ids: null },
+  { id: 'noon', start_time: '12:00', end_time: '13:00', active_queue_ids: null },
+]
 
 function separatePlan(total: number): SelectedPlan {
   const plan = {
@@ -42,7 +47,7 @@ function sharedPlan(): SelectedPlan {
 
 describe('PlanChanges after the chart redesign', () => {
   it('separate lines: no per-period plan table, both kinds named in the wait line, and the cost labelled per average day', () => {
-    renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1500.75)} dataset={dataset} periodBasis="representative_day" />)
+    renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1500.75)} dataset={dataset} periodBasis="representative_day" segments={hourly} />)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.getByText('The calculation suggests these counter changes: noon: 2 → 3 counters.')).toBeInTheDocument()
     expect(screen.getByText('Wait (average of the periods): Calculated estimate 11.4 min → Suggested plan, simulated 1.2 min.')).toBeInTheDocument()
@@ -51,15 +56,22 @@ describe('PlanChanges after the chart redesign', () => {
   })
 
   it('separate lines: no label when the total is not the period sum or the basis is not a day basis', () => {
-    const { unmount } = renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1400)} dataset={dataset} periodBasis="representative_day" />)
+    const { unmount } = renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1400)} dataset={dataset} periodBasis="representative_day" segments={hourly} />)
     expect(screen.getByTestId('plan-cost')).toHaveTextContent(/→ ₱1,400$/)
     unmount()
-    renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1500.75)} dataset={dataset} periodBasis={undefined} />)
+    renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1500.75)} dataset={dataset} periodBasis={undefined} segments={hourly} />)
     expect(screen.getByTestId('plan-cost')).toHaveTextContent(/→ ₱1,500\.75$/)
   })
 
+  it('separate lines: no label when a Setup segment is not 60 minutes (period costs are hourly rates, K-UC-1)', () => {
+    const halfHour: AnalysisSegment[] = [{ ...hourly[0], end_time: '08:30' }, hourly[1]]
+    renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1500.75)} dataset={dataset} periodBasis="representative_day" segments={halfHour} />)
+    expect(screen.getByTestId('plan-cost')).toHaveTextContent(/→ ₱1,500\.75$/)
+    expect(document.body.textContent).not.toMatch(/per average day|total for \d+ days/)
+  })
+
   it('shared line: keeps the calculated wait line and adds no day-basis label (shared semantics UNKNOWN)', () => {
-    renderWithProviders(<PlanChanges analysisId={7} plan={sharedPlan()} dataset={dataset} periodBasis="representative_day" />)
+    renderWithProviders(<PlanChanges analysisId={7} plan={sharedPlan()} dataset={dataset} periodBasis="representative_day" segments={hourly} />)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.getByText('Estimated wait (average of the periods): 3 → 0.6 min.')).toBeInTheDocument()
     expect(screen.getByText('Total cost: ₱1,000 → ₱850.', { exact: false })).toBeInTheDocument()

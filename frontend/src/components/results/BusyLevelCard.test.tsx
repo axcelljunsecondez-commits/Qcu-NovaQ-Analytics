@@ -109,9 +109,14 @@ describe('Busy Level grid', () => {
     expect(within(table).getAllByRole('row')[1].textContent).toBe('395%Critical')
     await user.click(screen.getByRole('button', { name: 'Suggested plan' }))
     expect(screen.getByText('Suggested plan, calculated: every hour is Normal; the line peaks at 75% during 09:00-10:00.')).toBeInTheDocument()
+    // Today's warnings are not repeated under the plan grid (review K-UC-4).
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText(/above this plan's target/)).not.toBeInTheDocument()
     table = screen.getByRole('table')
     expect(within(table).getAllByRole('row')[1].textContent).toBe('471.25%Normal')
     expect(screen.queryByText(/cashier/i)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Current' }))
+    expect(screen.getByRole('status')).toHaveTextContent('08:00-09:00: Critical')
   })
 })
 

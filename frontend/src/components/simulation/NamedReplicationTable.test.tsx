@@ -80,6 +80,13 @@ describe('NamedReplicationTable', () => {
     expect(screen.queryByRole('button', { name: en['charts.info_clip_name'] })).not.toBeInTheDocument()
   })
 
+  it('shows no range-cut note for a small positive lower bound that prints as 0', () => {
+    renderWithProviders(<NamedReplicationTable rows={rows} summary={withLower(1e-13)} selectedIndex={null} onSelect={() => {}} />)
+    const cell = screen.getByTestId('named-agg-mean-of-means')
+    expect(cell).toHaveTextContent(interval('0'))
+    expect(within(cell).queryByTestId('named-agg-clip')).not.toBeInTheDocument()
+  })
+
   it('renders no PASS, FAIL, verdict value, cost, or ROI', () => {
     renderWithProviders(<NamedReplicationTable rows={rows} summary={summary} selectedIndex={null} onSelect={() => {}} />)
     // The only mentions allowed are the disclaimers that no such rule exists: the backend's

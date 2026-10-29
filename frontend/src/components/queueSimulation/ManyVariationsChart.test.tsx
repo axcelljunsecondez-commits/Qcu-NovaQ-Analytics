@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { act, screen, within } from '@testing-library/react'
+import { act, cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SimMcOut } from '../../api/types'
 import { renderWithProviders } from '../../test/test-utils'
@@ -81,6 +81,24 @@ describe('ManyVariationsChart', () => {
     expect(screen.getByTestId('row-chart-readout')).not.toHaveTextContent('Queue')
     expect(screen.getByText(en['charts.mc_chip_fail_shared'].replace('{{threshold}}', '85%'))).toBeInTheDocument()
     expect(screen.getByTestId('mc-take')).toHaveTextContent('Closest to the 5% cap: 09:00-10:00, with 0.19% of 2,000 variations failing.')
+  })
+
+  it('says "above the cap" instead of "closest to the cap" when the highest rate is above it, for the plan and the Current run', () => {
+    const over = [row('09:00-10:00', 'cashier_1', 0.003), row('13:00-14:00', 'cashier_3', 0.081, { failure_rate_ci_lower: 0.07, failure_rate_ci_upper: 0.09 })]
+    for (const run of ['plan', 'current'] as const) {
+      const { unmount } = renderWithProviders(<ManyVariationsChart rows={over} separate run={run} planTarget={0.85} seed={null} />)
+      expect(screen.getByTestId('mc-take')).toHaveTextContent('Highest risk, above the 5% cap: 13:00-14:00, cashier_3, with 8.1% of 2,000 variations failing.')
+      expect(screen.getByTestId('mc-take')).not.toHaveTextContent('Closest')
+      unmount()
+      renderWithProviders(<ManyVariationsChart rows={[row('08:00-09:00', null, 0.06)]} separate={false} run={run} planTarget={null} seed={null} />)
+      expect(screen.getByTestId('mc-take')).toHaveTextContent('Highest risk, above the 5% cap: 08:00-09:00, with 6% of 2,000 variations failing.')
+      cleanup()
+    }
+  })
+
+  it('keeps "closest to the cap" for a highest rate exactly at the cap', () => {
+    renderWithProviders(<ManyVariationsChart rows={[row('08:00-09:00', null, 0.05)]} separate={false} run="current" planTarget={null} seed={null} />)
+    expect(screen.getByTestId('mc-take')).toHaveTextContent('Closest to the 5% cap: 08:00-09:00, with 5% of 2,000 variations failing.')
   })
 
   it('draws no cap line and no takeaway when the stored cap is unknown', () => {

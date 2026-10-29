@@ -86,18 +86,43 @@ describe('Key Results cards (B5)', () => {
     expect(within(cards).getByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: 3 min')
   })
 
+  // Separate lines (K-UC-3): the Current run is one continuous run over the Setup's periods without breaks,
+  // never "one period at a time" (simulation.py _simulate_parallel_segments_core).
   it.each([
-    ['a continuous plan day with breaks', {}, en['charts.key_basis']],
-    ['a continuous plan day without breaks', { breaks: false }, en['charts.key_basis_no_breaks']],
-    ['one continuous run per date', { basis: 'per_date' as const }, en['charts.key_basis_per_date']],
-  ])('explains the different basis for %s', async (_case, options, text) => {
+    ['a continuous plan day with breaks', {}, en['charts.key_basis_separate']],
+    ['a continuous plan day without breaks', { breaks: false }, en['charts.key_basis_no_breaks_separate']],
+    ['one continuous run per date', { basis: 'per_date' as const }, en['charts.key_basis_per_date_separate']],
+  ])('explains the different basis for %s (separate lines)', async (_case, options, text) => {
     const user = userEvent.setup()
     renderView('suggested', options)
     const buttons = screen.getAllByRole('button', { name: 'Why these are not the same basis' })
     expect(buttons).toHaveLength(2)
     await user.hover(buttons[0])
     expect(screen.getByRole('tooltip')).toHaveTextContent(text)
+    expect(screen.getByRole('tooltip')).not.toHaveTextContent(/one period at a time/i)
     expect(screen.getByTestId('key-take')).toHaveTextContent('Simulated average wait: Current 6 min, Suggested plan 3 min, from two runs set up differently.')
+  })
+
+  it('keeps the per-period basis text for a shared line, whose Current run does go one period at a time', async () => {
+    const user = userEvent.setup()
+    renderView('suggested', { separate: false })
+    await user.hover(screen.getAllByRole('button', { name: 'Why these are not the same basis' })[0])
+    expect(screen.getByRole('tooltip')).toHaveTextContent(en['charts.key_basis'])
+  })
+
+  it('names the separate Current run one continuous run without breaks in its chips; a shared Current run stays per period', () => {
+    const { unmount } = renderView('current')
+    const chips = within(screen.getByTestId('key-details')).getAllByText((_, element) => element?.classList.contains('cv-chip-cur') ?? false)
+    expect(chips[0]).toHaveTextContent(`${en['simulation.run_current']} · ${en['simulation.run_basis_continuous_no_breaks']}`)
+    expect(chips[0]).not.toHaveTextContent(en['simulation.run_basis_per_period'])
+    expect(screen.getByTestId('longest-line-table')).toHaveTextContent(en['simulation.run_basis_continuous_no_breaks'])
+    expect(screen.getByTestId('longest-line-table')).not.toHaveTextContent(en['charts.longest_chip_runs'])
+    expect(document.body).not.toHaveTextContent(/one period at a time/i)
+    expect(screen.getByText(en['simulation.chart_waiting_needs_plan_day'])).toBeInTheDocument()
+    unmount()
+    renderView('current', { separate: false, plan: null })
+    const shared = within(screen.getByTestId('key-details')).getAllByText((_, element) => element?.classList.contains('cv-chip-cur') ?? false)
+    expect(shared[0]).toHaveTextContent(`${en['simulation.run_current']} · ${en['simulation.run_basis_per_period']} · ${en['charts.chip_no_breaks']}`)
   })
 
   it('has no basis explanation when both runs share a basis or one is missing', () => {
@@ -169,9 +194,18 @@ describe('More results (B5, B9)', () => {
     const why = within(served).getAllByRole('button', { name: 'Why this is unavailable' })
     expect(why).toHaveLength(1)
     await user.hover(why[0])
-    expect(screen.getByRole('tooltip')).toHaveTextContent(en['charts.key_unavailable_explain'])
+    // Separate Current is one continuous run without customer totals, not a per-period run (K-UC-3).
+    expect(screen.getByRole('tooltip')).toHaveTextContent(en['charts.key_unavailable_explain_separate'])
     expect(container).not.toHaveTextContent(en['simulation.per_period_totals_note'])
     expect(screen.queryByRole('region', { name: en['simulation.not_served_at_close'] })).not.toBeInTheDocument()
+  })
+
+  it('keeps the shared Unavailable text for a shared line', async () => {
+    const user = userEvent.setup()
+    renderView('suggested', { separate: false })
+    const served = screen.getByRole('region', { name: 'Customer Served' })
+    await user.hover(within(served).getAllByRole('button', { name: 'Why this is unavailable' })[0])
+    expect(screen.getByRole('tooltip')).toHaveTextContent(en['charts.key_unavailable_explain_shared'])
   })
 
   it('shows no explanation when the summary is missing (run again instead)', () => {
@@ -197,10 +231,10 @@ describe('More results (B5, B9)', () => {
     errors.mockRestore()
   })
 
-  it('draws no Plotly chart for the period-by-period run', () => {
-    const { container } = renderView('current', { separate: false, plan: null })
+  it('draws the SVG wait-by-period chart for the period-by-period run', () => {
+    renderView('current', { separate: false, plan: null })
     expect(screen.getByRole('region', { name: en['simulation.des_table_caption'] })).toBeInTheDocument()
-    expect(container.querySelector('.plotly')).toBeNull()
+    expect(screen.getByRole('img', { name: en['simulation.chart_wait_by_period'] })).toBeInTheDocument()
   })
 })
 

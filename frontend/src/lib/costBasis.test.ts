@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { DatasetOut, SeparatePlanComparison, SeparatePlanPeriod } from '../api/types'
-import { perDateDays, separateCostBasis, totalIsPeriodSum } from './costBasis'
+import type { AnalysisSegment, DatasetOut, EventPeriodBasis, SeparatePlanComparison, SeparatePlanPeriod } from '../api/types'
+import { allSegmentsHourLong, perDateDays, separateCostBasis as labelFor, totalIsPeriodSum } from './costBasis'
 
 // Fixtures mirror GET /analyses/:id/workflow/comparison/separate (backend/api/workflow.py:2459-2507:
 // each period's total_cost_mean, and totals.total_cost_mean = _sum_all of them) and DatasetOut
@@ -21,6 +21,14 @@ function dataset(validation: Record<string, unknown>, dates: DatasetOut['data_da
   return { id: 11, analysis_id: 7, name: 'n', source_filename: 'n.xlsx', source_format: 'xlsx', row_count: 13,
     validation: { ok: true, message: 'Input data is valid.', ...validation }, created_at: '', normalized: null, data_dates: dates }
 }
+
+function segment(start: string, end: string): AnalysisSegment {
+  return { id: null, start_time: start, end_time: end, active_queue_ids: null }
+}
+
+// Setup segments: period costs are hourly rates added up (K-UC-1), so only 60-minute segments get a label.
+const hourly = [segment('08:00', '09:00'), segment('09:00', '10:00'), segment('10:00', '11:00')]
+const separateCostBasis = (basis: EventPeriodBasis | undefined, data: DatasetOut | undefined, chosen: SeparatePlanComparison) => labelFor(basis, data, chosen, hourly)
 
 const representative = dataset({ period_basis: 'representative_day', observation_days: 14, derived_statistics: [{ time: 'morning' }] })
 const segmentPeriods = [period('morning', 1200.5), period('noon', 899.25), period('evening', 410.125)]
@@ -66,6 +74,20 @@ describe('plan cost label by day basis', () => {
     expect(separateCostBasis('per_date', perDate, plan(segmentPeriods, segmentTotal))).toBeNull()
     expect(separateCostBasis('per_date', dataset({}, { first: '2000-01-01', last: '2000-01-16', source: 'stored_at_upload' }), plan(datePeriods, dateTotal))).toBeNull()
     expect(separateCostBasis('per_date', dataset({}, null), plan(datePeriods, dateTotal))).toBeNull()
+  })
+
+  it('shows a label only when every Setup segment is exactly 60 minutes', () => {
+    expect(allSegmentsHourLong(hourly)).toBe(true)
+    expect(allSegmentsHourLong([segment('08:00:00', '09:00:00')])).toBe(true)
+    expect(labelFor('representative_day', representative, plan(segmentPeriods, segmentTotal), hourly)).toEqual({ key: 'results.cost_basis_average_day', days: 14 })
+    expect(labelFor('per_date', perDate, plan(datePeriods, dateTotal), hourly)).toEqual({ key: 'results.cost_basis_dates', days: 3, first: '2000-01-03', last: '2000-01-16' })
+    const thirty = [segment('08:00', '08:30'), segment('08:30', '09:00'), segment('09:00', '09:30')]
+    const twoHours = [segment('08:00', '10:00'), segment('10:00', '12:00'), segment('12:00', '14:00')]
+    const mixed = [segment('08:00', '09:00'), segment('09:00', '11:00'), segment('11:00', '12:00')]
+    for (const segments of [thirty, twoHours, mixed, [segment('08:00', 'late')], [], undefined]) {
+      expect(labelFor('representative_day', representative, plan(segmentPeriods, segmentTotal), segments)).toBeNull()
+      expect(labelFor('per_date', perDate, plan(datePeriods, dateTotal), segments)).toBeNull()
+    }
   })
 
   it('shows no label for an aggregate upload, another dataset, or no dataset', () => {

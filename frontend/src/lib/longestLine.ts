@@ -55,7 +55,7 @@ function build(lanes: string[], periods: Array<{ time: string; cell: (lane: stri
   return { lanes, rows, dayMax, peaks, staffingKnown }
 }
 
-type StaffingSetup = Pick<QueueSetup, 'queue_ids' | 'segments' | 'staffing_varies_by_period'>
+export type StaffingSetup = Pick<QueueSetup, 'queue_ids' | 'segments' | 'staffing_varies_by_period'>
 
 /**
  * The cashiers the Setup staffs in each Current-run segment, resolved as the engine does

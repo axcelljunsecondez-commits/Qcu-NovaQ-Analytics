@@ -1,6 +1,6 @@
 import { headingText } from '../../lib/headingText'
 import simulationDefaults from '../../api/simulation-defaults.json'
-import { useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -39,21 +39,56 @@ import { suggestedRun, type RunChoice, type SimulationContext } from './simulati
 
 type Status = 'done' | 'not_run' | 'pass' | 'fail' | 'insufficient'
 
+/**
+ * Keeps the ⓘ OUTSIDE the <summary> (a button inside a summary is a nested interactive control, review
+ * K-UC-9) while it still shows next to the heading: an empty slot in the summary keeps its place, and the ⓘ
+ * is laid over that slot. Re-placed when the card resizes (the summary wraps on narrow screens).
+ */
+function useInfoOverSlot(enabled: boolean) {
+  const frame = useRef<HTMLDivElement>(null)
+  const slot = useRef<HTMLSpanElement>(null)
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!enabled) return
+    const measure = () => {
+      if (!frame.current || !slot.current) return
+      const outer = frame.current.getBoundingClientRect()
+      const inner = slot.current.getBoundingClientRect()
+      setPlace((before) => (before && before.left === inner.left - outer.left && before.top === inner.top - outer.top ? before
+        : { left: inner.left - outer.left, top: inner.top - outer.top }))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined' || !frame.current) return
+    const observer = new ResizeObserver(measure)
+    observer.observe(frame.current)
+    return () => observer.disconnect()
+  }, [enabled])
+  return { frame, slot, place }
+}
+
 function CheckLine({ name, required, status, info, children }: { name: string; required: boolean; status: Status; info?: ReactNode; children?: ReactNode }) {
   const { t } = useTranslation()
+  const { frame, slot, place } = useInfoOverSlot(Boolean(info))
   const badge = status === 'pass' || status === 'done' ? 'badge-ok' : status === 'fail' ? 'badge-bad' : status === 'insufficient' ? 'badge-warn' : 'badge-neutral'
-  return (
+  const details = (
     <details className="card check-line">
       <summary>
         <strong lang="en">{name}</strong>
-        {/* The explanation sits next to the heading; using it never opens or closes the check (spec 2026-10-29 §8.1). */}
-        {info && <span className="cv-head-row" onClick={(event) => event.preventDefault()}>{info}</span>}
+        {/* The explanation shows next to the heading but lives outside the summary, so using it never opens or closes the check (spec 2026-10-29 §8.1). */}
+        {info && <span ref={slot} className="check-line-info-slot" aria-hidden="true" />}
         <span className="badge badge-neutral">{t(required ? 'simulation.check_required' : 'simulation.check_optional')}</span>
         <span className={`badge ${badge}`}>{t(`simulation.check_status_${status}`)}</span>
         <span className="form-hint">{t('simulation.check_details')}</span>
       </summary>
       {children}
     </details>
+  )
+  if (!info) return details
+  return (
+    <div ref={frame} className="check-line-frame">
+      {details}
+      <span className="check-line-info" data-testid="check-line-info" style={place ? { left: place.left, top: place.top } : undefined}>{info}</span>
+    </div>
   )
 }
 

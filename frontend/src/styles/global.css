@@ -5292,6 +5292,29 @@ summary.setup-step-title::before {
   gap: var(--space-sm);
 }
 
+/* The ⓘ of a check sits outside its <summary> and is laid over this slot (ChecksView CheckLine). */
+.check-line-frame {
+  position: relative;
+}
+
+.check-line-info-slot {
+  display: inline-block;
+  flex: none;
+  width: 32px;
+  height: 32px;
+}
+
+.check-line-info {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+}
+
+@media (pointer: coarse) {
+  .check-line-info-slot { width: 44px; height: 44px; }
+}
+
 .headline-pair {
   display: flex;
   flex-wrap: wrap;

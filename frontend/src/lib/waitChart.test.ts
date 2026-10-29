@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { OptimizationOut, SeparateComparison, SeparatePlanComparison } from '../api/types'
 import {
-  allHourPeriods, anyCut, countersByPeriod, highestEstimate, largestShown, separatePlanWaitRows, sharedPlanWaitRows,
+  allHourPeriods, anyCut, countersByPeriod, highestEstimate, setupCountersByPeriod, largestShown, separatePlanWaitRows, sharedPlanWaitRows,
   takeawayRow, todayWaitRows, waitRange,
 } from './waitChart'
 
@@ -36,6 +36,21 @@ describe('wait chart rows', () => {
     ])
     expect(counters.get('a')).toBe(2)
     expect(counters.get('b')).toBeNull()
+  })
+
+  it('counts the Setup staffing per period with the shared resolver; unknown staffing is null', () => {
+    const fixed = { queue_ids: ['A', 'B', 'C'], segments: [], staffing_varies_by_period: false }
+    expect([...setupCountersByPeriod(['a', 'b'], fixed, null).values()]).toEqual([3, 3])
+    const varying = { queue_ids: ['A', 'B', 'C'], staffing_varies_by_period: true, segments: [
+      { id: 'm', start_time: '08:00', end_time: '09:00', active_queue_ids: ['A', 'B'] },
+      { id: null, start_time: '09:00', end_time: '10:00', active_queue_ids: ['C'] },
+    ] }
+    const records = [{ time: 'a', segment_id: 'm' }, { time: 'b', segment_id: 'segment_2' }, { time: 'c', segment_id: 'm' }, { time: 'c', segment_id: 'segment_2' }]
+    const counters = setupCountersByPeriod(['a', 'b', 'c', 'd'], varying, records)
+    expect(counters.get('a')).toBe(2)
+    expect(counters.get('b')).toBe(1)
+    expect(counters.get('c')).toBeNull()
+    expect(counters.get('d')).toBeNull()
   })
 
   it('shows a negative stored lower bound as 0 and marks the range cut; 0 is also cut; a positive lower is not', () => {

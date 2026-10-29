@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import type { ScenarioOut } from '../../api/scenarios'
-import type { DatasetOut, EventPeriodBasis, SeparateComparison, SeparatePlanComparison } from '../../api/types'
+import type { AnalysisSegment, DatasetOut, EventPeriodBasis, SeparateComparison, SeparatePlanComparison } from '../../api/types'
 import { selectWorkflowScenario } from '../../api/workflow'
 import { completeFiniteAverage, comparisonTotals, operationalComparisonComplete } from '../../lib/comparison'
 import { basisText, separateCostBasis } from '../../lib/costBasis'
@@ -136,12 +136,14 @@ export function NoPlanPrompt({ analysisId, plan }: { analysisId: number; plan: P
  * per-period counters, waits and levels are drawn in the Results chart tabs (spec 2026-10-29 §5.4).
  * `promptShown`: the no-plan prompt is already shown under the wait chart, so it is not repeated here.
  */
-export function PlanChanges({ analysisId, plan, dataset, periodBasis, promptShown = false }: {
+export function PlanChanges({ analysisId, plan, dataset, periodBasis, segments, promptShown = false }: {
   analysisId: number
   plan: PlanState
   /** The planning file, for the plan cost's day-basis label (spec §6). */
   dataset?: DatasetOut
   periodBasis?: EventPeriodBasis
+  /** The Setup segments: the day-basis label needs every one to be 60 minutes (period costs are hourly rates). */
+  segments?: AnalysisSegment[]
   promptShown?: boolean
 }) {
   const { t } = useTranslation()
@@ -215,7 +217,7 @@ export function PlanChanges({ analysisId, plan, dataset, periodBasis, promptShow
   }
   const rows = separateRows(comparison, chosen)
   const cost = money(chosen.totals?.total_cost_mean)
-  const basis = cost === null ? null : separateCostBasis(periodBasis, dataset, chosen)
+  const basis = cost === null ? null : separateCostBasis(periodBasis, dataset, chosen, segments)
   const costPlan = cost === null ? null : basis ? `${cost} ${basisText(t, basis)}` : cost
   const costNowReason = comparison.current.total_cost_reason ?? t('results.cost_now_unavailable_separate')
   return (

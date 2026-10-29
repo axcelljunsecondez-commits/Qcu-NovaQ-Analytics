@@ -43,7 +43,8 @@ export function BusyLevelCard({ rows, separate, plan, planTarget, period, onPeri
 
   const cells: LevelCell[] = view === 'current' ? todayCells(rows)
     : separatePlan ? separatePlanCells(separatePlan.comparison, separatePlan.plan) : sharedPlanCells(planRows)
-  const warnings = periodWarnings(dayStrip(rows), planTarget)
+  // Today's warnings come from today's rows, so they belong under the Current grid only (review K-UC-4).
+  const warnings = view === 'current' ? periodWarnings(dayStrip(rows), planTarget) : []
   if (cells.length === 0) return null
 
   const unavailable = t('results.unavailable')

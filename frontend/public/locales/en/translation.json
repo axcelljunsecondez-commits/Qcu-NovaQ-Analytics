@@ -2169,5 +2169,14 @@
   "charts.key_take_same_basis": "Simulated average wait: Current {{current}}, Suggested plan {{plan}}.",
   "charts.mc_chip_fail_current": "A variation fails when a cashier’s Utilization Rate is above {{threshold}}.",
   "charts.wait_axis_note_period": "Each row is one period; the axis starts at 0.",
-  "results.suggests_wait_separate": "Wait (average of the periods): Calculated estimate {{now}} min → Suggested plan, simulated {{plan}} min."
+  "results.suggests_wait_separate": "Wait (average of the periods): Calculated estimate {{now}} min → Suggested plan, simulated {{plan}} min.",
+  "charts.key_basis_separate": "Not the same basis: Current runs the Setup’s periods as one continuous simulation without breaks and stops at closing; the plan runs one continuous day with breaks, and staff finish serving the customers in line at closing.",
+  "charts.key_basis_no_breaks_separate": "Not the same basis: Current runs the Setup’s periods as one continuous simulation and stops at closing; the plan runs one continuous day, and staff finish serving the customers in line at closing.",
+  "charts.key_basis_per_date_separate": "Not the same basis: Current runs the Setup’s periods as one continuous simulation and stops at closing; the plan runs one continuous run per date, and staff finish serving the customers in line at closing.",
+  "charts.key_unavailable_explain_separate": "This run does not report whole-day customer totals. This is expected, not an error. Compare with Average wait and Longest Single Line.",
+  "simulation.run_basis_continuous_no_breaks": "One continuous run, no breaks",
+  "simulation.chart_waiting_needs_plan_day": "Shown for the Suggested plan’s simulated day.",
+  "simulation.one_run_notice_separate": "This run simulates the Setup’s periods as one continuous run, without breaks.",
+  "charts.mc_take_separate_above": "Highest risk, above the {{cap}} cap: {{time}}, {{lane}}, with {{rate}} of {{trials}} variations failing.",
+  "charts.mc_take_shared_above": "Highest risk, above the {{cap}} cap: {{time}}, with {{rate}} of {{trials}} variations failing."
 }

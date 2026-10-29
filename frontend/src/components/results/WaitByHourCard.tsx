@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ObservedWaitPeriod } from '../../api/types'
+import type { StaffingSetup } from '../../lib/longestLine'
 import { headingText } from '../../lib/headingText'
 import { axisTicks, niceMax } from '../../lib/chartScale'
 import { fmtDecimal, fmtPctDecimal } from '../../lib/format'
 import type { ResultRow } from '../../lib/results'
 import {
-  allHourPeriods, anyCut, countersByPeriod, largestShown, separatePlanWaitRows, sharedPlanWaitRows, takeawayRow, todayWaitRows,
+  allHourPeriods, anyCut, countersByPeriod, largestShown, separatePlanWaitRows, setupCountersByPeriod, sharedPlanWaitRows, takeawayRow, todayWaitRows,
   type WaitRow, type WaitView,
 } from '../../lib/waitChart'
 import { RowChart, type ChartMark, type ChartRow } from '../charts/RowChart'
@@ -41,7 +42,7 @@ function Legend({ items }: { items: { kind: Kind; label: string; extra?: ReactNo
  * drawn next to the plan. Separate plans show their simulated 95% range, cut at 0 with a marker;
  * shared plans are calculated on both sides, so they have no range and no "simulated" wording.
  */
-export function WaitByHourCard({ observed, rows, selectedModel, separate, plan, footer }: {
+export function WaitByHourCard({ observed, rows, selectedModel, separate, plan, staffing, footer }: {
   /** Recorded/estimated periods of the shown file, or null when it has no recorded waits. */
   observed: ObservedWaitPeriod[] | null
   rows: ResultRow[]
@@ -49,6 +50,8 @@ export function WaitByHourCard({ observed, rows, selectedModel, separate, plan, 
   /** The analysis uses separate cashier lines. */
   separate: boolean
   plan: SelectedPlan
+  /** Separate lines: the Setup and the file's records, for the Today view's staffed-cashier counts (K-UC-5). */
+  staffing?: { setup: StaffingSetup; records: Record<string, unknown>[] | null }
   /** Shown below the chart (the no-plan prompt, D21 / OD-4). */
   footer?: ReactNode
 }) {
@@ -65,11 +68,15 @@ export function WaitByHourCard({ observed, rows, selectedModel, separate, plan, 
   const counters = t('results.col_counters')
   const waitText = (value: number | null, unstable = false) => (unstable ? t('results.cant_keep_up_wait') : value === null ? unavailable : `${fmtDecimal(value, 1)} ${unit}`)
   const count = (value: number | null) => (value === null ? unavailable : String(value))
-  const countersText = (row: WaitRow) => (view === 'today' ? count(row.countersNow) : `${count(row.countersNow)} → ${count(row.countersPlan)}`)
+  // Separate Today view: a period whose Setup staffing is not known shows "—", never a count from the rows.
+  const countersText = (row: WaitRow) => (view !== 'today' ? `${count(row.countersNow)} → ${count(row.countersPlan)}`
+    : separate && row.countersNow === null ? '—' : count(row.countersNow))
   const rangeText = (row: WaitRow) => (row.range ? `${fmtDecimal(row.range.low, 1)} – ${fmtDecimal(row.range.high, 1)} ${unit}` : unavailable)
 
   const waitRows: WaitRow[] = view === 'today'
-    ? todayWaitRows(observed ?? [], countersByPeriod(rows))
+    ? todayWaitRows(observed ?? [], separate
+      ? (staffing ? setupCountersByPeriod((observed ?? []).map((period) => period.time), staffing.setup, staffing.records) : new Map())
+      : countersByPeriod(rows))
     : separatePlan ? separatePlanWaitRows(separatePlan.comparison, separatePlan.plan) : sharedPlanWaitRows(scenarioRows(sharedPlan?.scenario))
   const highlight = takeawayRow(waitRows)
   const cut = view === 'plan' && separatePlan !== null && anyCut(waitRows)

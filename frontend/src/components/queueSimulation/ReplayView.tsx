@@ -68,7 +68,8 @@ export function ReplayView({ context, run }: { context: SimulationContext; run: 
   const layout = segment ? selectPlaybackLayout(segment.queue_structure) : (context.separate ? 'separate' : 'shared')
   return (
     <div className="page-stack">
-      <div className="alert alert-info" role="status">{t('simulation.one_period_notice')}</div>
+      {/* The separate Current run is one continuous run without breaks (K-UC-3); other legacy runs go period by period. */}
+      <div className="alert alert-info" role="status">{t(current && context.separate ? 'simulation.one_run_notice_separate' : 'simulation.one_period_notice')}</div>
       <p className="form-hint"><span className="badge badge-neutral">{t(layout === 'separate' ? 'simulation.playback_view_separate' : 'simulation.playback_view_shared')}</span></p>
       {layout === 'separate' ? <SeparateSimulationPlayback trace={trace} /> : <LiveSimulationPlayback trace={trace} />}
     </div>

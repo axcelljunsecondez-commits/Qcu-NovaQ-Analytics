@@ -79,10 +79,13 @@ export function ManyVariationsChart({ rows, separate, run, planTarget, seed, chi
   })
 
   const top = highest >= 0 ? periods[highest] : null
+  // "Closest to the cap" is true only at or below the cap (review K-UC-6); a higher stored rate gets the "above" text.
+  const topRate = top ? failureRate(top.worst) : null
+  const above = topRate !== null && params.cap !== null && topRate > params.cap + SAME
   const takeaway = top && params.cap !== null && params.trials !== null
     ? separate
-      ? t('charts.mc_take_separate', { cap: fmtPctDecimal(params.cap), time: top.time, lane: lane(top.worst), rate: pct(top.worst), trials: trialsText(params.trials) })
-      : t('charts.mc_take_shared', { cap: fmtPctDecimal(params.cap), time: top.time, rate: pct(top.worst), trials: trialsText(params.trials) })
+      ? t(above ? 'charts.mc_take_separate_above' : 'charts.mc_take_separate', { cap: fmtPctDecimal(params.cap), time: top.time, lane: lane(top.worst), rate: pct(top.worst), trials: trialsText(params.trials) })
+      : t(above ? 'charts.mc_take_shared_above' : 'charts.mc_take_shared', { cap: fmtPctDecimal(params.cap), time: top.time, rate: pct(top.worst), trials: trialsText(params.trials) })
     : null
   // The plan's-target wording is true only when the stored threshold is the plan's target.
   const failKey = !separate ? 'charts.mc_chip_fail_shared'

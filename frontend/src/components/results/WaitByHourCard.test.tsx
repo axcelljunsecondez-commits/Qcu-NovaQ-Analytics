@@ -21,6 +21,9 @@ const rows = [
   { time: '09:00-10:00', queue_id: 'A', c: 1 }, { time: '09:00-10:00', queue_id: 'B', c: 1 },
 ]
 
+// The Setup staffs both cashiers all day (staffing does not vary by period).
+const staffing = { setup: { queue_ids: ['A', 'B'], segments: [], staffing_varies_by_period: false }, records: null }
+
 function separatePlan(lower: number | null): SelectedPlan {
   const comparison = {
     analysis_id: 7, queue_structure: 'separate_queues',
@@ -63,7 +66,7 @@ function tableCells() {
 
 describe('wait by hour', () => {
   it('Today view draws Recorded and Estimated only, with the takeaway on the highest estimate', () => {
-    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel="Parallel M/G/1" separate plan={{ kind: 'none' }} />)
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel="Parallel M/G/1" separate staffing={staffing} plan={{ kind: 'none' }} />)
     expect(screen.queryByRole('group', { name: 'Chart view' })).not.toBeInTheDocument()
     expect(chart().querySelectorAll('.cv-m-rec')).toHaveLength(2)
     expect(chart().querySelectorAll('.cv-m-est')).toHaveLength(2)
@@ -76,9 +79,30 @@ describe('wait by hour', () => {
     expect(screen.getByRole('region', { name: 'Show as a table' })).toHaveTextContent('Much longer than modeled')
   })
 
+  it('Today view (separate) counts the cashiers the Setup staffs per period, not the rows with customers (K-UC-5)', () => {
+    // Cashier C is staffed in the morning but recorded no customers, so /current has no row for it.
+    const varying = {
+      setup: { queue_ids: ['A', 'B', 'C'], staffing_varies_by_period: true, segments: [
+        { id: 'morning', start_time: '08:00', end_time: '09:00', active_queue_ids: ['A', 'B', 'C'] },
+        { id: 'noon', start_time: '09:00', end_time: '10:00', active_queue_ids: ['A'] },
+      ] },
+      records: [
+        { time: '08:00-09:00', segment_id: 'morning', queue_id: 'A' }, { time: '08:00-09:00', segment_id: 'morning', queue_id: 'B' },
+        { time: '09:00-10:00', segment_id: 'noon', queue_id: 'A' },
+      ],
+    }
+    const { unmount } = renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={varying} plan={{ kind: 'none' }} />)
+    expect(tableCells().slice(1).map((cells) => cells[0])).toEqual(['3', '1'])
+    unmount()
+    // Staffing varies but the period names no known segment: "—", never the row count.
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={{ ...varying, records: null }} plan={{ kind: 'none' }} />)
+    expect(tableCells().slice(1).map((cells) => cells[0])).toEqual(['—', '—'])
+    expect(screen.getAllByTestId('row-chart-row')[0]).toHaveTextContent('Counters: —')
+  })
+
   it('reads out the same values as the table when moving by keyboard', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate plan={{ kind: 'none' }} />)
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }} />)
     await user.tab()
     expect(screen.getByRole('group', { name: 'Wait by hour. Use the arrow keys to read each hour.' })).toHaveFocus()
     expect(screen.getByTestId('row-chart-readout')).toHaveTextContent('Recorded (From your data): 6 min')
@@ -89,7 +113,7 @@ describe('wait by hour', () => {
 
   it('Plan view (separate) draws Estimated vs the simulated plan, never Recorded, and cuts a negative range at 0', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel="Parallel M/G/1" separate plan={separatePlan(-0.0239)} />)
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel="Parallel M/G/1" separate staffing={staffing} plan={separatePlan(-0.0239)} />)
     const views = within(screen.getByRole('group', { name: 'Chart view' })).getAllByRole('button')
     expect(views.map((button) => button.textContent)).toEqual(['Recorded vs Estimated Wait, by period', 'Estimate vs suggested plan'])
     await user.click(views[1])
@@ -114,11 +138,11 @@ describe('wait by hour', () => {
 
   it('marks a range whose lower end is exactly 0, and adds no note when the lower end is above 0', async () => {
     const user = userEvent.setup()
-    const { unmount } = renderWithProviders(<WaitByHourCard observed={null} rows={rows} selectedModel={null} separate plan={separatePlan(0)} />)
+    const { unmount } = renderWithProviders(<WaitByHourCard observed={null} rows={rows} selectedModel={null} separate staffing={staffing} plan={separatePlan(0)} />)
     expect(screen.getAllByTestId('row-chart-cut')).toHaveLength(1)
     expect(screen.getByText('Range cut at 0')).toBeInTheDocument()
     unmount()
-    renderWithProviders(<WaitByHourCard observed={null} rows={rows} selectedModel={null} separate plan={separatePlan(0.01)} />)
+    renderWithProviders(<WaitByHourCard observed={null} rows={rows} selectedModel={null} separate staffing={staffing} plan={separatePlan(0.01)} />)
     expect(screen.queryByTestId('row-chart-cut')).not.toBeInTheDocument()
     expect(screen.queryByText('Range cut at 0')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'About the range cut at 0' })).not.toBeInTheDocument()
@@ -129,13 +153,13 @@ describe('wait by hour', () => {
   })
 
   it('shows a labelled gap for a period with no values and names no "highest" hour', () => {
-    renderWithProviders(<WaitByHourCard observed={[{ time: '07:00-08:00', modeled_wait: null, observed_wait: null, flagged: false }]} rows={[]} selectedModel={null} separate plan={{ kind: 'none' }} />)
+    renderWithProviders(<WaitByHourCard observed={[{ time: '07:00-08:00', modeled_wait: null, observed_wait: null, flagged: false }]} rows={[]} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }} />)
     expect(within(chart()).getByText('Unavailable')).toBeInTheDocument()
     expect(screen.queryByText(/has the highest calculated estimate/)).not.toBeInTheDocument()
   })
 
   it('draws no range and prints Unavailable when the plan has none for a period', () => {
-    renderWithProviders(<WaitByHourCard observed={null} rows={rows} selectedModel={null} separate plan={separatePlan(null)} />)
+    renderWithProviders(<WaitByHourCard observed={null} rows={rows} selectedModel={null} separate staffing={staffing} plan={separatePlan(null)} />)
     expect(chart().querySelectorAll('.cv-l-ci')).toHaveLength(1)
     expect(tableCells()[1][3]).toBe('Unavailable')
     expect(screen.queryByText('Range cut at 0')).not.toBeInTheDocument()
@@ -156,7 +180,7 @@ describe('wait by hour', () => {
   })
 
   it('keeps the view names and kind words in Tagalog while the heading stays English', () => {
-    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate plan={separatePlan(0.01)} />, { lang: 'tl' })
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={separatePlan(0.01)} />, { lang: 'tl' })
     expect(screen.getByRole('heading', { name: 'What the plan changes' })).toHaveAttribute('lang', 'en')
     expect(screen.getByRole('button', { name: 'Tantiya vs mungkahing plano' })).toBeInTheDocument()
     expect(within(screen.getByTestId('wait-by-hour')).getAllByText('Naitala').length).toBeGreaterThan(0)

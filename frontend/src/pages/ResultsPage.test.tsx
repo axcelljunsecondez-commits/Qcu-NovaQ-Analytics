@@ -487,6 +487,20 @@ describe('Analysis results: chart tabs (spec 2026-10-29 §5.1)', () => {
     expect(await screen.findByTestId('wait-by-hour')).toBeInTheDocument()
   })
 
+  it('keeps the no-plan prompt visible when the address opens the Busy Level tab (review K-UC-2)', async () => {
+    const user = userEvent.setup()
+    renderResults('/results?analysis=7&chart=level')
+    expect(await screen.findByTestId('busy-level')).toBeInTheDocument()
+    const prompt = await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')
+    expect(screen.getByRole('tabpanel')).not.toContainElement(prompt)
+    expect(screen.getAllByText(prompt.textContent ?? '')).toHaveLength(1)
+    // Back on the wait tab, the prompt moves under the chart and is not repeated.
+    await user.click(screen.getByRole('tab', { name: 'What the plan changes' }))
+    const again = screen.getByText(prompt.textContent ?? '')
+    expect(within(screen.getByTestId('wait-by-hour')).getByText(prompt.textContent ?? '')).toBe(again)
+    expect(screen.getAllByText(prompt.textContent ?? '')).toHaveLength(1)
+  })
+
   it('shows a single card without a tablist when only Busy Level has content, and the no-plan prompt below', async () => {
     getObservedMock.mockResolvedValue({ analysis_id: 7, dataset_id: 11, available: false, periods: [], flagged_any: false, day_modeled_wait: null, day_observed_wait: null, ratio: 2, min_gap_minutes: 1 })
     renderResults()
@@ -500,7 +514,9 @@ describe('Analysis results: chart tabs (spec 2026-10-29 §5.1)', () => {
 describe('Analysis results: separate plan cost by day basis (spec 2026-10-29 §6)', () => {
   function separateSetup(basis: 'representative_day' | 'per_date') {
     const base = analysis('separate_queues')
-    return { analysis: { ...base.analysis, queue_setup: { ...base.analysis.queue_setup, event_period_basis: basis } } }
+    // 60-minute Setup segments: the period costs are hourly rates added up, so only then is the sum a day's cost (K-UC-1).
+    const segments = [{ id: 'morning', start_time: '08:00', end_time: '09:00', active_queue_ids: null }, { id: 'noon', start_time: '12:00', end_time: '13:00', active_queue_ids: null }]
+    return { analysis: { ...base.analysis, queue_setup: { ...base.analysis.queue_setup, segments, event_period_basis: basis } } }
   }
   function comparisonWith(periods: { time: string; cost: number }[], total: number) {
     return {

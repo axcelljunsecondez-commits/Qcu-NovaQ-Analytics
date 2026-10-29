@@ -9,8 +9,16 @@
 // The label is shown only when the response itself is consistent with that reading: the total
 // equals the sum of the period costs, and the day count can be read from the API fields.
 // Shared-line totals are not labelled: their row costs are not established to cover one day (UNKNOWN).
+//
+// Duration (review K-UC-1, 2026-10-29): each period's total_cost_mean is an HOURLY rate, not the
+// period's cost (lane server cost per hour, backend/queueing_engine/services/optimization.py:79-93;
+// separate_optimization.py:613-620 and :1855-1861 add those rates per period), and the total adds
+// them without weighting by the period's length (workflow.py:2507). Only when every Setup segment
+// is exactly 60 minutes does the sum equal the cost of the day, so the label is shown only then.
+// Weighting by duration is protected cost math (deferred, spec §12).
 import type { TFunction } from 'i18next'
-import type { DatasetOut, EventPeriodBasis, SeparatePlanComparison } from '../api/types'
+import type { AnalysisSegment, DatasetOut, EventPeriodBasis, SeparatePlanComparison } from '../api/types'
+import { clockMinutes } from './replay'
 import { finiteNumber } from './results'
 
 export type CostBasisLabel =
@@ -26,6 +34,16 @@ export function totalIsPeriodSum(plan: SeparatePlanComparison): boolean {
   if (total === null || costs.length === 0 || costs.some((cost) => cost === null)) return false
   const sum = (costs as number[]).reduce((acc, cost) => acc + cost, 0)
   return Math.abs(sum - total) <= 1e-9 * Math.max(1, Math.abs(total))
+}
+
+/** True when the Setup has segments and every one runs exactly 60 minutes ("HH:MM[:SS]" start and end). */
+export function allSegmentsHourLong(segments: readonly AnalysisSegment[] | null | undefined): boolean {
+  if (!segments || segments.length === 0) return false
+  return segments.every((segment) => {
+    const start = clockMinutes(segment.start_time)
+    const end = clockMinutes(segment.end_time)
+    return start !== null && end !== null && Math.abs(end - start - 60) < 1e-9
+  })
 }
 
 /** The distinct dates of per-date period labels, in order; null when any label is not a per-date label. */
@@ -47,8 +65,15 @@ export function basisText(t: TFunction, label: CostBasisLabel): string {
 }
 
 /** The cost label for a separate-lines plan of the planning file, or null when it cannot be shown truthfully. */
-export function separateCostBasis(basis: EventPeriodBasis | undefined, dataset: DatasetOut | undefined, plan: SeparatePlanComparison): CostBasisLabel | null {
+export function separateCostBasis(
+  basis: EventPeriodBasis | undefined,
+  dataset: DatasetOut | undefined,
+  plan: SeparatePlanComparison,
+  segments: readonly AnalysisSegment[] | null | undefined,
+): CostBasisLabel | null {
   if (!dataset || plan.dataset_id !== dataset.id || !totalIsPeriodSum(plan)) return null
+  // The period costs are hourly rates added up, so the sum is a day's cost only for 60-minute segments.
+  if (!allSegmentsHourLong(segments)) return null
   if (basis === 'representative_day') {
     const days = finiteNumber(dataset.validation?.observation_days)
     if (dataset.validation?.period_basis !== 'representative_day' || days === null || !Number.isInteger(days) || days < 1) return null
