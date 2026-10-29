@@ -84,8 +84,9 @@ function WaitByPeriod({ summary }: { summary: RunSummary }) {
     <section className="card" aria-labelledby="wait-period-title">
       <h2 lang="en" id="wait-period-title" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2>
       <div className="hbar-chart" role="img" aria-labelledby="wait-period-title">
-        {values.map((item) => (
-          <div className="hbar-row" key={item.time}>
+        {/* Keyed by position too: a per-date run can list the same period label twice. */}
+        {values.map((item, index) => (
+          <div className="hbar-row" key={`${index}-${item.time}`}>
             <div className="hbar-head"><span className="hbar-label">{item.time}</span><span className="hbar-value">{item.minutes === null ? t('results.unavailable') : `${fmtDecimal(item.minutes, 1)} ${t('results.min')}`}</span></div>
             <span className="hbar-track"><span className="hbar-fill" style={{ width: item.minutes !== null && max > 0 ? `${(item.minutes / max) * 100}%` : '0%' }} /></span>
           </div>
@@ -104,8 +105,8 @@ function PeriodTable({ summary }: { summary: RunSummary }) {
         <caption className="sr-only">{t('simulation.period_table')}</caption>
         <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.average_wait')}</th><th scope="col">{t('simulation.longest_line')}</th><th scope="col">{t('simulation.arrived')}</th><th scope="col">{t('simulation.served_customers')}</th></tr></thead>
         <tbody>
-          {summary.periods.map((period) => (
-            <tr key={period.time}>
+          {summary.periods.map((period, index) => (
+            <tr key={`${index}-${period.time}`}>
               <th scope="row">{period.time}</th>
               <td>{period.average_wait_hours === null ? unavailable : `${fmtDecimal(period.average_wait_hours * 60, 1)} ${t('results.min')}`}</td>
               <td>{period.longest_line ?? unavailable}</td>

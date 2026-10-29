@@ -5134,6 +5134,10 @@ summary.setup-step-title::before {
 .app-shell :is(p, dd, td, th, label, .page-title, .card-title) { overflow-wrap: anywhere; }
 /* Field Guide: keep field names (arrival_time, service_start, ...) whole; the table scrolls inside .table-scroll. */
 .app-shell .field-guide-table th[scope='row'] { overflow-wrap: normal; white-space: nowrap; }
+/* Without a minimum width the table squeezed to 375 px and broke the other columns every few letters
+   ("08:/00/-0/9:0/0") instead of scrolling sideways inside its .table-scroll box (spec §4.1). Same form as
+   .results-reference below, so it outranks `.app-shell .table-scroll table { min-width: 100%; }`. */
+.app-shell .table-scroll table.field-guide-table { min-width: 40rem; }
 .app-shell :is(a, button, input, select, textarea, [tabindex]):focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 3px; }
 .app-shell .page-title[tabindex='-1']:focus { outline: none; }
 .app-shell :is(.btn-primary, .button-primary, .button-link) { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); }

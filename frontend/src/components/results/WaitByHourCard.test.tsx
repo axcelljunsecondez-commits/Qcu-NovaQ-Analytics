@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -158,5 +160,15 @@ describe('wait by hour', () => {
     expect(screen.getByRole('heading', { name: 'What the plan changes' })).toHaveAttribute('lang', 'en')
     expect(screen.getByRole('button', { name: 'Tantiya vs mungkahing plano' })).toBeInTheDocument()
     expect(within(screen.getByTestId('wait-by-hour')).getAllByText('Naitala').length).toBeGreaterThan(0)
+  })
+})
+
+describe('view switch styling', () => {
+  // The base button style is the primary fill, so the unchosen view must set its own neutral fill;
+  // before this rule both views looked chosen (browser check 2026-10-29, computed backgrounds equal).
+  it('fills only the chosen view with the primary colour', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/charts.css'), 'utf8')
+    expect(css).toMatch(/\.cv-view-switch button\s*\{[^}]*background: var\(--color-bg-surface\);[^}]*color: var\(--color-text-primary\);/)
+    expect(css).toMatch(/\.cv-view-switch button\[aria-pressed='true'\]\s*\{[^}]*background: var\(--color-action-primary-bg\);/)
   })
 })

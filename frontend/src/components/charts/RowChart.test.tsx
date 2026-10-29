@@ -54,3 +54,38 @@ describe('RowChart', () => {
     expect(screen.getAllByTestId('row-chart-row')[0]).toHaveClass('active')
   })
 })
+
+describe('RowChart label column', () => {
+  // jsdom has no SVG text layout, so the measured label length is stubbed. In the browser a per-date
+  // label ("2000-01-03 05:00-06:00 UTC") measured 161 px and ran under the marks of an 82 px column.
+  function axisStart(container: HTMLElement): number {
+    return Number(container.querySelector('.cv-axis-l')?.getAttribute('x1'))
+  }
+  function stubTextLength(length: number) {
+    const proto = window.SVGElement.prototype as unknown as { getComputedTextLength?: () => number }
+    const before = proto.getComputedTextLength
+    proto.getComputedTextLength = () => length
+    return () => { if (before) proto.getComputedTextLength = before; else delete proto.getComputedTextLength }
+  }
+
+  it('keeps the base column when the labels fit', () => {
+    const restore = stubTextLength(60)
+    const { container } = render(<RowChart name="c" rows={rows} max={2} ticks={[0, 1, 2]} formatTick={String} />)
+    expect(axisStart(container)).toBe(104)
+    restore()
+  })
+
+  it('widens the column to the longest label so the axis starts after it', () => {
+    const restore = stubTextLength(161)
+    const { container } = render(<RowChart name="c" rows={rows} max={2} ticks={[0, 1, 2]} formatTick={String} />)
+    expect(axisStart(container)).toBe(161 + 4 + 14)
+    restore()
+  })
+
+  it('never gives the labels more than 62% of the chart width', () => {
+    const restore = stubTextLength(500)
+    const { container } = render(<RowChart name="c" rows={rows} max={2} ticks={[0, 1, 2]} formatTick={String} />)
+    expect(axisStart(container)).toBe(Math.floor(600 * 0.62))
+    restore()
+  })
+})

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AnalysisProjectOut, RunSummary } from '../../api/types'
@@ -177,6 +177,24 @@ describe('More results (B5, B9)', () => {
   it('shows no explanation when the summary is missing (run again instead)', () => {
     renderView('current', { now: null, plan: null })
     expect(screen.queryByRole('button', { name: 'Why this is unavailable' })).not.toBeInTheDocument()
+  })
+
+  it('keeps every period when a per-date run lists the same label twice, without a React key warning', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const repeated: RunSummary = {
+      ...perPeriod,
+      periods: [
+        { time: '2000-01-03 11:00-12:00 UTC', average_wait_hours: 0.1, longest_line: 1, arrivals: null, served: null },
+        { time: '2000-01-04 11:00-12:00 UTC', average_wait_hours: 0.2, longest_line: 2, arrivals: null, served: null },
+        { time: '2000-01-03 11:00-12:00 UTC', average_wait_hours: 0.3, longest_line: 3, arrivals: null, served: null },
+      ],
+    }
+    renderView('current', { now: repeated })
+    const table = screen.getByRole('region', { name: en['simulation.period_table'] })
+    expect(within(table).getAllByRole('rowheader', { name: '2000-01-03 11:00-12:00 UTC' })).toHaveLength(2)
+    expect(within(table).getAllByRole('rowheader')).toHaveLength(3)
+    expect(errors.mock.calls.some((call) => String(call[0]).includes('same key'))).toBe(false)
+    errors.mockRestore()
   })
 
   it('draws no Plotly chart for the period-by-period run', () => {

@@ -171,7 +171,7 @@ export function SeparateSimulationPlayback(
       <section className="card live-floor">
         <header className="live-floor-header">
           <div>
-            <div className="live-floor-eyebrow" data-testid="replay-period">{periodLabel ?? segment.time} · {segment.selected_model ?? '—'}</div>
+            <div className="live-floor-eyebrow" data-testid="replay-period">{periodLabel ?? segment.time}</div>
             <h3 lang="en" className="section-title">{headingText(t, 'simulation.playback_view_separate')}</h3>
             <p className="form-hint">
               {t('simulation.live_event_progress', { current: processedCount, total: trace.event_count })}

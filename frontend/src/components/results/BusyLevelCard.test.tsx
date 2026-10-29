@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -110,5 +112,14 @@ describe('Busy Level grid', () => {
     table = screen.getByRole('table')
     expect(within(table).getAllByRole('row')[1].textContent).toBe('471.25%Normal')
     expect(screen.queryByText(/cashier/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('ribbon cell layout', () => {
+  // Buttons are display: inline-flex app-wide; without a column direction the time, level and % sat on
+  // one line and overflowed the 98 px cell at 375 px (browser check 2026-10-29).
+  it('stacks time, level and percentage in each period button', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/charts.css'), 'utf8')
+    expect(css).toMatch(/\.cv-ribbon button\s*\{[^}]*display: flex;[^}]*flex-direction: column;/)
   })
 })

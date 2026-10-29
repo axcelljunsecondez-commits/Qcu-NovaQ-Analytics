@@ -49,6 +49,17 @@ describe('SeparateSimulationPlayback', () => {
     expect(screen.getByTestId('lane-Q1')).not.toContainElement(screen.getByTestId('customer-2'))
   })
 
+  it('labels the replay with the time only, never the model name (owner decision 4b)', () => {
+    renderWithProviders(<SeparateSimulationPlayback trace={makeSeparateTrace()} />)
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^08:00-09:00$/)
+    expect(screen.queryByText(/Parallel M\/G\/1/)).not.toBeInTheDocument()
+  })
+
+  it('labels the replay with the given period label only', () => {
+    renderWithProviders(<SeparateSimulationPlayback trace={makeSeparateTrace()} periodLabel="05:00 - 18:00" />)
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^05:00 - 18:00$/)
+  })
+
   it('preserves dedicated server identity per queue without pooling', async () => {
     const user = userEvent.setup()
     renderWithProviders(<SeparateSimulationPlayback trace={makeSeparateTrace()} />)

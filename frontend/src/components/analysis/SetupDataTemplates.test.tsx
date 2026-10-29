@@ -64,6 +64,9 @@ describe('SetupDataTemplates', () => {
       .not.toHaveClass('field-guide-table')
     const css = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
     expect(css).toMatch(/\.app-shell \.field-guide-table th\[scope='row'\]\s*\{[^}]*overflow-wrap: normal;[^}]*white-space: nowrap;/)
+    // On phones the table keeps a readable width and scrolls inside its region instead of squeezing.
+    // The selector must outrank `.app-shell .table-scroll table { min-width: 100%; }` (0,2,1).
+    expect(css).toMatch(/\.app-shell \.table-scroll table\.field-guide-table\s*\{[^}]*min-width: 40rem;/)
   })
 
   it('switches between totals and events schemas', async () => {

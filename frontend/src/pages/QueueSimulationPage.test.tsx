@@ -788,7 +788,7 @@ describe('a selected separate-lines plan', () => {
     renderPage('/simulation/replay?analysis=7&t=08:15')
     expect(await screen.findByTestId('replay-clock')).toHaveTextContent('08:15')
     // The merged day is labelled with the day's hours, not the first period's.
-    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^08:00 - 10:00 · /)
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^08:00 - 10:00$/)
     // lane-A is opened only for 09:00, so at 08:15 it is not staffed; never shown as a break.
     expect(screen.getByTestId('state-lane-A')).toHaveTextContent('Closed / not staffed')
     expect(screen.getByRole('group', { name: 'Scheduled break (from your setup)' })).toHaveTextContent('east-07: 09:30–09:45')
@@ -803,7 +803,7 @@ describe('a selected separate-lines plan', () => {
     selected({ des: job('workflow_des', perDateResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date' })
     renderPage('/simulation/replay?analysis=7&t=08:15')
     expect(await screen.findByTestId('replay-clock')).toHaveTextContent('08:15')
-    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^2026-09-08 · 08:00 - 10:00 · /)
+    expect(screen.getByTestId('replay-period')).toHaveTextContent(/^2026-09-08 · 08:00 - 10:00$/)
     await user.selectOptions(screen.getByLabelText('Date'), '2026-09-09')
     expect(screen.getByTestId('where')).toHaveTextContent('date=2026-09-09')
     expect(screen.getByTestId('where')).not.toHaveTextContent('t=')

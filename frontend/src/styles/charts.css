@@ -14,8 +14,11 @@
 .cv-chip-data { background: var(--color-bg-surface); color: var(--color-text-primary); border-color: var(--color-text-primary); }
 .cv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .cv-view-switch { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
-.cv-view-switch button { min-height: 44px; font-size: 0.82rem; }
-.cv-view-switch button[aria-pressed='true'] { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); }
+/* Unchosen views are neutral; only the chosen one takes the primary fill (the base button style is the
+   primary fill, so without this both views looked chosen). */
+.cv-view-switch button { min-height: 44px; font-size: 0.82rem; background: var(--color-bg-surface); color: var(--color-text-primary); border: 1px solid var(--color-border-control); }
+.cv-view-switch button:not([aria-pressed='true']):hover { background: var(--color-bg-surface); border-color: var(--color-text-primary); }
+.cv-view-switch button[aria-pressed='true'] { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); border-color: var(--color-action-primary-bg); }
 .cv-details { margin-top: 10px; border-top: 1px solid var(--color-border-subtle); padding-top: 6px; }
 .cv-details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 0.85rem; font-weight: 600; color: var(--color-action-link); }
 .cv-details details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 0.85rem; color: var(--color-action-link); }
@@ -59,7 +62,9 @@
 
 /* Busy Level ribbon: colours come from the existing busy-* level classes */
 .cv-ribbon { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 4px; }
-.cv-ribbon button { min-height: 64px; border: 2px solid transparent; border-radius: 8px; padding: 6px 4px; text-align: center; cursor: pointer; line-height: 1.25; }
+/* Every button is display: inline-flex (global.css), which laid time, level and % side by side and pushed
+   them past the cell at 375 px; stack the three lines as in the mockup. */
+.cv-ribbon button { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 64px; border: 2px solid transparent; border-radius: 8px; padding: 6px 4px; text-align: center; cursor: pointer; line-height: 1.25; }
 .cv-ribbon button .cv-t, .cv-ribbon button .cv-l { display: block; font-size: 12px; font-weight: 700; }
 .cv-ribbon button .cv-v { display: block; font-size: 12px; font-variant-numeric: tabular-nums; }
 .cv-ribbon button[aria-pressed='true'] { border-color: var(--color-text-primary); }
