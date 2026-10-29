@@ -19,11 +19,12 @@ import {
   type ContinuousRunOut,
 } from '../../api/continuous'
 import { fmtDecimal } from '../../lib/format'
-import { clockAt, clockOfMinutes, hoursAt, latestRunIds, rangeText, stateAt, waitingSteps } from '../../lib/continuous'
+import { automaticReplications, clockAt, clockOfMinutes, hoursAt, latestRunIds, rangeText, stateAt, waitingSteps } from '../../lib/continuous'
 import { requestError } from '../../lib/simulationEvidence'
 import { advancePlaybackTime } from '../../lib/simulationPlayback'
 import type { SimulationPageName } from './simulationContext'
 import { HelpLink } from '../ui/HelpLink'
+import { ContinuousQueueFloor } from './ContinuousQueueFloor'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10]
 const TICK_MILLISECONDS = 100
@@ -119,11 +120,10 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const view = compatibility.plans[plan]
-  const [repeats, setRepeats] = useState(String(compatibility.default_replications))
   const [seed, setSeed] = useState(String(compatibility.default_seed))
   const [error, setError] = useState<string | null>(null)
   const run = useMutation({
-    mutationFn: () => createContinuousRun(analysisId, { plan, replications: Number(repeats), seed: Number(seed) }),
+    mutationFn: (replications: number) => createContinuousRun(analysisId, { plan, replications, seed: Number(seed) }),
     onSuccess: () => {
       setError(null)
       void queryClient.invalidateQueries({ queryKey: ['continuous-runs', analysisId] })
@@ -132,18 +132,20 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
     },
     onError: (failure) => setError(requestError(failure, t('errors.server'))),
   })
-  const max = compatibility.limits.max_replications
   const start = () => {
-    const count = Number(repeats)
-    if (!Number.isInteger(count) || count < 1 || count > max) return setError(t('continuous.repeats_range', { max }))
+    const count = automaticReplications(view.expected_customers_per_day, compatibility.default_replications, compatibility.limits)
+    if (count === null) return setError(t('errors.server'))
+    if (count === 0) return setError(t('simulation.named_customer_bound_exceeded', {
+      value: view.expected_customers_per_day, max: compatibility.limits.max_expected_customers_per_run, replications: 0,
+    }))
     const seedValue = Number(seed)
     if (!Number.isInteger(seedValue) || seedValue < 0) return setError(t('continuous.seed_range'))
-    if (view.expected_customers_per_day !== null && view.expected_customers_per_day * count > compatibility.limits.max_expected_customers_per_run) {
-      return setError(t('continuous.over_limit', { max: compatibility.limits.max_expected_customers_per_run }))
-    }
-    run.mutate()
+    run.mutate(count)
   }
-  const hours = view.horizon ? `${clockOfMinutes(view.horizon.start_minute)}–${clockOfMinutes(view.horizon.end_minute)}` : null
+  // A refused assessment may withhold the timeline before reading the data's hours.
+  const hours = view.horizon
+    ? `${clockOfMinutes(view.horizon.start_minute)}–${clockOfMinutes(view.horizon.end_minute)}`
+    : view.compatible ? null : t('results.unavailable')
   const blocking = view.reasons.filter((reason) => reason.code !== 'no_closing_policy')
   return (
     <section className="card run-bar" aria-label={t('continuous.title')}>
@@ -185,16 +187,14 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
           <strong>{t('continuous.cannot_run')}</strong>
           <ReasonList reasons={blocking} />
           {blocking.some((reason) => reason.code === 'no_selected_plan') && <Link to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>}
+          {blocking.some((reason) => reason.code === 'capacity_or_abandonment' || reason.code === 'capacity_or_abandonment_unknown') && (
+            <Link to={`/analyses/${analysisId}/data`}>{t('nav.data_setup')}</Link>
+          )}
         </div>
       )}
       <details className="run-advanced">
         <summary>{t('simulation.advanced')}</summary>
         <div className="form-row">
-          <div className="form-field">
-            <label htmlFor="continuous-repeats">{t('continuous.repeats')}</label>
-            <input id="continuous-repeats" type="number" min={1} max={max} step={1} value={repeats} onChange={(event) => setRepeats(event.target.value)} />
-            <p className="form-hint">{t('continuous.repeats_hint', { max, default: compatibility.default_replications })}</p>
-          </div>
           <div className="form-field">
             <label htmlFor="continuous-seed">{t('continuous.seed')}</label>
             <input id="continuous-seed" type="number" min={0} step={1} value={seed} onChange={(event) => setSeed(event.target.value)} />
@@ -419,6 +419,7 @@ function ContinuousReplay({ analysisId, shown }: { analysisId: number; shown: Co
             <span>{t('continuous.state_served')}: <strong>{state.served}</strong></span>
             <span>{t('continuous.state_unserved')}: <strong>{state.unserved}</strong></span>
           </div>
+          <ContinuousQueueFloor playback={playback.data} time={time} playing={playing} />
           {time >= playback.data.playback.closing.closing_hours && <p className="form-hint">{t('continuous.after_closing')}</p>}
           <div className="playback-controls live-controls">
             <button type="button" className="btn-secondary" onClick={() => { setTime(0); setPlaying(false) }}>{t('simulation.playback_restart')}</button>

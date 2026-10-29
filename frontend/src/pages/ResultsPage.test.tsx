@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes, useLocation } from 'react-router-dom'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import type { DatasetOut, QueueSetup } from '../api/types'
 import { ResultsPage } from './ResultsPage'
+import { PlanChanges } from '../components/results/PlanChanges'
 
 // Analysis results (spec 2026-10-09 §7.7, plan phase U6). Every value must come from the
 // selected file's response; a review-only or older file never reaches plans or simulation.
@@ -142,6 +143,81 @@ function keyResult(name: string) {
 }
 
 describe('Analysis results: the planning file', () => {
+  it('identifies the only saved plan as already selected without creating another selection', async () => {
+    getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Only saved plan' }))
+    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Only saved plan', 'CURRENT')] })
+    renderResults()
+    const status = await screen.findByText('Only saved plan is the selected scenario for simulation.')
+    expect(status).toHaveAttribute('role', 'status')
+    expect(screen.getByLabelText('Plan')).toHaveValue('3')
+    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(selectMock).not.toHaveBeenCalled()
+  })
+
+  it('updates the plan selector when the server selection changes while results remains open', async () => {
+    getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Plan A' }))
+    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Plan A', 'CURRENT'), scenario(4, 'Plan B', 'CURRENT')] })
+    const { queryClient } = renderResults()
+    expect(await screen.findByLabelText('Plan')).toHaveValue('3')
+    act(() => { queryClient.setQueryData(['workflow', 7], workflowWith({ id: 4, name: 'Plan B' })) })
+    await waitFor(() => expect(screen.getByLabelText('Plan')).toHaveValue('4'))
+    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+  })
+
+  it('discards an unavailable draft plan instead of reviving it when the option reappears', async () => {
+    getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Plan A' }))
+    const planA = scenario(3, 'Plan A', 'CURRENT')
+    const planB = scenario(4, 'Plan B', 'CURRENT')
+    listScenariosMock.mockResolvedValue({ scenarios: [planA, planB] })
+    const { queryClient } = renderResults()
+    const user = userEvent.setup()
+    await user.selectOptions(await screen.findByLabelText('Plan'), '4')
+    act(() => { queryClient.setQueryData(['scenarios', 7], { scenarios: [planA] }) })
+    await waitFor(() => expect(screen.getByLabelText('Plan')).toHaveValue('3'))
+    act(() => { queryClient.setQueryData(['scenarios', 7], { scenarios: [planA, planB] }) })
+    await waitFor(() => expect(screen.getByLabelText('Plan')).toHaveValue('3'))
+    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(selectMock).not.toHaveBeenCalled()
+  })
+
+  it('resets a draft plan when the active analysis changes with the selector still mounted', async () => {
+    const planA = scenario(3, 'Plan A', 'CURRENT')
+    const planB = scenario(4, 'Plan B', 'CURRENT')
+    const otherPlan = { ...scenario(13, 'Other analysis plan', 'CURRENT'), analysis_id: 8 }
+    const { rerender } = renderWithProviders(<PlanChanges analysisId={7} plan={{
+      kind: 'shared', scenario: planA, scenarios: [planA, planB], usable: true, target: 0.7,
+    }} />)
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByLabelText('Plan'), '4')
+    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeEnabled()
+    rerender(<PlanChanges analysisId={8} plan={{
+      kind: 'shared', scenario: otherPlan, scenarios: [otherPlan], usable: true, target: 0.7,
+    }} />)
+    expect(screen.getByLabelText('Plan')).toHaveValue('13')
+    expect(screen.getByText('Other analysis plan is the selected scenario for simulation.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(selectMock).not.toHaveBeenCalled()
+  })
+
+  it('switches between saved plans and confirms each successful server selection', async () => {
+    getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Plan A' }))
+    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Plan A', 'CURRENT'), scenario(4, 'Plan B', 'CURRENT')] })
+    selectMock.mockImplementation(async (_analysisId: number, id: number) => {
+      getWorkflowMock.mockResolvedValue(workflowWith({ id, name: id === 3 ? 'Plan A' : 'Plan B' }))
+      return { selection: {} }
+    })
+    const user = userEvent.setup()
+    renderResults()
+    await user.selectOptions(await screen.findByLabelText('Plan'), '4')
+    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+    expect(await screen.findByText('Plan B is the selected scenario for simulation.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    await user.selectOptions(screen.getByLabelText('Plan'), '3')
+    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+    expect(await screen.findByText('Plan A is the selected scenario for simulation.')).toBeInTheDocument()
+    expect(selectMock.mock.calls).toEqual([[7, 4], [7, 3]])
+  })
+
   it('selects an eligible saved plan before any selection exists, without saving or generating another plan', async () => {
     const user = userEvent.setup()
     listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Saved plan', 'CURRENT'), scenario(4, 'Old plan', 'STALE')] })
@@ -274,6 +350,7 @@ describe('Analysis results: the planning file', () => {
     expect(screen.getByText('Made with an older file.')).toBeInTheDocument()
     expect(screen.queryByText('Calculated result · not yet checked by simulation')).not.toBeInTheDocument()
     expect(screen.queryByText(/above this plan's target/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Old plan is the selected scenario for simulation.')).not.toBeInTheDocument()
   })
 
   it('keeps the chosen period in the address and shows its numbers', async () => {

@@ -2078,6 +2078,18 @@ button.btn-good:hover {
   background: var(--success-bg);
 }
 
+.continuous-floor.is-static .live-customer {
+  animation: none;
+}
+
+.continuous-floor .live-server-heading {
+  flex-wrap: wrap;
+}
+
+.continuous-floor .live-server .badge {
+  white-space: normal;
+}
+
 .live-customer-more {
   color: var(--text-secondary);
   font-size: 0.8rem;
