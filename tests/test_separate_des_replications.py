@@ -163,7 +163,9 @@ def test_aggregate_arithmetic_is_exact_for_controlled_replications():
     assert wq["sd"] == pytest.approx(statistics.stdev([0.10, 0.20, 0.30]))
     assert wq["se"] == pytest.approx(0.10 / (3 ** 0.5))
     half_width = student_t.ppf(0.975, 2) * (0.10 / (3 ** 0.5))
-    assert wq["ci_lower"] == pytest.approx(0.20 - half_width)
+    # A wait cannot be below 0, so its interval stops at 0 (spec 2026-10-29-separate-wait-interval-floor).
+    assert 0.20 - half_width < 0
+    assert wq["ci_lower"] == 0.0
     assert wq["ci_upper"] == pytest.approx(0.20 + half_width)
     assert wq["n"] == 3
 
