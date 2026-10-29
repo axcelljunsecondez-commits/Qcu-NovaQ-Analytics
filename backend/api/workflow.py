@@ -157,6 +157,34 @@ class SelectedMcRequest(WorkflowMcRequest):
     failure_threshold: float | None = Field(default=None, gt=0, le=1)  # type: ignore[assignment]
 
 
+def _resolve_mc_failure_threshold(payload: SelectedMcRequest, target: float | None) -> tuple[float, str]:
+    """The selected-plan MC threshold and its source, for shared and separate plans alike.
+
+    A threshold sent in the request wins ("user"); otherwise the plan's target ("plan_target");
+    otherwise NovaQ's default ("default"). Spec 2026-10-29-shared-mc-plan-target-threshold.md §4.
+    """
+    if "failure_threshold" in payload.model_fields_set and payload.failure_threshold is not None:
+        return float(payload.failure_threshold), "user"
+    if target is not None and 0 < target <= 1:
+        return target, "plan_target"
+    return MC_DEFAULT_FAILURE_THRESHOLD, "default"
+
+
+def _shared_plan_target(scenario: Scenario) -> float | None:
+    """A shared plan's target: the one target every row recorded, else the saved calculation option."""
+    rows = (scenario.results_json or {}).get("results")
+    if isinstance(rows, list) and rows:
+        targets = {_json_number(((row.get("effective_constraints") or {}) if isinstance(row, dict) else {})
+                                .get("target_utilization")) for row in rows}
+        if len(targets) == 1:
+            (target,) = targets
+            if target is not None and 0 < target <= 1:
+                return target
+    options = ((scenario.settings_json or {}).get("calculation") or {}).get("options") or {}
+    target = _json_number(options.get("target_utilization")) if isinstance(options, dict) else None
+    return target if target is not None and 0 < target <= 1 else None
+
+
 class WorkflowValidationRequest(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
 
@@ -1484,25 +1512,29 @@ def run_des_current(
 )
 def run_mc(
     analysis_id: int,
-    payload: WorkflowMcRequest,
+    payload: SelectedMcRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     analysis = own_analysis(db, user, analysis_id)
     scenario, dataset = _require_selection(db, user, analysis)
+    # Spec 2026-10-29: an omitted threshold means the shared plan's target, as for separate plans.
+    failure_threshold, threshold_source = _resolve_mc_failure_threshold(payload, _shared_plan_target(scenario))
     result = {
         "results": mc_simulate_segments(
             _segments_for(scenario, service_dataset=dataset),
             num_trials=payload.num_trials,
-            failure_threshold=payload.failure_threshold,
+            failure_threshold=failure_threshold,
             failure_rate_cap=payload.failure_rate_cap,
             seed=payload.seed,
         )
     }
     job = _save_job(
         db, user, "workflow_mc", analysis, scenario,
-        payload.model_dump(), result, settings, dataset,
+        {**payload.model_dump(), "failure_threshold": failure_threshold,
+         "failure_threshold_source": threshold_source},
+        result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
 
@@ -3104,13 +3136,7 @@ def run_selected_mc(
             status_code=409,
             detail="Selected-plan DES evidence has no mean routed loads. Rerun selected-plan DES.",
         )
-    target = _json_number(plan["target"])
-    if "failure_threshold" in payload.model_fields_set and payload.failure_threshold is not None:
-        failure_threshold, threshold_source = float(payload.failure_threshold), "user"
-    elif target is not None and 0 < target <= 1:
-        failure_threshold, threshold_source = target, "plan_target"
-    else:
-        failure_threshold, threshold_source = MC_DEFAULT_FAILURE_THRESHOLD, "default"
+    failure_threshold, threshold_source = _resolve_mc_failure_threshold(payload, _json_number(plan["target"]))
     # OD-G2 (spec 2026-09-26 §8.1): the DES evidence this run consumes must meet the Step 5
     # dependency rules before anything is computed or stored. Checked last, so every earlier
     # refusal keeps its own status and message.

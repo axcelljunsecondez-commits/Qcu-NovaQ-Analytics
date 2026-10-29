@@ -182,7 +182,8 @@ export async function runWorkflowMc(
   analysisId: number,
   options: {
     num_trials: number
-    failure_threshold: number
+    /** Omitted: the server uses the selected plan's target (spec 2026-10-29). */
+    failure_threshold?: number
     failure_rate_cap: number
     seed: number | null
   },
