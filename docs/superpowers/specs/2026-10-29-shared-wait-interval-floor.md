@@ -1,6 +1,6 @@
 # Shared lines: simulated wait intervals stop at 0 (OD-W3 / N2)
 
-Status: IMPLEMENTED and committed 2026-10-29 on branch `claude/friendly-bell-4801f0` (base `3ee8fe2c`; owner asked for both changes to be committed separately), NOT pushed. OD-S1 remains open (implemented as option (a)); OD-S2 and OD-S3 DECIDED 2026-10-29 (§8). Protected statistics change (AGENTS.md §5).
+Status: IMPLEMENTED and committed 2026-10-29 on branch `claude/friendly-bell-4801f0` (base `3ee8fe2c`; owner asked for both changes to be committed separately), NOT pushed. OD-S1, OD-S2 and OD-S3 DECIDED 2026-10-29 (§8). Protected statistics change (AGENTS.md §5).
 
 Approval: the owner approved, quoted verbatim as relayed by the parent session on 2026-10-29: "N1 and N2 apply your recommendation". The recommendation was: "fix shared-line ranges below 0 as a separate tested change, the same way as the separate-line fix." This is REPORTED; it was not typed in this session.
 
@@ -152,6 +152,6 @@ Results 2026-10-29 (local Windows, Python 3.13.13, SQLite; PostgreSQL not run):
 
 ## 8. Open items for the owner
 
-- OD-S1: version (§5). Implemented as (a); recommendation (a).
+- OD-S1: version (§5). DECIDED 2026-10-29 (owner, "S1 yes, commit the spec update", REPORTED via the parent session): (a), no method or engine version change, as implemented. Old shared runs keep their stored bounds.
 - OD-S2: also floor the other non-negative quantities (server-hours, overrun, breaks, staffing, employees)? DECIDED 2026-10-29 (owner, "S2 and S3 apply your recommendation", REPORTED via the parent session): leave them unfloored. No further engine change.
 - OD-S3: screen wording note for a floored lower end (§4). DECIDED 2026-10-29 (same owner words, REPORTED): the parent session's main UI build adds a short "range cut at 0" note to the named-staff interval text (`NamedReplicationTable.tsx:96-104`). It reuses the chart redesign's range-cut ⓘ text. This change makes no frontend change for it.
