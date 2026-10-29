@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -140,6 +142,36 @@ describe('supervisor schedule workflow', () => {
     expect(mocks.preview).toHaveBeenCalledTimes(1)
     expect(mocks.apply).not.toHaveBeenCalled()
     expect(mocks.save).not.toHaveBeenCalled()
+  })
+  it('names the plan after the checked busy limit until the user types a name', async () => {
+    render(); const user = await run()
+    async function recheck(value: string) {
+      await user.click(screen.getByRole('tab', { name: 'Settings' }))
+      const percent = screen.getByRole('spinbutton', { name: 'Busy limit per cashier' })
+      await user.clear(percent); await user.type(percent, value)
+      await user.click(screen.getByRole('button', { name: 'Check schedule' }))
+      await screen.findByRole('heading', { name: 'Review the Check' })
+      await confirm(user)
+    }
+    await confirm(user)
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Schedule at 70%')
+    await recheck('75')
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Schedule at 75%')
+    await user.clear(screen.getByLabelText('Scenario Name'))
+    await user.type(screen.getByLabelText('Scenario Name'), 'Saturday rush')
+    await recheck('80')
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Saturday rush')
+    await user.clear(screen.getByLabelText('Scenario Name'))
+    await recheck('85')
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Schedule at 85%')
+  })
+  it('gives the review step room above the sticky step bar', async () => {
+    const { container } = render(); await run(true)
+    expect(container.querySelector('.supervisor-page .supervisor-break-table table caption'))
+      .toHaveTextContent('Break Changes to Review')
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
+    expect(css).toMatch(/html:has\(\.supervisor-page\)\s*\{\s*scroll-padding-bottom:/)
+    expect(css).toMatch(/\.supervisor-page \.supervisor-break-table caption\s*\{\s*padding: var\(--space-md\)/)
   })
   it('moves the slider by five points while preserving typed fractional values', async () => {
     const user = userEvent.setup(); render()

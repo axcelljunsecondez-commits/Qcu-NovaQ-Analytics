@@ -103,7 +103,7 @@ export function SetupDataTemplates({ queueStructure }: SetupDataTemplatesProps) 
               </div>
               <h4 lang="en" className="section-title">{headingText(t, 'template.guide_title')}</h4>
               <div className="card table-scroll" role="region" aria-label={t('template.guide_title')} tabIndex={0}>
-                <table>
+                <table className="field-guide-table">
                   <thead>
                     <tr>
                       <th scope="col">{t('template.guide_field')}</th>

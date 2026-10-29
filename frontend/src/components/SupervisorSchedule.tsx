@@ -38,6 +38,8 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
   const panelId = useId()
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [name, setName] = useState('')
+  // A typed name is kept; otherwise the name follows the last checked busy limit.
+  const [nameTyped, setNameTyped] = useState(false)
   const [saved, setSaved] = useState(false)
   const [used, setUsed] = useState(false)
   const [selectionError, setSelectionError] = useState<string | null>(null)
@@ -95,7 +97,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
       const out = await previewSupervisorSchedule(analysis.id, request)
       setChecked({ result: out, request, signature, setup: sourceSetup,
         rowCount: dataset.row_count, applied: false })
-      setName(prev => prev || t('supervisor.default_name', { percent: numericPercent }))
+      if (!nameTyped) setName(t('supervisor.default_name', { percent: numericPercent }))
       goStep(1)
     } catch (err) { setError(messageOf(err, t('errors.server'))) }
     finally { setBusy(null) }
@@ -330,7 +332,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
         <div className="supervisor-save">
           <h3 lang="en">{headingText(t, 'page2.save_scenario')}</h3>
           <label htmlFor="sup-name">{t('optimize.scenario_name')}</label>
-          <input id="sup-name" value={name} onChange={e => setName(e.target.value)} disabled={!!busy} />
+          <input id="sup-name" value={name} onChange={e => { setName(e.target.value); setNameTyped(e.target.value !== '') }} disabled={!!busy} />
           {pendingMoves && <p className="form-hint">{t('supervisor.save_after_apply')}</p>}
           <div className="supervisor-actions">
             <button type="button" disabled={!saveEligible || !!busy || !name.trim()} onClick={() => void save(true)}>{t('plans.use_this_plan')}</button>
