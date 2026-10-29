@@ -385,6 +385,45 @@ describe('the legacy shared path', () => {
     expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('costs more than today')
   })
 
+  // Spec 2026-10-29-shared-mc-plan-target-threshold.md §5: shared Many variations counts at the plan's target.
+  const sharedPlanAt70 = { scenario: { id: 3, name: 'Plan A', dataset_id: 2, provenance: 'verified_snapshot',
+    settings: { calculation: { schema_version: 1, engine_version: 'novaq-2026-09-system-v2', options: { target_utilization: 0.7 } } } } }
+
+  it('starts shared Many variations at the plan target and lets the server record it', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow(sharedPlanAt70))
+    renderPage('/simulation/checks?analysis=7')
+    const input = await screen.findByLabelText('Failure threshold (plan target: 0.7)')
+    expect(input).toHaveValue(0.7)
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await waitFor(() => expect(runMcMock).toHaveBeenCalledTimes(1))
+    expect(runMcMock.mock.calls[0][1]).toEqual({ num_trials: 2000, failure_rate_cap: 0.05, seed: null })
+  })
+
+  it('sends a shared threshold the user changed, and uses the same one for the Results check', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow(sharedPlanAt70))
+    renderPage('/simulation/checks?analysis=7')
+    const input = await screen.findByLabelText('Failure threshold (plan target: 0.7)')
+    await user.click(screen.getByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(runValidationMock).toHaveBeenCalledTimes(1))
+    expect(runValidationMock.mock.calls[0][1]).toMatchObject({ mc_failure_threshold: 0.7 })
+    await user.clear(input)
+    await user.type(input, '0.75')
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await waitFor(() => expect(runMcMock).toHaveBeenCalledTimes(1))
+    expect(runMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.75 })
+  })
+
+  it('keeps the 0.75 default for a shared plan with no recorded target', async () => {
+    const user = userEvent.setup()
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByLabelText('Failure threshold (ρ)')).toHaveValue(0.75)
+    await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
+    await waitFor(() => expect(runMcMock).toHaveBeenCalledTimes(1))
+    expect(runMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.75 })
+  })
+
   it('checks the plan from the full-day run when the server names that basis (OD-UX-13)', async () => {
     const user = userEvent.setup()
     getWorkflowMock.mockResolvedValue(workflow({ decision_basis: 'full_day_run', full_day_run_id: 31 }))
