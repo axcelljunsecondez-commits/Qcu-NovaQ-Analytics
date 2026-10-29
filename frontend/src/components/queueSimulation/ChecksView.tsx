@@ -279,8 +279,11 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
 function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { analysisId, workflow } = context
-  const settings = useMcSettings(null, '')
+  const { analysisId, planTarget, workflow } = context
+  const settings = useMcSettings(planTarget, '')
+  // Spec 2026-10-29: as for separate plans, a threshold left at the plan target is omitted so the
+  // server applies and records the plan target.
+  const thresholdIsPlanTarget = planTarget !== null && Number(settings.threshold) === planTarget
   const [validationHours, setValidationHours] = useState('24')
   const [validationTrials, setValidationTrials] = useState('10000')
   const [validationSeed, setValidationSeed] = useState('')
@@ -288,7 +291,12 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
   const onError = (err: unknown) => setError(requestError(err, t('errors.server')))
   const mcRun = useMutation({
-    mutationFn: () => runWorkflowMc(analysisId, { num_trials: Number(settings.trials), failure_threshold: Number(settings.threshold), failure_rate_cap: Number(settings.cap), seed: parseSeed(settings.seed) }),
+    mutationFn: () => runWorkflowMc(analysisId, {
+      num_trials: Number(settings.trials),
+      ...(thresholdIsPlanTarget ? {} : { failure_threshold: Number(settings.threshold) }),
+      failure_rate_cap: Number(settings.cap),
+      seed: parseSeed(settings.seed),
+    }),
     onSuccess: refresh,
     onError,
   })
@@ -391,7 +399,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
       </CheckLine>
       <CheckLine name={headingText(t, 'simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}>
         <p className="form-hint">{t('simulation.variations_label')}</p>
-        <McFields settings={settings} planTarget={null} idPrefix="mc" />
+        <McFields settings={settings} planTarget={planTarget} idPrefix="mc" />
         <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
         {mcRows.length > 0 && <McTable rows={mcRows} />}
       </CheckLine>
