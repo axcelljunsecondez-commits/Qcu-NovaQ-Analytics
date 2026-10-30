@@ -3,7 +3,10 @@
 Date: 2026-10-30. Implementation: COMPLETE LOCALLY. Verification: PARTIAL at
 repository scope because the required whole-folder Ruff/mypy commands fail on
 pre-existing output artifacts. The application suites, source checks, build and
-isolated browser acceptance passed. No commit, push or deployment was performed.
+isolated browser acceptance passed. No commit, push or deployment was performed
+during this implementation verification. Follow-on owner-authorized commit and
+the blocked local Docker rebuild are recorded in the
+[Docker report](2026-10-30-shared-upload-docker-activation.md).
 
 ## Authorization and source identity
 
@@ -222,10 +225,13 @@ the Docker build performs fresh type/lint/build checks on committed content.
 
 ## Remaining limits and scope status
 
-NOT TESTED: PostgreSQL transaction concurrency (no identified disposable
-PostgreSQL test database), production deployment, operational customer records,
+NOT TESTED at implementation verification: PostgreSQL transaction concurrency
+(no identified disposable PostgreSQL test database at that time), production deployment, operational customer records,
 other browsers and physical touch interaction. SQLite forced-concurrent apply
 cases passed for whole-second and nonzero-microsecond timestamp encodings.
+The later Docker work executed 23 API regressions against an owned disposable
+PostgreSQL database; the two forced SQLite cases were skipped. That later run is
+recorded in the linked Docker report and does not establish PostgreSQL concurrency.
 
 The existing expected failure in `tests/test_selected_mc_load.py:147` remains
 open: selected-plan lane-load Decision varies with the base seed. Its math and

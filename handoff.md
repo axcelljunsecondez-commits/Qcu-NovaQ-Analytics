@@ -1,5 +1,37 @@
 # NovaQ Current Handoff
 
+## Shared upload committed; new local Docker activation BLOCKED (2026-10-30)
+
+- Owner requested "commit and rebuild to docker", then "resume". Shared-upload
+  feature commit `e17ec52548f7bd54f9d14424e4ff1699df40a81b` is on
+  `codex/shared-queue-workflow-20261029`; no push/production action. See the
+  [actual Docker record](docs/superpowers/reports/2026-10-30-shared-upload-docker-activation.md)
+  and [implementation verification](docs/superpowers/reports/2026-10-30-shared-queue-upload-simplification.md).
+- New API image built: `novaq-local-api:20261030-shared-upload-e17ec525`, ID
+  `sha256:db4437792d1c4002f847021c82cd4db3fd4bafd3ddfe5e09b2ebfede46871f63`.
+  New web type/lint/bundle checks passed, but final Alpine package-index
+  validation failed (invalid/incomplete index, exit 99). No checks were forced or
+  disabled; the new image pair was not activated. No passing mirror was found.
+- Existing API/web/db containers and their previous images/configuration/ports
+  are running again at `http://localhost/`; they do not contain this new feature.
+  Web health/API health/readiness returned 200, anonymous auth 401. All 10 full
+  table fingerprints and schema `0007` match the fresh backup/restored baseline.
+  Migration/bootstrap were not rerun. The optional stock nginx IPv6 metadata
+  query that stalled prior startup was cancelled; its custom configuration still
+  exactly matches the original image. No persistent startup change.
+- Encrypted backup, verified disposable restore, retained prior-image tags and
+  SHA256-checked archive are complete. Source gates: 3331 backend passes / 125
+  skips / 1 existing xfail / 9 subtests; 805 frontend passes. Fresh PostgreSQL API
+  regressions: 23 passed / 2 SQLite-only skips. PostgreSQL simultaneous-apply
+  races, new-image runtime/browser acceptance and operational rollback remain
+  NOT TESTED. Existing selected-load/Decision finding remains OPEN.
+- Resume from `output/shared-upload-simplification-20261030/docker/` and adjacent
+  `docker_activation.py`; inspect `blocked-final.json`, `build-result.json` and
+  current container/source identity first. Do not repeat completed backup/archive
+  or suites unnecessarily. Restore complete signed Alpine index downloads, then
+  retry the web build. Only after that gate passes may API/web be replaced with
+  `--no-deps --no-build --pull never`, followed by fresh runtime/browser checks.
+
 ## Shared tooltip frontend activated in local Docker (2026-10-28)
 
 - Owner requested the Docker rebuild and resumed after an account-review limit. [Actual local activation report](docs/superpowers/reports/2026-10-28-tooltip-docker-activation.md). Status: COMPLETE for this local frontend activation; source changes remain uncommitted and no production action occurred.

@@ -5,7 +5,9 @@ Status: APPROVED SPECIFICATION (owner, 2026-10-29), IMPLEMENTED LOCALLY
 (owner authorization to Chrome and Hayato, 2026-10-30). Application verification
 passed; repository-wide tooling limitations are recorded in the
 [implementation report](../reports/2026-10-30-shared-queue-upload-simplification.md).
-No commit, push or deployment. The owner reviewed
+No commit, push or deployment occurred during implementation verification.
+Follow-on commit and blocked local Docker activation are recorded in the
+[Docker report](../reports/2026-10-30-shared-upload-docker-activation.md). The owner reviewed
 the mockup and decided OD-1 to OD-8 in chat: "all recommendations" (§10). Drafted wording
 remains "Draft — awaiting owner approval" until the owner's wording review.
 
