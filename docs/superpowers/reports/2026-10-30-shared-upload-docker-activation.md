@@ -1,8 +1,72 @@
 # Shared upload: commit and local Docker activation
 
-Date: 2026-10-30 (Asia/Shanghai). Status: PARTIAL / BLOCKED at the new web-image
-build gate. Feature commit and API image are complete; the new API/web pair was
-not activated. No production release or push.
+Date: 2026-10-30 (Asia/Shanghai). Status: COMPLETE for the owner-authorized local
+Docker rebuild, activation and scoped runtime verification. The earlier download
+blocker is resolved. No production release or push.
+
+## Final resolution and active runtime
+
+A new bounded transfer check downloaded the complete 2,383,376-byte community
+index from the configured Alpine CDN. Gzip CRC/archive checks passed; Alpine
+accepted that file offline with the pinned image's existing trusted keys.
+An ordinary in-container `apk update --no-cache` then passed against both original
+CDN repositories, reporting 27,618 packages. Official alternate mirrors also
+completed host transfers, but no mirror override was needed or used.
+This follows Alpine's documented [repository/index update process](https://docs.alpinelinux.org/user-handbook/0.1a/Working/apk.html).
+The exact underlying reason for the earlier failed/truncated responses remains
+UNKNOWN; no permanent network-reliability guarantee is claimed.
+
+The unchanged original Dockerfile completed successfully on retry. No application
+source, Dockerfile, repository configuration, TLS/signature check or dependency
+pin was changed to obtain a passing build. The previously completed API image and
+valid frontend build cache were reused. New active images:
+
+| Service | Image | Image ID |
+| --- | --- | --- |
+| API | `novaq-local-api:20261030-shared-upload-e17ec525` | `sha256:db4437792d1c4002f847021c82cd4db3fd4bafd3ddfe5e09b2ebfede46871f63` |
+| Web | `novaq-local-web:20261030-shared-upload-e17ec525` | `sha256:4004f96d3677c6a16273193ff886da62cb38b94775b1c3cc98ac02b25cfc89f2` |
+
+Activated at `http://localhost/` by Compose `up --detach --no-deps --no-build
+--pull never api web`, using the inspected existing Compose configuration and a
+bounded image override. Only API/web were recreated:
+
+- API container `f31d12cfb9f986e7a430b7dd2defa4e068959ad6a15041f4656862ea6f6819a7`.
+- Web container `385ab92af8788245dec62802b93ecf4b3d1d27ff122fe03027ebf0e028331586`.
+- Same DB container/volume, unchanged schema `0007`, same loopback ports and all
+  10 complete table fingerprints. Environment, command/entrypoint, user, working
+  directory, exposed ports, mounts, network and security/restart settings matched
+  the recorded prior runtime. Migration/bootstrap were not rerun.
+
+There were zero pending/running jobs before API/web were stopped. The database
+still matched the completed backup/restore proof, so that proof/archive were
+reused rather than repeated. The initial metadata preflight stopped before any
+container mutation because Docker omitted an unset image Entrypoint key; the
+helper was corrected to compare missing and null as unset, then the real checks
+passed. No application API shape or validation expectation changed.
+
+Executed final checks:
+
+- Web health, API health/readiness and SPA deep routes returned 200; anonymous
+  auth returned 401. Both new shared-upload POST routes are registered in the
+  actual running API's OpenAPI document.
+- All **89** served static files matched their exact image SHA256 values. All
+  **96** backend files matched the sealed committed build context.
+- Actual API and browser guest-calculator reference: explicitly synthetic
+  lambda=2/hour, mu=3/hour, c=1; M/M/1 Wq=lambda/[mu*(mu-lambda)]=2/3 hour=40 minutes.
+  The real Docker UI displayed 40 min, 66.6667% utilization and 1.3333 waiting.
+  Captured browser error logs returned an empty array. This single analytical
+  reference is not a general mathematical-correctness claim.
+- All 10 database fingerprints remained unchanged after HTTP checks. The final
+  post-browser comparison is recorded in `activation-final.json`.
+
+New-image HTTP/static/backend verification is recorded in `http-verification.json`;
+runtime identities/preservation in `activation-result.json`; successful packaging
+in `build-web-retry-4.log`. Earlier failures below are historical, not the final
+status. Authenticated operational uploads, new-image full-day runs, PostgreSQL
+simultaneous-apply races and an operational rollback were NOT TESTED during this
+activation. Their source/regression evidence remains separately recorded; no
+company records were written for browser verification. Media playback, physical
+touch and other browsers were not exercised.
 
 ## Authorization and source
 
@@ -49,7 +113,7 @@ Images carry the feature commit in `org.opencontainers.image.revision`.
   PostgreSQL concurrency passes. The owned `_test` database was removed and the
   operational database still matched the baseline.
 
-## Build and activation
+## Historical blocked build attempts (superseded by final resolution)
 
 API image built successfully:
 `novaq-local-api:20261030-shared-upload-e17ec525`,
@@ -69,11 +133,11 @@ network inactivity; the next attempt reused the completed frontend build cache
 and produced the explicit failed gate above. The API image was reused rather
 than rebuilt. Logs retain each failed/cancelled attempt.
 
-The new Compose activation function was not called. Consequently new-image
+At that blocked checkpoint, the new Compose activation function was not called. Consequently new-image
 served-asset comparison, new-image browser acceptance and new-pair runtime
 verification remain NOT TESTED.
 
-## Verified final runtime state
+## Historical preservation of the previous runtime before successful activation
 
 The previous API/web containers were restarted without recreation, on their
 previous images. The new API image remains retained and inactive. Actual final
@@ -102,7 +166,7 @@ bypassed. The custom configuration SHA256 is
 identical in the running container and a network-disabled instance of its
 original image. No persistent startup-command or configuration change was made.
 
-Final machine-readable evidence: `blocked-final.json`; full private snapshots:
+Evidence at that earlier checkpoint: `blocked-final.json`; full private snapshots:
 `existing-runtime-final.private.json`. The failed initial startup attempts remain
 historical failures, superseded by these actually executed final health/data
 checks. This is preservation of the prior runtime, not a tested new-image release
@@ -133,12 +197,12 @@ Alpine's own `https://mirrors.alpinelinux.org/mirrors.json` was inspected before
 checking alternatives. The listed `ap.edge.kernel.org` hostname failed TLS
 hostname validation; it was rejected. The primary `mirrors.edge.kernel.org`
 probe reported an I/O error; the Singapore `mirror.freedif.org` probe remained
-incomplete and was stopped. No mirror passed the index gate, no mirror override
+incomplete and was stopped. During those earlier probes no mirror passed the index gate; no mirror override
 was used for the build, and TLS, signatures and repository-availability checks
 were not disabled. Only the owned probe containers, with no mounts and automatic
 removal enabled, were stopped.
 
-Resume boundary: first establish a successful complete signed-index download from
+The earlier blocked resume boundary, now completed: first establish a successful complete signed-index download from
 the configured Alpine repositories. Then rerun the saved `docker_activation.py
 build` phase; it checks and reuses the completed API image. Only after the new web
 image passes may `activate` replace API/web with `--no-deps --no-build --pull

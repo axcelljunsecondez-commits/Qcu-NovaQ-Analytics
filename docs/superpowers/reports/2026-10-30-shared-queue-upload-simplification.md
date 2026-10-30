@@ -5,7 +5,7 @@ repository scope because the required whole-folder Ruff/mypy commands fail on
 pre-existing output artifacts. The application suites, source checks, build and
 isolated browser acceptance passed. No commit, push or deployment was performed
 during this implementation verification. Follow-on owner-authorized commit and
-the blocked local Docker rebuild are recorded in the
+the completed local Docker rebuild/activation are recorded in the
 [Docker report](2026-10-30-shared-upload-docker-activation.md).
 
 ## Authorization and source identity
