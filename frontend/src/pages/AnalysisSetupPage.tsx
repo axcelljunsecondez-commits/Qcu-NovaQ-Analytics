@@ -2,10 +2,10 @@ import { headingText } from '../lib/headingText'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { applySharedAggregateDataset, downloadSetupWorkbook, getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, previewAnalysisDataset, previewSharedAggregateDataset, uploadAnalysisDataset } from '../api/analyses'
 import { getClosingPolicy, putClosingPolicy } from '../api/continuous'
-import type { DatasetPreviewOut, DatasetPurpose, EventPeriodBasis, QueueSetup, SharedAggregateChoices, SharedAggregatePreviewOut } from '../api/types'
+import type { DatasetPreviewOut, DatasetPurpose, EventPeriodBasis, QueueSetup, SharedAggregatePreviewOut } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { BreakEditor } from '../components/analysis/BreakEditor'
 import { CounterBreakEditor } from '../components/analysis/CounterBreakEditor'
@@ -20,7 +20,7 @@ import { ManualEntry } from '../components/setup/ManualEntry'
 import { HelpLink } from '../components/ui/HelpLink'
 import { FileReadSummary } from '../components/setup/FileReadSummary'
 import { MissingChoices, type ClosingChoice } from '../components/setup/MissingChoices'
-import { sharedChoicesComplete } from '../lib/sharedAggregateSetup'
+import { deferredSharedChoices, sharedChoicesComplete } from '../lib/sharedAggregateSetup'
 import '../styles/sharedFileSetup.css'
 
 const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null, segments: [], separate_queue_closure_policy: 'drain_existing',     queue_ids: [], breaks: [] }
@@ -73,6 +73,7 @@ export function AnalysisSetupPage() {
 
 function AnalysisSetupForId({ id }: { id: number }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const currentTranslation = useRef(t)
   currentTranslation.current = t
   const client = useQueryClient()
@@ -115,7 +116,6 @@ function AnalysisSetupForId({ id }: { id: number }) {
   const [sharedError, setSharedError] = useState<string | null>(null)
   const [readAgain, setReadAgain] = useState(0)
   const [recoveryError, setRecoveryError] = useState<{ file: File; message: string } | null>(null)
-  const [choices, setChoices] = useState<SharedAggregateChoices>({})
   const [closing, setClosing] = useState<ClosingChoice>(null)
   const [confirmShared, setConfirmShared] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -130,6 +130,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
   const savedShared = analysis.data?.analysis.queue_setup.queue_structure === 'shared_queue'
   const savedSetup = analysis.data?.analysis.queue_setup
   const aggregate = sharedRead?.file === file && purpose === 'planning' ? sharedRead.result : null
+  const choices = aggregate?.mode === 'shared_aggregate' ? deferredSharedChoices(aggregate) : {}
   const savedClosing = useQuery({ queryKey: ['closing-policy', id], queryFn: () => getClosingPolicy(id), enabled: aggregate?.mode === 'shared_aggregate' })
   const closingState = useRef({ ready: savedClosing.isSuccess, policy: savedClosing.data?.closing_policy })
   closingState.current = { ready: savedClosing.isSuccess, policy: savedClosing.data?.closing_policy }
@@ -140,7 +141,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
     if (file !== null && appliedFile.current === file && purpose === 'planning') { appliedFile.current = null; return }
     appliedFile.current = null
     setRecoveryError((previous) => previous?.file === file && purpose === 'planning' ? previous : null)
-    setSharedRead(null); setSharedError(null); setChoices({}); setClosing(null); setConfirmShared(false); setApplied(false); setClosingError(null)
+    setSharedRead(null); setSharedError(null); setClosing(null); setConfirmShared(false); setApplied(false); setClosingError(null)
     if (!savedShared || purpose !== 'planning' || !file) { setSharedChecking(false); return }
     setSharedChecking(true)
     void previewSharedAggregateDataset(id, file).then((result) => {
@@ -307,7 +308,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
           // Refresh read-only evidence once. Never retry the write or preserve old answers.
           const previousSetup = client.getQueryData<{ analysis: { queue_setup: QueueSetup } }>(['analysis', id])?.analysis.queue_setup
           setRecoveryError({ file: selected, message: t('errors.upload') })
-          setSharedRead(null); setChoices({}); setClosing(null); setConfirmShared(false); setSharedChecking(true)
+          setSharedRead(null); setClosing(null); setConfirmShared(false); setSharedChecking(true)
           readSequence.current += 1
           await Promise.all([
             client.refetchQueries({ queryKey: ['analysis', id], exact: true }),
@@ -343,6 +344,10 @@ function AnalysisSetupForId({ id }: { id: number }) {
     return String(value)
   }
   function openField(inputId: string) {
+    if (savedIsShared && ['capacity-mode', 'capacity-total', 'abandonment-mode', 'patience-rate'].includes(inputId)) {
+      navigate(`/simulation/results?analysis=${id}&plan=current&advanced=model`)
+      return
+    }
     setAdvancedOpen(true)
     window.setTimeout(() => document.getElementById(inputId)?.focus(), 0)
   }
@@ -451,8 +456,9 @@ function AnalysisSetupForId({ id }: { id: number }) {
         </li>}
         {aggregate?.mode === 'shared_aggregate' && aggregate.derived_setup && <li className="setup-step">
           <div className="card shared-file-apply">
-            <MissingChoices preview={aggregate} choices={choices} onChange={setChoices} closing={closing} onClosingChange={setClosing}
-              savedClosing={savedClosing.data?.closing_policy} closingReady={savedClosing.isSuccess} analysisId={id} disabled={applying || applied} onEdit={openField} />
+            <MissingChoices closing={closing} onClosingChange={setClosing}
+              savedClosing={savedClosing.data?.closing_policy} closingReady={savedClosing.isSuccess} analysisId={id} disabled={applying || applied} />
+            {!applied && !sharedChoicesComplete(aggregate, choices) && <Link to={`/simulation/results?analysis=${id}&plan=current&advanced=model`}>{t('setup.incomplete_open')}</Link>}
             {savedClosing.isPending && <p role="status">{t('continuous.closing_title')}: {t('common.loading')}</p>}
             {savedClosing.isError && <p role="alert">{t('continuous.closing_title')}: {messageOf(savedClosing.error, t('errors.server'))}{' '}<Link to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.change')}</Link></p>}
             {aggregate.conflicts.length > 0 && <div role="alert" className="alert alert-error"><ul>{aggregate.conflicts.map((conflict) => <li key={conflict.code}>{conflict.detail}{conflict.problems && <ul>{conflict.problems.filter((problem) => !conflict.detail.includes(problem)).map((problem) => <li key={problem}>{problem}</li>)}</ul>}</li>)}</ul></div>}
@@ -477,7 +483,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
         <li className={savedIsShared ? 'setup-optional' : 'setup-step'}>
           <details className="setup-advanced" open={setup.queue_structure === 'unknown' || advancedOpen || undefined} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
             <summary lang="en" className={savedIsShared ? 'setup-option-title' : 'setup-step-title'}>{headingText(t, 'setup.step_advanced')}</summary>
-            <p className="page-caption">{t('setup.step_advanced_help')}</p>
+            {!savedIsShared && <p className="page-caption">{t('setup.step_advanced_help')}</p>}
             <form className="card" onSubmit={submit}>
               <h3 lang="en" className="card-title">{headingText(t, 'analyses.queue_setup')}</h3>
               {setup.queue_structure === 'unknown' ? (
@@ -492,10 +498,12 @@ function AnalysisSetupForId({ id }: { id: number }) {
               <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
               <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>
               {periodLayout && <div className="card"><h4 lang="en" className="card-title">{headingText(t, 'analyses.segments')}</h4>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{separate && setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<MakePeriodsHelper hasSegments={setup.segments.length > 0} onMake={(periods) => set('segments', periods.map((period, index) => ({ id: `segment_${index + 1}`, start_time: period.start, end_time: period.end, active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null })))} /><button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
+              {!savedIsShared && setup.queue_structure !== 'shared_queue' && <>
               <div className="form-field"><label htmlFor="capacity-mode">{t('analyses.capacity')}</label><select id="capacity-mode" value={setup.capacity_mode} onChange={(e) => { const value = e.target.value as QueueSetup['capacity_mode']; setSetup((old) => ({ ...old, capacity_mode: value, ...(value !== 'finite' ? { total_system_capacity: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="unlimited">{t('analyses.unlimited')}</option><option value="finite">{t('analyses.finite')}</option></select></div>
               {setup.capacity_mode === 'finite' && <div className="form-field"><label htmlFor="capacity-total">{t('analyses.total_capacity')}</label><input id="capacity-total" type="number" min="1" value={setup.total_system_capacity ?? ''} onChange={(e) => set('total_system_capacity', e.target.value ? Number(e.target.value) : null)} /></div>}
               <div className="form-field"><label htmlFor="abandonment-mode">{t('analyses.abandonment')}</label><select id="abandonment-mode" value={setup.abandonment_mode} onChange={(e) => { const value = e.target.value as QueueSetup['abandonment_mode']; setSetup((old) => ({ ...old, abandonment_mode: value, ...(value !== 'modeled' ? { patience_rate_per_hour: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="not_modeled">{t('analyses.not_modeled')}</option><option value="modeled">{t('analyses.modeled')}</option></select></div>
               {setup.abandonment_mode === 'modeled' && <div className="form-field"><label htmlFor="patience-rate">{t('analyses.theta')}</label><input id="patience-rate" type="number" step="any" required aria-invalid={Boolean(formError)} aria-describedby="patience-rate-help" value={setup.patience_rate_per_hour ?? ''} onChange={(e) => { setFormError(null); set('patience_rate_per_hour', e.target.value ? Number(e.target.value) : null) }} /><span id="patience-rate-help" className="form-hint">{t('analyses.theta_required')}</span></div>}
+              </>}
               {formError && <div className="alert alert-error" role="alert">{formError}</div>}
               {save.isError && <div className="alert alert-error">{messageOf(save.error, t('errors.server'))}</div>}
               <button type="submit" disabled={save.isPending || applying}>{t('common.save')}</button>

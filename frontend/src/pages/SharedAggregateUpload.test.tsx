@@ -41,7 +41,7 @@ const preview: SharedAggregatePreviewOut = {
 const project = { id: 7, name: 'Test shared line', queue_setup: saved, setup_status: 'incomplete', archived_at: null }
 const dataset = { id: 19, analysis_id: 7, name: 'rates', source_filename: 'rates.csv', row_count: 2,
   validation: { ok: true, message: 'Input data is valid.', schema: 'aggregate' }, purpose: 'planning', is_current: true }
-const applyResult = { dataset, analysis: { ...project, queue_setup: { ...derived, capacity_mode: 'unlimited', abandonment_mode: 'not_modeled' }, setup_status: 'ready_for_aggregate' }, duplicate: false }
+const applyResult = { dataset, analysis: { ...project, queue_setup: derived, setup_status: 'ready_for_aggregate' }, duplicate: false }
 const file = (name = 'rates.csv') => new File(['time,lambda,mu,c\n08:00-09:00,4,6,1\n09:00-10:00,5,6,2'], name, { type: 'text/csv' })
 
 function deferred<T>() {
@@ -60,9 +60,8 @@ async function chooseFile() {
   await user.upload(screen.getByLabelText('Upload Data'), selected)
   return { user, selected }
 }
-async function answerSupported(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('radio', { name: 'No known limit' }))
-  await user.click(screen.getByRole('radio', { name: 'No, customers wait' }))
+async function waitForRead() {
+  await screen.findByRole('region', { name: "Here's what NovaQ read from your file" })
 }
 
 beforeEach(() => {
@@ -91,17 +90,19 @@ describe('shared planning file read and apply', () => {
     expect(screen.queryByTestId('setup-incomplete')).not.toBeInTheDocument()
   })
 
-  it('requires explicit missing answers, applies once, and saves an optional closing rule afterward', async () => {
+  it('defers missing model choices as unknown, applies once, and saves optional closing afterward', async () => {
     renderPage()
     const { user, selected } = await chooseFile()
-    await screen.findByRole('radio', { name: 'No known limit' })
-    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeDisabled()
-    await answerSupported(user)
+    await waitForRead()
+    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeEnabled()
+    expect(screen.queryByRole('radio', { name: 'No known limit' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Capacity mode')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Abandonment')).not.toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: 'Finish serving customers already waiting' }))
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith(7, selected, {
       file_digest: 'file-digest', setup_revision: 'setup-revision', confirm_replace: false,
-      choices: { capacity_mode: 'unlimited', total_system_capacity: null, abandonment_mode: 'not_modeled', patience_rate_per_hour: null },
+      choices: { capacity_mode: 'unknown', abandonment_mode: 'unknown' },
     }))
     await waitFor(() => expect(mocks.saveClosing).toHaveBeenCalledWith(7, 'DRAIN'))
     expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.saveClosing.mock.invocationCallOrder[0])
@@ -111,13 +112,11 @@ describe('shared planning file read and apply', () => {
     expect(mocks.apply).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps explicit unknown answers unknown and allows deciding closing later', async () => {
+  it('keeps unanswered model choices unknown and allows deciding closing later', async () => {
     renderPage()
     const { user } = await chooseFile()
-    await user.click(await screen.findByRole('radio', { name: "I'm not sure" }))
-    await user.click(screen.getByRole('radio', { name: "I don't know" }))
+    await waitForRead()
     await user.click(screen.getByRole('radio', { name: 'Decide later' }))
-    expect(screen.getByText('You can save now. The full-day run stays unavailable until you answer.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(mocks.apply).toHaveBeenCalled())
     expect(mocks.apply.mock.calls[0][2].choices).toMatchObject({ capacity_mode: 'unknown', abandonment_mode: 'unknown' })
@@ -128,7 +127,7 @@ describe('shared planning file read and apply', () => {
     mocks.preview.mockResolvedValue({ ...preview, needs_confirmation: true, diff: [{ field: 'fixed_server_count', saved: 5, derived: null }] })
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     expect(await screen.findByText('This file would change your saved Setup')).toBeInTheDocument()
     expect(mocks.apply).not.toHaveBeenCalled()
@@ -141,7 +140,7 @@ describe('shared planning file read and apply', () => {
     mocks.preview.mockResolvedValue({ ...preview, needs_confirmation: true, diff: [] })
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     const cancel = await screen.findByRole('button', { name: 'Cancel' })
     const confirmation = cancel.closest('[role="status"]') as HTMLElement
@@ -178,23 +177,20 @@ describe('shared planning file read and apply', () => {
     expect(mocks.apply).not.toHaveBeenCalled()
   })
 
-  it('requires the real finite capacity and positive patience rate, without enabling full-day support', async () => {
+  it('preserves known numeric settings without showing model controls during upload', async () => {
+    const known = { ...saved, capacity_mode: 'finite', total_system_capacity: 15, abandonment_mode: 'modeled', patience_rate_per_hour: 0.5 } as QueueSetup
+    mocks.preview.mockResolvedValue({ ...preview, saved_setup: known, derived_setup: { ...derived, ...known, segments: derived.segments }, unresolved: [] })
+    mocks.apply.mockResolvedValue({ ...applyResult, analysis: { ...project, queue_setup: known } })
     renderPage()
     const { user } = await chooseFile()
-    await user.click(await screen.findByRole('radio', { name: 'Yes, there is a limit' }))
-    await user.click(screen.getByRole('radio', { name: 'Yes, customers leave' }))
+    await waitForRead()
     const apply = screen.getByRole('button', { name: 'Upload and process' })
-    expect(apply).toBeDisabled()
-    await user.type(screen.getByLabelText('Total customers in system (including service)'), '15')
-    await user.type(screen.getByLabelText('Patience rate per hour (theta)'), '0')
-    expect(apply).toBeDisabled()
-    await user.clear(screen.getByLabelText('Patience rate per hour (theta)'))
-    await user.type(screen.getByLabelText('Patience rate per hour (theta)'), '0.5')
     expect(apply).toBeEnabled()
-    expect(screen.getByText('Waiting-room limits and customers leaving are not in the full-day run yet.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Total customers in system (including service)')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Patience rate per hour (theta)')).not.toBeInTheDocument()
     await user.click(apply)
     await waitFor(() => expect(mocks.apply).toHaveBeenCalled())
-    expect(mocks.apply.mock.calls[0][2].choices).toMatchObject({ capacity_mode: 'finite', total_system_capacity: 15, abandonment_mode: 'modeled', patience_rate_per_hour: 0.5 })
+    expect(mocks.apply.mock.calls[0][2].choices).toEqual({})
   })
 
   it('preserves known saved choices and asks for none of them again', async () => {
@@ -218,7 +214,7 @@ describe('shared planning file read and apply', () => {
     renderPage()
     const { user } = await chooseFile()
     await user.upload(screen.getByLabelText('Upload Data'), file('new.csv'))
-    await answerSupported(user)
+    await waitForRead()
     await act(async () => { old.resolve(preview); await old.promise })
     expect(screen.getByRole('region', { name: "Here's what NovaQ read from your file" })).toHaveTextContent('new.csv')
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
@@ -255,14 +251,15 @@ describe('shared planning file read and apply', () => {
   it('reads the same file again after applying and switching purpose away and back', async () => {
     renderPage()
     const { user, selected } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await screen.findByRole('link', { name: 'Full-day run' })
     await user.click(screen.getByRole('radio', { name: /Review only/ }))
     await user.click(screen.getByRole('radio', { name: /Use for planning/ }))
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2))
     expect(mocks.preview).toHaveBeenLastCalledWith(7, selected)
-    expect(await screen.findByRole('button', { name: 'Upload and process' })).toBeDisabled()
+    await waitForRead()
+    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeEnabled()
   })
 
   it('suppresses double apply clicks while the same request is pending', async () => {
@@ -270,7 +267,7 @@ describe('shared planning file read and apply', () => {
     mocks.apply.mockReturnValue(pending.promise)
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.dblClick(screen.getByRole('button', { name: 'Upload and process' }))
     expect(mocks.apply).toHaveBeenCalledTimes(1)
     await act(async () => { pending.resolve(applyResult); await pending.promise })
@@ -282,7 +279,7 @@ describe('shared planning file read and apply', () => {
     mocks.closing.mockReturnValue(pending.promise)
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     expect(screen.queryByRole('radio', { name: 'Finish serving customers already waiting' })).not.toBeInTheDocument()
     await act(async () => { pending.resolve({ closing_policy: 'HARD_CUTOFF' }); await pending.promise })
     expect(screen.queryByRole('radio', { name: 'Finish serving customers already waiting' })).not.toBeInTheDocument()
@@ -295,7 +292,7 @@ describe('shared planning file read and apply', () => {
     mocks.closing.mockRejectedValue({ response: { data: { detail: 'Closing policy could not be loaded.' } } })
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     expect(await screen.findByRole('alert')).toHaveTextContent('Closing policy could not be loaded.')
     expect(screen.queryByRole('radio', { name: 'Finish serving customers already waiting' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
@@ -307,7 +304,7 @@ describe('shared planning file read and apply', () => {
     mocks.saveClosing.mockRejectedValueOnce({ response: { data: { detail: 'Closing save refused.' } } }).mockResolvedValueOnce({ closing_policy: 'DRAIN' })
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.click(await screen.findByRole('radio', { name: 'Finish serving customers already waiting' }))
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await screen.findByRole('link', { name: 'Full-day run' })
@@ -319,27 +316,27 @@ describe('shared planning file read and apply', () => {
     await waitFor(() => expect(screen.queryByText('Closing save refused.')).not.toBeInTheDocument())
   })
 
-  it('clears answers and reads fresh evidence when the saved Setup changes externally', async () => {
+  it('reads fresh evidence when the saved Setup changes externally', async () => {
     const queryClient = makeQueryClient()
     renderWithProviders(<Routes><Route path="/analyses/:analysisId/data" element={<AnalysisSetupPage />} /></Routes>, { route: '/analyses/7/data', queryClient })
-    const { user } = await chooseFile()
-    await answerSupported(user)
+    await chooseFile()
+    await waitForRead()
     act(() => queryClient.setQueryData(['analysis', 7], { analysis: { ...project, queue_setup: { ...saved, fixed_server_count: 6 } } }))
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2))
-    expect(await screen.findByRole('radio', { name: 'No known limit' })).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeDisabled()
+    await waitForRead()
+    expect(screen.queryByRole('radio', { name: 'No known limit' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeEnabled()
   })
 
-  it('blocks a known finite or modeled Setup missing its required number and opens Advanced for repair', async () => {
+  it('blocks incomplete known numbers and links to Simulation Advanced for repair', async () => {
     const incomplete = { ...saved, capacity_mode: 'finite', abandonment_mode: 'modeled' } as QueueSetup
     mocks.preview.mockResolvedValue({ ...preview, saved_setup: incomplete, derived_setup: { ...derived, ...incomplete, segments: derived.segments }, unresolved: [] })
     renderPage()
-    const { user } = await chooseFile()
+    await chooseFile()
+    await waitForRead()
     expect(await screen.findByRole('button', { name: 'Upload and process' })).toBeDisabled()
-    const capacity = screen.getByText('Finite total system capacity', { selector: 'strong' }).closest('p')!
-    expect(capacity).toHaveTextContent('Unavailable')
-    await user.click(within(capacity).getByRole('button', { name: 'Change' }))
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Capacity mode')))
+    expect(screen.getByRole('link', { name: 'Open Advanced settings' })).toHaveAttribute('href', '/simulation/results?analysis=7&plan=current&advanced=model')
+    expect(screen.queryByLabelText('Capacity mode')).not.toBeInTheDocument()
     expect(mocks.apply).not.toHaveBeenCalled()
   })
 
@@ -347,11 +344,12 @@ describe('shared planning file read and apply', () => {
     mocks.apply.mockRejectedValueOnce({ response: { data: { detail: { code } } } })
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2))
-    expect(await screen.findByRole('radio', { name: 'No known limit' })).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeDisabled()
+    await waitForRead()
+    expect(screen.queryByRole('radio', { name: 'No known limit' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeEnabled()
     expect(screen.getByRole('alert')).toHaveTextContent('Upload failed. Please check the file and try again.')
     expect(mocks.apply).toHaveBeenCalledTimes(1)
     expect(mocks.upload).not.toHaveBeenCalled()
@@ -364,18 +362,19 @@ describe('shared planning file read and apply', () => {
     mocks.apply.mockRejectedValueOnce({ response: { data: { detail: { code: 'setup_changed' } } } })
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2))
-    expect(await screen.findByRole('radio', { name: 'No known limit' })).not.toBeChecked()
+    await waitForRead()
+    expect(screen.queryByRole('radio', { name: 'No known limit' })).not.toBeInTheDocument()
     expect(mocks.apply).toHaveBeenCalledTimes(1)
   })
 
   it('keeps server conflict details visible and does not apply', async () => {
     mocks.preview.mockResolvedValue({ ...preview, conflicts: [{ code: 'counter_breaks', detail: 'A saved break is outside these hours.', problems: ['17:00: no counters on duty.'] }] })
     renderPage()
-    const { user } = await chooseFile()
-    await answerSupported(user)
+    await chooseFile()
+    await waitForRead()
     expect(screen.getByRole('alert')).toHaveTextContent('A saved break is outside these hours.')
     expect(screen.getByRole('button', { name: 'Upload and process' })).toBeDisabled()
     expect(mocks.apply).not.toHaveBeenCalled()
@@ -385,8 +384,8 @@ describe('shared planning file read and apply', () => {
     const detail = 'Break at 04:15 is outside the operating hours 05:00-18:00.'
     mocks.preview.mockResolvedValue({ ...preview, conflicts: [{ code: 'breaks_outside_hours', detail, problems: [detail] }] })
     renderPage()
-    const { user } = await chooseFile()
-    await answerSupported(user)
+    await chooseFile()
+    await waitForRead()
     expect(screen.getAllByText(detail)).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Upload and process' })).toBeDisabled()
     expect(mocks.apply).not.toHaveBeenCalled()
@@ -400,7 +399,7 @@ describe('shared planning file read and apply', () => {
     ] })
     renderPage()
     const { user } = await chooseFile()
-    await answerSupported(user)
+    await waitForRead()
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     const confirmation = screen.getByText('This file would change your saved Setup').closest('div')!
     expect(confirmation).toHaveTextContent('08:00–09:00, 09:00–10:00')
@@ -436,13 +435,12 @@ describe('shared planning file read and apply', () => {
     expect(screen.queryByLabelText('Customer data periods')).not.toBeInTheDocument()
   })
 
-  it('uses the three approved Filipino messages and keeps unknown answers explicit', async () => {
+  it('retains the approved Filipino closing choice without model questions', async () => {
     renderPage('tl')
     const user = userEvent.setup()
     await user.click(await screen.findByRole('radio', { name: /Gamitin sa pagpaplano/ }))
     await user.upload(screen.getByLabelText('Mag-upload ng Data'), file())
-    await user.click(await screen.findByRole('radio', { name: 'Hindi ako sigurado' }))
-    expect(screen.getByText("Puwede kang mag-save ngayon. Hindi magagamit ang takbo ng buong araw hangga't hindi ka sumasagot.")).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: 'Pagpasyahan mamaya' })).not.toBeChecked()
+    expect(await screen.findByRole('radio', { name: 'Pagpasyahan mamaya' })).not.toBeChecked()
+    expect(screen.queryByRole('radio', { name: 'Hindi ako sigurado' })).not.toBeInTheDocument()
   })
 })

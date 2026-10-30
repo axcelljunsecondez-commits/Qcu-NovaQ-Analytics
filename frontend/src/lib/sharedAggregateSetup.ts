@@ -1,5 +1,10 @@
 import type { SharedAggregateChoices, SharedAggregatePreviewOut } from '../api/types'
 
+/** Upload defers missing operational answers; it never substitutes supported assumptions. */
+export function deferredSharedChoices(preview: SharedAggregatePreviewOut): SharedAggregateChoices {
+  return Object.fromEntries(preview.unresolved.map((field) => [field, 'unknown']))
+}
+
 /** Only explicit missing answers and valid required numbers enable the shared-file apply action. */
 export function sharedChoicesComplete(preview: SharedAggregatePreviewOut, choices: SharedAggregateChoices): boolean {
   if (preview.unresolved.some((field) => choices[field] === undefined)) return false

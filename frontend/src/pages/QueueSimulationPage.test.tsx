@@ -29,6 +29,7 @@ const runSelectedValidationMock = vi.fn()
 const runSelectedDecisionMock = vi.fn()
 const optimizeSpy = vi.fn()
 const getAnalysisMock = vi.fn()
+const patchAnalysisMock = vi.fn()
 const getAnalysisCurrentMock = vi.fn()
 const getClosingPolicyMock = vi.fn()
 const putClosingPolicyMock = vi.fn()
@@ -68,6 +69,7 @@ vi.mock('../api/optimization', () => ({
 }))
 vi.mock('../api/analyses', () => ({
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
+  patchAnalysis: (...args: unknown[]) => patchAnalysisMock(...args),
   getAnalysisCurrent: (...args: unknown[]) => getAnalysisCurrentMock(...args),
   listAnalyses: vi.fn(async () => ({ analyses: [{ id: 7, name: 'Checkout', archived_at: null }] })),
 }))
@@ -246,6 +248,7 @@ function currentDatasetResponse(datasetId: number) {
 beforeEach(() => {
   getWorkflowMock.mockReset().mockResolvedValue(workflow())
   getAnalysisMock.mockReset().mockResolvedValue(setupOf('shared_queue'))
+  patchAnalysisMock.mockReset()
   getAnalysisCurrentMock.mockReset().mockResolvedValue(currentDatasetResponse(9))
   runDesMock.mockReset().mockResolvedValue({ evidence: job('workflow_des', trace) })
   runMcMock.mockReset().mockResolvedValue({ evidence: job('workflow_mc', { results: [mcRow] }) })
@@ -906,19 +909,23 @@ describe('the continuous full-day run (B4a preview)', () => {
     }))
     renderPage()
     const refusal = await screen.findByTestId('continuous-refusal')
-    expect(refusal).toHaveTextContent('set Capacity mode to Unlimited and Abandonment to Not modeled')
+    expect(refusal).toHaveTextContent('You can save now. The full-day run stays unavailable until you answer.')
     expect(refusal).not.toHaveTextContent('capacity_or_abandonment_unknown')
   })
 
   it.each(['capacity_or_abandonment', 'capacity_or_abandonment_unknown'])(
-    'links a %s refusal back to the same analysis setup without enabling the run', async (code) => {
+    'opens local Advanced settings for %s without enabling the run', async (code) => {
+      getAnalysisMock.mockResolvedValue(setupOf('shared_queue', { capacity_mode: 'unknown', abandonment_mode: 'unknown' }))
       getCompatibilityMock.mockResolvedValue(compatibility({
         plans: { current: { ...compatiblePlan, horizon: null, compatible: false, reasons: [{ code }] },
           suggested: { ...compatiblePlan, horizon: null, compatible: false, reasons: [{ code }] } },
       }))
       renderPage('/simulation/replay?analysis=7')
       const refusal = await screen.findByTestId('continuous-refusal')
-      expect(within(refusal).getByRole('link', { name: 'Data and Setup' })).toHaveAttribute('href', '/analyses/7/data')
+      await userEvent.setup().click(within(refusal).getByRole('button', { name: 'Open Advanced settings' }))
+      const capacity = screen.getByRole('radio', { name: 'No known limit' })
+      expect(capacity.closest('details')).toHaveAttribute('open')
+      expect(document.activeElement).toBe(capacity)
       const bar = screen.getByRole('region', { name: 'Full-day run' })
       expect(bar).toHaveTextContent('Operating hours: Unavailable')
       expect(bar).not.toHaveTextContent('Operating hours: not set')
@@ -927,6 +934,43 @@ describe('the continuous full-day run (B4a preview)', () => {
       expect(getContinuousPlaybackMock).not.toHaveBeenCalled()
     },
   )
+
+  it('opens model choices directly from the repair link', async () => {
+    getAnalysisMock.mockResolvedValue(setupOf('shared_queue', { capacity_mode: 'unknown', abandonment_mode: 'unknown' }))
+    renderPage('/simulation/results?analysis=7&plan=current&advanced=model')
+    const capacity = await screen.findByRole('radio', { name: 'No known limit' })
+    await waitFor(() => expect(capacity.closest('details')).toHaveAttribute('open'))
+    expect(document.activeElement).toBe(capacity)
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+  })
+
+  it('blocks Run throughout a settings save and waits for refreshed compatibility', async () => {
+    const initial = setupOf('shared_queue', { capacity_mode: 'unlimited', abandonment_mode: 'not_modeled' })
+    getAnalysisMock.mockResolvedValue(initial)
+    let finish!: (result: unknown) => void
+    const pending = new Promise((resolve) => { finish = resolve })
+    patchAnalysisMock.mockReturnValue(pending)
+    renderPage('/simulation/results?analysis=7&plan=current&advanced=model')
+    const user = userEvent.setup()
+    const run = await screen.findByRole('button', { name: 'Run full operation' })
+    await user.click(await screen.findByRole('radio', { name: "I'm not sure" }))
+    expect(run).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(patchAnalysisMock).toHaveBeenCalledTimes(1))
+    expect(run).toBeDisabled()
+    await user.click(run)
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+    const unknown = setupOf('shared_queue', { capacity_mode: 'unknown', abandonment_mode: 'not_modeled' })
+    getAnalysisMock.mockResolvedValue(unknown)
+    getCompatibilityMock.mockResolvedValue(compatibility({ plans: {
+      current: { ...compatiblePlan, compatible: false, reasons: [{ code: 'capacity_or_abandonment_unknown' }] },
+      suggested: compatiblePlan,
+    } }))
+    await act(async () => { finish(unknown); await pending })
+    await screen.findByTestId('continuous-refusal')
+    expect(screen.getByRole('button', { name: 'Run full operation' })).toBeDisabled()
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+  })
 
   it('names why a shared line cannot run the full day without substituting the older replay', async () => {
     getCompatibilityMock.mockResolvedValue(compatibility({

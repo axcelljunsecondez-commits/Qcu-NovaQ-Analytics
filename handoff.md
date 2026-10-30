@@ -1,5 +1,27 @@
 # NovaQ Current Handoff
 
+## Shared model choices relocated (2026-10-30; source complete, Docker pending)
+
+- Owner chose to skip capacity/abandonment upload questions and answer them in
+  Simulation Advanced; remove those controls from shared Data and Setup. Both
+  controls now live on Simulation, with existing approved EN/TL wording. Unknown
+  stays unknown; finite/modeled support boundaries and automatic replications
+  are unchanged. Other queue structures retain their Setup fields.
+- Source gate: 817 frontend tests / 93 files, typecheck/lint/build, 73 scoped
+  backend regressions passed. All 96 backend files, 45 protected paths, locales
+  and CSV are unchanged. Root Ruff/mypy still fail on output artifacts; source
+  mypy additionally reports an error in unchanged shared_continuous.py:447.
+  This conflicts with the earlier source-mypy PASS record; no protected fix made.
+- Owner CSV passed isolated upload → local Simulation choices → full-day run
+  with key metrics. API probe preserved staffing and verified stale-run flags;
+  numerical outputs exactly matched the earlier identical diagnostic settings.
+- [Current report](docs/superpowers/reports/2026-10-30-shared-simulation-model-choices.md)
+  contains scope, files, actual gates, failed attempts and verification limits.
+  Evidence: output/simulation-model-choices-20261030/. Frontend-only Docker update
+  is pending at this checkpoint. Initial preflight found rows drifted since the
+  prior backup; refresh/restore preservation proof before activation. Do not
+  recreate API/db, run migrations/seeding, push or touch production.
+
 ## Shared upload committed and activated in local Docker (2026-10-30)
 
 - Owner requested "commit and rebuild to docker", then "resume". Shared-upload

@@ -2,7 +2,7 @@ import { headingText } from '../../lib/headingText'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   createContinuousRun,
   getClosingPolicy,
@@ -25,6 +25,7 @@ import { advancePlaybackTime } from '../../lib/simulationPlayback'
 import type { SimulationPageName } from './simulationContext'
 import { HelpLink } from '../ui/HelpLink'
 import { ContinuousQueueFloor } from './ContinuousQueueFloor'
+import { SimulationModelChoices } from './SimulationModelChoices'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10]
 const TICK_MILLISECONDS = 100
@@ -51,7 +52,9 @@ function ReasonList({ reasons }: { reasons: ContinuousReason[] }) {
     <ul className="reason-list">
       {reasons.map((reason) => (
         <li key={reason.code}>
-          {t(`continuous.reason.${reason.code}`, { defaultValue: reason.code })}
+          {reason.code === 'capacity_or_abandonment_unknown'
+            ? t('setup.read_not_sure_note')
+            : t(`continuous.reason.${reason.code}`, { defaultValue: reason.code })}
           {reason.problems && <ul>{reason.problems.map((problem) => <li key={problem}>{problem}</li>)}</ul>}
           {reason.periods && <span> {reason.periods.join(', ')}</span>}
           {reason.detail && <span className="form-hint"> {reason.detail}</span>}
@@ -122,6 +125,15 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
   const view = compatibility.plans[plan]
   const [seed, setSeed] = useState(String(compatibility.default_seed))
   const [error, setError] = useState<string | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [focusModelOptions, setFocusModelOptions] = useState(0)
+  const [settingsPending, setSettingsPending] = useState(false)
+  const modelRequested = new URLSearchParams(useLocation().search).get('advanced') === 'model'
+  useEffect(() => {
+    if (modelRequested) {
+      setAdvancedOpen(true); setFocusModelOptions((value) => value + 1)
+    }
+  }, [modelRequested])
   const run = useMutation({
     mutationFn: (replications: number) => createContinuousRun(analysisId, { plan, replications, seed: Number(seed) }),
     onSuccess: () => {
@@ -133,6 +145,7 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
     onError: (failure) => setError(requestError(failure, t('errors.server'))),
   })
   const start = () => {
+    if (settingsPending || run.isPending) return
     const count = automaticReplications(view.expected_customers_per_day, compatibility.default_replications, compatibility.limits)
     if (count === null) return setError(t('errors.server'))
     if (count === 0) return setError(t('simulation.named_customer_bound_exceeded', {
@@ -158,7 +171,7 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
         <span className={`badge ${run.isPending ? 'badge-warn' : stored ? 'badge-ok' : 'badge-neutral'}`} role="status" data-testid="continuous-status">
           {t(run.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
         </span>
-        <button type="button" className="btn-primary" onClick={start} disabled={!view.compatible || run.isPending}>
+        <button type="button" className="btn-primary" onClick={start} disabled={!view.compatible || run.isPending || settingsPending}>
           {run.isPending ? t('common.loading') : t('continuous.run')}
         </button>
         {view.expected_customers_per_day !== null && <span className="form-hint">{t('continuous.expected', { customers: Math.round(view.expected_customers_per_day) })}</span>}
@@ -188,12 +201,15 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
           <ReasonList reasons={blocking} />
           {blocking.some((reason) => reason.code === 'no_selected_plan') && <Link to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>}
           {blocking.some((reason) => reason.code === 'capacity_or_abandonment' || reason.code === 'capacity_or_abandonment_unknown') && (
-            <Link to={`/analyses/${analysisId}/data`}>{t('nav.data_setup')}</Link>
+            <button type="button" className="btn-ghost" onClick={() => {
+              setAdvancedOpen(true); setFocusModelOptions((value) => value + 1)
+            }}>{t('setup.incomplete_open')}</button>
           )}
         </div>
       )}
-      <details className="run-advanced">
+      <details className="run-advanced" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
         <summary>{t('simulation.advanced')}</summary>
+        <SimulationModelChoices analysisId={analysisId} disabled={run.isPending} focusRequest={focusModelOptions} onPendingChange={setSettingsPending} />
         <div className="form-row">
           <div className="form-field">
             <label htmlFor="continuous-seed">{t('continuous.seed')}</label>
