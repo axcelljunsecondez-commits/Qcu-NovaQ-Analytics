@@ -3,8 +3,8 @@
 Date: 2026-10-30, Asia/Shanghai. Application implementation: COMPLETE LOCALLY.
 Repository-wide validation: PARTIAL because the root tools fail on output
 artifacts and the installed mypy reports an error in unchanged backend source.
-Docker update: pending at this source checkpoint; see the activation addendum
-below when completed. No production release or push.
+Docker update: COMPLETE LOCALLY; actual identities and verification are in the
+activation addendum below. No production release or push.
 
 ## Approved scope and identity
 
@@ -120,16 +120,53 @@ an explicit closing policy could be saved on the same page. Run completed and
 displayed all four key metrics and charts. A reload retained the saved choices.
 Screenshots were inspected inline; no local screenshot artifact is claimed.
 
-The final unsaved-draft guard is covered by the final full frontend suite; a new
-browser execution of that last guard was not completed after resume because the
-browser wrapper became unavailable. Responsive/TL visual review, authenticated
-operational uploads, multi-user simultaneous PATCH and production behavior are
-NOT TESTED in this follow-up. Existing bilingual labels have unit coverage.
+After resume, resetting the browser tool restored its connection. The final built
+interface was then exercised for unsaved changes blocking Run, zero patience
+blocking Save, valid capacity 15/patience 0.5 enabling Save, and a saved finite/
+modeled choice retaining the full-day refusal and the stale-Setup note. Restoring
+the explicit supported choices enabled Run; cancelling an unknown draft restored
+the saved choices and enabled Run again. Captured warning/error logs were empty.
+Only the disposable diagnostic database was changed. Responsive/TL visual review,
+authenticated operational uploads, multi-user simultaneous PATCH and production
+behavior remain NOT TESTED in this follow-up. Existing bilingual labels have unit
+coverage. Browser observations are recorded in browser-verification.json.
 
 ## Local Docker activation addendum
 
-Pending at source commit. Initial read-only preflight detected operational rows
-changed since the prior verified backup. No container mutation occurred at that
-failed preflight. A fresh encrypted backup and disposable restore are being
-verified before the frontend-only update. API/db recreation, migrations, seeding,
-production changes and pushes are outside this update.
+VERIFIED: source commit 39d2378ad852164e45f5d690929d430a2d2f326c was packaged from
+314 sealed committed files using the unchanged pinned Dockerfile. Docker's own
+typecheck, lint and production build passed, followed by the original signed
+Alpine package upgrade. No dependency, mirror, Dockerfile or configuration change
+was needed. Active web image:
+
+- Tag: novaq-local-web:20261030-model-choices-39d2378a
+- Image ID: sha256:0daee4c6e61396c8fb2ef6c800f0140a178def416aa087dd7336c31360e9d0c0
+- New web container: 60baf658cd26e8ea2c2d50b9834f0bad7cc042c6498c33261fd8b3d3c23f0048
+- Same API container: f31d12cfb9f986e7a430b7dd2defa4e068959ad6a15041f4656862ea6f6819a7
+- Same DB container: e7830fab049112dae8382aa27fc58ce87fc9ddfa587d82d982bf842c9f073b2a
+
+Only web was recreated using the inspected existing Compose files and a bounded
+web-image override: up --detach --no-deps --no-build --pull never web. Port,
+environment, mount, network and security/restart settings matched. API/db and
+migration/bootstrap identities/configuration/restart counts were preserved.
+There were no pending/running jobs. No migrations, seeding or operational record
+writes were performed by this activation.
+
+The initial read-only preflight detected changed rows in six tables since the
+prior backup; the cause is UNKNOWN. It stopped before any container mutation.
+A fresh binary-safe 531871-byte custom-format dump was encrypted using Windows
+DPAPI CurrentUser. Decryption matched SHA256
+0cd0a20ca8f84d2deeb86e2d267bdf1611b8744dd2459f1cdc8cb3f687d70dfb.
+Restoring into an explicitly owned disposable database matched all 10 complete
+table fingerprints and schema 0007; that disposable database was removed. The
+operational database still matched before/after packaging and activation.
+
+The previous web image is retained under
+novaq-local-web:20261030-before-model-choices-4004f96d3677. Operational rollback
+execution was NOT TESTED. Local web health, API health/readiness and Simulation
+deep route returned 200; anonymous auth returned 401. All 89 served static files
+matched their image SHA256 values. All 10 operational table fingerprints and
+schema 0007 matched the refreshed backup after HTTP checks. See docker/result.json,
+docker/backup-restore.json, docker/build.log and docker/activate.log. The new
+authenticated operational upload/run was not exercised; the actual full-day UI
+test used the isolated database described above. Production was not touched.

@@ -1,6 +1,6 @@
 # NovaQ Current Handoff
 
-## Shared model choices relocated (2026-10-30; source complete, Docker pending)
+## Shared model choices relocated and activated locally (2026-10-30)
 
 - Owner chose to skip capacity/abandonment upload questions and answer them in
   Simulation Advanced; remove those controls from shared Data and Setup. Both
@@ -17,10 +17,20 @@
   numerical outputs exactly matched the earlier identical diagnostic settings.
 - [Current report](docs/superpowers/reports/2026-10-30-shared-simulation-model-choices.md)
   contains scope, files, actual gates, failed attempts and verification limits.
-  Evidence: output/simulation-model-choices-20261030/. Frontend-only Docker update
-  is pending at this checkpoint. Initial preflight found rows drifted since the
-  prior backup; refresh/restore preservation proof before activation. Do not
-  recreate API/db, run migrations/seeding, push or touch production.
+  Evidence: output/simulation-model-choices-20261030/. Source commit 39d2378a.
+- CURRENT VERIFIED: frontend-only Docker update is complete at localhost. Image
+  novaq-local-web:20261030-model-choices-39d2378a, ID 0daee4c6e613...; web container
+  60baf658cd26...; same API f31d12cfb9f9... and DB e7830fab0491.... All 89 served
+  files matched; web/API health/readiness 200, anonymous auth 401. Ports/env/mounts/
+  runtime settings and all 10 table fingerprints/schema0007 preserved. No API/db
+  recreation, migrations, seeding, push or production action.
+- Initial row-drift preflight stopped safely; a fresh DPAPI-encrypted backup and
+  disposable restore matched all 10 tables before activation. The prior web image
+  remains tagged. docker/result.json is the successful final state, superseding
+  the source checkpoint's pending status. Do not repeat the completed update.
+  Authenticated operational upload/run and operational rollback remain NOT TESTED.
+- Browser connection recovered after tool reset; final numeric/unsupported/draft/
+  Cancel checks passed in the isolated database; captured warnings/errors empty.
 
 ## Shared upload committed and activated in local Docker (2026-10-30)
 
