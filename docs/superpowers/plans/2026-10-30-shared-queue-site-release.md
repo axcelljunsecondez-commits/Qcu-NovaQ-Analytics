@@ -68,3 +68,23 @@ dep-dbgok78n74is73d1jaag. Pages production auto-deploy false / preview none; Ren
 Auto-Deploy Off / PR Previews Off. Build/start commands remain migration-free.
 The production signing binding remains secret_text; Preview has no signing secret.
 These observations do not establish candidate CI, production backup or release GO.
+
+## Exact secret-scan metadata findings
+
+The first PR CI run passed lint/types/dependency audit but Gitleaks reported four
+generic-api-key findings. Two are the test-file SHA-256 values in the reviewed
+source JSON; both reproduce from the named current file and Git blob. Two are
+Docker container identities in activation reports; they match retained runtime
+records. No credential was found or rotated.
+
+Use the repository's existing exact-fingerprint mechanism for only these four
+immutable findings, following the upstream Gitleaks documentation. Do not exclude
+paths, rules, commits as a whole, or future findings. Preserve the existing entry.
+Run the pinned scanner against the release range and verify that a new synthetic
+credential-shaped probe is still detected. Require renewed exact-head CI before
+any merge or publication. No application, tests, algorithms or history rewrite.
+
+Owner explicitly approved these four metadata exceptions. Executed with the same
+Gitleaks 8.24.3 as CI, verified against its official archive checksum: release-range
+scan passed (exit0); a new synthetic credential was detected (exit1, one finding).
+No files/rules were excluded. Renew CI on the metadata-only corrective commit.
