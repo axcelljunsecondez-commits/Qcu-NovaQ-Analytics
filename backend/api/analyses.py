@@ -20,6 +20,7 @@ from backend.api.datasets import current_dataset_ids
 from backend.api.deps import get_current_user, get_settings, user_rate_limit
 from backend.api.scenarios import scenario_out
 from backend.api.settings import Settings
+from backend.api.shared_aggregate_upload import router as shared_aggregate_upload_router
 from backend.data import uploads
 from backend.data.analysis_ingestion import AnalysisIngestionError, normalize_analysis_input
 from backend.data.setup_derivation import SetupExportError, derive_setup, setup_diff, setup_workbook
@@ -29,6 +30,7 @@ from backend.queueing_engine.services.data_processing import compute_kpis
 from backend.queueing_engine.services.model_explanations import analyze_segments
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])
+router.include_router(shared_aggregate_upload_router)
 
 
 class AnalysisCreate(BaseModel):

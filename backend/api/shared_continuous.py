@@ -442,9 +442,10 @@ def continuous_compatibility(
 ) -> dict[str, Any]:
     """Whether each staffing source can run, and why not, before anything runs (D24)."""
     analysis = own_analysis(db, user, analysis_id)
+    plan_choices: tuple[Plan, Plan] = ("current", "suggested")
     return {
         "closing_policy": analysis.shared_closing_policy,
-        "plans": {plan: _plan_view(_assess(db, user, analysis, plan)) for plan in ("current", "suggested")},
+        "plans": {plan: _plan_view(_assess(db, user, analysis, plan)) for plan in plan_choices},
         "default_replications": DEFAULT_REPLICATIONS,
         "default_seed": RANDOM_SEED,
         "limits": _limits(settings),

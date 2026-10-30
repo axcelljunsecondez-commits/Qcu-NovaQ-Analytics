@@ -370,10 +370,13 @@ SHARED_QUEUE_ENHANCEMENT_MODULES = {
 # spec, A6) and the continuous shared-line preview (B4a spec section 5, owner-approved 2026-10-09).
 NAMED_API_ADAPTER = "backend/api/shared_named.py"
 CONTINUOUS_API_ADAPTER = "backend/api/shared_continuous.py"
+# The owner-approved aggregate upload spec reuses the timeline validators for
+# file-only Setup derivation; no legacy engine may depend on the foundation.
+SHARED_UPLOAD_ADAPTER = "backend/data/shared_aggregate_setup.py"
 
 
 def test_no_existing_module_depends_on_the_new_foundation():
-    # Only the new shared-queue enhancement modules and the two API adapters may use them; legacy code must not.
+    # Only the enhancement modules and these exact approved adapters may use them.
     names = [name.removesuffix(".py") for name in SHARED_QUEUE_ENHANCEMENT_MODULES]
     importers = [
         path.relative_to(REPO_ROOT).as_posix()
@@ -381,4 +384,4 @@ def test_no_existing_module_depends_on_the_new_foundation():
         if any(name in path.read_text(encoding="utf-8") for name in names)
         and path.name not in SHARED_QUEUE_ENHANCEMENT_MODULES
     ]
-    assert sorted(importers) == [CONTINUOUS_API_ADAPTER, NAMED_API_ADAPTER]
+    assert sorted(importers) == [CONTINUOUS_API_ADAPTER, NAMED_API_ADAPTER, SHARED_UPLOAD_ADAPTER]

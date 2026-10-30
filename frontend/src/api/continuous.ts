@@ -152,11 +152,34 @@ export interface ContinuousPeriod {
   mean_wait_hours: number | null
 }
 
+/** Existing verified full-day playback timelines, returned by shared_playback.build_playback. */
+export interface ContinuousCustomer {
+  customer_id: number
+  arrival_hours: number
+  service_start_hours: number | null
+  service_end_hours: number | null
+  server_id: number | null
+  status: 'departed' | 'unserved_at_close'
+}
+
+export interface ContinuousCounter {
+  server_id: number
+  intervals: Array<{
+    state: 'IDLE' | 'BUSY' | 'DRAINING' | 'ON_BREAK'
+    customer_id: number | null
+    start: number
+    end: number
+  }>
+}
+
 export interface ContinuousPlayback {
   replication_index: number
   playback: {
     events: ContinuousEvent[]
     closing: { closing_hours: number; overrun_hours: number }
+    /** Missing timelines withhold the visual; aggregate event counts never invent identities. */
+    customers?: ContinuousCustomer[]
+    servers?: ContinuousCounter[]
   }
   by_period: ContinuousPeriod[]
   preview: true

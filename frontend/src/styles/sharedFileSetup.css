@@ -1,0 +1,17 @@
+/* Shared aggregate upload only; preserve the existing public and other Setup surfaces. */
+.setup-page .setup-option-title { margin: 0 0 var(--space-sm); font-size: 1.25rem; }
+.setup-page .file-read-facts { display: grid; gap: var(--space-md); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.setup-page .file-read-facts > div { min-width: 0; }
+.setup-page .file-read-facts dt { color: var(--color-text-secondary); font-size: .875rem; }
+.setup-page .file-read-facts dd { margin: var(--space-xs) 0 0; overflow-wrap: anywhere; }
+.setup-page .file-read-counters { margin: var(--space-md) 0; }
+.setup-page .file-read-counters svg { display: block; width: 100%; height: 5rem; margin-top: var(--space-sm); }
+.setup-page .file-read-counters rect { fill: var(--color-action-link); }
+.setup-page .file-missing-choices { display: grid; gap: var(--space-md); }
+.setup-page .file-missing-choices fieldset { min-width: 0; }
+.setup-page .file-missing-choices .radio-row { min-height: 44px; display: flex; gap: var(--space-sm); align-items: center; }
+.setup-page .shared-file-apply > .alert { margin-top: var(--space-md); }
+.setup-page .shared-file-apply li { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .setup-page .file-read-facts { grid-template-columns: minmax(0, 1fr); }
+}

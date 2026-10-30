@@ -59,6 +59,8 @@ vi.mock('../api/optimization', () => ({
 }))
 
 vi.mock('../api/analyses', () => ({
+  previewSharedAggregateDataset: vi.fn(async () => ({ mode: 'declined', reasons: [] })),
+  applySharedAggregateDataset: vi.fn(),
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
   listAnalyses: vi.fn(async () => ({ analyses: [] })),
   getAnalysisCurrent: (...args: unknown[]) => getAnalysisCurrentMock(...args),

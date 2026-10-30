@@ -13,6 +13,8 @@ const listAnalysisDatasetsMock = vi.fn()
 const getAnalysisCurrentMock = vi.fn()
 
 vi.mock('../api/analyses', () => ({
+  previewSharedAggregateDataset: vi.fn(async () => ({ mode: 'declined', reasons: [] })),
+  applySharedAggregateDataset: vi.fn(),
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
   patchAnalysis: (...args: unknown[]) => patchAnalysisMock(...args),
   listAnalysisDatasets: (...args: unknown[]) => listAnalysisDatasetsMock(...args),

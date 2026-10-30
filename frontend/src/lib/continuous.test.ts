@@ -1,6 +1,32 @@
 import { describe, expect, it } from 'vitest'
 import type { ContinuousEvent, ContinuousRunListItem } from '../api/continuous'
-import { clockAt, clockOfMinutes, hoursAt, latestRunIds, rangeText, stateAt, waitingSteps } from './continuous'
+import { automaticReplications, clockAt, clockOfMinutes, hoursAt, latestRunIds, rangeText, stateAt, waitingSteps } from './continuous'
+
+describe('automatic full-day request budget', () => {
+  const limits = { max_replications: 9, max_expected_customers_per_run: 2900 }
+
+  it.each([
+    [107.5, 5], [580, 5], [580.0000000000001, 4], [600, 4], [2900, 1], [2900.01, 0], [0, 5],
+  ])('fits whole replications for %s expected customers per day', (expected, count) => {
+    expect(automaticReplications(expected, 5, limits)).toBe(count)
+  })
+
+  it('retains a smaller server default and respects a smaller server maximum', () => {
+    expect(automaticReplications(100, 2, limits)).toBe(2)
+    expect(automaticReplications(100, 5, { ...limits, max_replications: 3 })).toBe(3)
+  })
+
+  it.each([null, NaN, Infinity, -1])('does not treat unknown or invalid demand %s as zero', (expected) => {
+    expect(automaticReplications(expected, 5, limits)).toBeNull()
+  })
+
+  it('refuses invalid defaults and server limits', () => {
+    expect(automaticReplications(100, 0, limits)).toBeNull()
+    expect(automaticReplications(100, 1.5, limits)).toBeNull()
+    expect(automaticReplications(100, 5, { ...limits, max_replications: 0 })).toBeNull()
+    expect(automaticReplications(100, 5, { ...limits, max_expected_customers_per_run: NaN })).toBeNull()
+  })
+})
 
 const event = (seq: number, t: number, type: string, waiting: number, busy: number, idle: number, draining = 0): ContinuousEvent => ({
   seq, t, type, queue_len_after: waiting, servers_busy_after: busy, servers_idle_after: idle, servers_draining_after: draining,

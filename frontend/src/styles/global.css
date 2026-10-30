@@ -2078,6 +2078,18 @@ button.btn-good:hover {
   background: var(--success-bg);
 }
 
+.continuous-floor.is-static .live-customer {
+  animation: none;
+}
+
+.continuous-floor .live-server-heading {
+  flex-wrap: wrap;
+}
+
+.continuous-floor .live-server .badge {
+  white-space: normal;
+}
+
 .live-customer-more {
   color: var(--text-secondary);
   font-size: 0.8rem;
@@ -5370,6 +5382,11 @@ summary.setup-step-title::before {
 .closing-choice { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0; min-width: 0; }
 .closing-choice legend { font-weight: 600; padding: 0 4px; }
 .radio-row { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+.simulation-model-choices { margin: var(--space-md) 0; }
+.simulation-model-choices fieldset { border: 0; padding: 0; margin: 0 0 var(--space-md); min-width: 0; }
+.simulation-model-choices legend { font-weight: 600; }
+.simulation-model-choices .radio-row { align-items: center; min-height: 44px; margin: 0; }
+.simulation-model-choices input[type="radio"] { min-height: 0; }
 .button-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .btn-inline { padding: 2px 8px; }
 .preview-explained summary { cursor: pointer; }
