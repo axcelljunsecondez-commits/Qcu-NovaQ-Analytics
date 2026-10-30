@@ -16,4 +16,18 @@ Definition: `.claude/agents/kyoya.md`. Current roster and usage: `docs/superpowe
 
 ## Review index
 
-No application review, security audit or numerical validation has been delegated to or completed by Kyoya yet. No Claude invocation, passing application tests, closed findings or runtime memory loading are claimed by this index.
+- [shared-upload-20261030](reviews/2026-10-30-shared-upload.md): scoped source and local evidence review COMPLETE;
+  scoped source review complete against base 2e0e3606 plus linked final hashes.
+  Final reviewed page is 4f5dae26...e83b97; confirmation-copy and duplicate-conflict
+  display deltas preserve guards and use existing wording.
+  K-UP-1 (pending closing read/hidden draft) is closed in reviewed source with
+  regression evidence. No supported open source finding in scope; corrected full
+  frontend final suite passed 805/92 files; TS/lint/build passed; parent browser and
+  isolated preservation/staleness evidence inspected. Replacement backend suite
+  passed 3331/125 skips/1 existing xfail/9 subtests. Root lint/
+  mypy old-output failures and earlier test attempts stay explicitly recorded.
+
+The setup record originally had no delegated application review; that historical
+state is superseded by the review indexed above. No Claude invocation or automatic
+runtime memory loading is claimed. Application test results and finding closure
+must be read from the specific review record with its source identity and limits.

@@ -97,6 +97,7 @@ export interface AnalysisOut {
 export interface DatasetValidation {
   ok: boolean
   message: string
+  schema?: string
   /** Present only for customer-event uploads (per period/queue observed means). */
   derived_statistics?: Record<string, unknown>[]
 }
@@ -196,6 +197,54 @@ export type DatasetPreviewOut =
       breaks: SetupBreakRow[]
       errors: string[]
     }
+
+export interface SharedAggregateFileFacts {
+  filename: string
+  row_count: number
+  start_time: string
+  end_time: string
+  counter_min: number
+  counter_max: number
+  lambda_min: number
+  lambda_max: number
+  mu_min: number
+  mu_max: number
+  rows: Array<{ time: string; lambda: number; mu: number; c: number }>
+}
+
+export interface SharedAggregateChoices {
+  capacity_mode?: CapacityMode
+  total_system_capacity?: number | null
+  abandonment_mode?: AbandonmentMode
+  patience_rate_per_hour?: number | null
+}
+
+export interface SharedAggregatePreviewOut {
+  mode: 'shared_aggregate' | 'declined'
+  file_digest: string
+  setup_revision: string
+  facts: SharedAggregateFileFacts | null
+  derived_setup: QueueSetup | null
+  saved_setup: QueueSetup
+  diff: SetupFieldChange[]
+  needs_confirmation: boolean
+  unresolved: Array<'capacity_mode' | 'abandonment_mode'>
+  conflicts: Array<{ code: string; detail: string; problems?: string[] }>
+  reasons: Array<{ code: string; detail: string }>
+}
+
+export interface SharedAggregateApplyIn {
+  file_digest: string
+  setup_revision: string
+  confirm_replace: boolean
+  choices: SharedAggregateChoices
+}
+
+export interface SharedAggregateApplyOut {
+  dataset: DatasetOut
+  analysis: AnalysisProjectOut
+  duplicate: boolean
+}
 
 export interface QueueSetup {
   queue_structure: QueueStructure

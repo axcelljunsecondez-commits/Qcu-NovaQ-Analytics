@@ -1,6 +1,6 @@
 import { http } from '../lib/http'
 import { downloadReport } from './reports'
-import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, DatasetPreviewOut, DatasetPurpose, QueueSetup } from './types'
+import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, DatasetPreviewOut, DatasetPurpose, QueueSetup, SharedAggregateApplyIn, SharedAggregateApplyOut, SharedAggregatePreviewOut } from './types'
 
 export interface AnalysisInput {
   name: string
@@ -60,6 +60,21 @@ export async function previewAnalysisDataset(id: number, file: File): Promise<Da
   const body = new FormData()
   body.append('file', file)
   const { data } = await http.post<DatasetPreviewOut>(`/analyses/${id}/datasets/preview`, body)
+  return data
+}
+
+export async function previewSharedAggregateDataset(id: number, file: File): Promise<SharedAggregatePreviewOut> {
+  const body = new FormData()
+  body.append('file', file)
+  const { data } = await http.post<SharedAggregatePreviewOut>(`/analyses/${id}/datasets/shared-aggregate/preview`, body, { params: { purpose: 'planning' } })
+  return data
+}
+
+export async function applySharedAggregateDataset(id: number, file: File, metadata: SharedAggregateApplyIn): Promise<SharedAggregateApplyOut> {
+  const body = new FormData()
+  body.append('file', file)
+  body.append('metadata', JSON.stringify(metadata))
+  const { data } = await http.post<SharedAggregateApplyOut>(`/analyses/${id}/datasets/shared-aggregate/apply`, body, { params: { purpose: 'planning' } })
   return data
 }
 

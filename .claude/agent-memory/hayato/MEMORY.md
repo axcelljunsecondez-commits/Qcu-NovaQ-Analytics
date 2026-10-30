@@ -17,4 +17,4 @@ The role is defined in `.claude/agents/novaq-backend.md`. Setup specification an
 
 ## Backend task index
 
-No backend task has been delegated or completed through this agent yet. Consult the existing root handoff and linked reports for earlier project work; do not mark it as this agent's work. No backend tests or Claude runtime verification are claimed by this setup record.
+- [2026-10-30 shared upload simplification](tasks/2026-10-30-shared-upload-simplification.md): in_progress; additive shared aggregate preview/apply and isolated backend verification. Starting HEAD 2e0e3606; no completed tests claimed yet.

@@ -1,0 +1,85 @@
+{
+  "review": "shared-upload-20261030",
+  "head": "2e0e360666b2b4302faaddeb955f63e64395aab1",
+  "source_sha256": {
+    "backend/api/analyses.py": "d2880d20a1e2b79b7d787bc2e8a89327795b8820b3d1adb5cd8643ae3099bb95",
+    "backend/api/shared_aggregate_schemas.py": "24c81ab3fcee6880a24718e418046f51274dda7f38fb628c4a28100785783fdd",
+    "backend/api/shared_aggregate_upload.py": "59e3ac02ae01568fedabc8bf660743cff301f983ba111f4ff0d747ada39ea21a",
+    "backend/data/shared_aggregate_setup.py": "961c3264f9d6fc4d514acddf56aba216ffec192e25e32898a7dfbfd5fcf6dbaf",
+    "tests/test_shared_segments.py": "d528ab92dfcfba056efbe92349cf745a23218735e405cc8e754f151d5181ae6c",
+    "tests/test_shared_aggregate_setup.py": "693844ba1be99eac64f5fac5eee03aba7430d8aa9ff321b3db1fe5bce379ebe2",
+    "tests/test_shared_aggregate_setup_api.py": "4f6be27a203f876fdec303ae200255c38bfcea58abdd1a1ce93c2fbc0dbf6007",
+    "tests/fixtures/shared_aggregate_owner.csv": "236fc05861b4a59ce3216c41fb52b3c529aec6b6f57003f610bd4cc3a91f938e",
+    "frontend/src/api/analyses.ts": "a844f58a67b9138372aa8d330cf74c6914a74a8c93388deb2e98be545839a321",
+    "frontend/src/api/types.ts": "be7459565fbe727d3fd6545c7313364a7963d7672d92ad98160cf4496ad232c9",
+    "frontend/src/pages/AnalysisSetupPage.tsx": "4f5dae26a5d1acafd763fcad7506c561287a4886c5cf9beab3cb6d0070e83b97",
+    "frontend/src/components/setup/FileReadSummary.tsx": "0cd4cb1c1fcc36e2d155d83b127e1a2088359ba8cac41f3664bf225325aff2d3",
+    "frontend/src/components/setup/MissingChoices.tsx": "b2006c9b49b54b0a6218ef3815c6fa44f48f51015d1cbc1f764614a876a80aa9",
+    "frontend/src/lib/sharedAggregateSetup.ts": "4fa8ee3fd202299daa7b08a20ecee64e552f92c9d2404e2e924bc1bfe4af348d",
+    "frontend/src/styles/sharedFileSetup.css": "866ac90e55c5d4b1560ecadced1a83955e0508c0f3a4c64bc770bea827a2a894",
+    "frontend/src/pages/SharedAggregateUpload.test.tsx": "ac80baf209a0bda804b844396ee599942f47d6072fa83ffd1be5b8d2ccc158dc",
+    "frontend/public/locales/en/translation.json": "757189e95d4951ad8f4d079c9fd11e0e32f1caa70656a53c644f71f97a7db35e",
+    "frontend/public/locales/tl/translation.json": "7a973ae5f6292c8a2c96b0c615ccdeb056799fab6249269af7f9c88b3937a00e"
+  },
+  "protected_paths_checked": 45,
+  "protected_changes": [],
+  "status": "complete for scoped source and parent-executed local acceptance-evidence review",
+  "prior_review_source_sha256": {
+    "backend/api/analyses.py": "d2880d20a1e2b79b7d787bc2e8a89327795b8820b3d1adb5cd8643ae3099bb95",
+    "backend/api/shared_aggregate_schemas.py": "24c81ab3fcee6880a24718e418046f51274dda7f38fb628c4a28100785783fdd",
+    "backend/api/shared_aggregate_upload.py": "59e3ac02ae01568fedabc8bf660743cff301f983ba111f4ff0d747ada39ea21a",
+    "backend/data/shared_aggregate_setup.py": "961c3264f9d6fc4d514acddf56aba216ffec192e25e32898a7dfbfd5fcf6dbaf",
+    "tests/test_shared_segments.py": "d528ab92dfcfba056efbe92349cf745a23218735e405cc8e754f151d5181ae6c",
+    "tests/test_shared_aggregate_setup.py": "693844ba1be99eac64f5fac5eee03aba7430d8aa9ff321b3db1fe5bce379ebe2",
+    "tests/test_shared_aggregate_setup_api.py": "4f6be27a203f876fdec303ae200255c38bfcea58abdd1a1ce93c2fbc0dbf6007",
+    "tests/fixtures/shared_aggregate_owner.csv": "236fc05861b4a59ce3216c41fb52b3c529aec6b6f57003f610bd4cc3a91f938e",
+    "frontend/src/api/analyses.ts": "a844f58a67b9138372aa8d330cf74c6914a74a8c93388deb2e98be545839a321",
+    "frontend/src/api/types.ts": "be7459565fbe727d3fd6545c7313364a7963d7672d92ad98160cf4496ad232c9",
+    "frontend/src/pages/AnalysisSetupPage.tsx": "53481bb1f692b943a182d791b741f16ebac2af293a2ff7abc9a5c7fb89d470d1",
+    "frontend/src/components/setup/FileReadSummary.tsx": "0cd4cb1c1fcc36e2d155d83b127e1a2088359ba8cac41f3664bf225325aff2d3",
+    "frontend/src/components/setup/MissingChoices.tsx": "2398120dfda2b532da6a0e9083018c4f68fb276a9de2f0db15ecd0e739e6231e",
+    "frontend/src/lib/sharedAggregateSetup.ts": "4fa8ee3fd202299daa7b08a20ecee64e552f92c9d2404e2e924bc1bfe4af348d",
+    "frontend/src/styles/sharedFileSetup.css": "866ac90e55c5d4b1560ecadced1a83955e0508c0f3a4c64bc770bea827a2a894",
+    "frontend/src/pages/SharedAggregateUpload.test.tsx": "89f9fc4b5651278d39131aba5c60196cfa45890e0b091b1d4008f51c25811939",
+    "frontend/public/locales/en/translation.json": "757189e95d4951ad8f4d079c9fd11e0e32f1caa70656a53c644f71f97a7db35e",
+    "frontend/public/locales/tl/translation.json": "7a973ae5f6292c8a2c96b0c615ccdeb056799fab6249269af7f9c88b3937a00e"
+  },
+  "three_key_delta_reverse_sha256": "53481bb1f692b943a182d791b741f16ebac2af293a2ff7abc9a5c7fb89d470d1",
+  "review_delta_history": [
+    {
+      "delta": "one display-only conflict problem filter",
+      "reverse_page_sha256": "5d2cc36dd99ac0f7d8a5af19256a7060b2667f92cb93c911e488c1c25d80fb11",
+      "previous_page_sha256": "5d2cc36dd99ac0f7d8a5af19256a7060b2667f92cb93c911e488c1c25d80fb11"
+    },
+    {
+      "delta": "removed one trailing blank line at EOF only",
+      "file": "frontend/src/components/setup/MissingChoices.tsx",
+      "previous_sha256": "2398120dfda2b532da6a0e9083018c4f68fb276a9de2f0db15ecd0e739e6231e",
+      "restored_eof_suffix": "\\n"
+    }
+  ],
+  "acceptance_evidence": {
+    "frontend_full": {
+      "passed": 805,
+      "files": 92,
+      "duration_seconds": 396.41
+    },
+    "backend_full": {
+      "passed": 3331,
+      "skipped": 125,
+      "existing_xfailed": 1,
+      "subtests": 9
+    },
+    "frontend_typecheck_lint_build": "passed; parent execution and logs inspected",
+    "preservation": "45 protected paths unchanged; exact3approvedlocaleadditions; oldvaluesunchanged",
+    "staleness": "savedscenarioSTALE_DATASET;historicalresultunchanged",
+    "browser": "parent execution; savedcancel/refusalJSONinspected; no reviewer browser execution",
+    "root_ruff_mypy": "explained failures from old output; source-scoped passes only",
+    "not_tested": [
+      "production",
+      "operationalcustomerdata",
+      "PostgreSQLconcurrency",
+      "physicaltouch"
+    ]
+  }
+}

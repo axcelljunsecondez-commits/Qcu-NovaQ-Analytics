@@ -1,9 +1,24 @@
 # Shared-queue upload simplification — specification
 
 Date: 2026-10-29 (revision 2, Chrome evidence pass on HEAD `0324ee4c`).
-Status: APPROVED SPECIFICATION (owner, 2026-10-29), NOT IMPLEMENTED. The owner reviewed
+Status: APPROVED SPECIFICATION (owner, 2026-10-29), IMPLEMENTED LOCALLY
+(owner authorization to Chrome and Hayato, 2026-10-30). Application verification
+passed; repository-wide tooling limitations are recorded in the
+[implementation report](../reports/2026-10-30-shared-queue-upload-simplification.md).
+No commit, push or deployment. The owner reviewed
 the mockup and decided OD-1 to OD-8 in chat: "all recommendations" (§10). Drafted wording
 remains "Draft — awaiting owner approval" until the owner's wording review.
+
+Wording approval update, 2026-10-30: after reviewing the exact EN/TL pairs below,
+the owner replied "Approve these three messages". Only D4, D8 and D9 are approved
+for application; other mockup drafts remain pending. Existing approved keys are
+reused for all other required slots. The protected wording registry/test is unchanged.
+
+| Key | Approved English | Approved Filipino |
+| --- | --- | --- |
+| `setup.read_decide_later` (D8) | Decide later | Pagpasyahan mamaya |
+| `setup.read_not_sure_note` (D4) | You can save now. The full-day run stays unavailable until you answer. | Puwede kang mag-save ngayon. Hindi magagamit ang takbo ng buong araw hangga't hindi ka sumasagot. |
+| `setup.read_declined` (D9) | NovaQ can't fill in the Setup from this file. You can still upload it the usual way. | Hindi mapupunan ng NovaQ ang Setup mula sa file na ito. Puwede mo pa rin itong i-upload sa karaniwang paraan. |
 
 Related: [audit](../reports/2026-10-29-upload-simplification-chrome-audit.md),
 [plan](../plans/2026-10-29-shared-queue-upload-simplification-plan.md),

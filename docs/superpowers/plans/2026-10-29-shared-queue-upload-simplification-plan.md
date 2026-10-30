@@ -1,8 +1,17 @@
 # Shared-queue upload simplification — implementation plan
 
-Date: 2026-10-29 (revision 2). Status: PROPOSED; application work NOT STARTED and NOT
-AUTHORIZED. Implements [the specification](../specs/2026-10-29-shared-queue-upload-simplification.md)
-once the owner closes its §10 decisions. Owners: backend steps = Hayato; frontend steps =
+Date: 2026-10-29 (revision 3, 2026-10-30). Status: IMPLEMENTED LOCALLY.
+Application suites, source checks, build and isolated browser acceptance passed.
+Repository-wide verification remains PARTIAL due to old output artifacts; see the
+[implementation report](../reports/2026-10-30-shared-queue-upload-simplification.md).
+No commit, push or deployment.
+The owner decided OD-1 through OD-8 on 2026-10-29 and authorized Chrome and Hayato to
+implement on 2026-10-30 ("chrome and hayato you can do this?"). Implements
+[the specification](../specs/2026-10-29-shared-queue-upload-simplification.md).
+New EN/TL wording remains subject to the separate review recorded in OD-6; reuse
+existing approved wording where possible. On 2026-10-30 the owner explicitly approved
+the exact D4/D8/D9 pairs recorded in the specification; other drafts remain pending.
+Owners: backend steps = Hayato; frontend steps =
 Chrome; independent review = Kyoya. One writer per file; no step starts on a file another
 session has uncommitted changes in.
 
@@ -23,6 +32,12 @@ there, STOP and raise a separate spec.
 ## Step 1 — Derivation service (Hayato, backend, new file)
 
 Files: new `backend/data/shared_aggregate_setup.py`; new `tests/test_shared_aggregate_setup.py`.
+
+Parent architecture-boundary review, 2026-10-30: `tests/test_shared_segments.py` scans
+all backend foundation importers and permits only the two existing API adapters. This
+approved new derivation service requires an additional exact-path adapter entry for
+`backend/data/shared_aggregate_setup.py`. Only its allowlist/comment and full importer
+assertion may change; the scan and prohibition on legacy consumers stay intact.
 
 - Input: sanitized frame + saved Setup. Calls `normalize_analysis_input` with a Setup that has
   the saved structure but no fixed-count constraint, so the file's c is validated by the same
@@ -47,10 +62,40 @@ Files: new `backend/data/shared_aggregate_setup.py`; new `tests/test_shared_aggr
 Files: `backend/api/analyses.py` (additive routes only), its schema module, new
 `tests/test_shared_aggregate_setup_api.py`.
 
+Final additive contract agreed by Hayato/Chrome/parent on 2026-10-30:
+
+- `POST /analyses/{id}/datasets/shared-aggregate/preview`: multipart `file`, query
+  `purpose=planning` (review is refused). Response: `mode` (`shared_aggregate` or
+  `declined`), `file_digest`, `setup_revision`, nullable `facts`/`derived_setup`,
+  `saved_setup`, complete saved-to-derived `diff`, `needs_confirmation`, `unresolved`,
+  `conflicts`, `reasons`. Facts contain sanitized filename, row count, validated
+  start/end, min/max c/lambda/mu and the original validated per-period rows.
+- `POST /analyses/{id}/datasets/shared-aggregate/apply`: multipart `file` plus
+  `metadata` JSON with `file_digest`, `setup_revision`, `confirm_replace`, `choices`.
+  Choices only answer unknown capacity/abandonment modes and their required numbers.
+  Query `purpose=planning`, optional dataset `name`. Response 201:
+  `{dataset, analysis, duplicate}` using existing dataset/analysis representations.
+- No new route changes the closing policy. The frontend optionally calls the existing
+  closing-policy endpoint after successful Dataset/Setup apply.
+- New first uploads into an unconfigured Setup show the complete diff but use the
+  primary Apply as confirmation. Replacing a saved configured count, nonempty
+  schedule or existing planning dataset requires explicit replacement confirmation.
+- A changed file or stale Setup/current-dataset revision is a 409 refusal, without
+  saved evidence. Exact retries may return the same Dataset only while it is still
+  current and the applied Setup digest matches. They never reactivate older data.
+
 - Define request/response models in the patch before frontend work starts; send to Chrome.
 - Preview: owned, not archived, upload rate limit, size limits; no Dataset/Job/Scenario write;
   returns facts, candidate, saved, diff (incl. `counter_breaks`), unresolved, conflicts,
   `setup_revision`, `file_digest`.
+- Parent boundary review, 2026-10-30: duplicate suppression may store the file digest,
+  original Setup revision and versioned request fingerprint in the existing Dataset
+  validation JSON under `shared_aggregate_apply`, at Dataset creation only. The existing
+  JSON/JSONB dictionary supports additive metadata without a schema change. No existing
+  provenance key or legacy upload response is changed; no raw file is stored there.
+  Fingerprints must bind the owned analysis and submitted answers; a retry must not
+  reactivate historical data after a later replacement. Concurrency requires actual
+  locking/transaction evidence or a precise NOT TESTED limit, not an inferred guarantee.
 - Apply: planning purpose only (review → 422 like today), explicit answers, replacement intent,
   revision and file digest checked; Dataset + Setup in one commit; `setup_status` recomputed;
   today's current-dataset and staleness rules.
