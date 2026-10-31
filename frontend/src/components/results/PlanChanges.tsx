@@ -107,10 +107,13 @@ function CalculatedResult({ analysisId, changes, waitNow, waitPlan, costNow, cos
   )
 }
 
-function Switcher({ options, selectedId, analysisId }: { options: { id: number; name: string }[]; selectedId: number | null; analysisId: number }) {
+function Switcher({ options, selectedId, selectedUsable = false, analysisId }: { options: { id: number; name: string }[]; selectedId: number | null; selectedUsable?: boolean; analysisId: number }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [choice, setChoice] = useState(selectedId === null ? '' : String(selectedId))
+  const fallback = options.some((option) => option.id === selectedId) ? String(selectedId) : ''
+  const [choice, setChoice] = useState(fallback)
+  // A removed draft must not leave the native select displaying a different submitted id.
+  if (choice !== '' && !options.some((option) => String(option.id) === choice)) setChoice(fallback)
   const select = useMutation({
     mutationFn: (scenarioId: number) => selectWorkflowScenario(analysisId, scenarioId),
     onSuccess: async () => {
@@ -120,18 +123,20 @@ function Switcher({ options, selectedId, analysisId }: { options: { id: number; 
   })
   const chosen = Number(choice)
   const eligible = choice !== '' && options.some((option) => option.id === chosen)
+  const selectedOption = selectedUsable && chosen === selectedId ? options.find((option) => option.id === chosen) : undefined
   return (
     <div className="plan-switcher">
       <div className="form-field">
         <label htmlFor="plan-switcher">{t('results.plan_label')}</label>
-        <select id="plan-switcher" value={choice} onChange={(event) => setChoice(event.target.value)}>
-          {selectedId === null && <option value="" disabled>{t('results.choose_saved_plan')}</option>}
+        <select id="plan-switcher" value={choice} aria-describedby={selectedOption ? 'plan-selected-status' : undefined} onChange={(event) => setChoice(event.target.value)}>
+          {(selectedId === null || choice === '') && <option value="" disabled>{t('results.choose_saved_plan')}</option>}
           {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
         </select>
       </div>
       <button type="button" className="btn-primary" disabled={!eligible || chosen === selectedId || select.isPending} onClick={() => select.mutate(chosen)}>
         {select.isPending ? t('common.loading') : t('results.use_for_simulation')}
       </button>
+      {selectedOption && <p id="plan-selected-status" role="status" className="form-hint" style={{ flexBasis: '100%' }}>{t('compare.selected_for_simulation', { name: selectedOption.name })}</p>}
       {select.isError && <div role="alert" className="alert alert-error">{messageOf(select.error, t('errors.server'))}</div>}
     </div>
   )
@@ -212,7 +217,7 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
     if (!usable) {
       return (
         <Section>
-          <Switcher options={options} selectedId={Number(scenario.id)} analysisId={analysisId} />
+          <Switcher key={`${analysisId}-${scenario.id}`} options={options} selectedId={Number(scenario.id)} selectedUsable={usable} analysisId={analysisId} />
           <div className="alert alert-warn" role="status">
             {t('results.plan_not_current', { name: scenario.name })}
             {scenario.evidence_reasons?.[0]?.detail && <p className="form-hint">{scenario.evidence_reasons[0].detail}</p>}
@@ -236,7 +241,7 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
           separate={false}
         />
         <Section>
-          <Switcher options={options} selectedId={Number(scenario.id)} analysisId={analysisId} />
+          <Switcher key={`${analysisId}-${scenario.id}`} options={options} selectedId={Number(scenario.id)} selectedUsable={usable} analysisId={analysisId} />
           <PlanTable rows={rows} target={target} />
           <p className="plan-cost">
             <strong>{t('results.cost_now_vs_plan')}</strong>{' '}
@@ -254,7 +259,7 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
   if (!usable) {
     return (
       <Section>
-        <Switcher options={options} selectedId={chosen.scenario_id} analysisId={analysisId} />
+        <Switcher key={`${analysisId}-${chosen.scenario_id}`} options={options} selectedId={chosen.scenario_id} selectedUsable={usable} analysisId={analysisId} />
         <div className="alert alert-warn" role="status">{t('results.plan_not_current', { name: chosen.name })}{chosen.valid_reason && <p className="form-hint">{chosen.valid_reason}</p>}</div>
       </Section>
     )
@@ -275,7 +280,7 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
         separate
       />
       <Section>
-        <Switcher options={options} selectedId={chosen.scenario_id} analysisId={analysisId} />
+        <Switcher key={`${analysisId}-${chosen.scenario_id}`} options={options} selectedId={chosen.scenario_id} selectedUsable={usable} analysisId={analysisId} />
         <PlanTable rows={rows} target={target} />
         <p className="plan-cost"><strong>{t('results.cost_now_vs_plan')}</strong> {t('results.unavailable')} → {costPlan ?? t('results.unavailable')}</p>
         <p className="form-hint">{t('results.cost_now_unavailable_reason', { reason: costNowReason })}</p>

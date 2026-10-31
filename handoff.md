@@ -1,5 +1,68 @@
 # NovaQ Current Handoff
 
+## Shared model choices relocated and activated locally (2026-10-30)
+
+- Owner chose to skip capacity/abandonment upload questions and answer them in
+  Simulation Advanced; remove those controls from shared Data and Setup. Both
+  controls now live on Simulation, with existing approved EN/TL wording. Unknown
+  stays unknown; finite/modeled support boundaries and automatic replications
+  are unchanged. Other queue structures retain their Setup fields.
+- Source gate: 817 frontend tests / 93 files, typecheck/lint/build, 73 scoped
+  backend regressions passed. All 96 backend files, 45 protected paths, locales
+  and CSV are unchanged. Root Ruff/mypy still fail on output artifacts; source
+  mypy additionally reports an error in unchanged shared_continuous.py:447.
+  This conflicts with the earlier source-mypy PASS record; no protected fix made.
+- Owner CSV passed isolated upload → local Simulation choices → full-day run
+  with key metrics. API probe preserved staffing and verified stale-run flags;
+  numerical outputs exactly matched the earlier identical diagnostic settings.
+- [Current report](docs/superpowers/reports/2026-10-30-shared-simulation-model-choices.md)
+  contains scope, files, actual gates, failed attempts and verification limits.
+  Evidence: output/simulation-model-choices-20261030/. Source commit 39d2378a.
+- CURRENT VERIFIED: frontend-only Docker update is complete at localhost. Image
+  novaq-local-web:20261030-model-choices-39d2378a, ID 0daee4c6e613...; web container
+  60baf658cd26...; same API f31d12cfb9f9... and DB e7830fab0491.... All 89 served
+  files matched; web/API health/readiness 200, anonymous auth 401. Ports/env/mounts/
+  runtime settings and all 10 table fingerprints/schema0007 preserved. No API/db
+  recreation, migrations, seeding, push or production action.
+- Initial row-drift preflight stopped safely; a fresh DPAPI-encrypted backup and
+  disposable restore matched all 10 tables before activation. The prior web image
+  remains tagged. docker/result.json is the successful final state, superseding
+  the source checkpoint's pending status. Do not repeat the completed update.
+  Authenticated operational upload/run and operational rollback remain NOT TESTED.
+- Browser connection recovered after tool reset; final numeric/unsupported/draft/
+  Cancel checks passed in the isolated database; captured warnings/errors empty.
+
+## Shared upload committed and activated in local Docker (2026-10-30)
+
+- Owner requested "commit and rebuild to docker", then "resume". Shared-upload
+  feature commit `e17ec52548f7bd54f9d14424e4ff1699df40a81b` is on
+  `codex/shared-queue-workflow-20261029`; no push/production action. See the
+  [actual Docker record](docs/superpowers/reports/2026-10-30-shared-upload-docker-activation.md)
+  and [implementation verification](docs/superpowers/reports/2026-10-30-shared-queue-upload-simplification.md).
+- CURRENT VERIFIED: the download blocker cleared; complete signed Alpine indexes
+  and the original unchanged Dockerfile passed. New API and web images are both
+  `novaq-local-{api,web}:20261030-shared-upload-e17ec525`, running at
+  `http://localhost/`. API image `db4437792d1c...`, web image `4004f96d3677...`.
+  Containers: API `f31d12cfb9f9...`, web `385ab92af878...`; same DB container/volume.
+  Web/API health/readiness 200, anonymous auth 401, all 10 full table fingerprints
+  and schema `0007` unchanged. No migration/seeding. All 89 served files matched
+  the web image; all 96 backend files matched committed build inputs. Real guest
+  browser reference returned 40 minutes for synthetic lambda=2, mu=3, c=1.
+  New upload endpoints are registered. See `activation-result.json`,
+  `http-verification.json`, `activation-final.json` in the evidence folder.
+- Encrypted backup, verified disposable restore, retained prior-image tags and
+  SHA256-checked archive are complete. Source gates: 3331 backend passes / 125
+  skips / 1 existing xfail / 9 subtests; 805 frontend passes. PostgreSQL API
+  regressions: 23 passed / 2 SQLite-only skips. Authenticated operational uploads
+  during activation, PostgreSQL simultaneous-apply races and operational rollback
+  remain NOT TESTED. Existing selected-load/Decision finding remains OPEN.
+- Resume from `output/shared-upload-simplification-20261030/docker/` and adjacent
+  `docker_activation.py`; inspect `activation-final.json` and current source/
+  container identity first. The earlier blocked attempts, retained-old-runtime
+  checkpoint and optional nginx-query recovery are historical in the linked
+  report. Do not repeat completed backup/archive, suites or activation based on
+  `blocked-final.json`; it is superseded by the successful activation records.
+
 ## Shared tooltip frontend activated in local Docker (2026-10-28)
 
 - Owner requested the Docker rebuild and resumed after an account-review limit. [Actual local activation report](docs/superpowers/reports/2026-10-28-tooltip-docker-activation.md). Status: COMPLETE for this local frontend activation; source changes remain uncommitted and no production action occurred.

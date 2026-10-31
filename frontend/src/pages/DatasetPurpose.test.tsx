@@ -16,6 +16,8 @@ const previewMock = vi.fn()
 const listDatasetsMock = vi.fn()
 
 vi.mock('../api/analyses', () => ({
+  previewSharedAggregateDataset: vi.fn(async () => ({ mode: 'declined', reasons: [] })),
+  applySharedAggregateDataset: vi.fn(),
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
   patchAnalysis: vi.fn(),
   listAnalysisDatasets: (...args: unknown[]) => listAnalysisDatasetsMock(...args),
@@ -90,7 +92,9 @@ describe('What the upload is for (B10, D16)', () => {
     const user = userEvent.setup()
     renderSetup()
     await user.upload(await screen.findByLabelText('Upload Data'), new File(['x'], 'week.csv'))
-    expect(screen.getByRole('button', { name: 'Upload and process' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Upload and process' })).not.toBeInTheDocument()
+    expect(uploadMock).not.toHaveBeenCalled()
+    expect(previewMock).not.toHaveBeenCalled()
     expect(screen.getByText('Choose what this file is for before uploading.')).toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: /Review only/ }))
     expect(screen.getByRole('button', { name: 'Upload and process' })).toBeEnabled()

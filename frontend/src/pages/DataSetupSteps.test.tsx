@@ -12,6 +12,8 @@ const uploadMock = vi.fn()
 const previewMock = vi.fn()
 
 vi.mock('../api/analyses', () => ({
+  previewSharedAggregateDataset: vi.fn(async () => ({ mode: 'declined', reasons: [] })),
+  applySharedAggregateDataset: vi.fn(),
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
   patchAnalysis: (...args: unknown[]) => patchMock(...args),
   listAnalysisDatasets: vi.fn(async () => ({ datasets: [] })),
@@ -58,16 +60,17 @@ beforeEach(() => {
 })
 
 describe('Data and setup steps (spec §7.6)', () => {
-  it('shows the numbered steps in order with Advanced settings closed once the structure is known', async () => {
+  it('puts the shared-file upload first and keeps templates and Advanced settings optional', async () => {
     const { container } = renderPage()
     expect(await screen.findByRole('heading', { level: 1, name: "Data and Setup" })).toBeInTheDocument()
     const titles = Array.from(container.querySelectorAll('.setup-step-title')).map((node) => node.textContent)
-    expect(titles).toEqual(["Get the Template", 'Add your data', 'Review what NovaQ read', 'Advanced settings'])
+    expect(titles).toEqual(['Add your data'])
+    expect(container.querySelector('.setup-optional details.setup-manual')).not.toHaveAttribute('open')
     expect(container.querySelector('details.setup-advanced')).not.toHaveAttribute('open')
     expect(screen.getByRole('group', { name: 'This file is for:' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /Use for planning/ })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: /Review only/ })).not.toBeChecked()
-    expect(screen.getByText('Nothing to review yet. Add your data first.')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing to review yet. Add your data first.')).not.toBeInTheDocument()
   })
 
   it('opens Advanced settings while the structure is unknown, and asks for it before the template', async () => {
@@ -106,7 +109,7 @@ describe('Enter numbers without a file (B9)', () => {
     return user
   }
 
-  it('uploads the typed numbers as the template CSV through the normal upload, with its cache resets', async () => {
+  it('reads the typed planning CSV before an explicit legacy fallback upload, with its cache resets', async () => {
     const queryClient = makeQueryClient()
     queryClient.setQueryData(['workflow', 7], { stale: true })
     renderPage(queryClient)
@@ -114,6 +117,7 @@ describe('Enter numbers without a file (B9)', () => {
     await user.type(screen.getByLabelText('Counters open, 09:00–10:00'), '4')
     expect(screen.getByText('Saved as "entered-by-you" in your uploaded files.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Upload these numbers' }))
+    await user.click(await screen.findByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(uploadMock).toHaveBeenCalledTimes(1))
     const [analysisId, file, options] = uploadMock.mock.calls[0]
     expect(analysisId).toBe(7)

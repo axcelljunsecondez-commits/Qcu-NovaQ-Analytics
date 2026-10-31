@@ -14,6 +14,8 @@ const previewMock = vi.fn()
 const downloadMock = vi.fn()
 
 vi.mock('../api/analyses', () => ({
+  previewSharedAggregateDataset: vi.fn(async () => ({ mode: 'declined', reasons: [] })),
+  applySharedAggregateDataset: vi.fn(),
   getAnalysis: (...args: unknown[]) => getAnalysisMock(...args),
   patchAnalysis: (...args: unknown[]) => patchMock(...args),
   listAnalysisDatasets: vi.fn(async () => ({ datasets: [] })),
@@ -338,16 +340,13 @@ describe('workflow evidence cache after a Setup save', () => {
 describe('U10: what the Setup still needs, and the period basis', () => {
   const shared: QueueSetup = { ...unknownSetup, queue_structure: 'shared_queue', capacity_mode: 'unlimited', abandonment_mode: 'not_modeled', event_period_basis: 'per_date' }
 
-  it('names a missing counter count and opens the field that sets it (F4)', async () => {
+  it('does not demand a fixed count before a shared planning file supplies its counts', async () => {
     const incomplete = analysisWith(shared)
     getAnalysisMock.mockResolvedValue({ analysis: { ...incomplete.analysis, setup_status: 'incomplete' } })
-    const user = userEvent.setup()
     renderPage()
-    const warning = await screen.findByTestId('setup-incomplete')
-    expect(warning).toHaveTextContent('Your Setup is not complete. NovaQ still needs: Fixed server count.')
-    await user.click(within(warning).getByRole('button', { name: 'Open Advanced settings' }))
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Fixed server count')))
-    expect(screen.getByText('Advanced settings').closest('details')).toHaveAttribute('open')
+    await screen.findByLabelText('Upload Data')
+    expect(screen.queryByTestId('setup-incomplete')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Fixed server count')).toBeInTheDocument()
   })
 
   it('offers the field beside an upload refusal (F10)', async () => {

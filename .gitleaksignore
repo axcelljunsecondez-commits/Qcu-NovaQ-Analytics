@@ -1,2 +1,9 @@
 # False positive: "synthetic_accounting_key" is a synthetic accounting-marker label in a test fixture, not a credential.
 92d95beda2bcf9e01fa702ad03a78c89c7334702:tests/test_evidence_status.py:generic-api-key:559
+# Verified non-secret metadata; exact immutable findings only (no path/rule exclusions).
+# Both values equal SHA-256 of the named test file, verified against its Git blob.
+e17ec52548f7bd54f9d14424e4ff1699df40a81b:.claude/agent-memory/kyoya/reviews/2026-10-30-shared-upload-source.json:generic-api-key:11
+e17ec52548f7bd54f9d14424e4ff1699df40a81b:.claude/agent-memory/kyoya/reviews/2026-10-30-shared-upload-source.json:generic-api-key:34
+# Public Docker container identities, verified against retained activation records.
+c767731bf3c4b5c98ea32f5439b11d73382993af:docs/superpowers/reports/2026-10-30-shared-simulation-model-choices.md:generic-api-key:145
+6f2182e744767c2d2ea6dac448add807e113c4de:docs/superpowers/reports/2026-10-30-shared-upload-docker-activation.md:generic-api-key:87
