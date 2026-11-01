@@ -66,10 +66,10 @@ describe('AppLayout hide-sidebar (D10)', () => {
     localStorage.setItem(SIDEBAR_KEY, 'hidden')
     const user = userEvent.setup()
     renderLayout()
-    const link = await screen.findByRole('link', { name: 'Analysis results' })
+    const link = await screen.findByRole('link', { name: 'Analysis Results' })
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
     act(() => link.focus())
-    expect(await screen.findByTestId('tooltip')).toHaveTextContent('Analysis results')
+    expect(await screen.findByTestId('tooltip')).toHaveTextContent('Analysis Results')
     await user.keyboard('{Escape}')
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
     await user.hover(screen.getByRole('link', { name: "Quick Calculator" }))
@@ -81,7 +81,7 @@ describe('AppLayout hide-sidebar (D10)', () => {
 
   it('does not repeat link names as tooltips while the sidebar is shown', async () => {
     renderLayout()
-    const link = await screen.findByRole('link', { name: 'Analysis results' })
+    const link = await screen.findByRole('link', { name: 'Analysis Results' })
     act(() => link.focus())
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument()
   })

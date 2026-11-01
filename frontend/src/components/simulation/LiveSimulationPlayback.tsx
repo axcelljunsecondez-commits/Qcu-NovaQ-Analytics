@@ -133,7 +133,7 @@ export function LiveSimulationPlayback({ trace }: { trace: SimulationTrace }) {
       <section className="card live-floor">
         <header className="live-floor-header">
           <div>
-            <div className="live-floor-eyebrow">{segment.time} · {segment.selected_model ?? '—'}</div>
+            <div className="live-floor-eyebrow">{segment.time}</div>
             <h3 lang="en" className="section-title">{headingText(t, 'simulation.live_floor_title')}</h3>
             <p className="form-hint">
               {t('simulation.live_event_progress', { current: snapshot.eventCount, total: trace.event_count })}

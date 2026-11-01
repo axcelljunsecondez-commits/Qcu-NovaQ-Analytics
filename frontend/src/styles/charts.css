@@ -1,0 +1,114 @@
+/* ===== Chart redesign (spec docs/superpowers/specs/2026-10-29-ulit-and-chart-redesign.md) =====
+   Ported from output/chart-redesign/index.html and output/ulit-mockup/index.html.
+   Theme tokens only (light and dark come from theme.css). Single writer after plan step 2. */
+
+/* Card parts: takeaway, legend, chips, view switch, details, readout */
+.cv-takeaway { margin: 4px 0 8px; font-size: 0.9rem; }
+.cv-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 8px; padding: 0; list-style: none; font-size: 0.82rem; align-items: center; }
+.cv-legend-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.cv-swatch { display: inline-block; flex: none; width: 14px; height: 14px; vertical-align: -2px; }
+.cv-swatch-wide { width: 24px; height: 12px; }
+.cv-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; border: 1px solid var(--color-border-subtle); background: var(--color-bg-subtle); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.cv-chip-cur { background: var(--color-data-current-bg); color: var(--color-data-current); border-color: var(--color-data-current); }
+.cv-chip-opt { background: var(--color-data-optimized-bg); color: var(--color-data-optimized); border-color: var(--color-data-optimized); }
+.cv-chip-data { background: var(--color-bg-surface); color: var(--color-text-primary); border-color: var(--color-text-primary); }
+.cv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.cv-view-switch { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+/* Unchosen views are neutral; only the chosen one takes the primary fill (the base button style is the
+   primary fill, so without this both views looked chosen). */
+.cv-view-switch button { min-height: 44px; font-size: 0.82rem; background: var(--color-bg-surface); color: var(--color-text-primary); border: 1px solid var(--color-border-control); }
+.cv-view-switch button:not([aria-pressed='true']):hover { background: var(--color-bg-surface); border-color: var(--color-text-primary); }
+.cv-view-switch button[aria-pressed='true'] { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); border-color: var(--color-action-primary-bg); }
+.cv-details { margin-top: 10px; border-top: 1px solid var(--color-border-subtle); padding-top: 6px; }
+.cv-details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 0.85rem; font-weight: 600; color: var(--color-action-link); }
+.cv-details details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 0.85rem; color: var(--color-action-link); }
+.cv-axis-title { margin: 2px 0 0; font-size: 0.75rem; color: var(--color-text-secondary); text-align: right; }
+.cv-head-row { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.cv-head-row .section-title { margin: 0; }
+.cv-readout { min-height: 1.4em; margin: 6px 0 0; font-size: 0.82rem; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.cv-readout p { margin: 0; overflow-wrap: anywhere; }
+.cv-readout .cv-readout-title { font-weight: 700; color: var(--color-text-primary); }
+
+/* Results tabs: the app's .tabs/.tab pattern with 44 px targets */
+.cv-tabs .tab { min-height: 44px; }
+.cv-tab-panel:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+
+/* Row chart (SVG) */
+.cv-chart-wrap { min-width: 0; }
+.cv-chart { position: relative; width: 100%; min-width: 0; border-radius: 8px; }
+.cv-chart:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+.cv-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.cv-chart .cv-chart-measure { position: absolute; width: 1px; height: 1px; overflow: hidden; visibility: hidden; pointer-events: none; }
+.cv-row-grid, .cv-row-axis-grid { display: grid; min-width: 0; align-items: center; }
+.cv-row-grid { min-height: 46px; border-radius: 4px; }
+.cv-row-label, .cv-row-side, .cv-row-gap { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 12px; color: var(--color-text-secondary); }
+.cv-row-label { padding: 0 6px 0 4px; }
+.cv-row-title { display: block; color: var(--color-text-primary); }
+.cv-row-sublabel { display: block; }
+.cv-row-svg-cell { display: grid; min-width: 0; align-items: center; }
+.cv-row-plot, .cv-row-gap { grid-area: 1 / 1; }
+.cv-row-gap { padding: 0 8px 0 14px; }
+.cv-chart-compact .cv-row-label { grid-column: 1 / -1; }
+.cv-chart-compact .cv-row-grid { padding: 4px 0; row-gap: 4px; }
+.cv-row-grid.hl { background: var(--color-warning-bg); }
+.cv-row-grid.active { background: var(--color-bg-subtle); box-shadow: inset 0 0 0 1.5px var(--color-focus-ring); }
+.cv-ax text, .cv-lbl { font-size: 12px; fill: var(--color-text-secondary); }
+.cv-lbl-strong { font-size: 12px; font-weight: 700; fill: var(--color-text-primary); }
+.cv-grid-l { stroke: var(--color-border-subtle); stroke-width: 1; }
+.cv-axis-l { stroke: var(--color-border-control); stroke-width: 1; }
+.cv-row { cursor: default; }
+.cv-row-bg { fill: transparent; }
+.cv-row.hl .cv-row-bg { fill: var(--color-warning-bg); }
+.cv-row.active .cv-row-bg { fill: var(--color-bg-subtle); stroke: var(--color-focus-ring); stroke-width: 1.5; }
+.cv-m-est { fill: var(--color-bg-surface); stroke: var(--color-data-current); stroke-width: 2.5; }
+.cv-m-rec { fill: var(--color-text-primary); }
+.cv-m-plan { fill: var(--color-data-optimized); }
+.cv-l-gap { stroke: var(--color-text-secondary); stroke-width: 1.5; stroke-dasharray: 2 3; }
+.cv-l-ci { stroke: var(--color-data-optimized); stroke-width: 2.5; stroke-linecap: round; }
+.cv-m-clip { fill: var(--color-data-optimized); }
+.cv-l-cap { stroke: var(--color-danger-fg); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.cv-m-mc { fill: var(--color-data-optimized); }
+
+/* Full-day line charts with axes */
+.cv-day-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.cv-day-chart .cv-line { fill: none; stroke: var(--color-data-optimized); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.cv-day-chart .cv-close { stroke: var(--color-text-secondary); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+
+/* Busy Level ribbon: colours come from the existing busy-* level classes */
+.cv-ribbon { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 4px; }
+/* Every button is display: inline-flex (global.css), which laid time, level and % side by side and pushed
+   them past the cell at 375 px; stack the three lines as in the mockup. */
+.cv-ribbon button { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 64px; border: 2px solid transparent; border-radius: 8px; padding: 6px 4px; text-align: center; cursor: pointer; line-height: 1.25; }
+.cv-ribbon button .cv-t, .cv-ribbon button .cv-l { display: block; font-size: 12px; font-weight: 700; }
+.cv-ribbon button .cv-v { display: block; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cv-ribbon button[aria-pressed='true'] { border-color: var(--color-text-primary); }
+.cv-detail { margin-top: 10px; }
+
+/* Longest Single Line matrix */
+.cv-matrix { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.cv-matrix th, .cv-matrix td { padding: 0; border: 1px solid var(--color-border-subtle); text-align: center; font-size: 13px; height: 34px; }
+.cv-matrix thead th { font-size: 12px; padding: 4px 2px; }
+.cv-matrix tbody th { text-align: left; padding: 0 6px; font-size: 12px; white-space: normal; overflow-wrap: anywhere; background: var(--color-bg-subtle); }
+.cv-matrix td { cursor: default; color: var(--color-text-primary); }
+.cv-matrix td.cv-closed { background: repeating-linear-gradient(135deg, var(--color-bg-subtle) 0 5px, var(--color-bg-surface) 5px 10px); color: var(--color-text-secondary); }
+.cv-matrix td.cv-maxcol { font-weight: 800; border-left: 2px solid var(--color-text-secondary); }
+.cv-matrix td:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: -3px; }
+.cv-matrix td.active { box-shadow: inset 0 0 0 2px var(--color-focus-ring); }
+.cv-matrix .cv-c-time { width: 84px; }
+@media (pointer: coarse) { .cv-matrix th, .cv-matrix td { height: 44px; } }
+
+/* Key Results pair without an arrow */
+.cv-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; }
+.cv-pair-mid { text-align: center; min-width: 44px; }
+
+/* Operating hours chip (ulit A6) */
+.hours-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--color-info-bg); color: var(--color-info-fg); font-weight: 600; font-size: 0.875rem; }
+.hours-chip svg { width: 16px; height: 16px; flex: none; }
+
+/* Dotted label that opens a tooltip (ulit A8; InfoTip label variant) */
+.tip-trigger { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 2px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.tip-trigger:hover { background: transparent; }
+@media (pointer: coarse) { .tip-trigger { min-height: 44px; } }
+
+/* Combined Waiting Line legend swatches (ulit A7) */
+.cv-swatch .waiting-chart-line { fill: none; }

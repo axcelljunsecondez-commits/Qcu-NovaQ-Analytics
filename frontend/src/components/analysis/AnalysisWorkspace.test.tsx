@@ -101,7 +101,7 @@ describe('AnalysisWorkspace', () => {
       'href',
       '/analyses/1/data',
     )
-    expect(screen.getByRole('link', { name: 'Next: Analysis results' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Next: Analysis Results' })).toHaveAttribute(
       'href',
       '/results?analysis=1',
     )

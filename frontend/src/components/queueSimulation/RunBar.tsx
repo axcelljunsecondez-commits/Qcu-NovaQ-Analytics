@@ -5,6 +5,7 @@ import { getAnalysisCurrent } from '../../api/analyses'
 import { runSelectedDes, runWorkflowDes, runWorkflowDesCurrent } from '../../api/workflow'
 import { parseSeed, requestError } from '../../lib/simulationEvidence'
 import { operatingHours } from '../../lib/replay'
+import { HoursChip } from '../ui/HoursChip'
 import { breakNoticeKey, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** One-row run bar (D30): hours, closing rule, status, Run full operation, Advanced. */
@@ -66,8 +67,10 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
   return (
     <section className="card run-bar" aria-label={t('simulation.run_bar')}>
       <div className="run-bar-row">
-        <span>{hoursText ? t('simulation.operating_hours', { hours: hoursText }) : t('simulation.operating_hours_unknown')}</span>
-        {context.separate && <span>{t('simulation.closing_rule_separate')}</span>}
+        {hoursText ? <HoursChip text={t('simulation.operating_hours', { hours: hoursText })} /> : <span>{t('simulation.operating_hours_unknown')}</span>}
+        {/* K-UC-12: only the selected-plan separate run drains the lines at closing; the separate Current run and
+            legacy separate plans stop at closing (backend simulation.py), so the text would be false there. */}
+        {run === 'suggested' && context.selectedSeparate && <span>{t('simulation.closing_rule_separate')}</span>}
         <span className={`badge ${runMutation.isPending ? 'badge-warn' : stored ? 'badge-ok' : 'badge-neutral'}`} role="status" data-testid="run-status">
           {t(runMutation.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
         </span>

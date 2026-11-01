@@ -687,6 +687,40 @@ def _current_segments_for(
     return segments
 
 
+def _validate_current_des_date_scope(analysis: AnalysisProject, segments: list[dict[str, Any]]) -> None:
+    """Refuse date identities the Current continuous separate DES cannot preserve.
+
+    The existing engine matches segment/queue, without a date key. Validation
+    must happen before it can silently choose a date or stitch different days;
+    it never filters, replaces or reorders the records passed to that engine.
+    """
+    setup = analysis.queue_setup_json or {}
+    if setup.get("queue_structure") != "separate_queues" or not per_date_continuous(setup):
+        return
+    period_rows: dict[str, list] = {}
+    for row in segments:
+        period_rows.setdefault(row["time"], []).append(row)
+    try:
+        days = per_date_days(setup, list(period_rows), period_rows)
+        if len(days) != 1:
+            raise ValueError("Current DES requires one unambiguous calendar date.")
+        configured = {_segment_window(segment)[0] for segment in setup.get("segments") or []
+                      if isinstance(segment, dict)}
+        identities: set[tuple[str, str, str]] = set()
+        for calendar_date, periods in days:
+            datetime.fromisoformat(calendar_date)  # The shared grouper checks label shape, not calendar validity.
+            for label, segment_id in periods:
+                if segment_id not in configured:
+                    raise ValueError("Unknown operating segment.")
+                for row in period_rows[label]:
+                    identity = (calendar_date, segment_id, str(row.get("queue_id")))
+                    if identity in identities:
+                        raise ValueError("Duplicate date/segment/queue identity.")
+                    identities.add(identity)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Current dataset records are invalid.") from None
+
+
 def _job_matches(job: Job, analysis_id: int, scenario_id: int | None = None) -> bool:
     params = job.params_json or {}
     if params.get("analysis_id") != analysis_id:
@@ -1425,6 +1459,7 @@ def run_des_current(
     analysis = own_analysis(db, user, analysis_id)
     dataset = _current_dataset(db, user, analysis)
     segments = _current_segments_for(analysis, dataset)
+    _validate_current_des_date_scope(analysis, segments)
     result = simulate_segments_with_trace(
         segments,
         sim_hours=payload.sim_hours,

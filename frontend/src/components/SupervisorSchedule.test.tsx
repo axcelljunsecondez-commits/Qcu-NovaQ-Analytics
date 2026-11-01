@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -53,10 +55,10 @@ function render() {
 }
 async function run(breaks = false) {
   const user = userEvent.setup()
-  await screen.findByRole('heading', { name: 'Suggested schedule' })
+  await screen.findByRole('heading', { name: 'Suggested Schedule' })
   if (breaks) await user.click(screen.getByRole('checkbox', { name: 'Allow break times to change' }))
   await user.click(screen.getByRole('button', { name: 'Check schedule' }))
-  await screen.findByRole('heading', { name: 'Review the check' })
+  await screen.findByRole('heading', { name: 'Review the Check' })
   return user
 }
 async function confirm(user: ReturnType<typeof userEvent.setup>) {
@@ -95,7 +97,7 @@ describe('supervisor schedule workflow', () => {
       if (name !== 'Settings') {
         expect(within(screen.getByRole('tabpanel')).getByText(/Go to Settings and check/)).toBeVisible()
         expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
-        expect(screen.queryByRole('button', { name: 'Use this plan' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Use this Plan' })).not.toBeInTheDocument()
       }
     }
     expect(mocks.preview).not.toHaveBeenCalled()
@@ -129,17 +131,47 @@ describe('supervisor schedule workflow', () => {
     await run(true)
     expect(screen.queryByRole('spinbutton', { name: 'Busy limit per cashier' })).not.toBeInTheDocument()
     await confirm(user)
-    await user.type(screen.getByLabelText('Scenario name'), ' draft')
+    await user.type(screen.getByLabelText('Scenario Name'), ' draft')
     await user.click(screen.getByRole('tab', { name: 'Settings' }))
     expect(percent).toHaveValue(72.5)
     expect(screen.getByRole('checkbox')).toBeChecked()
     await user.click(screen.getByRole('tab', { name: 'Review' }))
     expect(screen.getByText(/No clear change in wait/)).toBeVisible()
     await confirm(user)
-    expect(screen.getByLabelText('Scenario name')).toHaveValue('Schedule at 72.5% draft')
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Schedule at 72.5% draft')
     expect(mocks.preview).toHaveBeenCalledTimes(1)
     expect(mocks.apply).not.toHaveBeenCalled()
     expect(mocks.save).not.toHaveBeenCalled()
+  })
+  it('names the plan after the checked busy limit until the user types a name', async () => {
+    render(); const user = await run()
+    async function recheck(value: string) {
+      await user.click(screen.getByRole('tab', { name: 'Settings' }))
+      const percent = screen.getByRole('spinbutton', { name: 'Busy limit per cashier' })
+      await user.clear(percent); await user.type(percent, value)
+      await user.click(screen.getByRole('button', { name: 'Check schedule' }))
+      await screen.findByRole('heading', { name: 'Review the Check' })
+      await confirm(user)
+    }
+    await confirm(user)
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Schedule at 70%')
+    await recheck('75')
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Schedule at 75%')
+    await user.clear(screen.getByLabelText('Scenario Name'))
+    await user.type(screen.getByLabelText('Scenario Name'), 'Saturday rush')
+    await recheck('80')
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Saturday rush')
+    await user.clear(screen.getByLabelText('Scenario Name'))
+    await recheck('85')
+    expect(screen.getByLabelText('Scenario Name')).toHaveValue('Schedule at 85%')
+  })
+  it('gives the review step room above the sticky step bar', async () => {
+    const { container } = render(); await run(true)
+    expect(container.querySelector('.supervisor-page .supervisor-break-table table caption'))
+      .toHaveTextContent('Break Changes to Review')
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
+    expect(css).toMatch(/html:has\(\.supervisor-page\)\s*\{\s*scroll-padding-bottom:/)
+    expect(css).toMatch(/\.supervisor-page \.supervisor-break-table caption\s*\{\s*padding: var\(--space-md\)/)
   })
   it('moves the slider by five points while preserving typed fractional values', async () => {
     const user = userEvent.setup(); render()
@@ -148,7 +180,7 @@ describe('supervisor schedule workflow', () => {
     expect(screen.getByRole('slider')).toHaveValue('72.5')
     await user.click(screen.getByRole('button', { name: 'Check schedule' }))
     expect(mocks.preview).toHaveBeenCalledWith(7, expect.objectContaining({ target_utilization: .725, des: { base_seed: 42 }, min_active_lanes: 2 }))
-    await screen.findByRole('heading', { name: 'Review the check' })
+    await screen.findByRole('heading', { name: 'Review the Check' })
     await user.click(screen.getByRole('tab', { name: 'Settings' }))
     screen.getByRole('slider').focus()
     await user.keyboard('{ArrowRight}')
@@ -171,9 +203,9 @@ describe('supervisor schedule workflow', () => {
     render(); const user = await run(true)
     expect(mocks.preview).toHaveBeenCalledWith(7, expect.objectContaining({ allow_break_changes: true, max_shift_minutes: 120 }))
     expect(screen.getByText(/No clear change in wait/)).toBeVisible()
-    expect(screen.getByRole('table', { name: 'Break changes to review' })).toHaveTextContent('11:00')
+    expect(screen.getByRole('table', { name: 'Break Changes to Review' })).toHaveTextContent('11:00')
     await confirm(user)
-    expect(screen.getByRole('button', { name: 'Use this plan' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeDisabled()
     expect(mocks.apply).not.toHaveBeenCalled()
   })
   it('Back and Escape return to Review, restore focus and never apply', async () => {
@@ -183,7 +215,7 @@ describe('supervisor schedule workflow', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(trigger).toHaveFocus())
     await user.click(trigger)
-    await user.click(screen.getByRole('button', { name: 'Back to review' }))
+    await user.click(screen.getByRole('button', { name: 'Back to Review' }))
     await waitFor(() => expect(trigger).toHaveFocus())
     expect(mocks.apply).not.toHaveBeenCalled()
   })
@@ -194,9 +226,9 @@ describe('supervisor schedule workflow', () => {
     await user.click(screen.getByRole('button', { name: 'Save break changes' }))
     expect(await screen.findByText(/Break times saved in Setup/)).toBeVisible()
     expect(mocks.apply).toHaveBeenCalledWith(7, expect.objectContaining({ preview_hash: 'a'.repeat(64), target_utilization: .7 }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Use this plan' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeEnabled())
     expect(view.queryClient.getQueryData(['workflow',7])).toBeUndefined()
-    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({
       dataset_id: 1, settings: expect.objectContaining({ min_active_lanes: 2, calculation: expect.objectContaining({
         schema_version: 2, engine_version: 'fixture-engine', dataset_row_count: 50,
@@ -210,7 +242,7 @@ describe('supervisor schedule workflow', () => {
       mocks.preview.mockResolvedValue(value)
       render(); const user = await run(true); await confirm(user)
       expect(screen.getByRole('button', { name: 'Save break changes' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Use this plan' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeDisabled()
     })
   it('permits the unchanged checked plan when no break moves are found', async () => {
     const value = preview(true); value.can_apply = false; value.blockers = ['no_moves']; value.breaks!.moves = []
@@ -232,12 +264,12 @@ describe('supervisor schedule workflow', () => {
     let finish!: (value: SupervisorPreview) => void
     mocks.preview.mockImplementation(() => new Promise<SupervisorPreview>(resolve => { finish = resolve }))
     const view = render(); const user = userEvent.setup()
-    await screen.findByRole('heading', { name: 'Suggested schedule' })
+    await screen.findByRole('heading', { name: 'Suggested Schedule' })
     await user.click(screen.getByRole('checkbox'))
     await user.click(screen.getByRole('button', { name: 'Check schedule' }))
     view.queryClient.setQueryData(['analysis',7], { analysis: { ...analysis, queue_setup: { ...setup, breaks: [] } } })
     finish(preview(true))
-    await screen.findByRole('heading', { name: 'Review the check' })
+    await screen.findByRole('heading', { name: 'Review the Check' })
     await confirm(user)
     expect(screen.getByRole('button', { name: 'Save break changes' })).toBeDisabled()
   })
@@ -247,13 +279,13 @@ describe('supervisor schedule workflow', () => {
     await confirm(user)
     await user.click(screen.getByRole('button', { name: 'Save break changes' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Setup changed; check again.')
-    expect(screen.queryByRole('button', { name: 'Use this plan' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use this Plan' })).not.toBeInTheDocument()
   })
   it('keeps a saved plan and explains a refused selection', async () => {
     mocks.select.mockRejectedValue({ response: { data: { detail: 'Selection refused' } } })
     render(); const user = await run()
     await confirm(user)
-    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Selection refused')
     expect(mocks.save).toHaveBeenCalledTimes(1)
   })
@@ -261,7 +293,7 @@ describe('supervisor schedule workflow', () => {
     mocks.save.mockRejectedValue(new Error('save failed'))
     render(); const user = await run()
     await confirm(user)
-    await user.click(screen.getByRole('button', { name: 'Use this plan' }))
+    await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     await screen.findByRole('alert')
     expect(mocks.select).not.toHaveBeenCalled()
   })
@@ -275,7 +307,7 @@ describe('supervisor schedule workflow', () => {
   })
   it('rejects mixed demand assumptions when breaks are enabled', async () => {
     render(); const user = userEvent.setup()
-    await screen.findByRole('heading', { name: 'Suggested schedule' })
+    await screen.findByRole('heading', { name: 'Suggested Schedule' })
     await user.click(screen.getByRole('checkbox'))
     await user.click(screen.getByText('Assumptions and limits'))
     await user.clear(screen.getByLabelText('Customer demand multiplier')); await user.type(screen.getByLabelText('Customer demand multiplier'), '2')

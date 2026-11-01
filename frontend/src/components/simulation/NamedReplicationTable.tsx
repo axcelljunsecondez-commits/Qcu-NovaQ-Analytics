@@ -2,6 +2,7 @@ import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { NamedReplicationRow, NamedRunSummary, OutcomeCount } from '../../api/sharedNamed'
 import { fmtDecimal } from '../../lib/format'
+import { InfoTip } from '../ui/InfoTip'
 
 interface Props {
   rows: NamedReplicationRow[]
@@ -11,6 +12,8 @@ interface Props {
 }
 
 const minutes = (hours: number | null | undefined) => (hours === null || hours === undefined ? null : hours * 60)
+/** A wait cannot be negative: older runs stored a negative lower bound, so it is shown as 0 (spec 2026-10-29 §7.7, OD-1). */
+const shownLower = (hours: number | null | undefined) => (hours === null || hours === undefined || !Number.isFinite(hours) ? null : Math.max(0, hours))
 const OUTCOMES = ['with_unserved_customers', 'with_service_after_closing', 'with_shift_overrun', 'with_unfulfilled_breaks']
 
 /** One row per replication and the descriptive aggregate. Waits show in minutes; null shows as "—". No verdict. */
@@ -19,6 +22,10 @@ export function NamedReplicationTable({ rows, summary, selectedIndex, onSelect }
   const means = summary.waiting_time.mean_of_replication_means_hours
   const weighted = summary.waiting_time.customer_weighted_mean_hours
   const totals = summary.customers.totals
+  const lowerShown = shownLower(means.ci_lower)
+  const lower = fmtDecimal(minutes(lowerShown))
+  // The note says the range is cut at 0: only when the shown bound IS 0, not when a small positive value prints as "0".
+  const cutAtZero = lowerShown === 0
   return (
     <div data-testid="named-replication-table">
       <div className="card table-scroll" role="region" aria-label={t('simulation.named_replications_caption')} tabIndex={0}>
@@ -97,11 +104,16 @@ export function NamedReplicationTable({ rows, summary, selectedIndex, onSelect }
           <dd data-testid="named-agg-mean-of-means">
             {t('simulation.named_agg_mean_of_means_value', {
               mean: fmtDecimal(minutes(means.mean)),
-              lower: fmtDecimal(minutes(means.ci_lower)),
+              lower,
               upper: fmtDecimal(minutes(means.ci_upper)),
               n: means.n,
               undefined: means.n_undefined,
             })}
+            {cutAtZero && (
+              <span className="form-hint" data-testid="named-agg-clip"> {t('charts.clip_legend')}{' '}
+                <InfoTip name={t('charts.clip_legend')} ariaLabel={t('charts.info_clip_name')} text={t('charts.clip_text')} />
+              </span>
+            )}
             <span className="form-hint"> {means.definition}</span>
           </dd>
           <dt>{t('simulation.named_agg_weighted_mean')}</dt>

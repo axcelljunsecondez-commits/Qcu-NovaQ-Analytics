@@ -4,70 +4,22 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import type { ScenarioOut } from '../../api/scenarios'
-import type { SeparateComparison, SeparatePlanComparison } from '../../api/types'
+import type { AnalysisSegment, DatasetOut, EventPeriodBasis, SeparateComparison, SeparatePlanComparison } from '../../api/types'
 import { selectWorkflowScenario } from '../../api/workflow'
 import { completeFiniteAverage, comparisonTotals, operationalComparisonComplete } from '../../lib/comparison'
-import { fmtDecimal, fmtPctDecimal, messageOf } from '../../lib/format'
-import { finiteNumber, levelClass, levelKey, minutes } from '../../lib/results'
-import { utilizationBand, type UtilizationBand } from '../../lib/utilization'
+import { basisText, separateCostBasis } from '../../lib/costBasis'
+import { fmtDecimal, messageOf } from '../../lib/format'
+import { finiteNumber, minutes } from '../../lib/results'
 import { isCurrentScenario, scenarioRows, type SelectedPlan } from './useSelectedPlan'
 
 function money(value: number | null | undefined): string | null {
   return value === null || value === undefined || !Number.isFinite(value) ? null : `₱${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
-function band(rho: number | null, stable: boolean | null): UtilizationBand | null {
-  if (stable === false) return 'Unstable'
-  return rho === null ? null : utilizationBand(rho)
-}
-
 interface PlanRow {
   time: string
   countersNow: number | null
   countersPlan: number | null
-  waitNow: number | null
-  waitPlan: number | null
-  levelNow: UtilizationBand | null
-  levelPlan: UtilizationBand | null
-  aboveTarget: boolean
-}
-
-function Level({ level }: { level: UtilizationBand | null }) {
-  const { t } = useTranslation()
-  return <span className={`status-badge ${levelClass(level)}`}>{t(levelKey(level))}</span>
-}
-
-function PlanTable({ rows, target }: { rows: PlanRow[]; target: number | null }) {
-  const { t } = useTranslation()
-  const unavailable = t('results.unavailable')
-  const count = (value: number | null) => (value === null ? unavailable : String(value))
-  const wait = (hours: number | null, level: UtilizationBand | null) => {
-    if (level === 'Unstable') return t('results.cant_keep_up_wait')
-    const value = minutes(hours)
-    return value === null ? unavailable : `${fmtDecimal(value, 1)} ${t('results.min')}`
-  }
-  return (
-    <div className="table-scroll" role="region" aria-labelledby="plan-changes-title" tabIndex={0}>
-      <table>
-        <thead>
-          <tr><th scope="col">{t('common.time')}</th><th scope="col">{t('results.col_counters')}</th><th scope="col">{t('results.col_estimated_wait')}</th><th scope="col">{t('results.col_level')}</th></tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.time} className={row.aboveTarget ? 'row-warning' : undefined}>
-              <th scope="row">
-                {row.time}
-                {row.aboveTarget && target !== null && <small className="plan-target-flag">{t('results.above_plan_target', { target: fmtPctDecimal(target) })}</small>}
-              </th>
-              <td>{count(row.countersNow)} → {count(row.countersPlan)}</td>
-              <td>{wait(row.waitNow, row.levelNow)} → {wait(row.waitPlan, row.levelPlan)}</td>
-              <td><Level level={row.levelNow} /> → <Level level={row.levelPlan} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
 }
 
 /** "Calculated result · not yet checked by simulation" (D31 level 1). No decision words. */
@@ -96,7 +48,8 @@ function CalculatedResult({ analysisId, changes, waitNow, waitPlan, costNow, cos
           ? t('results.suggests_no_change')
           : t('results.suggests_changes', { changes: changes.map((row) => t('results.counter_change', { time: row.time, from: row.countersNow ?? '?', to: row.countersPlan ?? '?' })).join('; ') })}
       </p>
-      <p>{t('results.suggests_wait', { now: waitText(waitNow), plan: waitText(waitPlan) })}</p>
+      {/* OD-5 / W17: separate lines pair an analytical estimate with a simulated plan, so both kinds are named. */}
+      <p>{t(separate ? 'results.suggests_wait_separate' : 'results.suggests_wait', { now: waitText(waitNow), plan: waitText(waitPlan) })}</p>
       <p>{t('results.suggests_cost', { now: costNow ?? unavailable, plan: costPlan ?? unavailable })}{costNote ? ` ${costNote}` : ''}</p>
       {separate && <p className="form-hint">{t('results.separate_plan_basis')}</p>}
       <div className="button-row">
@@ -153,63 +106,66 @@ function Section({ children, note }: { children: ReactNode; note?: string }) {
   )
 }
 
-function sharedRows(scenario: ScenarioOut, target: number | null): PlanRow[] {
-  return scenarioRows(scenario).map((row) => {
-    const rhoNow = finiteNumber(row.rho_current)
-    const levelNow = band(rhoNow, row.current_stable)
-    return {
-      time: row.time,
-      countersNow: finiteNumber(row.c_current),
-      countersPlan: finiteNumber(row.c_optimal),
-      waitNow: finiteNumber(row.Wq_current),
-      waitPlan: finiteNumber(row.Wq_optimal),
-      levelNow,
-      levelPlan: band(finiteNumber(row.rho_optimal), row.optimized_stable),
-      aboveTarget: target !== null && (levelNow === 'Unstable' || (rhoNow !== null && rhoNow > target)),
-    }
-  })
+function sharedRows(scenario: ScenarioOut): PlanRow[] {
+  return scenarioRows(scenario).map((row) => ({ time: row.time, countersNow: finiteNumber(row.c_current), countersPlan: finiteNumber(row.c_optimal) }))
 }
 
-function separateRows(comparison: SeparateComparison, plan: SeparatePlanComparison, target: number | null): PlanRow[] {
-  return comparison.current.periods.map((period) => {
-    const match = plan.periods.find((item) => item.time === period.time)
-    const rhoNow = finiteNumber(period.util_max)
-    const rhoPlan = finiteNumber(match?.peak_util)
-    return {
-      time: period.time,
-      countersNow: period.active_lanes === null ? null : period.active_lanes.length,
-      countersPlan: finiteNumber(match?.optimal_active_lanes),
-      waitNow: finiteNumber(period.wait_mean),
-      waitPlan: finiteNumber(match?.wait_mean),
-      levelNow: band(rhoNow, null),
-      levelPlan: band(rhoPlan, null),
-      aboveTarget: target !== null && rhoNow !== null && rhoNow > target,
-    }
-  })
+function separateRows(comparison: SeparateComparison, plan: SeparatePlanComparison): PlanRow[] {
+  return comparison.current.periods.map((period) => ({
+    time: period.time,
+    countersNow: period.active_lanes === null ? null : period.active_lanes.length,
+    countersPlan: finiteNumber(plan.periods.find((item) => item.time === period.time)?.optimal_active_lanes),
+  }))
 }
 
-/** "What the plan changes" (D21) and the level-1 calculated result (D31); planning file only. */
-export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: SelectedPlan & { scenarios?: ScenarioOut[]; separateComparison?: SeparateComparison } }) {
+type PlanState = SelectedPlan & { scenarios?: ScenarioOut[]; separateComparison?: SeparateComparison }
+
+/** The "no plan selected" prompt (D21): the saved plans that can be chosen and the way to Suggested Plans. */
+export function NoPlanPrompt({ analysisId, plan }: { analysisId: number; plan: PlanState }) {
+  const { t } = useTranslation()
+  const options = plan.separateComparison
+    ? plan.separateComparison.plans.filter((item) => item.valid && !item.stale).map((item) => ({ id: item.scenario_id, name: item.name }))
+    : (plan.scenarios ?? []).filter((item) => item.provenance === 'verified_snapshot' && isCurrentScenario(item) && operationalComparisonComplete(scenarioRows(item)))
+      .map((item) => ({ id: Number(item.id), name: item.name }))
+  return (
+    <div className="plan-none">
+      <p>{t(options.length > 0 ? 'results.saved_plan_available' : 'results.no_plan_selected')}</p>
+      {options.length > 0 && <Switcher key={analysisId} options={options} selectedId={null} analysisId={analysisId} />}
+      <Link className="button-link" to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>
+    </div>
+  )
+}
+
+/**
+ * The selected plan's Switcher, calculated result (D31) and cost line; planning file only. Its
+ * per-period counters, waits and levels are drawn in the Results chart tabs (spec 2026-10-29 §5.4).
+ * `promptShown`: the no-plan prompt is already shown under the wait chart, so it is not repeated here.
+ */
+export function PlanChanges({ analysisId, plan, dataset, periodBasis, segments, promptShown = false }: {
+  analysisId: number
+  plan: PlanState
+  /** The planning file, for the plan cost's day-basis label (spec §6). */
+  dataset?: DatasetOut
+  periodBasis?: EventPeriodBasis
+  /** The Setup segments: the day-basis label needs every one to be 60 minutes (period costs are hourly rates). */
+  segments?: AnalysisSegment[]
+  promptShown?: boolean
+}) {
   const { t } = useTranslation()
   if (plan.kind === 'loading') return <p className="form-hint">{t('common.loading')}</p>
   if (plan.kind === 'error') return <div className="alert alert-error" role="alert">{t('results.plan_error')}</div>
   if (plan.kind === 'none') {
-    const options = plan.separateComparison
-      ? plan.separateComparison.plans.filter((item) => item.valid && !item.stale).map((item) => ({ id: item.scenario_id, name: item.name }))
-      : (plan.scenarios ?? []).filter((item) => item.provenance === 'verified_snapshot' && isCurrentScenario(item) && operationalComparisonComplete(scenarioRows(item)))
-        .map((item) => ({ id: Number(item.id), name: item.name }))
+    if (promptShown) return null
     return (
       <section className="card" aria-labelledby="plan-none-title">
         <h2 lang="en" id="plan-none-title" className="section-title">{headingText(t, 'results.plan_changes')}</h2>
-        <p>{t(options.length > 0 ? 'results.saved_plan_available' : 'results.no_plan_selected')}</p>
-        {options.length > 0 && <Switcher key={analysisId} options={options} selectedId={null} analysisId={analysisId} />}
-        <Link className="button-link" to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>
+        <NoPlanPrompt analysisId={analysisId} plan={plan} />
       </section>
     )
   }
 
   if (plan.kind === 'shared') {
-    const { scenario, scenarios, usable, target } = plan
+    const { scenario, scenarios, usable } = plan
     const options = scenarios
       .filter((item) => item.provenance === 'verified_snapshot' && isCurrentScenario(item) && operationalComparisonComplete(scenarioRows(item)))
       .map((item) => ({ id: Number(item.id), name: item.name }))
@@ -225,9 +181,10 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
         </Section>
       )
     }
-    const rows = sharedRows(scenario, target)
+    const rows = sharedRows(scenario)
     const source = scenarioRows(scenario)
     const totals = comparisonTotals(source)
+    // Shared totals add the rows' costs; whether those rows cover one day is not established, so there is no day-basis label (UNKNOWN, spec §6.2).
     return (
       <>
         <CalculatedResult
@@ -242,7 +199,6 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
         />
         <Section>
           <Switcher key={`${analysisId}-${scenario.id}`} options={options} selectedId={Number(scenario.id)} selectedUsable={usable} analysisId={analysisId} />
-          <PlanTable rows={rows} target={target} />
           <p className="plan-cost">
             <strong>{t('results.cost_now_vs_plan')}</strong>{' '}
             {totals ? `${money(totals.current)} → ${money(totals.optimal)}` : t('results.unavailable')}
@@ -253,7 +209,7 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
     )
   }
 
-  const { plan: chosen, comparison, usable, target } = plan
+  const { plan: chosen, comparison, usable } = plan
   const options = comparison.plans.filter((item) => item.valid && !item.stale).map((item) => ({ id: item.scenario_id, name: item.name }))
   if (!options.some((option) => option.id === chosen.scenario_id)) options.unshift({ id: chosen.scenario_id, name: chosen.name })
   if (!usable) {
@@ -264,8 +220,10 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
       </Section>
     )
   }
-  const rows = separateRows(comparison, chosen, target)
-  const costPlan = money(chosen.totals?.total_cost_mean)
+  const rows = separateRows(comparison, chosen)
+  const cost = money(chosen.totals?.total_cost_mean)
+  const basis = cost === null ? null : separateCostBasis(periodBasis, dataset, chosen, segments)
+  const costPlan = cost === null ? null : basis ? `${cost} ${basisText(t, basis)}` : cost
   const costNowReason = comparison.current.total_cost_reason ?? t('results.cost_now_unavailable_separate')
   return (
     <>
@@ -281,8 +239,7 @@ export function PlanChanges({ analysisId, plan }: { analysisId: number; plan: Se
       />
       <Section>
         <Switcher key={`${analysisId}-${chosen.scenario_id}`} options={options} selectedId={chosen.scenario_id} selectedUsable={usable} analysisId={analysisId} />
-        <PlanTable rows={rows} target={target} />
-        <p className="plan-cost"><strong>{t('results.cost_now_vs_plan')}</strong> {t('results.unavailable')} → {costPlan ?? t('results.unavailable')}</p>
+        <p className="plan-cost" data-testid="plan-cost"><strong>{t('results.cost_now_vs_plan')}</strong> {t('results.unavailable')} → {costPlan ?? t('results.unavailable')}</p>
         <p className="form-hint">{t('results.cost_now_unavailable_reason', { reason: costNowReason })}</p>
       </Section>
     </>

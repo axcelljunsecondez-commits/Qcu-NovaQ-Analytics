@@ -74,7 +74,7 @@ describe('setup semantic contracts', () => {
     )
 
     expect(await screen.findByLabelText('Queue structure')).toHaveValue('unknown')
-    expect(screen.getByLabelText('Capacity mode')).toHaveValue('unknown')
+    expect(screen.getByLabelText('Capacity Mode')).toHaveValue('unknown')
     expect(screen.getByLabelText('Abandonment')).toHaveValue('unknown')
     expect(screen.getByLabelText('Fixed server count')).toHaveValue(null)
 
