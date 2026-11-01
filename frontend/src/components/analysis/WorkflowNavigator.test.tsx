@@ -5,7 +5,7 @@ import { renderWithProviders } from '../../test/test-utils'
 import { WorkflowNavigator } from './WorkflowNavigator'
 
 const steps = ['data', 'plans', 'results', 'simulate', 'decision', 'reports'] as const
-const labels = ["Data and Setup", 'Suggested plans', 'Analysis results', "Queue Simulation", 'Decision', 'Reports'] as const
+const labels = ["Data and Setup", 'Suggested Plans', 'Analysis Results', "Queue Simulation", 'Decision', 'Reports'] as const
 // Analysis results and Queue simulation live outside the workspace (spec §5); the rest are workspace pages.
 const href = (step: string) => (step === 'results' ? '/results?analysis=7'
   : step === 'simulate' ? '/simulation/results?analysis=7' : `/analyses/7/${step}`)

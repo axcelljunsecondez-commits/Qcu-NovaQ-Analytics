@@ -721,16 +721,6 @@ button.btn-good:hover {
   cursor: pointer;
 }
 
-.plotly-wrap {
-  margin-bottom: 1rem;
-}
-
-.plotly-wrap h4 {
-  margin: 0 0 0.5rem;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-}
-
 /* ===== Login Page (Split Layout) ===== */
 .login-page {
   min-height: 100vh;
@@ -5154,6 +5144,12 @@ summary.setup-step-title::before {
 .app-shell .setup-steps { grid-template-columns: minmax(0, 1fr); }
 .app-shell .setup-step { min-width: 0; }
 .app-shell :is(p, dd, td, th, label, .page-title, .card-title) { overflow-wrap: anywhere; }
+/* Field Guide: keep field names (arrival_time, service_start, ...) whole; the table scrolls inside .table-scroll. */
+.app-shell .field-guide-table th[scope='row'] { overflow-wrap: normal; white-space: nowrap; }
+/* Without a minimum width the table squeezed to 375 px and broke the other columns every few letters
+   ("08:/00/-0/9:0/0") instead of scrolling sideways inside its .table-scroll box (spec §4.1). Same form as
+   .results-reference below, so it outranks `.app-shell .table-scroll table { min-width: 100%; }`. */
+.app-shell .table-scroll table.field-guide-table { min-width: 40rem; }
 .app-shell :is(a, button, input, select, textarea, [tabindex]):focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 3px; }
 .app-shell .page-title[tabindex='-1']:focus { outline: none; }
 .app-shell :is(.btn-primary, .button-primary, .button-link) { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); }
@@ -5306,6 +5302,29 @@ summary.setup-step-title::before {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
+}
+
+/* The ⓘ of a check sits outside its <summary> and is laid over this slot (ChecksView CheckLine). */
+.check-line-frame {
+  position: relative;
+}
+
+.check-line-info-slot {
+  display: inline-block;
+  flex: none;
+  width: 32px;
+  height: 32px;
+}
+
+.check-line-info {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+}
+
+@media (pointer: coarse) {
+  .check-line-info-slot { width: 44px; height: 44px; }
 }
 
 .headline-pair {
@@ -5487,6 +5506,17 @@ summary.setup-step-title::before {
   .supervisor-limit { gap: var(--space-sm); }
 }
 
+/* Break Changes to Review (desktop table; hidden at <=640px where the cards show). */
+.supervisor-page .supervisor-break-table caption { padding: var(--space-md) var(--space-md) var(--space-sm); }
+.supervisor-page .supervisor-break-table :is(th, td):last-child { padding-inline-end: var(--space-lg); }
+/* The sticky .workflow-footer (bottom: 12px, z-index: 20) overlays the bottom of the viewport.
+   html only had scroll-padding-top, so focus and scroll-into-view put the break table's last row
+   and the Review buttons under it. Reserve the footer's height (from its CSS: padding, 44px rows,
+   gaps, stacked buttons on phones) plus its 12px offset at the bottom of the scrollport. */
+html:has(.supervisor-page) { scroll-padding-bottom: 7rem; }
+@media (max-width: 1023px) { html:has(.supervisor-page) { scroll-padding-bottom: 11rem; } }
+@media (max-width: 639px) { html:has(.supervisor-page) { scroll-padding-bottom: 18rem; } }
+@media (max-height: 480px) { html:has(.supervisor-page) { scroll-padding-bottom: 0; } }
 .supervisor-break-cards { display: none; }
 .supervisor-evidence table { min-width: 34rem; }
 @media (max-width: 640px) {

@@ -1,5 +1,5 @@
 import { headingText } from '../../lib/headingText'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
@@ -18,12 +18,15 @@ import {
   type ContinuousReason,
   type ContinuousRunOut,
 } from '../../api/continuous'
+import { axisTicks, countTicks, niceMax } from '../../lib/chartScale'
 import { fmtDecimal } from '../../lib/format'
 import { automaticReplications, clockAt, clockOfMinutes, hoursAt, latestRunIds, rangeText, stateAt, waitingSteps } from '../../lib/continuous'
 import { requestError } from '../../lib/simulationEvidence'
 import { advancePlaybackTime } from '../../lib/simulationPlayback'
 import type { SimulationPageName } from './simulationContext'
+import { RowChart, type ChartRow } from '../charts/RowChart'
 import { HelpLink } from '../ui/HelpLink'
+import { HoursChip } from '../ui/HoursChip'
 import { ContinuousQueueFloor } from './ContinuousQueueFloor'
 import { SimulationModelChoices } from './SimulationModelChoices'
 
@@ -149,22 +152,24 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
     const count = automaticReplications(view.expected_customers_per_day, compatibility.default_replications, compatibility.limits)
     if (count === null) return setError(t('errors.server'))
     if (count === 0) return setError(t('simulation.named_customer_bound_exceeded', {
-      value: view.expected_customers_per_day, max: compatibility.limits.max_expected_customers_per_run, replications: 0,
+      // K-UC-15: one decimal, as the API rounds the same value in its limit_exceeded refusal.
+      value: fmtDecimal(view.expected_customers_per_day, 1), max: compatibility.limits.max_expected_customers_per_run, replications: 0,
     }))
     const seedValue = Number(seed)
     if (!Number.isInteger(seedValue) || seedValue < 0) return setError(t('continuous.seed_range'))
     run.mutate(count)
   }
+  // Owner decision A6: 24-hour "HH:MM - HH:MM", as operatingHours() prints it for separate lines.
   // A refused assessment may withhold the timeline before reading the data's hours.
   const hours = view.horizon
-    ? `${clockOfMinutes(view.horizon.start_minute)}–${clockOfMinutes(view.horizon.end_minute)}`
+    ? `${clockOfMinutes(view.horizon.start_minute)} - ${clockOfMinutes(view.horizon.end_minute)}`
     : view.compatible ? null : t('results.unavailable')
   const blocking = view.reasons.filter((reason) => reason.code !== 'no_closing_policy')
   return (
     <section className="card run-bar" aria-label={t('continuous.title')}>
       <div className="title-row"><h2 className="section-title"><span lang="en">{headingText(t, 'continuous.title')}</span> <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2><HelpLink topic="simulation" section="methods" /></div>
       <div className="run-bar-row">
-        <span>{hours ? t('simulation.operating_hours', { hours }) : t('simulation.operating_hours_unknown')}</span>
+        {hours ? <HoursChip text={t('simulation.operating_hours', { hours })} /> : <span>{t('simulation.operating_hours_unknown')}</span>}
         <ClosingRule analysisId={analysisId} rule={rule} />
       </div>
       <div className="run-bar-row">
@@ -222,23 +227,48 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
   )
 }
 
-function Card({ label, now, plan }: { label: string; now: string; plan: string }) {
+/** Current and Suggested plan side by side, no arrow (owner decision C3). */
+function Pair({ now, plan }: { now: string; plan: string }) {
   const { t } = useTranslation()
+  return (
+    <div className="cv-pair">
+      <p className="headline-pair"><span>{t('simulation.run_current')}: <strong>{now}</strong></span></p>
+      <div className="cv-pair-mid" />
+      <p className="headline-pair"><span>{t('simulation.run_suggested')}: <strong>{plan}</strong></span></p>
+    </div>
+  )
+}
+
+function Card({ label, now, plan }: { label: string; now: string; plan: string }) {
   return (
     <section className="card key-result" aria-label={label}>
       <h3 className="kpi-label">{label}</h3>
-      <p className="headline-pair"><span>{t('simulation.run_current')}: <strong>{now}</strong></span><span aria-hidden="true">→</span><span>{t('simulation.run_suggested')}: <strong>{plan}</strong></span></p>
+      <Pair now={now} plan={plan} />
     </section>
   )
 }
 
-/** Four headline cards Current → Suggested from the stored runs' own summaries (no browser totals). */
+/** "mean (lowest–highest)" of a stored metric of a run, or Not run / Unavailable. */
+function useMetricText() {
+  const { t } = useTranslation()
+  const notRun = t('simulation.status_not_run')
+  const unavailable = t('results.unavailable')
+  const count = (value: number) => fmtDecimal(value, 1)
+  return (run: ContinuousRunOut | null, pick: (out: ContinuousRunOut) => Parameters<typeof rangeText>[0]) => (
+    run ? rangeText(pick(run), count) ?? unavailable : notRun
+  )
+}
+
+/**
+ * Headline cards Current and Suggested plan from the stored runs' own summaries (no browser totals):
+ * Average wait and Longest Single Line (owner decision C3), and Not served at closing kept as a card
+ * (OD-2: it is a mean over repeated days). Customer Served is under More results.
+ */
 function ContinuousCards({ current, suggested }: { current: ContinuousRunOut | null; suggested: ContinuousRunOut | null }) {
   const { t } = useTranslation()
   const notRun = t('simulation.status_not_run')
   const unavailable = t('results.unavailable')
   const minutes = (value: number) => `${fmtDecimal(value, 1)} ${t('results.min')}`
-  const count = (value: number) => fmtDecimal(value, 1)
   const wait = (run: ContinuousRunOut | null) => {
     if (!run) return notRun
     const summary = run.evidence.result.summary.waiting_time
@@ -248,9 +278,7 @@ function ContinuousCards({ current, suggested }: { current: ContinuousRunOut | n
     return spread.min !== null && spread.max !== null && spread.min !== spread.max
       ? `${minutes(value * 60)} (${minutes(spread.min * 60)}–${minutes(spread.max * 60)})` : minutes(value * 60)
   }
-  const metric = (run: ContinuousRunOut | null, pick: (out: ContinuousRunOut) => Parameters<typeof rangeText>[0]) => (
-    run ? rangeText(pick(run), count) ?? unavailable : notRun
-  )
+  const metric = useMetricText()
   const repeats = [current, suggested].filter((run): run is ContinuousRunOut => run !== null).map((run) => run.evidence.params.replications)
   const rules = current && suggested && current.evidence.params.closing_policy !== suggested.evidence.params.closing_policy
     ? { current: t(`continuous.closing_short_${current.evidence.params.closing_policy}`), suggested: t(`continuous.closing_short_${suggested.evidence.params.closing_policy}`) }
@@ -260,7 +288,6 @@ function ContinuousCards({ current, suggested }: { current: ContinuousRunOut | n
       <div className="key-results" role="group" aria-label={t('continuous.key_results')}>
         <Card label={t('simulation.average_wait')} now={wait(current)} plan={wait(suggested)} />
         <Card label={t('simulation.longest_line')} now={metric(current, (run) => run.evidence.result.summary.metrics.max_queue_in_horizon)} plan={metric(suggested, (run) => run.evidence.result.summary.metrics.max_queue_in_horizon)} />
-        <Card label={t('simulation.served_customers')} now={metric(current, (run) => run.evidence.result.summary.customers.per_replication.served)} plan={metric(suggested, (run) => run.evidence.result.summary.customers.per_replication.served)} />
         <Card label={t('continuous.not_served')} now={metric(current, (run) => run.evidence.result.summary.customers.per_replication.unserved)} plan={metric(suggested, (run) => run.evidence.result.summary.customers.per_replication.unserved)} />
       </div>
       {repeats.length > 0 && <p className="form-hint">{t('continuous.cards_note', { counts: [...new Set(repeats)].join(' / ') })}</p>}
@@ -269,43 +296,138 @@ function ContinuousCards({ current, suggested }: { current: ContinuousRunOut | n
   )
 }
 
-function DayCharts({ playback, startMinute, day, days }: { playback: ContinuousPlayback; startMinute: number; day: number; days: number }) {
+const FALLBACK_WIDTH = 600
+
+function useWidth() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(FALLBACK_WIDTH)
+  useEffect(() => {
+    const element = ref.current
+    if (!element) return undefined
+    const measure = () => setWidth(element.clientWidth > 0 ? element.clientWidth : FALLBACK_WIDTH)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  return { ref, width: Math.max(240, width) }
+}
+
+/**
+ * People waiting after every event of one repeated day (a step line, nothing sampled), with a
+ * y-axis of whole people from 0 and store-clock x labels (owner decision C6). The dashed line is closing.
+ */
+function WaitingThroughDay({ playback, startMinute, day }: { playback: ContinuousPlayback; startMinute: number; day: number }) {
   const { t } = useTranslation()
+  const { ref, width } = useWidth()
   const steps = waitingSteps(playback.playback.events)
-  const end = Math.max(playback.playback.closing.closing_hours, steps.at(-1)?.hours ?? 0)
-  const max = Math.max(1, ...steps.map((step) => step.waiting))
-  const x = (hours: number) => (end > 0 ? (hours / end) * 600 : 0)
-  const y = (waiting: number) => 160 - (waiting / max) * 150
-  const path = steps.map((step, index) => `${index === 0 ? 'M' : 'L'}${x(step.hours)},${index === 0 ? y(step.waiting) : y(steps[index - 1].waiting)} L${x(step.hours)},${y(step.waiting)}`).join(' ')
+  const closingHours = playback.playback.closing.closing_hours
+  const end = Math.max(closingHours, steps.at(-1)?.hours ?? 0)
   const peak = Math.max(0, ...steps.map((step) => step.waiting))
-  const longestWait = Math.max(0, ...playback.by_period.map((period) => period.mean_wait_hours ?? 0))
+  const yTicks = countTicks(peak)
+  const yMax = yTicks[yTicks.length - 1]
+  const height = 200
+  const [left, right, top, bottom] = [34, 12, 10, 26]
+  const x = (hours: number) => left + (end > 0 ? hours / end : 0) * (width - left - right)
+  const y = (waiting: number) => top + (1 - waiting / yMax) * (height - top - bottom)
+  const path = steps.map((step, index) => `${index === 0 ? 'M' : 'L'}${x(step.hours)},${index === 0 ? y(step.waiting) : y(steps[index - 1].waiting)} L${x(step.hours)},${y(step.waiting)}`).join(' ')
+  const hourStep = Math.max(1, Math.ceil(end / (width < 420 ? 3 : 6)))
+  const xTicks: number[] = []
+  for (let hours = 0; hours <= end + 1e-9; hours += hourStep) xTicks.push(hours)
+  const first = steps.find((step) => step.waiting === peak)
+  return (
+    <section className="card" aria-labelledby="continuous-waiting-title">
+      <h2 lang="en" id="continuous-waiting-title" className="section-title">{headingText(t, 'continuous.chart_waiting')}</h2>
+      {first && <p className="cv-takeaway" data-testid="fullday-waiting-take">{t('charts.fullday_waiting_take', { day: day + 1, max: peak, time: clockAt(startMinute, first.hours) })}</p>}
+      <ul className="cv-legend">
+        <li className="cv-legend-item">
+          <svg className="cv-swatch cv-swatch-wide" viewBox="0 0 24 12" aria-hidden="true" focusable="false">
+            <line x1={0} y1={6} x2={24} y2={6} style={{ stroke: 'var(--color-text-secondary)', strokeWidth: 1.5, strokeDasharray: '4 3' }} />
+          </svg>
+          {t('charts.fullday_closing_legend')}
+        </li>
+      </ul>
+      <div ref={ref}>
+        <svg className="cv-day-chart" viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label={t('continuous.chart_waiting_summary', { max: peak })} data-testid="fullday-waiting-chart">
+          <g className="cv-ax" data-testid="fullday-y-axis">
+            {yTicks.map((tick) => (
+              <g key={tick}>
+                <line className={tick === 0 ? 'cv-axis-l' : 'cv-grid-l'} x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} />
+                <text x={left - 6} y={y(tick) + 4} textAnchor="end">{tick}</text>
+              </g>
+            ))}
+          </g>
+          <g className="cv-ax" data-testid="fullday-x-axis">
+            {xTicks.map((tick) => <text key={tick} x={x(tick)} y={height - 8} textAnchor="middle">{clockAt(startMinute, tick)}</text>)}
+          </g>
+          <line className="cv-close" x1={x(closingHours)} x2={x(closingHours)} y1={top} y2={height - bottom} />
+          <path className="cv-line" d={path} />
+        </svg>
+      </div>
+      <details className="cv-details">
+        <summary>{t('simulation.check_details')}</summary>
+        <p className="form-hint">{t('continuous.chart_waiting_axis', { start: clockAt(startMinute, 0), end: clockAt(startMinute, end), max: peak })}</p>
+      </details>
+    </section>
+  )
+}
+
+/** Average wait of each arrival period of one repeated day as a row chart; a period without a value is a labelled gap. */
+function WaitByPeriodDay({ playback, day, plan }: { playback: ContinuousPlayback; day: number; plan: ContinuousPlan }) {
+  const { t } = useTranslation()
+  const unavailable = t('results.unavailable')
+  const text = (hours: number | null) => (hours === null ? unavailable : `${fmtDecimal(hours * 60, 1)} ${t('results.min')}`)
+  const periods = playback.by_period
+  let longest = -1
+  periods.forEach((period, index) => {
+    if (period.mean_wait_hours !== null && (longest < 0 || period.mean_wait_hours > (periods[longest].mean_wait_hours as number))) longest = index
+  })
+  const kind = plan === 'suggested' ? 'plan' : 'est'
+  const rows: ChartRow[] = periods.map((period, index) => ({
+    key: period.period_id,
+    label: period.period_id,
+    marks: period.mean_wait_hours === null ? [] : [{ kind, value: period.mean_wait_hours * 60 }],
+    gapLabel: unavailable,
+    highlight: index === longest,
+    readout: [period.period_id, `${t('simulation.average_wait')}: ${text(period.mean_wait_hours)}`],
+    liveText: `${period.period_id}: ${text(period.mean_wait_hours)}`,
+  }))
+  const max = niceMax(Math.max(0, ...periods.map((period) => (period.mean_wait_hours ?? 0) * 60)))
+  return (
+    <section className="card" aria-labelledby="continuous-period-title">
+      <h2 lang="en" id="continuous-period-title" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2>
+      {longest >= 0 && (
+        <p className="cv-takeaway" data-testid="fullday-period-take">
+          {t('charts.fullday_period_take', { day: day + 1, wait: text(periods[longest].mean_wait_hours), period: periods[longest].period_id })}
+        </p>
+      )}
+      <ul className="cv-legend">
+        <li className="cv-legend-item">
+          <svg className="cv-swatch" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+            {kind === 'plan' ? <circle className="cv-m-plan" cx={7} cy={7} r={5} /> : <circle className="cv-m-est" cx={7} cy={7} r={4.5} />}
+          </svg>
+          {t(plan === 'suggested' ? 'simulation.run_suggested' : 'simulation.run_current')}
+        </li>
+      </ul>
+      <RowChart name={t('simulation.chart_wait_by_period')} rows={rows} max={max} ticks={axisTicks(max, 4)} formatTick={(value) => fmtDecimal(value, 2)}
+        unit={t('results.min')} initialRow={Math.max(0, longest)} testId="fullday-period-chart" />
+      <details className="cv-details">
+        <summary>{t('simulation.check_details')}</summary>
+        <p className="form-hint">{t('continuous.by_period_hint')}</p>
+      </details>
+    </section>
+  )
+}
+
+function DayCharts({ playback, startMinute, day, days, plan }: { playback: ContinuousPlayback; startMinute: number; day: number; days: number; plan: ContinuousPlan }) {
+  const { t } = useTranslation()
   return (
     <>
       <p className="form-hint">{t('continuous.chart_day', { day: day + 1, total: days })}</p>
       <div className="grid g2">
-        <section className="card" aria-labelledby="continuous-waiting-title">
-          <h2 lang="en" id="continuous-waiting-title" className="section-title">{headingText(t, 'continuous.chart_waiting')}</h2>
-          <svg className="waiting-chart" viewBox="0 0 600 160" role="img" aria-label={t('continuous.chart_waiting_summary', { max: peak })} preserveAspectRatio="none">
-            <line className="waiting-chart-close" x1={x(playback.playback.closing.closing_hours)} x2={x(playback.playback.closing.closing_hours)} y1={0} y2={160} />
-            <path className="waiting-chart-line" fill="none" d={path} />
-          </svg>
-          <p className="form-hint">{t('continuous.chart_waiting_axis', { start: clockAt(startMinute, 0), end: clockAt(startMinute, end), max: peak })}</p>
-        </section>
-        <section className="card" aria-labelledby="continuous-period-title">
-          <h2 lang="en" id="continuous-period-title" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2>
-          <div className="hbar-chart" role="img" aria-labelledby="continuous-period-title">
-            {playback.by_period.map((period) => (
-              <div className="hbar-row" key={period.period_id}>
-                <div className="hbar-head">
-                  <span className="hbar-label">{period.period_id}</span>
-                  <span className="hbar-value">{period.mean_wait_hours === null ? t('results.unavailable') : `${fmtDecimal(period.mean_wait_hours * 60, 1)} ${t('results.min')}`}</span>
-                </div>
-                <span className="hbar-track"><span className="hbar-fill" style={{ width: `${longestWait > 0 && period.mean_wait_hours !== null ? (period.mean_wait_hours / longestWait) * 100 : 0}%` }} /></span>
-              </div>
-            ))}
-          </div>
-          <p className="form-hint">{t('continuous.by_period_hint')}</p>
-        </section>
+        <WaitingThroughDay playback={playback} startMinute={startMinute} day={day} />
+        <WaitByPeriodDay playback={playback} day={day} plan={plan} />
       </div>
     </>
   )
@@ -334,8 +456,10 @@ function DayPicker({ days, day, onChange }: { days: number; day: number; onChang
 }
 
 /** The day picker and the two charts of one repeated day of the shown run (keyed by run, so day resets). */
-function ShownDay({ analysisId, shown }: { analysisId: number; shown: ContinuousRunOut }) {
+function ShownDay({ analysisId, shown, current, suggested }: { analysisId: number; shown: ContinuousRunOut; current: ContinuousRunOut | null; suggested: ContinuousRunOut | null }) {
   const { t } = useTranslation()
+  const metric = useMetricText()
+  const served = (run: ContinuousRunOut) => run.evidence.result.summary.customers.per_replication.served
   const [day, setDay] = useState(0)
   const playback = useDayPlayback(analysisId, shown, day)
   return (
@@ -346,11 +470,15 @@ function ShownDay({ analysisId, shown }: { analysisId: number; shown: Continuous
       <DayPicker days={shown.evidence.params.replications} day={day} onChange={setDay} />
       {playback.isError && <div role="alert" className="alert alert-error">{requestError(playback.error, t('errors.server'))}</div>}
       {playback.data && (
-        <DayCharts playback={playback.data} startMinute={shown.evidence.result.provenance.inputs.horizon.start_minute} day={day} days={shown.evidence.params.replications} />
+        <DayCharts playback={playback.data} startMinute={shown.evidence.result.provenance.inputs.horizon.start_minute} day={day} days={shown.evidence.params.replications} plan={shown.evidence.params.plan} />
       )}
       {playback.data && (
         <details className="card collapsible-card">
           <summary><h2 lang="en" className="section-title">{headingText(t, 'simulation.more_results')}</h2></summary>
+          <section className="key-result" aria-label={t('simulation.served_customers')} data-testid="continuous-more-served">
+            <h3 className="kpi-label">{t('simulation.served_customers')}</h3>
+            <Pair now={metric(current, served)} plan={metric(suggested, served)} />
+          </section>
           <div className="table-scroll" role="region" aria-label={t('continuous.period_table', { day: day + 1 })} tabIndex={0}>
             <table>
               <caption>{t('continuous.period_table', { day: day + 1 })}</caption>
@@ -378,7 +506,7 @@ function ContinuousResults({ analysisId, shown, current, suggested }: {
   return (
     <div className="page-stack">
       <ContinuousCards current={current} suggested={suggested} />
-      {shown && <ShownDay key={shown.evidence.id} analysisId={analysisId} shown={shown} />}
+      {shown && <ShownDay key={shown.evidence.id} analysisId={analysisId} shown={shown} current={current} suggested={suggested} />}
     </div>
   )
 }

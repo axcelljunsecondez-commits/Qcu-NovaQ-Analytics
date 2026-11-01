@@ -279,7 +279,7 @@ describe('Analysis results: the planning file', () => {
   it('opens the planning file with its dates, tags and key results from the server', async () => {
     renderResults()
     expect(await screen.findByRole('heading', { name: 'Recorded average wait' })).toBeInTheDocument()
-    const picker = screen.getByLabelText('View results from')
+    const picker = screen.getByLabelText('View Results from')
     expect(picker).toHaveValue('11')
     expect(within(picker).getAllByRole('option').map((option) => option.textContent)).toEqual([
       'feb_totals.csv · Data period unavailable · Review only',
@@ -307,9 +307,14 @@ describe('Analysis results: the planning file', () => {
   })
 
   it('says when no plan is selected and flags no plan target', async () => {
+    const user = userEvent.setup()
     renderResults()
-    expect(await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toBeInTheDocument()
-    const strip = screen.getByRole('heading', { name: 'Your day, by busy level' }).closest('section') as HTMLElement
+    const prompt = await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')
+    // OD-4: the wait tab shows today's view with the no-plan prompt under the chart, and no Plan view.
+    expect(within(screen.getByTestId('wait-by-hour')).getByText(prompt.textContent ?? '')).toBe(prompt)
+    expect(screen.queryByRole('group', { name: 'Chart view' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Your day, by Busy Level' }))
+    const strip = screen.getByRole('heading', { name: 'Your day, by Busy Level' }).closest('section') as HTMLElement
     expect(within(strip).getByRole('status')).toHaveTextContent("09:00-10:00: Can't keep up (100% or more)")
     expect(screen.queryByText(/above this plan's target/)).not.toBeInTheDocument()
     expect(screen.queryByText('Calculated result · not yet checked by simulation')).not.toBeInTheDocument()
@@ -318,9 +323,14 @@ describe('Analysis results: the planning file', () => {
   it('shows what a current plan changes, its target flags and the calculated result without decision words', async () => {
     getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Plan A' }))
     listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Plan A', 'CURRENT'), scenario(4, 'Plan B', 'CURRENT', 0.8), scenario(5, 'Old plan', 'STALE_DATASET')] })
+    const user = userEvent.setup()
     renderResults()
     expect(await screen.findByText('Calculated result · not yet checked by simulation')).toBeInTheDocument()
     expect(screen.getByText('The calculation suggests these counter changes: 08:00-09:00: 3 → 4 counters; 09:00-10:00: 3 → 5 counters.')).toBeInTheDocument()
+    // Shared lines: both sides are calculated, so the wait line keeps its wording and no cost-basis label is added.
+    expect(screen.getByText('Estimated wait (average of the periods): Unavailable → 0.6 min.')).toBeInTheDocument()
+    expect(screen.queryByText(/per average day|total for \d+ days/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Your day, by Busy Level' }))
     expect(screen.getAllByText(/above this plan's target of 70%/).length).toBeGreaterThan(0)
     // Today's cost is unknown while counters can't keep up: never a partial total.
     expect(screen.getByText('Total cost: Unavailable → Unavailable.', { exact: false })).toBeInTheDocument()
@@ -356,8 +366,9 @@ describe('Analysis results: the planning file', () => {
   it('keeps the chosen period in the address and shows its numbers', async () => {
     const user = userEvent.setup()
     renderResults()
-    await user.click(await screen.findByRole('button', { name: '08:00-09:00: Peak' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('/results?analysis=7&period=08%3A00-09%3A00')
+    await user.click(await screen.findByRole('tab', { name: 'Your day, by Busy Level' }))
+    await user.click(screen.getByRole('button', { name: '08:00-09:00: Peak, 83.33%' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/results?analysis=7&chart=level&period=08%3A00-09%3A00')
     const summary = screen.getByRole('heading', { name: 'Current operation by period' }).closest('section') as HTMLElement
     expect(within(summary).getAllByText('3 min').length).toBeGreaterThan(0)
     await user.click(screen.getByRole('link', { name: 'Inputs and model' }))
@@ -391,7 +402,7 @@ describe('Analysis results: another file', () => {
       await new Promise<void>((resolve) => { release = resolve })
       return currentFor(datasetId === 12 ? reviewFile : planningFile)
     })
-    await user.selectOptions(screen.getByLabelText('View results from'), '12')
+    await user.selectOptions(screen.getByLabelText('View Results from'), '12')
     expect(screen.getByTestId('where')).toHaveTextContent('/results?analysis=7&file=12')
     expect(screen.queryByRole('heading', { name: 'Busiest period by customer arrivals' })).not.toBeInTheDocument()
     expect(screen.queryByText('6 min')).not.toBeInTheDocument()
@@ -418,7 +429,7 @@ describe('Analysis results: another file', () => {
 
   it('falls back to the planning file when the address names a file that is not processed', async () => {
     renderResults('/results?analysis=7&file=13')
-    expect(await screen.findByLabelText('View results from')).toHaveValue('11')
+    expect(await screen.findByLabelText('View Results from')).toHaveValue('11')
     expect(getCurrentMock).not.toHaveBeenCalledWith(7, 13)
   })
 })
@@ -435,7 +446,7 @@ describe('Inputs and model reference', () => {
     const back = screen.getByRole('link', { name: 'Return to analysis results' })
     expect(back).toHaveAttribute('href', '/results?analysis=7&file=12&period=07%3A00-08%3A00&line=queue_a')
     await user.click(back)
-    expect(screen.getByRole('heading', { level: 1, name: 'Analysis results' })).toHaveFocus()
+    expect(screen.getByRole('heading', { level: 1, name: 'Analysis Results' })).toHaveFocus()
     for (const mock of [getWorkflowMock, listScenariosMock, getSeparateMock, selectMock]) expect(mock).not.toHaveBeenCalled()
     expect(getCurrentMock).toHaveBeenCalledWith(7, 12)
   })
@@ -465,10 +476,11 @@ describe('Inputs and model reference', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     const arrivals = screen.getByRole('list', { name: 'Customers per hour, by period' })
     expect(within(arrivals).getByText('40 customers per hour')).toBeInTheDocument()
-    const chart = screen.getByRole('list', { name: 'Recorded vs estimated wait, by period' })
-    expect(within(chart).getByText('7.2 min')).toBeInTheDocument()
-    expect(within(chart).getByText('3 min')).toBeInTheDocument()
-    expect(within(chart).getByText('Much longer than modeled')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Wait by period. Use the arrow keys to read each period.' })).toBeInTheDocument()
+    const table = within(screen.getByRole('region', { name: 'Show as a table' })).getByRole('table')
+    expect(within(table).getByText('7.2 min')).toBeInTheDocument()
+    expect(within(table).getByText('3 min')).toBeInTheDocument()
+    expect(within(table).getByText('Much longer than modeled')).toBeInTheDocument()
   })
 
   it('does not show recorded wait from a mismatched file response', async () => {
@@ -511,5 +523,129 @@ describe('Analysis results: separate lines', () => {
     expect(within(keyResult('Busiest period by customer arrivals')).getByText('10 customers per hour')).toBeInTheDocument()
     expect(screen.getAllByText(/above this plan's target of 70%/).length).toBeGreaterThan(0)
     expect(getWorkflowMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Analysis results: chart tabs (spec 2026-10-29 §5.1)', () => {
+  it('opens "What the plan changes" first, moves with arrow keys, Home and End, and keeps the tab in the address', async () => {
+    const user = userEvent.setup()
+    renderResults()
+    const list = await screen.findByRole('tablist', { name: 'Analysis Results charts' })
+    const tabs = within(list).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['What the plan changes', 'Your day, by Busy Level'])
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
+    expect(tabs[0]).toHaveAttribute('tabindex', '0')
+    expect(tabs[1]).toHaveAttribute('tabindex', '-1')
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tabs[0].id)
+    tabs[0].focus()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveFocus()
+    expect(screen.getByTestId('where')).toHaveTextContent('chart=level')
+    expect(screen.getByTestId('busy-level')).toBeInTheDocument()
+    expect(screen.queryByTestId('wait-by-hour')).not.toBeInTheDocument()
+    await user.keyboard('{Home}')
+    expect(screen.getByRole('tab', { name: 'What the plan changes' })).toHaveFocus()
+    expect(screen.getByTestId('where')).toHaveTextContent('chart=wait')
+    await user.keyboard('{End}')
+    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveFocus()
+    await user.keyboard('{ArrowLeft}')
+    expect(screen.getByRole('tab', { name: 'What the plan changes' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opens the tab named in the address', async () => {
+    renderResults('/results?analysis=7&chart=level')
+    expect(await screen.findByTestId('busy-level')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('falls back to the first available tab for an unknown name', async () => {
+    renderResults('/results?analysis=7&chart=other')
+    expect(await screen.findByTestId('wait-by-hour')).toBeInTheDocument()
+  })
+
+  it('keeps the no-plan prompt visible when the address opens the Busy Level tab (review K-UC-2)', async () => {
+    const user = userEvent.setup()
+    renderResults('/results?analysis=7&chart=level')
+    expect(await screen.findByTestId('busy-level')).toBeInTheDocument()
+    const prompt = await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')
+    expect(screen.getByRole('tabpanel')).not.toContainElement(prompt)
+    expect(screen.getAllByText(prompt.textContent ?? '')).toHaveLength(1)
+    // Back on the wait tab, the prompt moves under the chart and is not repeated.
+    await user.click(screen.getByRole('tab', { name: 'What the plan changes' }))
+    const again = screen.getByText(prompt.textContent ?? '')
+    expect(within(screen.getByTestId('wait-by-hour')).getByText(prompt.textContent ?? '')).toBe(again)
+    expect(screen.getAllByText(prompt.textContent ?? '')).toHaveLength(1)
+  })
+
+  it('shows a single card without a tablist when only Busy Level has content, and the no-plan prompt below', async () => {
+    getObservedMock.mockResolvedValue({ analysis_id: 7, dataset_id: 11, available: false, periods: [], flagged_any: false, day_modeled_wait: null, day_observed_wait: null, ratio: 2, min_gap_minutes: 1 })
+    renderResults()
+    expect(await screen.findByTestId('busy-level')).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('wait-by-hour')).not.toBeInTheDocument()
+    expect(await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toBeInTheDocument()
+  })
+})
+
+describe('Analysis results: separate plan cost by day basis (spec 2026-10-29 §6)', () => {
+  function separateSetup(basis: 'representative_day' | 'per_date') {
+    const base = analysis('separate_queues')
+    // 60-minute Setup segments: the period costs are hourly rates added up, so only then is the sum a day's cost (K-UC-1).
+    const segments = [{ id: 'morning', start_time: '08:00', end_time: '09:00', active_queue_ids: null }, { id: 'noon', start_time: '12:00', end_time: '13:00', active_queue_ids: null }]
+    return { analysis: { ...base.analysis, queue_setup: { ...base.analysis.queue_setup, segments, event_period_basis: basis } } }
+  }
+  function comparisonWith(periods: { time: string; cost: number }[], total: number) {
+    return {
+      analysis_id: 7, queue_structure: 'separate_queues', selected_scenario_id: 21,
+      current: { dataset_id: 11, wait_mean: 0.2, wait_basis: 'analytical', util_max: 0.75, waiting_cost: 10, waiting_cost_basis: null, total_cost: null,
+        total_cost_reason: 'Current staffing costs are not stored for separate lines.',
+        periods: periods.map((item) => ({ time: item.time, active_lanes: ['A', 'B'], lambda_total: 10, wait_mean: 0.2, util_max: 0.75 })) },
+      plans: [{ scenario_id: 21, name: 'Lanes plan', dataset_id: 11, target: 0.7, evaluation_method: 'DES_REPLICATIONS', replications: 5, base_seed: 1, overall: null,
+        wait_basis_kind: 'simulation', stale: false, valid: true, valid_reason: null,
+        totals: { lane_periods: periods.length * 2, wait_mean: 0.1, peak_util: 0.6, waiting_cost_mean: 5, total_cost_mean: total },
+        periods: periods.map((item) => ({ time: item.time, current_active_lanes: ['A', 'B'], optimal_active_lanes: 2, adjustment: 0, peak_util: 0.6, wait_mean: 0.1,
+          wait_ci: [-0.0239, 0.3], waiting_cost_mean: 5, total_cost_mean: item.cost, total_cost_ci: null, status: null })) }],
+    }
+  }
+  function currentWith(times: string[]) {
+    return { ...currentFor(planningFile), rows: times.flatMap((time) => [
+      { time, queue_id: 'A', lambda: 9, mu: 12, c: 1, rho: 0.75, Wq: 0.25, stable: true, queue_structure: 'separate_queues' },
+      { time, queue_id: 'B', lambda: 1, mu: 12, c: 1, rho: 0.0833, Wq: 0.01, stable: true, queue_structure: 'separate_queues' },
+    ]) }
+  }
+
+  it('labels a representative-day plan cost with the days of data and names both kinds in the wait line', async () => {
+    getAnalysisMock.mockResolvedValue(separateSetup('representative_day'))
+    const file = { ...planningFile, validation: { ...planningFile.validation, period_basis: 'representative_day', observation_days: 14 } }
+    listDatasetsMock.mockResolvedValue({ datasets: [file] })
+    getCurrentMock.mockResolvedValue(currentWith(['morning', 'noon']))
+    getSeparateMock.mockResolvedValue(comparisonWith([{ time: 'morning', cost: 200.5 }, { time: 'noon', cost: 119.5 }], 320))
+    renderResults()
+    expect(await screen.findByTestId('plan-cost')).toHaveTextContent('Unavailable → ₱320 per average day (from 14 days of data)')
+    expect(screen.getByText(/^Total cost: Unavailable → ₱320 per average day \(from 14 days of data\)\./)).toBeInTheDocument()
+    expect(screen.getByText('Wait (average of the periods): Calculated estimate 12 min → Suggested plan, simulated 6 min.')).toBeInTheDocument()
+  })
+
+  it('labels a per-date plan cost with the distinct dates and the data period', async () => {
+    getAnalysisMock.mockResolvedValue(separateSetup('per_date'))
+    const file = { ...planningFile, data_dates: { first: '2026-03-01', last: '2026-03-02', source: 'stored_at_upload' as const } }
+    listDatasetsMock.mockResolvedValue({ datasets: [file] })
+    const times = ['2026-03-01 morning UTC', '2026-03-01 noon UTC', '2026-03-02 morning UTC']
+    getCurrentMock.mockResolvedValue(currentWith(times))
+    getSeparateMock.mockResolvedValue(comparisonWith(times.map((time, index) => ({ time, cost: 100 + index })), 303))
+    renderResults()
+    expect(await screen.findByTestId('plan-cost')).toHaveTextContent('₱303 total for 2 days (2026-03-01 – 2026-03-02)')
+  })
+
+  it('shows no label when the plan total is not the sum of its periods', async () => {
+    getAnalysisMock.mockResolvedValue(separateSetup('representative_day'))
+    const file = { ...planningFile, validation: { ...planningFile.validation, period_basis: 'representative_day', observation_days: 14 } }
+    listDatasetsMock.mockResolvedValue({ datasets: [file] })
+    getCurrentMock.mockResolvedValue(currentWith(['morning', 'noon']))
+    getSeparateMock.mockResolvedValue(comparisonWith([{ time: 'morning', cost: 200 }, { time: 'noon', cost: 100 }], 320))
+    renderResults()
+    expect(await screen.findByTestId('plan-cost')).toHaveTextContent(/Unavailable → ₱320$/)
+    expect(screen.queryByText(/per average day/)).not.toBeInTheDocument()
   })
 })

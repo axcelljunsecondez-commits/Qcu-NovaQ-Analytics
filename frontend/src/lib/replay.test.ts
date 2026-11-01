@@ -7,6 +7,7 @@ import {
   hasBreakEvents,
   inactiveQueueIdsAt,
   mergeDayTrace,
+  operatingHours,
   periodsByDate,
   runTimeFor,
   scheduledBreaks,
@@ -155,5 +156,21 @@ describe('per-date days (B13)', () => {
     expect(dayPeriods(periods, true, '2026-09-09').periods.map((item) => item.time)).toEqual(['2026-09-09 s1 UTC', '2026-09-09 s2 UTC'])
     expect(dayPeriods(periods, true, 'not-a-date')).toMatchObject({ date: '2026-09-08', dates: ['2026-09-08', '2026-09-09'] })
     expect(dayPeriods(periods, false, '2026-09-09')).toEqual({ date: null, dates: [], periods })
+  })
+})
+
+describe('operating hours (spec 2026-10-29 §7.1, owner decision A6)', () => {
+  it('reads first segment start to last segment end as 24-hour "HH:MM - HH:MM"', () => {
+    const segments = [
+      { id: 'a', start_time: '08:00', end_time: '10:00', active_queue_ids: null },
+      { id: 'b', start_time: '10:00', end_time: '13:00', active_queue_ids: null },
+    ]
+    expect(operatingHours({ segments })).toBe('08:00 - 13:00')
+    expect(operatingHours({ segments: [{ id: 'c', start_time: '13:30', end_time: '21:45', active_queue_ids: null }] })).toBe('13:30 - 21:45')
+  })
+
+  it('is null when the setup has no clock times', () => {
+    expect(operatingHours({ segments: [] })).toBeNull()
+    expect(operatingHours(null)).toBeNull()
   })
 })

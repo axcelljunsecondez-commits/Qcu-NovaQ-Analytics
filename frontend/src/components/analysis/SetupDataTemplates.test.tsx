@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../../test/test-utils'
@@ -48,6 +50,23 @@ describe('SetupDataTemplates', () => {
     expect(screen.getAllByText('queue_id').length).toBeGreaterThan(0)
     await user.click(screen.getByRole('button', { name: 'Download CSV Template' }))
     expect(downloadTemplateMock).toHaveBeenCalledWith('separate_queues', 'aggregate', 'csv')
+  })
+
+  it('marks the field guide table so field names stay on one line', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SetupDataTemplates queueStructure="separate_queues" />)
+    await user.click(screen.getByRole('button', { name: 'View Example and Field Guide' }))
+    const region = await screen.findByRole('region', { name: 'Field Guide' })
+    const table = region.querySelector('table')
+    expect(table).toHaveClass('field-guide-table')
+    expect(screen.getByRole('rowheader', { name: 'queue_id' }).closest('table')).toBe(table)
+    expect(screen.getByRole('region', { name: 'Filled Example' }).querySelector('table'))
+      .not.toHaveClass('field-guide-table')
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
+    expect(css).toMatch(/\.app-shell \.field-guide-table th\[scope='row'\]\s*\{[^}]*overflow-wrap: normal;[^}]*white-space: nowrap;/)
+    // On phones the table keeps a readable width and scrolls inside its region instead of squeezing.
+    // The selector must outrank `.app-shell .table-scroll table { min-width: 100%; }` (0,2,1).
+    expect(css).toMatch(/\.app-shell \.table-scroll table\.field-guide-table\s*\{[^}]*min-width: 40rem;/)
   })
 
   it('switches between totals and events schemas', async () => {

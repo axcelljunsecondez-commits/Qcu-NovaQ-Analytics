@@ -45,6 +45,12 @@ describe('LiveSimulationPlayback', () => {
     expect(screen.queryByText('Abandoned exit')).not.toBeInTheDocument()
   })
 
+  it('shows only the segment time above the floor, without the model name', () => {
+    const { container } = renderWithProviders(<LiveSimulationPlayback trace={makeTrace(0)} />)
+    expect(container.querySelector('.live-floor-eyebrow')).toHaveTextContent(/^08:00-09:00$/)
+    expect(screen.queryByText(/M\/M\/1/)).not.toBeInTheDocument()
+  })
+
   it('bounds heavy-queue customer tokens while preserving the real count', async () => {
     const user = userEvent.setup()
     renderWithProviders(<LiveSimulationPlayback trace={makeTrace(10)} />)
