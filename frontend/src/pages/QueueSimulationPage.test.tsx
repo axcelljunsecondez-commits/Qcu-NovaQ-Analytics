@@ -661,6 +661,13 @@ describe('Current runs', () => {
     expect(runSelectedDesMock).not.toHaveBeenCalled()
   })
 
+  it('does not claim the separate Current run drains the lines at closing (K-UC-12)', async () => {
+    renderPage()
+    const bar = await screen.findByRole('region', { name: en['simulation.run_bar'] })
+    expect(await within(bar).findByRole('button', { name: 'Run full operation' })).toBeInTheDocument()
+    expect(within(bar).queryByText(en['simulation.closing_rule_separate'])).not.toBeInTheDocument()
+  })
+
   it('names the dataset Current would run on when no Current run exists', async () => {
     renderPage()
     expect(await screen.findByText('No current run for dataset #9.')).toBeInTheDocument()
@@ -845,6 +852,8 @@ describe('a selected separate-lines plan', () => {
     selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
     renderPage('/simulation/results?analysis=7&plan=current')
     expect(await screen.findByTestId('break-notice')).toHaveTextContent('This run does not include the scheduled breaks in your setup')
+    // K-UC-12: the Current run stops at closing; only the selected plan's run drains the lines.
+    expect(screen.queryByText(en['simulation.closing_rule_separate'])).not.toBeInTheDocument()
   })
 
   it('shows no break notice when the setup has no breaks', async () => {
@@ -1202,6 +1211,16 @@ describe('the continuous full-day run (B4a preview)', () => {
     renderPage()
     await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
     expect(screen.getByRole('alert')).toHaveTextContent('This run would have 3000 expected customers, above the limit of 2900.')
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+  })
+
+  it('rounds the expected customers in the refusal to one decimal, as the API does (K-UC-15)', async () => {
+    const user = userEvent.setup()
+    getCompatibilityMock.mockResolvedValue(compatibility({ plans: { current: compatiblePlan, suggested: { ...compatiblePlan, expected_customers_per_day: 3012.4567 } } }))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('This run would have 3012.5 expected customers, above the limit of 2900.')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('3012.4567')
     expect(createContinuousRunMock).not.toHaveBeenCalled()
   })
 

@@ -139,7 +139,8 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
     const count = automaticReplications(view.expected_customers_per_day, compatibility.default_replications, compatibility.limits)
     if (count === null) return setError(t('errors.server'))
     if (count === 0) return setError(t('simulation.named_customer_bound_exceeded', {
-      value: view.expected_customers_per_day, max: compatibility.limits.max_expected_customers_per_run, replications: 0,
+      // K-UC-15: one decimal, as the API rounds the same value in its limit_exceeded refusal.
+      value: fmtDecimal(view.expected_customers_per_day, 1), max: compatibility.limits.max_expected_customers_per_run, replications: 0,
     }))
     const seedValue = Number(seed)
     if (!Number.isInteger(seedValue) || seedValue < 0) return setError(t('continuous.seed_range'))

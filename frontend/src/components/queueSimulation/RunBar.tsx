@@ -68,7 +68,9 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
     <section className="card run-bar" aria-label={t('simulation.run_bar')}>
       <div className="run-bar-row">
         {hoursText ? <HoursChip text={t('simulation.operating_hours', { hours: hoursText })} /> : <span>{t('simulation.operating_hours_unknown')}</span>}
-        {context.separate && <span>{t('simulation.closing_rule_separate')}</span>}
+        {/* K-UC-12: only the selected-plan separate run drains the lines at closing; the separate Current run and
+            legacy separate plans stop at closing (backend simulation.py), so the text would be false there. */}
+        {run === 'suggested' && context.selectedSeparate && <span>{t('simulation.closing_rule_separate')}</span>}
         <span className={`badge ${runMutation.isPending ? 'badge-warn' : stored ? 'badge-ok' : 'badge-neutral'}`} role="status" data-testid="run-status">
           {t(runMutation.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
         </span>
