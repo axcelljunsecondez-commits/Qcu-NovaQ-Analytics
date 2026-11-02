@@ -462,36 +462,34 @@ describe('shared selection/checks and legacy renderer contracts', () => {
     expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('costs more than today')
   })
 
-  // The chart integration preserves the live shared API's explicit threshold semantics.
+  // Spec 2026-10-29-shared-mc-plan-target-threshold.md §5: shared Many variations counts at the plan's target.
   const sharedPlanAt70 = { scenario: { id: 3, name: 'Plan A', dataset_id: 2, provenance: 'verified_snapshot',
     settings: { calculation: { schema_version: 1, engine_version: 'novaq-2026-09-system-v2', options: { target_utilization: 0.7 } } } } }
 
-  it('keeps the live shared default explicit even when the plan has a different target', async () => {
+  it('starts shared Many variations at the plan target and lets the server record it', async () => {
     const user = userEvent.setup()
     getWorkflowMock.mockResolvedValue(workflow(sharedPlanAt70))
     renderPage('/simulation/checks?analysis=7')
-    const input = await screen.findByLabelText('Failure threshold (ρ)')
-    expect(input).toHaveValue(0.75)
+    const input = await screen.findByLabelText('Failure threshold (plan target: 0.7)')
+    expect(input).toHaveValue(0.7)
     await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
     await waitFor(() => expect(runMcMock).toHaveBeenCalledTimes(1))
-    expect(runMcMock.mock.calls[0][1]).toEqual({ num_trials: 2000, failure_threshold: 0.75, failure_rate_cap: 0.05, seed: null })
+    expect(runMcMock.mock.calls[0][1]).toEqual({ num_trials: 2000, failure_rate_cap: 0.05, seed: null })
   })
 
   it('sends a shared threshold the user changed, and uses the same one for the Results check', async () => {
     const user = userEvent.setup()
     getWorkflowMock.mockResolvedValue(workflow(sharedPlanAt70))
     renderPage('/simulation/checks?analysis=7')
-    const input = await screen.findByLabelText('Failure threshold (ρ)')
-    await user.clear(input)
-    await user.type(input, '0.7')
+    const input = await screen.findByLabelText('Failure threshold (plan target: 0.7)')
     await user.click(screen.getByRole('button', { name: 'Check the plan' }))
     await waitFor(() => expect(runValidationMock).toHaveBeenCalledTimes(1))
     expect(runValidationMock.mock.calls[0][1]).toMatchObject({ mc_failure_threshold: 0.7 })
     await user.clear(input)
-    await user.type(input, '0.85')
+    await user.type(input, '0.75')
     await user.click(screen.getByRole('button', { name: 'Run Monte Carlo' }))
     await waitFor(() => expect(runMcMock).toHaveBeenCalledTimes(1))
-    expect(runMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.85 })
+    expect(runMcMock.mock.calls[0][1]).toMatchObject({ failure_threshold: 0.75 })
   })
 
   it('explains shared Many variations with the STORED threshold, not the form (C5)', async () => {

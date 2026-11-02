@@ -1281,7 +1281,8 @@ def _summarize_metric(values: list, floor: float | None = None) -> dict | None:
     a value. Missing stays missing: never zero-filled. Single-replication
     summaries carry a mean but no dispersion or interval.
 
-    ``floor`` is a value the true mean cannot go below (0 for a cost, U10 F16): the lower
+    ``floor`` is a value the true mean cannot go below (0 for a cost, U10 F16; 0 for a wait or
+    for customers left waiting, spec 2026-10-29-separate-wait-interval-floor): the lower
     bound becomes max(floor, mean - half width), which keeps the interval's coverage exactly.
     """
     present = [float(value) for value in values if _is_number(value)]
@@ -1405,8 +1406,9 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
             "utilization": _summarize_metric([lanes.get(queue_id, {}).get("rho") for lanes in by_rep_lane]),
             "arrivals": _summarize_metric([lanes.get(queue_id, {}).get("arrivals") for lanes in by_rep_lane]),
             "served": _summarize_metric([lanes.get(queue_id, {}).get("served") for lanes in by_rep_lane]),
-            "waiting_end": _summarize_metric([lanes.get(queue_id, {}).get("waiting") for lanes in by_rep_lane]),
-            "Wq": _summarize_metric([lanes.get(queue_id, {}).get("Wq") for lanes in by_rep_lane]),
+            "waiting_end": _summarize_metric([lanes.get(queue_id, {}).get("waiting") for lanes in by_rep_lane],
+                                             floor=0.0),
+            "Wq": _summarize_metric([lanes.get(queue_id, {}).get("Wq") for lanes in by_rep_lane], floor=0.0),
         })
     for queue_id in (candidate.get("inactive_queue_ids") or []):
         per_lane.append({"queue_id": queue_id, "active": False, "utilization": None,
@@ -1450,7 +1452,7 @@ def evaluate_candidate_with_des_replications(candidate: dict, queues_by_id: dict
         "demand_conserved": True,
         "total_lambda": runs[0].get("total_lambda"),
         "per_lane": per_lane,
-        "waiting_time": _summarize_metric(rep_waits),
+        "waiting_time": _summarize_metric(rep_waits, floor=0.0),
         "max_mean_lane_utilization": max(lane_means) if lane_means else None,
         "costs": {
             "staffing": _summarize_metric([run.get("server_cost") for run in runs], floor=0.0),

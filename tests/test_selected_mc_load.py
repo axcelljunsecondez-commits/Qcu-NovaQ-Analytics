@@ -216,12 +216,15 @@ def test_selected_mc_explicit_threshold_is_recorded_as_user(db_engine, client):
     assert params["failure_threshold_source"] == "user"
 
 
-def test_current_and_shared_mc_defaults_stay_075():
+def test_current_mc_default_stays_075():
+    # Shared selected-plan MC now resolves an omitted threshold to the plan target like separate
+    # plans (spec 2026-10-29-shared-mc-plan-target-threshold.md); today's staffing keeps 0.75.
     from backend.api.workflow import SelectedMcRequest, WorkflowMcRequest
     from backend.queueing_engine.config import MC_DEFAULT_FAILURE_THRESHOLD
 
     assert MC_DEFAULT_FAILURE_THRESHOLD == 0.75
     assert WorkflowMcRequest().failure_threshold == 0.75
+    assert SelectedMcRequest().failure_threshold is None
     assert issubclass(SelectedMcRequest, WorkflowMcRequest)
     assert "failure_threshold" not in SelectedMcRequest().model_fields_set
     assert "load_days" not in WorkflowMcRequest.model_fields

@@ -318,7 +318,10 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { analysisId, planTarget, workflow } = context
-  const settings = useMcSettings(null, '')
+  const settings = useMcSettings(planTarget, '')
+  // Spec 2026-10-29: as for separate plans, a threshold left at the plan target is omitted so the
+  // server applies and records the plan target.
+  const thresholdIsPlanTarget = planTarget !== null && Number(settings.threshold) === planTarget
   const [validationHours, setValidationHours] = useState('24')
   const [validationTrials, setValidationTrials] = useState('10000')
   const [validationSeed, setValidationSeed] = useState('')
@@ -328,7 +331,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   const mcRun = useMutation({
     mutationFn: () => runWorkflowMc(analysisId, {
       num_trials: Number(settings.trials),
-      failure_threshold: Number(settings.threshold),
+      ...(thresholdIsPlanTarget ? {} : { failure_threshold: Number(settings.threshold) }),
       failure_rate_cap: Number(settings.cap),
       seed: parseSeed(settings.seed),
     }),
@@ -436,7 +439,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
       <CheckLine name={headingText(t, 'simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}
         info={mcRows.length > 0 ? <ManyVariationsInfo rows={mcRows} /> : undefined}>
         <p className="form-hint">{t('simulation.variations_label')}</p>
-        <McFields settings={settings} planTarget={null} idPrefix="mc" />
+        <McFields settings={settings} planTarget={planTarget} idPrefix="mc" />
         <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
         {mcRows.length > 0 && (
           <ManyVariationsChart rows={mcRows} separate={false} run="plan" planTarget={planTarget} seed={mcSeed}><McTable rows={mcRows} /></ManyVariationsChart>
