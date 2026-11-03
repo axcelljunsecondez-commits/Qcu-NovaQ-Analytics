@@ -353,6 +353,69 @@ def test_a_date_out_of_its_stored_position_is_refused(db_engine, client):
         assert _day(client, analysis_id, day["date"]).json() == {"detail": CURRENT_DAY_DETAIL_MISMATCH_DETAIL}
 
 
+def test_a_date_removed_from_the_dataset_in_place_is_refused_with_409(db_engine, client):
+    """K-CPDC-1 (a): the stored run names a date the dataset no longer has (same dataset row, edited in place).
+    Regrouping yields fewer dates than the stored position, which is a mismatch (409), never a server error."""
+    from backend.api.workflow import CURRENT_DAY_DETAIL_MISMATCH_DETAIL
+    from backend.db.models import Dataset
+    from tests.helpers import make_sessionmaker
+
+    _, analysis_id, evidence = _compact_run(db_engine, client, "removed-date@example.com")
+    last = evidence["result"]["days"][-1]["date"]
+    assert _day(client, analysis_id, last).status_code == 200
+    with make_sessionmaker(db_engine)() as db:
+        dataset = db.get(Dataset, evidence["params"]["dataset_id"])
+        kept = [row for row in json.loads(json.dumps(dataset.normalized_json)) if not str(row["time"]).startswith(last)]
+        assert len(kept) < len(dataset.normalized_json)
+        dataset.normalized_json = kept
+        db.commit()
+    refused = _day(client, analysis_id, last)
+    assert refused.status_code == 409
+    assert refused.json() == {"detail": CURRENT_DAY_DETAIL_MISMATCH_DETAIL}
+
+
+def test_a_stored_date_beyond_the_grouped_dates_is_refused_with_409(db_engine, client):
+    """K-CPDC-1 (b): a stored days entry past the last grouped date (index >= the number of dates) is a
+    mismatch (409), never a server error."""
+    from backend.api.workflow import CURRENT_DAY_DETAIL_MISMATCH_DETAIL
+
+    _, analysis_id, evidence = _compact_run(db_engine, client, "beyond@example.com")
+    _, original = _job(db_engine, evidence["id"])
+    extended = json.loads(json.dumps(original))
+    extended["days"].append({**extended["days"][-1], "date": "2000-01-31"})
+    _update_job(db_engine, evidence["id"], result=extended)
+    refused = _day(client, analysis_id, "2000-01-31")
+    assert refused.status_code == 409
+    assert refused.json() == {"detail": CURRENT_DAY_DETAIL_MISMATCH_DETAIL}
+
+
+def test_too_large_detail_names_the_date_count_for_the_page():
+    """A6 parent decision 3: the frontend reads W1's date count with /(\\d+) dates/ from the 413 detail."""
+    import re
+
+    from backend.api.workflow import CURRENT_PER_DATE_TOO_LARGE_DETAIL
+
+    detail = CURRENT_PER_DATE_TOO_LARGE_DETAIL.format(dates=14, size_bytes=1_253_317, limit_bytes=524_288)
+    assert "14 dates" in detail
+    found = re.search(r"(\d+) dates", detail)
+    assert found is not None and found.group(1) == "14"
+
+
+def test_w1_w2_w3_details_are_the_approved_english_text():
+    """K-A6-1: spec §9.1, approved by owner delegation 2026-11-03; the frontend maps them by status (en and tl)."""
+    from backend.api.workflow import (
+        CURRENT_DAY_DETAIL_MISMATCH_DETAIL,
+        CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL,
+        CURRENT_PER_DATE_TOO_LARGE_DETAIL,
+    )
+
+    assert CURRENT_PER_DATE_TOO_LARGE_DETAIL.format(dates=3, size_bytes=1, limit_bytes=2) == (
+        "This Current run is too large to save: it covers 3 dates. Upload a file with fewer dates.")
+    assert CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL == "This date is not in the latest Current run. Run Current again."
+    assert CURRENT_DAY_DETAIL_MISMATCH_DETAIL == (
+        "This date of the Current run can't be rebuilt exactly, so it isn't shown. Run Current again.")
+
+
 def test_null_seed_is_drawn_by_the_server_and_recorded(db_engine, client):
     """OD-C12 (i): seed_used is an integer, params.seed stays null; the same seed_used gives the same digests."""
     headers, analysis_id, evidence = _compact_run(db_engine, client, "seedless@example.com",

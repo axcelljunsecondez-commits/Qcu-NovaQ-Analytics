@@ -209,15 +209,15 @@ Sizes for N up to 14 are VERIFIED by slicing one uncapped run; a slice equals a 
 
 ### 9.1 Drafted wording (relayed from the parent session on 2026-11-02, at the owner's request "draft it")
 
-Status of each item: **Draft — awaiting owner approval.** Use the text exactly as given and keep the `{dates}` placeholder. The backend detail stays in English. The A6 frontend maps each case by status or code to the en and tl locale keys, and never shows raw server text in Tagalog. The code constants keep their `PLACEHOLDER` text until the owner approves this wording.
+Status of each item: **Approved by owner delegation on 2026-11-03 ("you can decide the accurate word"); the code constants take the final English text.** Use the text exactly as given and keep the `{dates}` placeholder. The backend detail stays in English. The A6 frontend maps each case by status or code to the en and tl locale keys, and never shows raw server text in Tagalog. Until 2026-11-03 the code constants held `PLACEHOLDER` text; they now hold the final English text.
 
-- **W1 (413, result too large).** Draft — awaiting owner approval.
+- **W1 (413, result too large).** Approved by owner delegation on 2026-11-03 ("you can decide the accurate word"); the code constants take the final English text.
   - EN: "This Current run is too large to save: it covers {dates} dates. Upload a file with fewer dates."
   - TL: "Masyadong malaki para i-save ang Current run na ito: {dates} na petsa ang saklaw nito. Mag-upload ng file na may mas kaunting petsa."
-- **W3 (404, date not found).** Draft — awaiting owner approval.
+- **W3 (404, date not found).** Approved by owner delegation on 2026-11-03 ("you can decide the accurate word"); the code constants take the final English text.
   - EN: "This date is not in the latest Current run. Run Current again."
   - TL: "Wala ang petsang ito sa pinakabagong Current run. Patakbuhin muli ang Current."
-- **W2 (409, cannot be rebuilt exactly).** Draft — awaiting owner approval.
+- **W2 (409, cannot be rebuilt exactly).** Approved by owner delegation on 2026-11-03 ("you can decide the accurate word"); the code constants take the final English text.
   - EN: "This date of the Current run can't be rebuilt exactly, so it isn't shown. Run Current again."
   - TL: "Hindi ma-rebuild nang eksakto ang petsang ito ng Current run, kaya hindi ito ipinapakita. Patakbuhin muli ang Current."
 

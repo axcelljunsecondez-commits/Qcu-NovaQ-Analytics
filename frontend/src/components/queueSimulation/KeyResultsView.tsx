@@ -3,13 +3,14 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import type { RunSummary, SelectedDesPeriod, SimDesOut, SimulationTrace } from '../../api/types'
+import { chosenCurrentDate, compactDates, dateCsvName, isCompactCurrent, rowsForDate, shownSeed, summaryForDate, zeroArrivalCount } from '../../lib/currentPerDate'
 import { fmt, fmtDecimal, downloadCsv } from '../../lib/format'
 import { currentMatrix, planMatrix } from '../../lib/longestLine'
 import { SAMPLE_MINUTES, dayOrigin, dayPeriods, mergeDayTrace, scheduledBreaks, waitingThroughTheDay, wallClock, type ScheduledBreak } from '../../lib/replay'
 import { InfoTip } from '../ui/InfoTip'
 import { DatePicker } from './DatePicker'
 import { LongestLineTable } from './LongestLineTable'
-import { currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
+import { currentNoBreaksChip, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** Current and Suggested plan side by side, no arrow (owner decision B5): the two runs may be set up differently. */
 function Pair({ now, plan, nowInfo, planInfo, mid }: { now: string; plan: string; nowInfo?: ReactNode; planInfo?: ReactNode; mid?: ReactNode }) {
@@ -157,7 +158,7 @@ function LaneTable({ period }: { period: SelectedDesPeriod }) {
   )
 }
 
-function LegacyMore({ rows }: { rows: SimDesOut[] }) {
+function LegacyMore({ rows, fileName = 'novaq_unified_des.csv' }: { rows: SimDesOut[]; fileName?: string }) {
   const { t } = useTranslation()
   const showLine = rows.some((row) => typeof row.queue_id === 'string' && row.queue_id.trim() !== '')
   return (
@@ -176,7 +177,7 @@ function LegacyMore({ rows }: { rows: SimDesOut[] }) {
           </tbody>
         </table>
       </div>
-      <button type="button" className="btn-ghost" onClick={() => downloadCsv('novaq_unified_des.csv', rows as unknown as Record<string, unknown>[])}>{t('simulation.download_csv')}</button>
+      <button type="button" className="btn-ghost" onClick={() => downloadCsv(fileName, rows as unknown as Record<string, unknown>[])}>{t('simulation.download_csv')}</button>
     </>
   )
 }
@@ -202,6 +203,15 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
   const chosenDay = shown?.kind === 'separate' ? dayPeriods(shown.result.periods, context.perDateDays, params.get('date')) : null
   const dayTrace = chosenDay && shownSummary?.basis === 'continuous_day' ? mergeDayTrace(chosenDay.periods) : null
   const dayCount = shown?.kind === 'separate' ? shown.result.days?.length ?? 0 : 0
+  // A6 (C-PD-C): a compact per-date Current run. The headline cards keep the server's all-dates summary; the
+  // Longest Single Line table, the chart by period, the period table and More results show the chosen date's
+  // stored rows. Nothing is fetched here.
+  const compact = run === 'current' && isCompactCurrent(current) ? current : null
+  const currentDates = compact ? compactDates(compact) : []
+  const currentDate = compact ? chosenCurrentDate(currentDates, params.get('date')) : null
+  const currentRows = compact && currentDate ? rowsForDate(compact.results ?? [], currentDate) : (current?.results ?? [])
+  const periodSummary = shownSummary && compact && currentDate ? summaryForDate(shownSummary, currentDate) : shownSummary
+  const zeroCount = run === 'current' && current ? zeroArrivalCount(current, compact ? currentDate : null) : 0
 
   const value = (summary: RunSummary | null, exists: boolean, pick: (summary: RunSummary) => string | null) => {
     if (!exists) return t('simulation.status_not_run')
@@ -232,13 +242,16 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
   const seedChip = (seed: unknown) => (typeof seed === 'number' ? `${t('simulation.seed')}: ${seed}` : t('charts.chip_seed_not_saved'))
   // Only the selected separate-lines plan models the Setup's breaks; Current and the legacy shared run have none.
   const planBreaksKey = context.selectedSeparate && (setup.breaks ?? []).length > 0 ? 'charts.chip_breaks_included' : 'charts.chip_no_breaks'
-  // Separate Current's basis chip already says "no breaks" (simulation.run_basis_continuous_no_breaks).
-  const currentChips = [t('simulation.run_current'), t(runBasisKey(context, 'current')), ...(context.separate ? [] : [t('charts.chip_no_breaks')]), seedChip(context.workflow.des_current?.params.seed)]
+  // Separate Current's basis chip already says "no breaks" (simulation.run_basis_continuous_no_breaks), except
+  // per date (simulation.run_basis_continuous_per_date), which adds the chip. A compact run's server-drawn seed is shown.
+  const currentChips = [t('simulation.run_current'), t(runBasisKey(context, 'current')),
+    ...(context.separate && !currentNoBreaksChip(context, 'current') ? [] : [t('charts.chip_no_breaks')]),
+    seedChip(shownSeed(context.workflow.des_current?.params, current))]
   const planChips = [t('simulation.run_suggested'), t(runBasisKey(context, 'suggested')), t(planBreaksKey), seedChip(context.workflow.des?.params.seed)]
 
   const matrix = !context.separate || !shown ? null
     : shown.kind === 'separate' ? (chosenDay ? planMatrix(chosenDay.periods, setup.queue_ids ?? []) : null)
-      : currentMatrix(shown.result.results ?? [], setup)
+      : currentMatrix(run === 'current' ? currentRows : shown.result.results ?? [], setup)
   // The table is separate lines only; its Current run is one continuous run without breaks (K-UC-3).
   const longestChips = run === 'current' ? currentChips : planChips
 
@@ -249,6 +262,9 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
         <Card label={t('simulation.average_wait')} now={value(nowSummary, current !== null, minutesOf)} plan={value(planSummary, suggested !== null, minutesOf)} mid={basisInfo} />
         <Card label={t('simulation.longest_line')} now={value(nowSummary, current !== null, count('longest_line'))} plan={value(planSummary, suggested !== null, count('longest_line'))} mid={basisInfo} />
       </div>
+      {compact && currentDate && <p className="form-hint" data-testid="current-dates-note">{t('simulation.current_all_dates_note', { dates: currentDates.length })}</p>}
+      {compact && <DatePicker dates={currentDates} date={currentDate} />}
+      {zeroCount > 0 && <p className="form-hint" data-testid="current-zero-note">{t('simulation.current_zero_arrival_note', { count: zeroCount })}</p>}
       {oneSimulatedDay && typeof atClose === 'number' && atClose > 0 && (
         <p role="status" className="alert alert-warn" data-testid="closing-alert">{t('charts.closing_alert', { count: atClose })}</p>
       )}
@@ -269,13 +285,13 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
       )}
       {dayCount > 1 && <p className="form-hint" data-testid="dates-note">{t('simulation.totals_all_dates', { dates: dayCount })}</p>}
       {chosenDay && chosenDay.dates.length > 1 && <DatePicker dates={chosenDay.dates} date={chosenDay.date} />}
-      {matrix && <LongestLineTable key={`${run}-${chosenDay?.date ?? ''}`} matrix={matrix} kind={run === 'current' ? 'current' : 'plan'} chips={longestChips} />}
+      {matrix && <LongestLineTable key={`${run}-${chosenDay?.date ?? currentDate ?? ''}`} matrix={matrix} kind={run === 'current' ? 'current' : 'plan'} chips={longestChips} date={compact ? currentDate : null} />}
       {shown && (
         <div className="grid g2">
           {dayTrace
             ? <WaitingChart trace={dayTrace} origin={origin} breaks={breaks} />
             : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_waiting')}</h2><p className="form-hint">{t(context.separate && run === 'current' ? 'simulation.chart_waiting_needs_plan_day' : 'simulation.chart_waiting_needs_day')}</p></section>}
-          {shownSummary ? <WaitByPeriod summary={shownSummary} /> : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2><p className="form-hint">{t('simulation.summary_rerun')}</p></section>}
+          {periodSummary ? <WaitByPeriod summary={periodSummary} /> : <section className="card"><h2 lang="en" className="section-title">{headingText(t, 'simulation.chart_wait_by_period')}</h2><p className="form-hint">{t('simulation.summary_rerun')}</p></section>}
         </div>
       )}
       {shown && (
@@ -294,10 +310,12 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
               {planDays > 1 && <p className="form-hint">{t('simulation.totals_all_dates', { dates: planDays })}</p>}
             </section>
           )}
-          {shownSummary && <PeriodTable summary={shownSummary} />}
+          {periodSummary && <PeriodTable summary={periodSummary} />}
           {shown.kind === 'separate'
             ? shown.result.periods.map((period) => <LaneTable key={period.time} period={period} />)
-            : <LegacyMore rows={shown.result.results ?? []} />}
+            : compact && currentDate
+              ? <LegacyMore key={currentDate} rows={currentRows} fileName={dateCsvName(currentDate)} />
+              : <LegacyMore rows={shown.result.results ?? []} />}
         </details>
       )}
     </div>

@@ -605,8 +605,9 @@ def test_per_date_result_over_the_cap_is_refused_with_its_own_reason(db_engine, 
     assert size > 2048
     assert refused.json()["detail"] == CURRENT_PER_DATE_TOO_LARGE_DETAIL.format(
         dates=2, size_bytes=size, limit_bytes=2048)
+    # Final EN text of W1 (spec §9.1, owner delegation 2026-11-03); sizes are no longer named in it.
     assert refused.json()["detail"] == (
-        f"PLACEHOLDER: per-date Current result too large (2 dates, {size} bytes, limit 2048 bytes).")
+        "This Current run is too large to save: it covers 2 dates. Upload a file with fewer dates.")
 
 
 def test_other_oversized_current_results_keep_the_existing_413(db_engine, client, app, monkeypatch):

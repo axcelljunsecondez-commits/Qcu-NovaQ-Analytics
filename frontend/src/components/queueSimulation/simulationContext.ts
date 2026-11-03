@@ -84,7 +84,7 @@ export function breakNoticeKey(context: SimulationContext, run: RunChoice): stri
 /**
  * Which kind of run backs the chosen view, said on screen (spec §7.8 engine coverage). The separate-lines
  * Current run is one continuous SimPy run over the Setup's periods without breaks (simulation.py
- * _simulate_parallel_segments_core, review K-UC-3); the shared Current run and the legacy shared run
+ * _simulate_parallel_segments_core, review K-UC-3), one per date on per-date data (C-PD); the shared Current run and the legacy shared run
  * simulate one period at a time (_simulate_segments_core).
  */
 export function runBasisKey(context: SimulationContext, run: RunChoice): string {
@@ -92,8 +92,17 @@ export function runBasisKey(context: SimulationContext, run: RunChoice): string 
     if (context.representativeDay) return 'simulation.run_basis_continuous'
     return context.perDateDays ? 'simulation.run_basis_continuous_per_date' : 'simulation.run_basis_per_period'
   }
-  if (run === 'current' && context.separate) return 'simulation.run_basis_continuous_no_breaks'
+  // C-PD: a separate-lines Current run on per-date data with operating segments runs one continuous day per
+  // date, without breaks (the "No breaks" chip says so, currentNoBreaksChip).
+  if (run === 'current' && context.separate) {
+    return context.perDateDays ? 'simulation.run_basis_continuous_per_date' : 'simulation.run_basis_continuous_no_breaks'
+  }
   return 'simulation.run_basis_per_period'
+}
+
+/** Whether the Current basis needs the separate "No breaks" chip: its basis text does not already say it. */
+export function currentNoBreaksChip(context: SimulationContext, run: RunChoice): boolean {
+  return run === 'current' && context.separate && context.perDateDays
 }
 
 /** The run the page shows: what the address asks for, falling back to what exists. */

@@ -1,5 +1,6 @@
 import { http } from '../lib/http'
 import type {
+  CurrentDayDetail,
   EvidenceReason,
   ObservedWaitSummary,
   SelectedDesResult,
@@ -174,6 +175,14 @@ export async function runWorkflowDesCurrent(
   const { data } = await http.post<{ evidence: WorkflowJob<SimulationTrace> }>(
     `/analyses/${analysisId}/workflow/simulation/des/current`,
     options,
+  )
+  return data
+}
+
+/** C-PD-C day detail of the current compact Current run (read-only GET; 404 W3, 409 W2). */
+export async function getCurrentDay(analysisId: number, date: string): Promise<CurrentDayDetail> {
+  const { data } = await http.get<CurrentDayDetail>(
+    `/analyses/${analysisId}/workflow/simulation/des/current/days/${encodeURIComponent(date)}`,
   )
   return data
 }

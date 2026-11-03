@@ -107,16 +107,17 @@ CURRENT_DES_BASIS = "per_date_days_v2"
 # OD-C15 (i): v1 jobs (C-PD before the compact result) are a known earlier basis; recalculate under v2.
 CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1"})
 CURRENT_DES_BASIS_KEY = "current_des_basis"
-# C-PD-C day detail (spec 2026-11-02 §6.7). Owner wording (OD-C6) not yet supplied: replace verbatim.
+# C-PD-C day detail (spec 2026-11-02 §6.7). Final EN text of W3 and W2 (spec §9.1, owner delegation 2026-11-03).
 CURRENT_DAY_DETAIL_EXECUTION = "current_per_date_day_detail"
-CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL ="PLACEHOLDER: no current per-date Current run has this date."  # W3, 404
+CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL = "This date is not in the latest Current run. Run Current again."  # W3, 404
 CURRENT_DAY_DETAIL_MISMATCH_DETAIL = (  # W2, 409
-    "PLACEHOLDER: this date of the Current run cannot be reproduced exactly; run Current again."
+    "This date of the Current run can't be rebuilt exactly, so it isn't shown. Run Current again."
 )
-# OD-C7 (iii): a per-date Current result over the stored-result cap is refused with its own reason. The text is
-# owner wording (OD-C6, not yet supplied): replace this placeholder verbatim; keep the three named fields.
+# OD-C7 (iii): a per-date Current result over the stored-result cap is refused with its own reason. Final EN text of
+# W1 (spec §9.1, owner delegation 2026-11-03); the frontend reads "{dates} dates". .format() also receives
+# size_bytes and limit_bytes, which str.format ignores when the text does not name them.
 CURRENT_PER_DATE_TOO_LARGE_DETAIL = (
-    "PLACEHOLDER: per-date Current result too large ({dates} dates, {size_bytes} bytes, limit {limit_bytes} bytes)."
+    "This Current run is too large to save: it covers {dates} dates. Upload a file with fewer dates."
 )
 WORKFLOW_KINDS = {
     "workflow_selection",

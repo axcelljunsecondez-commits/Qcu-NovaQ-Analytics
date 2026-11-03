@@ -39,7 +39,13 @@ const CLOSED_SWATCH = 'repeating-linear-gradient(135deg, var(--color-bg-subtle) 
  * a hatched cell is not staffed (text alternative "Closed / not staffed"), never zero. Arrow keys,
  * Home and End move between cells; the focused cell is read out below the table and to a live region.
  */
-export function LongestLineTable({ matrix, kind, chips }: { matrix: LongestMatrix; kind: 'current' | 'plan'; chips: string[] }) {
+export function LongestLineTable({ matrix, kind, chips, date = null }: {
+  matrix: LongestMatrix
+  kind: 'current' | 'plan'
+  chips: string[]
+  /** A6: the chosen date of a compact per-date Current run; its sentence names the date instead of "today". */
+  date?: string | null
+}) {
   const { t } = useTranslation()
   const wrap = useRef<HTMLDivElement>(null)
   const table = useRef<HTMLTableElement>(null)
@@ -80,7 +86,9 @@ export function LongestLineTable({ matrix, kind, chips }: { matrix: LongestMatri
   // The hatching key only where "not staffed" is known (a Current run whose Setup staffing is unknown has none).
   const showClosedKey = matrix.staffingKnown || matrix.rows.some((period) => period.cells.some((cell) => cell.staffed === false))
   const takeaway = matrix.dayMax === null || !matrix.rows.every((period) => complete(period) && period.max !== null) ? null
-    : t(kind === 'current' ? 'charts.longest_take_current' : 'charts.longest_take_plan', { count: matrix.dayMax, where })
+    : kind === 'current' && date
+      ? t('charts.longest_take_current_date', { count: matrix.dayMax, where, date })
+      : t(kind === 'current' ? 'charts.longest_take_current' : 'charts.longest_take_plan', { count: matrix.dayMax, where })
 
   return (
     // Not a named region: the Key Results card already is the "Longest Single Line" region.
