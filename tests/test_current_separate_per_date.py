@@ -225,6 +225,31 @@ def _encoded(value) -> str:
     return json.dumps(value, allow_nan=False, ensure_ascii=False)
 
 
+def _k_a6_3_relabel(result: dict) -> dict:
+    """K-A6-3 (E), OD-K63-1 (owner 2026-11-03): the documented change to a per-date result made before the fix.
+
+    A row or segment entry whose ``time`` is not dated (the closed-lane filler labelled with the bare segment
+    id) takes its date's label for that segment, read from the other rows of the same date and segment (rows
+    stored before C-PD have no ``date``; they hold one date). The summary is recomputed with the unchanged
+    ``_run_summary`` over the relabelled rows. Nothing else changes: no number, no trace event, no key order.
+    """
+    import re
+
+    from backend.api.workflow import _run_summary
+
+    dated = re.compile(r"^\d{4}-\d{2}-\d{2} ")
+    relabelled = json.loads(json.dumps(result))
+    labels = {(row.get("date"), str(row["segment_id"])): row["time"] for row in relabelled["results"]
+              if dated.match(str(row["time"]))}
+    for field in ("results", "segments"):
+        for item in relabelled.get(field) or []:
+            if not dated.match(str(item["time"])):
+                item["time"] = labels[(item.get("date"), str(item["segment_id"]))]
+    if "summary" in relabelled:
+        relabelled["summary"] = _run_summary(relabelled)
+    return relabelled
+
+
 def test_snapshot_representative_day_and_single_date_results_are_unchanged(db_engine, client):
     records = _records_for(SNAP_EVENTS, _snap_setup("representative_day"))
     engine = simulate_segments_with_trace(records, sim_hours=1.0, max_events=1000, seed=7,
@@ -247,11 +272,17 @@ def test_snapshot_representative_day_and_single_date_results_are_unchanged(db_en
     # Representative day: the whole stored result is byte-identical (one date, unchanged path).
     assert _encoded(actual["representative_day_engine"]) == _encoded(expected["representative_day_engine"])
     assert _encoded(actual["representative_day_route"]) == _encoded(expected["representative_day_route"])
-    # Single date on the per-date basis: identical once only the additive per-date keys are removed.
+    # Single date on the per-date basis: identical once only the additive per-date keys are removed and the
+    # closed lane b/s2 carries its date's label (K-A6-3, documented transform _k_a6_3_relabel).
     single = actual["single_date_per_date_route"]
-    assert _encoded(_without_added_keys(single)) == _encoded(_without_added_keys(expected["single_date_per_date_route"]))
-    assert single["summary"] == expected["single_date_per_date_route"]["summary"]
-    assert single["total_hours"] == expected["single_date_per_date_route"]["total_hours"]
+    before = expected["single_date_per_date_route"]
+    assert [row["time"] for row in before["results"]].count("s2") == 1  # the pre-fix undated filler
+    relabelled = _k_a6_3_relabel(before)
+    assert _encoded(_without_added_keys(single)) == _encoded(_without_added_keys(relabelled))
+    assert single["summary"] == relabelled["summary"]
+    assert {k: v for k, v in single["summary"].items() if k != "periods"} == {
+        k: v for k, v in before["summary"].items() if k != "periods"}
+    assert single["total_hours"] == before["total_hours"]
 
 
 # ── C-PD option (a) acceptance (owner decisions OD-C1 a, C2 i, C3 i, C4 i, C5 i; 2026-11-02) ─────────
@@ -334,7 +365,7 @@ def test_route_simulates_every_date_as_its_own_day(db_engine, client):
         assert {entry["date"] for entry in detail["segments"]} == {day["date"]}
         assert detail["trace"] and {event["date"] for event in detail["trace"]} == {day["date"]}
     assert result["summary"]["basis"] == "per_period"
-    assert evidence["params"]["current_des_basis"] == "per_date_days_v2"
+    assert evidence["params"]["current_des_basis"] == "per_date_days_v3"
     assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == evidence["id"]
 
 
@@ -488,7 +519,7 @@ def test_separate_current_des_jobs_without_the_basis_marker_are_not_current(db_e
                                      {**SNAP_RUN, "current_des_basis": "forged"})
     assert run.status_code == 200, run.text
     job_id = run.json()["evidence"]["id"]
-    assert run.json()["evidence"]["params"]["current_des_basis"] == "per_date_days_v2"  # the payload value is ignored
+    assert run.json()["evidence"]["params"]["current_des_basis"] == "per_date_days_v3"  # the payload value is ignored
     assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == job_id
     with make_sessionmaker(db_engine)() as db:  # the same job as stored before C-PD: no marker
         job = db.get(Job, job_id)

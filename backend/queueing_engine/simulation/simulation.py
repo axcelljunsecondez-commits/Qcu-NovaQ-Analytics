@@ -1092,6 +1092,37 @@ def _zero_arrival_records(records: Sequence[Mapping[str, Any]], queue_setup: Map
     return added
 
 
+def _closed_lane_records(records: Sequence[Mapping[str, Any]], queue_setup: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """K-A6-3 (E): a lambda-0 record, under that date's own label, for each lane the Setup closes in a segment.
+
+    Without it the engine fills a closed lane with a row labelled by the bare segment id, which splits the date's
+    period in the summary. Only a segment with exactly one label on this date gets one, and never for a lane that
+    already has a record (customers recorded on a closed lane keep today's handling). The record is inactive by
+    the Setup and has no samples, which the engine already accepts for an inactive lane: nothing is drawn and no
+    number changes; only the row's ``time`` is the date's label. These lanes are not zero-arrival periods.
+    """
+    added: list[dict[str, Any]] = []
+    queue_ids = [str(queue_id) for queue_id in queue_setup.get("queue_ids", [])]
+    for index, segment in enumerate(queue_setup.get("segments") or []):
+        segment_id = str(segment.get("id") or f"segment_{index + 1}")
+        rows = [row for row in records if str(row.get("segment_id")) == segment_id]
+        labels = {str(row.get("time")) for row in rows}
+        if len(labels) != 1:
+            continue
+        label = labels.pop()
+        present = {str(row.get("queue_id")) for row in rows}
+        active = set(scheduled_active_queue_ids(queue_setup, segment))
+        for queue_id in queue_ids:
+            if queue_id not in active and queue_id not in present:
+                added.append({
+                    "time": label, "segment_id": segment_id, "queue_id": queue_id, "lambda": 0.0, "c": 1,
+                    "queue_structure": "separate_queues", "model_id": "parallel_mg1",
+                    "server_id": dedicated_server_id(queue_id), "service_time_source": "empirical",
+                    "service_samples_hours": [],
+                })
+    return added
+
+
 def simulate_parallel_days_with_trace(
     days: Sequence[tuple[str, Sequence[Mapping[str, Any]]]],
     queue_setup: Mapping[str, Any],
@@ -1104,7 +1135,11 @@ def simulate_parallel_days_with_trace(
     ``days`` is ``[(date, that date's records)]`` in date order and ``seeds`` the seed of each date. Every
     date runs the unchanged Parallel M/G/1 core; one trace recorder caps the events of all dates together
     (OD-C3 (i)). Rows, segment entries and events gain an additive ``date``; each ``time`` stays as stored.
-    If any date is refused, the whole run is refused for every record with that reason: no partial result.
+    K-A6-3 (E, OD-K63-1): a lane the Setup closes in a segment gets that date's period label too
+    (``_closed_lane_records``), so every row of a date is dated; its numbers are unchanged. Closed lanes are
+    not listed in ``zero_arrival_lane_periods``. The compact run and day detail call this function, so all
+    three agree. If any date is refused, the whole run is refused for every record with that reason: no
+    partial result.
     """
     if len(seeds) != len(days):
         raise ValueError("simulate_parallel_days_with_trace needs one seed per date.")
@@ -1116,8 +1151,9 @@ def simulate_parallel_days_with_trace(
     zero_periods: list[dict[str, Any]] = []
     for (date, records), seed in zip(days, seeds):
         zero = _zero_arrival_records(records, queue_setup)
+        closed = _closed_lane_records(records, queue_setup)
         first_event = len(recorder.events)
-        rows, entries = _simulate_parallel_segments_core([*records, *zero], queue_setup, sim_hours, seed,
+        rows, entries = _simulate_parallel_segments_core([*records, *zero, *closed], queue_setup, sim_hours, seed,
                                                          recorder, max_events)
         refused = next((row for row in rows if row.get("simulation_supported") is not True), None)
         if refused is not None or not rows:

@@ -138,6 +138,13 @@ def test_scope_snapshot_is_byte_identical(db_engine, client):
     assert actual["one_date_per_date_route"][0] == 200
     assert actual["aggregate_separate_route"][0] == 422
     for key, value in actual.items():
+        if key == "one_date_per_date_route":
+            # K-A6-3 (OD-K63-1): the closed lane b/s2 now carries its date's label; everything else is unchanged.
+            from tests.test_current_separate_per_date import _k_a6_3_relabel
+
+            assert expected[key][0] == 200
+            assert _encoded(value) == _encoded([200, _k_a6_3_relabel(expected[key][1])]), key
+            continue
         assert _encoded(value) == _encoded(expected[key]), key
 
 
@@ -440,15 +447,15 @@ def test_one_date_per_date_run_keeps_the_full_shape(db_engine, client):
 
 
 def test_v1_and_unmarked_jobs_are_not_current_and_have_no_day_detail(db_engine, client):
-    """OD-C15 (i): per_date_days_v2 is current, v1 historical; no marker is not Current either."""
+    """OD-C15 (i), OD-K63-2 (i): per_date_days_v3 is current, v1 and v2 historical; no marker is not Current either."""
     from backend.api.workflow import CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL
 
     _, analysis_id, evidence = _compact_run(db_engine, client, "marker-v2@example.com")
     job_id, date = evidence["id"], evidence["result"]["days"][0]["date"]
-    assert evidence["params"]["current_des_basis"] == "per_date_days_v2"
+    assert evidence["params"]["current_des_basis"] == "per_date_days_v3"
     assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == job_id
     params, _ = _job(db_engine, job_id)
-    for marker in ("per_date_days_v1", None):
+    for marker in ("per_date_days_v1", "per_date_days_v2", None):
         changed = {k: v for k, v in params.items() if k != "current_des_basis"}
         if marker is not None:
             changed["current_des_basis"] = marker
@@ -501,3 +508,106 @@ def test_owner_shaped_file_fits_the_default_cap_when_compact(db_engine, client):
     assert len(result["results"]) == 14 * 13 * 5 and len(result["days"]) == 14
     assert _encoded_size(result) <= 524_288
     assert all(day["event_count"] <= 3000 for day in result["days"])
+
+
+# ── K-A6-3 (E): a Setup-closed lane carries its date's period label (spec §12; OD-K63-1, OD-K63-2 (i)) ──────
+#
+# SYNTHETIC: lanes a, b, c; s1 open for all, s2 open for a and c, so b is the closed middle lane. "Before" is
+# the same run with _closed_lane_records switched off (the pre-fix behaviour), in the same process.
+
+K63_SETUP = {
+    **SEPARATE, "fixed_server_count": 3, "queue_ids": ["a", "b", "c"],
+    "segments": [{"id": "s1", "start_time": "08:00:00", "end_time": "09:00:00", "active_queue_ids": ["a", "b", "c"]},
+                 {"id": "s2", "start_time": "09:00:00", "end_time": "10:00:00", "active_queue_ids": ["a", "c"]}],
+}
+
+
+def _k63_events(dates, *, missing=(), extra=()) -> list[tuple]:
+    """Two customers per open lane-hour; ``missing`` drops (date, hour, lane), ``extra`` adds (date, hour, lane)."""
+    events = []
+    for date in dates:
+        for hour, lanes in ((8, "abc"), (9, "ac")):
+            for lane in lanes:
+                if (date, hour, lane) not in missing:
+                    events += [(date, f"{hour:02d}:10", 5, lane), (date, f"{hour:02d}:40", 6, lane)]
+    for date, hour, lane in extra:
+        events += [(date, f"{hour:02d}:20", 4, lane)]
+    return events
+
+
+def _before_and_after(db_engine, client, monkeypatch, email: str, events):
+    from backend.queueing_engine.simulation import simulation as engine
+
+    headers = _login(db_engine, client, email)
+    analysis_id = _analysis(client, headers, K63_SETUP, _csv(events))
+    with monkeypatch.context() as patch:
+        patch.setattr(engine, "_closed_lane_records", lambda records, setup: [])
+        before = _run(client, headers, analysis_id)
+    after = _run(client, headers, analysis_id)
+    assert before.status_code == after.status_code == 200, (before.text, after.text)
+    return analysis_id, before.json()["evidence"]["result"], after.json()["evidence"]["result"]
+
+
+def _top(summary: dict) -> dict:
+    return {key: value for key, value in summary.items() if key != "periods"}
+
+
+def test_one_date_closed_lane_rows_are_dated_and_numbers_unchanged(db_engine, client, monkeypatch):
+    """Acceptance 1: every row and segment entry is dated; one summary entry per dated hour; numbers unchanged."""
+    from tests.test_current_separate_per_date import _k_a6_3_relabel
+
+    d = "2000-01-03"
+    _, before, after = _before_and_after(db_engine, client, monkeypatch, "k63-one@example.com", _k63_events([d]))
+    assert after["execution"] == "current_per_date_days"
+    assert [row["time"] for row in before["results"]].count("s2") == 1  # the defect, before the fix
+    assert all(item["time"].startswith(f"{d} ") for item in after["results"] + after["segments"])
+    closed = next(row for row in after["results"] if row["queue_id"] == "b" and row["segment_id"] == "s2")
+    assert (closed["time"], closed["arrivals"], closed["served"], closed["max_queue"]) == (f"{d} s2 UTC", 0, 0, 0)
+    assert [period["time"] for period in after["summary"]["periods"]] == [f"{d} s1 UTC", f"{d} s2 UTC"]
+    assert _top(after["summary"]) == _top(before["summary"])
+    assert after["trace"] == before["trace"] and after["days"] == before["days"]
+    assert _encoded(after) == _encoded(_k_a6_3_relabel(before))  # only the closed-lane label (and summary) change
+
+
+def test_compact_closed_lane_rows_are_dated_per_date_with_the_same_trace(db_engine, client, monkeypatch):
+    """Acceptance 2: per date as above; day detail serves the dated row; trace digest and totals are unchanged."""
+    from tests.test_current_separate_per_date import _k_a6_3_relabel
+
+    dates = ["2000-01-03", "2000-01-04"]
+    analysis_id, before, after = _before_and_after(db_engine, client, monkeypatch, "k63-two@example.com",
+                                                   _k63_events(dates))
+    assert after["execution"] == "current_per_date_days_compact"
+    relabelled = _k_a6_3_relabel(before)
+    assert after["results"] == relabelled["results"] and after["summary"] == relabelled["summary"]
+    assert _top(after["summary"]) == _top(before["summary"])
+    assert [period["time"] for period in after["summary"]["periods"]] == [f"{d} s{s} UTC" for d in dates for s in (1, 2)]
+    for old, new in zip(before["days"], after["days"]):
+        assert new["trace_digest"] == old["trace_digest"]
+        assert new["rows_digest"] != old["rows_digest"]  # only the closed lane's label differs
+        assert {k: v for k, v in new.items() if k != "rows_digest"} == {k: v for k, v in old.items() if k != "rows_digest"}
+        detail = _day(client, analysis_id, new["date"])
+        assert detail.status_code == 200, detail.text
+        rows = detail.json()["results"]
+        assert any(row["queue_id"] == "b" and row["time"] == f"{new['date']} s2 UTC" for row in rows)
+        assert all(row["time"].startswith(f"{new['date']} ") for row in rows)
+
+
+def test_zero_arrival_list_is_unchanged_with_an_open_gap_and_a_closed_lane(db_engine, client, monkeypatch):
+    """Acceptance 3: the open lane a with no record on date 1 is listed; the closed lane b never is."""
+    dates = ["2000-01-03", "2000-01-04"]
+    _, before, after = _before_and_after(db_engine, client, monkeypatch, "k63-zero@example.com",
+                                         _k63_events(dates, missing={("2000-01-03", 9, "a")}))
+    listed = [{"date": "2000-01-03", "time": "2000-01-03 s2 UTC", "segment_id": "s2", "queue_id": "a"}]
+    assert before["zero_arrival_lane_periods"] == after["zero_arrival_lane_periods"] == listed
+    assert [period["time"] for period in after["summary"]["periods"]] == [f"{d} s{s} UTC" for d in dates for s in (1, 2)]
+
+
+def test_a_closed_lane_with_its_own_record_keeps_todays_result(db_engine, client, monkeypatch):
+    """Acceptance 4: customers recorded on the closed lane b in s2: no extra record, no duplicate refusal."""
+    d = "2000-01-03"
+    _, before, after = _before_and_after(db_engine, client, monkeypatch, "k63-recorded@example.com",
+                                         _k63_events([d], extra=[(d, 9, "b")]))
+    assert all(row["simulation_supported"] is True for row in after["results"])
+    assert _encoded(after) == _encoded(before)
+    closed = next(row for row in after["results"] if row["queue_id"] == "b" and row["segment_id"] == "s2")
+    assert closed["time"] == f"{d} s2 UTC" and closed["arrivals"] == 0

@@ -103,9 +103,10 @@ router = APIRouter(prefix="/analyses", tags=["workflow"])
 
 ENGINE_VERSION = "novaq-2026-09-unified-des-v1"
 # C-PD (OD-C4 (i)): written on every separate-lines Current DES job since per-date files run one day per date.
-CURRENT_DES_BASIS = "per_date_days_v2"
-# OD-C15 (i): v1 jobs (C-PD before the compact result) are a known earlier basis; recalculate under v2.
-CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1"})
+CURRENT_DES_BASIS = "per_date_days_v3"
+# OD-C15 (i): v1 jobs (C-PD before the compact result) are a known earlier basis. OD-K63-2 (i): v2 jobs (closed
+# lanes labelled with the bare segment id, K-A6-3) are too. Recalculate under v3.
+CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1", "per_date_days_v2"})
 CURRENT_DES_BASIS_KEY = "current_des_basis"
 # C-PD-C day detail (spec 2026-11-02 §6.7). Final EN text of W3 and W2 (spec §9.1, owner delegation 2026-11-03).
 CURRENT_DAY_DETAIL_EXECUTION = "current_per_date_day_detail"
@@ -963,9 +964,10 @@ def _current_evidence_policy() -> EvidencePolicy:
 
     ``current_des_accounting`` is set by C-PD (owner decision OD-C4 (i), 2026-11-02): a
     ``workflow_des_current`` job with separate-lines rows is current only when its params record
-    ``current_des_basis = "per_date_days_v2"``, which ``run_des_current`` writes on every
+    ``current_des_basis = "per_date_days_v3"``, which ``run_des_current`` writes on every
     separate-lines run since per-date files are simulated one day per date and stored compactly for two
-    or more dates (C-PD-C, OD-C15 (i)). ``per_date_days_v1`` is historical; separate-lines Current DES
+    or more dates (C-PD-C, OD-C15 (i)), with closed lanes dated (K-A6-3, OD-K63-2 (i)).
+    ``per_date_days_v1`` and ``per_date_days_v2`` are historical; separate-lines Current DES
     jobs with no marker (main's guard era) are not Current either. Both need one rerun. The hook applies
     to no other kind and to no shared-lines result (``evidence_status.job_record``).
 

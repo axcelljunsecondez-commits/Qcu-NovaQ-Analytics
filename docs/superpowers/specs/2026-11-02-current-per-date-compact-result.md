@@ -177,7 +177,7 @@ Sizes for N up to 14 are VERIFIED by slicing one uncapped run; a slice equals a 
 
 ## 7. Versioning
 
-- `current_des_basis` becomes `"per_date_days_v2"` on every separate-lines Current DES job. In `_current_evidence_policy`, v2 is current and v1 is historical (OD-C15).
+- `current_des_basis` becomes `"per_date_days_v2"` on every separate-lines Current DES job. In `_current_evidence_policy`, v2 is current and v1 is historical (OD-C15). *Superseded by §12 (OD-K63-2 (i)): the marker is now `per_date_days_v3`; v1 and v2 are historical.*
 - v1 jobs exist only where `b484d8f2` ran, which is local only. Jobs written by `main` have no marker; under OD-C8 (i) they are no longer Current.
 - The compact shape uses a new `execution` value, and the frontend chooses how to display a result by `result.execution`.
 
@@ -263,3 +263,71 @@ Remedy check for W1 (parent session question). Fewer dates is not the only remed
 - The id-less segment mismatch and records on Setup-closed lanes.
 - The production cap value and Render timing.
 - C-columnar.
+
+## 12. K-A6-3: closed-lane rows split a per-date period
+
+Sources: Kyoya's and Hayato's probes (2026-11-02); the owner's instruction "fix K-A6-3" (2026-11-03); design by Chrome (Vongola V2 ORDER).
+
+**Status:** APPROVED 2026-11-03. The owner said: "i see we can proceed to your recommendation. since this is 90%". OD-K63-1 = yes (closed-lane `time` gets the date's period label). OD-K63-2 = (i), marker `per_date_days_v3`, with v1 and v2 historical.
+
+### Defect (VERIFIED)
+
+1. In a separate-lines per-date Current run, a lane the Setup closes in a segment has no record. `_parallel_schedule` therefore makes a filler row whose `time` is the bare segment id (`simulation.py:719-728`).
+2. `_run_summary` groups consecutive rows by `time` (`workflow.py:2438-2445`). A closed middle lane therefore splits one dated period into two entries with the same label, plus an undated entry. The probe gave `'2000-01-03 s2 UTC'`, `'s2'`, `'2000-01-03 s2 UTC'`.
+3. On screen:
+   - the chart and table by period show the hour twice;
+   - one-date runs show a stray undated period;
+   - the Longest Single Line table shows a stray undated row.
+4. The headline cards are not affected. Filler rows have 0 arrivals, served, max queue and busy time, because:
+   - customers arrive only on an active lane (`simulation.py:863`);
+   - statistics are keyed by the customer's arrival segment (`:822`, `:842`).
+5. Representative day is not affected: its labels are the segment id.
+6. The defect existed before A6. C-PD §9a F6 kept the undated label; A6 makes it visible.
+
+### Fix (E), per-date path only
+
+- `simulate_parallel_days_with_trace` adds closed-lane records for each date. For every lane the Setup closes in a segment that has records on that date, and only when that lane has no record of its own, it adds a record with:
+  - λ = 0 and no service samples;
+  - `model_id` `parallel_mg1` and `service_time_source` `empirical`;
+  - the date's own period label.
+- The engine accepts such a record unchanged: empty samples are refused only for open lanes (`simulation.py:730-738`). No marker object is needed.
+- Closed-lane records are not listed in `zero_arrival_lane_periods`.
+- Representative-day, legacy and scenario callers are unchanged.
+
+### Effect (VERIFIED on SYNTHETIC data, by emulation)
+
+- **What changes:** `time`, on closed-lane rows and on their segment entries.
+- **Unchanged:** arrivals, waits, service, the trace, `days`, and the summary's top-level values.
+- `summary.periods` becomes one entry per dated hour. Its wait is the served-weighted wait over the open lanes.
+- `rows_digest` changes for dates that have a closed lane; `trace_digest` does not.
+- The compact run, the one-date run and day detail all build their records in the same function, so they stay consistent.
+
+### Rejected alternatives
+
+- **Changing the `_run_summary` grouping.** It reaches every DES kind. Rows, the CSV and the Longest Single Line table would keep the undated label, and stored summaries would stay split.
+- **Merging in the frontend.** Per-period entries have `served = null`, so the served-weighted wait cannot be rebuilt in the browser.
+
+### Out of scope
+
+Scenario-bound `run_des` with single-date per-date separate inputs keeps the undated fillers. That path is reachable only through the API.
+
+### Known limitation (K63-R1, Kyoya, INFERRED from a probe)
+
+If the Setup closes every lane in a segment and that segment has no records on a date, there is no dated label to borrow. That segment keeps the bare segment-id label. It is one entry per date, not a split. The compact view drops it (`summaryForDate` filters by date), but a one-date view still shows a stray undated period. Whether a real Setup produces this is UNKNOWN; it is recorded as a follow-up.
+
+### Owner decisions
+
+- **OD-K63-1, semantics.** This fix amends C-PD §9a F6 and F7 ("`time` never changes"), and compact §10 ("one-date per-date byte-identical"), for closed-lane rows.
+- **OD-K63-2, versioning.**
+  - **(i)** Bump the marker to `per_date_days_v3`; v1 and v2 become historical. Stored v2 runs then show Not run until they are rerun. *Recommended.*
+  - **(ii)** Keep v2. v2 was never released. Local v2 runs that have a closed lane would return 409 on day detail and keep the split.
+
+### Tests
+
+Chrome's acceptance list for Hayato:
+- SYNTHETIC data with a closed middle lane, for one date and for two dates;
+- the zero-arrival list is unchanged;
+- customers recorded on a closed lane are unchanged;
+- the snapshot comparison goes through a documented relabel transform; representative-day, shared, aggregate and legacy entries stay byte-identical;
+- the marker;
+- mutants.
