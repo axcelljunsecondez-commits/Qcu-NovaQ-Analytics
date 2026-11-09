@@ -53,6 +53,13 @@ const SETUP_FIELD_LABELS: Record<string, string> = {
   counter_breaks: 'analyses.counter_breaks_title',
 }
 
+// The "Setup is not complete" banner names what to do: a count that changes by hour is set by
+// ticking Staffing varies by period, not by a fixed count. The form field keeps its own label.
+const BANNER_FIELD_LABELS: Record<string, string> = {
+  ...SETUP_FIELD_LABELS,
+  fixed_server_count: 'setup.missing_server_count_or_varies',
+}
+
 function structureDisplayKey(structure: QueueSetup['queue_structure']): string {
   if (structure === 'shared_queue') return 'analyses.shared'
   if (structure === 'single_server') return 'analyses.single'
@@ -194,6 +201,22 @@ function AnalysisSetupForId({ id }: { id: number }) {
   useEffect(() => {
     if (applied && focusApplied.current) { focusApplied.current = false; appliedAlert.current?.focus() }
   }, [applied])
+  // The same for the workbook confirmation: its title on open, the Upload and process button on
+  // Cancel (not on a file change), and the upload's result message after Replace.
+  const workbookConfirmTitle = useRef<HTMLElement>(null)
+  const workbookProcess = useRef<HTMLButtonElement>(null)
+  const uploadCard = useRef<HTMLDivElement>(null)
+  const uploadNotice = useRef<HTMLDivElement>(null)
+  const workbookReturnFocus = useRef(false)
+  const focusUploadNotice = useRef(false)
+  useEffect(() => {
+    if (pendingConfirm) workbookConfirmTitle.current?.focus()
+    else if (workbookReturnFocus.current) { workbookReturnFocus.current = false; focusAfterCancel(workbookProcess.current, uploadCard.current) }
+  }, [pendingConfirm])
+  useEffect(() => {
+    // The mutation's onSuccess/onError set the message before its status settles.
+    if ((upload.isSuccess || upload.isError) && focusUploadNotice.current) { focusUploadNotice.current = false; uploadNotice.current?.focus() }
+  }, [upload.isSuccess, upload.isError])
   if (analysis.isLoading) return <ApiState.Loading />
   if (analysis.isError || !analysis.data) return <ApiState.ErrorState error={analysis.error} />
   const separate = setup.queue_structure === 'separate_queues'
@@ -390,7 +413,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
       {setup.queue_structure !== 'unknown' && bannerMissing.length > 0 && (
         <div className="alert alert-warn" role="status" data-testid="setup-incomplete">
           <strong>{t('setup.incomplete_title')}</strong>{' '}
-          {t('setup.incomplete_body', { items: bannerMissing.map((item) => t(SETUP_FIELD_LABELS[item.field] ?? item.field)).join(', ') })}{' '}
+          {t('setup.incomplete_body', { items: bannerMissing.map((item) => t(BANNER_FIELD_LABELS[item.field] ?? item.field)).join(', ') })}{' '}
           {openMissing}
         </div>
       )}
@@ -404,7 +427,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
         </li>}
         <li className="setup-step">
           <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_add_data')}</h2>
-          <div className="card">
+          <div ref={uploadCard} tabIndex={-1} className="card">
             <h3 lang="en" className="card-title">{headingText(t, 'analyses.upload')}</h3>
             <p className="page-caption">{t('analyses.upload_help')}</p>
             <fieldset className="form-field setup-purpose">
@@ -418,7 +441,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
             </fieldset>
             <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" disabled={applying || upload.isPending} onChange={pick} />
             {(!savedIsShared || purpose === 'review' || aggregate?.mode === 'declined') && (
-              <button type="button" disabled={!file || purpose === null || upload.isPending || checking || applying} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
+              <button ref={workbookProcess} type="button" disabled={!file || purpose === null || upload.isPending || checking || applying} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
             )}
             {purpose === null && <p className="form-hint">{t('setup.purpose_required')}</p>}
             {sharedChecking && <p role="status" className="form-hint">{t('common.loading')}</p>}
@@ -426,7 +449,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
             {aggregate?.mode === 'declined' && <div role="status" className="alert alert-warn">
               <p>{t('setup.read_declined')}</p><ul>{aggregate.reasons.map((reason) => <li key={reason.code}>{reason.detail}</li>)}</ul>
             </div>}
-            {notice && <div className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}{(upload.isError || noticeIsError) && openMissing && <> {openMissing}</>}</div>}
+            {notice && <div ref={uploadNotice} tabIndex={-1} className={`alert ${upload.isError || noticeIsError ? 'alert-error' : 'alert-ok'}`} role={upload.isError || noticeIsError ? 'alert' : 'status'}>{notice}{(upload.isError || noticeIsError) && openMissing && <> {openMissing}</>}</div>}
             {readErrors.length > 0 && (
               <div className="alert alert-error" role="alert">
                 <strong>{t('analyses.upload_read_errors')}</strong>
@@ -434,12 +457,12 @@ function AnalysisSetupForId({ id }: { id: number }) {
               </div>
             )}
             {pendingConfirm && preview && (
-              <div className="alert alert-warn">
-                <strong>{t('analyses.upload_confirm_title')}</strong>
+              <div className="alert alert-warn" role="status">
+                <strong id="workbook-confirm-title" ref={workbookConfirmTitle} tabIndex={-1}>{t('analyses.upload_confirm_title')}</strong>
                 <p>{t('analyses.upload_confirm_help')}</p>
                 <ul>{preview.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}</li>)}</ul>
-                <button type="button" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) upload.mutate({ selected: file, applySetup: true }) }}>{t('analyses.upload_confirm')}</button>
-                <button type="button" className="btn-ghost" onClick={() => { setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
+                <button type="button" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) { focusUploadNotice.current = true; upload.mutate({ selected: file, applySetup: true }) } }}>{t('analyses.upload_confirm')}</button>
+                <button type="button" className="btn-ghost" onClick={() => { workbookReturnFocus.current = true; setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
               </div>
             )}
           </div>

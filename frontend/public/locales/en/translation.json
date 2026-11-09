@@ -1571,6 +1571,7 @@
   "setup.incomplete_title": "Your Setup is not complete.",
   "setup.incomplete_body": "NovaQ still needs: {{items}}. Upload a file that sets it, or enter it in Advanced settings. Plans and simulations can run, but no Decision can be made until the Setup is complete.",
   "setup.incomplete_open": "Open Advanced settings",
+  "setup.missing_server_count_or_varies": "Fixed server count, or tick Staffing varies by period if your counters change by hour",
   "setup.basis_reupload": "The period basis is used when a file is read: upload your planning file again to use the new one.",
   "setup.step_advanced_help": "Lines and counters, time segments, breaks, waiting room and customers who leave. Changes apply after you press Save.",
   "setup.read_decide_later": "Decide later",
