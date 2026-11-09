@@ -447,19 +447,41 @@ def test_one_date_per_date_run_keeps_the_full_shape(db_engine, client):
 
 
 def test_v1_and_unmarked_jobs_are_not_current_and_have_no_day_detail(db_engine, client):
-    """OD-C15 (i), OD-K63-2 (i): per_date_days_v3 is current, v1 and v2 historical; no marker is not Current either."""
+    """OD-C15 (i), OD-K63-2 (i): per_date_days_v3 is current, v1 and v2 historical; no marker is not Current either.
+
+    K63-T1: the reason is pinned too, through the classification GET workflow uses (_evidence_is_current calls
+    _assess_evidence): v1 and v2 are VERSION_HISTORICAL, a missing marker VERSION_UNRECORDED. Without this an
+    unrecognized marker (VERSION_UNRECOGNIZED) would pass for a historical one.
+    """
+    from backend.api import workflow as workflow_api
+    from backend.api.evidence_status import ReasonCode
     from backend.api.workflow import CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL
+    from backend.db.models import AnalysisProject, Job, User
+    from tests.helpers import make_sessionmaker
+
+    def accounting_codes(job_id: int) -> tuple[bool, list[ReasonCode]]:
+        with make_sessionmaker(db_engine)() as db:
+            job = db.get(Job, job_id)
+            analysis = db.get(AnalysisProject, job.params_json["analysis_id"])
+            context = workflow_api._evidence_context(db, db.get(User, job.user_id), analysis)
+            assessment = workflow_api._assess_evidence(db, job, context, workflow_api._current_evidence_policy())
+            return assessment.is_current, [reason.code for reason in assessment.reasons
+                                           if reason.subject == "Current DES accounting"]
 
     _, analysis_id, evidence = _compact_run(db_engine, client, "marker-v2@example.com")
     job_id, date = evidence["id"], evidence["result"]["days"][0]["date"]
     assert evidence["params"]["current_des_basis"] == "per_date_days_v3"
     assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == job_id
+    assert accounting_codes(job_id) == (True, [])
     params, _ = _job(db_engine, job_id)
-    for marker in ("per_date_days_v1", "per_date_days_v2", None):
+    expected = {"per_date_days_v1": ReasonCode.VERSION_HISTORICAL, "per_date_days_v2": ReasonCode.VERSION_HISTORICAL,
+                None: ReasonCode.VERSION_UNRECORDED}
+    for marker, code in expected.items():
         changed = {k: v for k, v in params.items() if k != "current_des_basis"}
         if marker is not None:
             changed["current_des_basis"] = marker
         _update_job(db_engine, job_id, params=changed)
+        assert accounting_codes(job_id) == (False, [code]), marker
         assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"] is None, marker
         assert _day(client, analysis_id, date).json() == {"detail": CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL}
     _update_job(db_engine, job_id, params=params)
