@@ -1833,6 +1833,7 @@
   "continuous.reason.service_time_variation": "May pagbabago-bago ng tagal ng serbisyo ang data mo pero wala ang tagal ng serbisyo ng bawat customer. Kailangan ng takbo ng buong araw ang customer records na may tagal ng serbisyo, o ang bilang bawat period.",
   "continuous.reason.capacity_or_abandonment": "Wala pa sa takbo ng buong araw ang limitasyon sa lugar ng paghihintay at ang mga customer na umaalis.",
   "continuous.reason.capacity_or_abandonment_unknown": "Sagutin muna ang dalawang tanong sa Data at setup (Mga advanced na setting): itakda ang Paraan ng kapasidad sa Walang limitasyon at ang Pag-alis sa pila sa Hindi minomodelo. Wala pa sa takbo ng buong araw ang limitasyon sa lugar ng paghihintay at ang mga customer na umaalis.",
+  "continuous.reason.model_choices_unanswered": "Sagutin muna ang dalawang tanong sa Mga advanced na setting: ang maximum na bilang ng customer, at kung umaalis ang mga customer. Hindi magagamit ang takbo ng buong araw hangga't hindi nasasagot ang dalawa.",
   "continuous.reason.timeline_invalid": "Hindi bumubuo ng iisang araw ng operasyon ang mga period:",
   "continuous.service_recorded": "Ginagamit ang naitalang tagal ng serbisyo mo.",
   "continuous.service_estimated": "Ginagamit ang tantiyang tagal ng serbisyo (bilang bawat period).",

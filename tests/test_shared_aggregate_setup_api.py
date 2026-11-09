@@ -293,9 +293,72 @@ def test_upload_limits_and_rate_limit_still_apply(app, client, workspace):
     app.state.settings.max_upload_bytes = 20
     assert preview(client, workspace["id"]).status_code == 413
     app.state.settings.max_upload_bytes = 1024 * 1024
-    app.state.settings.rate_limit_upload = 2
+    app.state.settings.rate_limit_upload_preview = 2  # the refused 413 above already used one
     assert preview(client, workspace["id"]).status_code == 200
+    refused = preview(client, workspace["id"])
+    assert refused.status_code == 429 and "Retry-After" in refused.headers  # the preview bucket is still enforced
+
+
+def test_preview_limit_defaults_to_60_and_reads_its_own_variable(monkeypatch):
+    from backend.api.settings import Settings
+
+    monkeypatch.delenv("RATE_LIMIT_UPLOAD", raising=False)
+    monkeypatch.delenv("RATE_LIMIT_UPLOAD_PREVIEW", raising=False)
+    assert (Settings().rate_limit_upload, Settings().rate_limit_upload_preview) == (10, 60)
+    monkeypatch.setenv("RATE_LIMIT_UPLOAD_PREVIEW", "7")
+    assert (Settings().rate_limit_upload, Settings().rate_limit_upload_preview) == (10, 7)
+
+
+def test_previews_beyond_the_upload_limit_do_not_block_apply(db_engine, app, client, workspace):
+    """D1: the page reads the file on every file or purpose change; reading must not use up Apply."""
+    assert app.state.settings.rate_limit_upload == 10
+    for attempt in range(app.state.settings.rate_limit_upload + 1):
+        response = preview(client, workspace["id"])
+        assert response.status_code == 200, (attempt, response.text)
+    assert stored(db_engine, workspace["id"])["datasets"] == 0  # previews still write nothing
+    applied = apply(client, workspace["id"], metadata(response.json()))
+    assert applied.status_code == 201, applied.text
+
+
+def test_preview_bucket_exhaustion_leaves_apply_available(app, client, workspace):
+    app.state.settings.rate_limit_upload_preview = 1
+    body = preview(client, workspace["id"]).json()
     assert preview(client, workspace["id"]).status_code == 429
+    assert apply(client, workspace["id"], metadata(body)).status_code == 201
+
+
+def test_apply_still_enforces_the_upload_limit(app, client, workspace):
+    app.state.settings.rate_limit_upload = 1
+    request = metadata(preview(client, workspace["id"]).json())
+    assert apply(client, workspace["id"], request).status_code == 201
+    refused = apply(client, workspace["id"], request)
+    assert refused.status_code == 429 and "Retry-After" in refused.headers
+    assert preview(client, workspace["id"]).status_code == 200  # Apply's limit does not block reading
+
+
+def test_missing_column_preview_gives_the_usual_upload_422_detail(db_engine, client, workspace):
+    """D3: the preview shows the same unreadable-file message as the usual upload and writes nothing."""
+    missing_c = pd.read_csv(io.BytesIO(CSV)).drop(columns=["c"]).to_csv(index=False).encode()
+    before = stored(db_engine, workspace["id"])
+    read = preview(client, workspace["id"], data=missing_c)
+    usual = client.post(f"/analyses/{workspace['id']}/datasets", files={"file": ("owner.csv", missing_c, "text/csv")},
+                        headers=csrf_header(client))
+    assert (read.status_code, usual.status_code) == (422, 422)
+    assert read.json()["detail"] == usual.json()["detail"] == "Schema could not be identified. Missing aggregate columns: c."
+    assert stored(db_engine, workspace["id"]) == before
+
+
+def test_owner_file_hours_show_before_the_two_questions_are_answered(client, workspace):
+    """K-UF-1: after the owner's normal shared apply the full-day run bar has the file's hours, 05:00-18:00."""
+    unanswered = {"capacity_mode": "unknown", "abandonment_mode": "unknown"}  # what the page sends (deferred)
+    applied = apply(client, workspace["id"], metadata(preview(client, workspace["id"]).json(), choices=unanswered))
+    assert applied.status_code == 201, applied.text
+    response = client.post(f"/analyses/{workspace['id']}/continuous/compatibility", headers=csrf_header(client), json={})
+    current = response.json()["plans"]["current"]
+    assert current["compatible"] is False
+    assert [reason["code"] for reason in current["reasons"]] == ["capacity_or_abandonment_unknown", "no_closing_policy"]
+    assert current["horizon"] == {"start_minute": 300, "end_minute": 1080}
+    assert current["dataset_id"] == applied.json()["dataset"]["id"]
 
 
 def test_insert_failure_rolls_back_both_dataset_and_setup(db_engine, client, workspace):

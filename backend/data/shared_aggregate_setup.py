@@ -13,7 +13,8 @@ import pandas as pd
 from pydantic import ValidationError
 
 from backend.api.analysis_schemas import STORED_SETUP, QueueSetup, QueueStructure
-from backend.data.analysis_ingestion import normalize_analysis_input
+from backend.data.analysis_ingestion import AGGREGATE_REQUIRED, EVENT_REQUIRED, normalize_analysis_input
+from backend.data.ingestion import normalize_header_aliases
 from backend.data.setup_derivation import DIFF_FIELDS
 from backend.data.uploads import safe_stem
 from backend.queueing_engine.services.shared_segments import (
@@ -54,11 +55,16 @@ def derive_shared_aggregate(frame: pd.DataFrame, saved_setup: dict, filename: st
     if saved["queue_structure"] != "shared_queue":
         return decline("not_shared_line", "This file-reading path requires an existing shared-queue analysis.")
     columns = [str(column).strip() for column in frame.columns]
-    if set(columns) != {"time", "lambda", "mu", "c"} or len(columns) != 4:
-        return decline("outside_slice", "This path reads exactly time, lambda, mu and c; use the existing upload for other columns.")
     # These are file facts only. Applying saved K/theta here would invent fields in
     # the file and make the shared timeline refuse a valid four-column input.
     file_setup = QueueSetup(queue_structure=QueueStructure.shared_queue, staffing_varies_by_period=True)
+    present = set(normalize_header_aliases(columns)[0])
+    if (AGGREGATE_REQUIRED <= present) == (EVENT_REQUIRED <= present):
+        # Neither or both schemas: the usual upload cannot read this file either. Its existing
+        # schema check raises the same message here (a 422), instead of "use the usual upload".
+        normalize_analysis_input(frame, file_setup)
+    if set(columns) != {"time", "lambda", "mu", "c"} or len(columns) != 4:
+        return decline("outside_slice", "This path reads exactly time, lambda, mu and c; use the existing upload for other columns.")
     records, provenance = normalize_analysis_input(frame, file_setup)
     try:
         periods, staffing = timeline_from_aggregate_rows(records)

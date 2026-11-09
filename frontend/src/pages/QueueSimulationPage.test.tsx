@@ -1127,7 +1127,7 @@ describe('the continuous full-day run (B4a preview)', () => {
     }))
     renderPage()
     const refusal = await screen.findByTestId('continuous-refusal')
-    expect(refusal).toHaveTextContent('You can save now. The full-day run stays unavailable until you answer.')
+    expect(refusal).toHaveTextContent('Answer the two questions in Advanced settings first: the maximum number of customers, and whether customers leave. The full-day run stays unavailable until both are answered.')
     expect(refusal).not.toHaveTextContent('capacity_or_abandonment_unknown')
   })
 

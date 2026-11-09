@@ -56,7 +56,7 @@ function ReasonList({ reasons }: { reasons: ContinuousReason[] }) {
       {reasons.map((reason) => (
         <li key={reason.code}>
           {reason.code === 'capacity_or_abandonment_unknown'
-            ? t('setup.read_not_sure_note')
+            ? t('continuous.reason.model_choices_unanswered')
             : t(`continuous.reason.${reason.code}`, { defaultValue: reason.code })}
           {reason.problems && <ul>{reason.problems.map((problem) => <li key={problem}>{problem}</li>)}</ul>}
           {reason.periods && <span> {reason.periods.join(', ')}</span>}

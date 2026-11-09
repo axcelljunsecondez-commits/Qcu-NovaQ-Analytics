@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../../test/test-utils'
 import en from '../../../public/locales/en/translation.json'
+import { getContinuousCompatibility } from '../../api/continuous'
 import { ContinuousSection } from './ContinuousRun'
 
 // Shared lines: the full-day run (spec 2026-10-29 §7.1, §7.5; owner decisions A6, C3, C4, C6, OD-2).
@@ -145,5 +146,37 @@ describe('full-day charts (C6)', () => {
     expect(chart.closest('section')).toHaveTextContent('Current')
     expect(chart.querySelector('.cv-m-est')).not.toBeNull()
     expect(chart.querySelector('.cv-m-plan')).toBeNull()
+  })
+})
+
+/** Both plans refused with the given view fields; the rest is the default compatible fixture. */
+async function refuseWith(view: Record<string, unknown>) {
+  const base = await getContinuousCompatibility(7)
+  vi.mocked(getContinuousCompatibility).mockResolvedValueOnce({ ...base, plans: {
+    current: { ...base.plans.current, compatible: false, ...view },
+    suggested: { ...base.plans.suggested, compatible: false, ...view },
+  } })
+}
+
+describe('operating hours and reasons when the full-day run is refused (T1, K-UF-1)', () => {
+  it('shows the data hours the server returns while the two questions are unanswered', async () => {
+    await refuseWith({ dataset_id: 9, horizon: { start_minute: 480, end_minute: 600 }, reasons: [{ code: 'capacity_or_abandonment_unknown' }] })
+    renderSection('current')
+    expect(await screen.findByText('Operating hours: 08:00 - 10:00.')).toBeInTheDocument()
+    const refusal = screen.getByTestId('continuous-refusal')
+    expect(refusal).toHaveTextContent(en['continuous.reason.model_choices_unanswered'])
+    expect(refusal).not.toHaveTextContent(en['setup.read_not_sure_note'])
+  })
+
+  it('shows Unavailable when there is no data, whatever the Setup says', async () => {
+    await refuseWith({ dataset_id: null, horizon: null, reasons: [{ code: 'capacity_or_abandonment_unknown' }] })
+    renderSection('current')
+    expect(await screen.findByText('Operating hours: Unavailable.')).toBeInTheDocument()
+  })
+
+  it('keeps Unavailable when the data was read but gave no timeline', async () => {
+    await refuseWith({ dataset_id: 9, horizon: null, reasons: [{ code: 'timeline_invalid', problems: ['09:00 to 09:30 is not covered.'] }] })
+    renderSection('current')
+    expect(await screen.findByText('Operating hours: Unavailable.')).toBeInTheDocument()
   })
 })

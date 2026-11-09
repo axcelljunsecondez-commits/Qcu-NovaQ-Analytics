@@ -1833,6 +1833,7 @@
   "continuous.reason.service_time_variation": "Your data has service-time variation but not the service time of every customer. The full-day run needs customer records with their service times, or counts per period.",
   "continuous.reason.capacity_or_abandonment": "Waiting-room limits and customers leaving are not in the full-day run yet.",
   "continuous.reason.capacity_or_abandonment_unknown": "Answer two questions in Data and setup (Advanced settings) first: set Capacity mode to Unlimited and Abandonment to Not modeled. The full-day run does not include waiting-room limits or customers leaving yet.",
+  "continuous.reason.model_choices_unanswered": "Answer the two questions in Advanced settings first: the maximum number of customers, and whether customers leave. The full-day run stays unavailable until both are answered.",
   "continuous.reason.timeline_invalid": "The periods do not form one operating day:",
   "continuous.service_recorded": "Uses your recorded service times.",
   "continuous.service_estimated": "Uses estimated service times (counts per period).",

@@ -269,33 +269,39 @@ def _period_labels(segments: list[StaffingSegment], rows: list[Any], recorded: b
     return {segment.segment_id: label for segment, label in zip(segments, labels)}
 
 
-def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> dict[str, Any]:
-    """Everything a run of ``plan`` needs, or every reason it cannot run. Runs nothing."""
-    setup = analysis.queue_setup_json or {}
-    out: dict[str, Any] = {"plan": plan, "dataset": None, "scenario": None, "timeline": None,
-                           "expected_customers_per_day": None, "horizon": None, "service_model": None,
-                           "service_samples": None, "service_fallbacks": [], "counter_breaks": [],
-                           "period_labels": {}}
-    reasons = _setup_reasons(setup)
+# Setup gates that refuse a shared line whose data can still be read (K-UF-1). The line structure gates do not.
+SETUP_GATES_WITH_DATA_HOURS = frozenset({"capacity_or_abandonment", "capacity_or_abandonment_unknown"})
+
+
+def _empty_assessment(plan: Plan) -> dict[str, Any]:
+    return {"plan": plan, "dataset": None, "scenario": None, "timeline": None,
+            "expected_customers_per_day": None, "horizon": None, "service_model": None,
+            "service_samples": None, "service_fallbacks": [], "counter_breaks": [],
+            "period_labels": {}}
+
+
+def _read_plan_data(db: Session, user: User, analysis: AnalysisProject, plan: Plan, setup: dict[str, Any],
+                    out: dict[str, Any]) -> list[dict[str, Any]]:
+    """Read the plan's data into ``out`` exactly as a run does; return the data reasons (unchanged rules)."""
+    reasons: list[dict[str, Any]] = []
     rows: list[Any] | None = None
-    if not reasons:
-        if plan == "current":
-            resolution = resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis.id)
-            if resolution.status is not CurrentDatasetStatus.CURRENT:
-                reasons.append(_reason("no_planning_dataset", status=resolution.status.value))
-            else:
-                out["dataset"] = resolution.dataset
-                rows = list((resolution.dataset.normalized_json if resolution.dataset else None) or [])
+    if plan == "current":
+        resolution = resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis.id)
+        if resolution.status is not CurrentDatasetStatus.CURRENT:
+            reasons.append(_reason("no_planning_dataset", status=resolution.status.value))
         else:
-            scenario, dataset, _ = _selected_scenario_and_dataset(db, user, analysis)
-            if scenario is None or dataset is None:
-                reasons.append(_reason("no_selected_plan"))
-            else:
-                out["scenario"], out["dataset"] = scenario, dataset
-                try:
-                    rows = _segments_for(scenario, dataset)
-                except HTTPException as error:
-                    reasons.append(_reason("plan_inputs_invalid", detail=str(error.detail)))
+            out["dataset"] = resolution.dataset
+            rows = list((resolution.dataset.normalized_json if resolution.dataset else None) or [])
+    else:
+        scenario, dataset, _ = _selected_scenario_and_dataset(db, user, analysis)
+        if scenario is None or dataset is None:
+            reasons.append(_reason("no_selected_plan"))
+        else:
+            out["scenario"], out["dataset"] = scenario, dataset
+            try:
+                rows = _segments_for(scenario, dataset)
+            except HTTPException as error:
+                reasons.append(_reason("plan_inputs_invalid", detail=str(error.detail)))
     if rows is not None:
         dataset_rows = list(out["dataset"].normalized_json or [])
         recorded = _is_recorded(dataset_rows)
@@ -323,6 +329,24 @@ def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> d
                     reasons += break_reasons
             except SharedSegmentError as error:
                 reasons.append(_reason("timeline_invalid", problems=error.problems))
+    return reasons
+
+
+def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> dict[str, Any]:
+    """Everything a run of ``plan`` needs, or every reason it cannot run. Runs nothing."""
+    setup = analysis.queue_setup_json or {}
+    out = _empty_assessment(plan)
+    reasons = _setup_reasons(setup)
+    if not reasons:
+        reasons += _read_plan_data(db, user, analysis, plan, setup, out)
+    elif {reason["code"] for reason in reasons} <= SETUP_GATES_WITH_DATA_HOURS:
+        # K-UF-1: only the two Setup questions refuse, but a run takes its hours from the data rows, not
+        # the Setup segments. Read the data exactly as a run would and report only where it is (dataset,
+        # plan) and its hours; the reasons and every gate stay the Setup gate's alone.
+        probe = _empty_assessment(plan)
+        _read_plan_data(db, user, analysis, plan, setup, probe)
+        if probe["horizon"] is not None:
+            out.update(dataset=probe["dataset"], scenario=probe["scenario"], horizon=probe["horizon"])
     if analysis.shared_closing_policy not in CLOSING_POLICIES:
         reasons.append(_reason("no_closing_policy"))
     out["reasons"] = reasons

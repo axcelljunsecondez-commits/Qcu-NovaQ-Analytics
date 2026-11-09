@@ -115,7 +115,7 @@ def preview_shared_aggregate(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
-    _rate_limit: None = Depends(user_rate_limit("upload")),
+    _rate_limit: None = Depends(user_rate_limit("upload_preview")),
 ) -> dict:
     analysis = _analysis(db, user, analysis_id)
     _planning(purpose)

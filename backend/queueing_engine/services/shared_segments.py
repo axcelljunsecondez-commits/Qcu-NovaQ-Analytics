@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Integral, Real
@@ -166,8 +167,9 @@ def _id_problems(kind: str, identifiers: Sequence[object]) -> list[str]:
     problems = []
     if any(not isinstance(item, str) or not item.strip() for item in identifiers):
         problems.append(f"Every {kind} needs a non-empty text id.")
-    texts = [item for item in identifiers if isinstance(item, str)]
-    duplicates = sorted({item for item in texts if texts.count(item) > 1})
+    # One counting pass (K-UF-2): list.count per item was quadratic in the number of rows.
+    counts = Counter(item for item in identifiers if isinstance(item, str))
+    duplicates = sorted(item for item, count in counts.items() if count > 1)
     if duplicates:
         problems.append(f"Duplicate {kind} ids: {', '.join(duplicates)}.")
     return problems
