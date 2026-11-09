@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeQueryClient, renderWithProviders } from '../test/test-utils'
 import type { QueueSetup } from '../api/types'
@@ -377,5 +377,108 @@ describe('U10: what the Setup still needs, and the period basis', () => {
     expect(screen.queryByText(/the full-day run and break suggestions are not available/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByText(/upload your planning file again to use the new one/)).toBeInTheDocument()
+  })
+})
+
+describe('Setup banner: a count that changes by hour (2026-11-10)', () => {
+  const shared: QueueSetup = { ...unknownSetup, queue_structure: 'shared_queue', capacity_mode: 'unlimited', abandonment_mode: 'not_modeled', event_period_basis: 'per_date' }
+  const sentence = 'Fixed server count, or tick Staffing varies by period if your counters change by hour'
+
+  function renderIncomplete(setup: QueueSetup) {
+    getAnalysisMock.mockResolvedValue({ analysis: { ...analysisWith(setup).analysis, setup_status: 'incomplete' } })
+    vi.mocked(listAnalysisDatasets).mockResolvedValue({ datasets: [{ id: 4, name: 'records', is_current: true, purpose: 'planning', validation: { ok: true } }] } as never)
+    vi.mocked(getAnalysisCurrent).mockRejectedValue(new Error('not needed'))
+    renderPage()
+  }
+
+  afterEach(() => {
+    vi.mocked(listAnalysisDatasets).mockReset().mockImplementation(async () => ({ datasets: [] }))
+    vi.mocked(getAnalysisCurrent).mockReset()
+  })
+
+  it('tells a shared Setup with a current file to set a count or tick Staffing varies', async () => {
+    renderIncomplete(shared)
+    const banner = await screen.findByTestId('setup-incomplete')
+    expect(banner).toHaveTextContent(`NovaQ still needs: ${sentence}.`)
+    // The Advanced settings field keeps its own label.
+    expect(screen.getByLabelText('Fixed server count')).toHaveAttribute('id', 'server-count')
+  })
+
+  it('does not name the count once Staffing varies is ticked', async () => {
+    renderIncomplete({ ...shared, staffing_varies_by_period: true, capacity_mode: 'finite' })
+    const banner = await screen.findByTestId('setup-incomplete')
+    expect(banner).not.toHaveTextContent(sentence)
+    expect(banner).not.toHaveTextContent('Fixed server count')
+  })
+
+  it('does not name the count once a fixed count is set', async () => {
+    renderIncomplete({ ...shared, fixed_server_count: 3, capacity_mode: 'finite' })
+    const banner = await screen.findByTestId('setup-incomplete')
+    expect(banner).not.toHaveTextContent(sentence)
+    expect(banner).not.toHaveTextContent('Fixed server count')
+  })
+})
+
+describe('workbook confirmation focus (2026-11-10)', () => {
+  const differentSaved = { ...unknownSetup, queue_structure: 'separate_queues' as const, queue_ids: ['lane_a'] }
+
+  async function openConfirmation() {
+    getAnalysisMock.mockResolvedValue(analysisWith(differentSaved))
+    previewMock.mockResolvedValue(preview({ needs_confirmation: true }))
+    const opened = await uploadFile('novamart.xlsx')
+    const title = await screen.findByText('This file would change your saved Setup')
+    return { ...opened, title }
+  }
+
+  it('moves focus to the title, never to Replace, and announces the box', async () => {
+    const { user, title } = await openConfirmation()
+    await waitFor(() => expect(document.activeElement).toBe(title))
+    expect(title.closest('.alert')).toHaveAttribute('role', 'status')
+    const replace = screen.getByRole('button', { name: 'Replace Setup and upload' })
+    expect(document.activeElement).not.toBe(replace)
+    await user.tab()
+    expect(document.activeElement).toBe(replace)
+  })
+
+  it('returns focus to Upload and process on Cancel and uploads nothing', async () => {
+    const { user, title } = await openConfirmation()
+    await waitFor(() => expect(document.activeElement).toBe(title))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Upload and process' })))
+    expect(uploadMock).not.toHaveBeenCalled()
+  })
+
+  it('moves focus to the success message after Replace', async () => {
+    const { user, file } = await openConfirmation()
+    await user.click(screen.getByRole('button', { name: 'Replace Setup and upload' }))
+    await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file, { applySetup: true }))
+    const message = await screen.findByText('Input data is valid.')
+    await waitFor(() => expect(document.activeElement).toBe(message))
+    expect(message).toHaveAttribute('role', 'status')
+  })
+
+  it('moves focus to the error message when the upload after Replace fails', async () => {
+    uploadMock.mockRejectedValue(Object.assign(new Error('422'), { response: { status: 422, data: { detail: 'The file could not be read.' } } }))
+    const { user } = await openConfirmation()
+    await user.click(screen.getByRole('button', { name: 'Replace Setup and upload' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The file could not be read.')
+    await waitFor(() => expect(document.activeElement).toBe(alert))
+  })
+
+  it('leaves focus on the file input when the file changes while the box is open', async () => {
+    const { title } = await openConfirmation()
+    await waitFor(() => expect(document.activeElement).toBe(title))
+    const input = screen.getByLabelText('Upload Data')
+    // A browser returns focus to the input when the file picker closes, before `change` fires.
+    // user.upload focuses it again after `change`, which would hide a wrong focus move.
+    input.focus()
+    fireEvent.change(input, { target: { files: [new File(['y'], 'other.xlsx')] } })
+    expect(screen.queryByText('This file would change your saved Setup')).not.toBeInTheDocument()
+    // Let React run the file change's effects before reading focus.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Upload and process' }))
+    expect(document.activeElement).toBe(input)
+    expect(uploadMock).not.toHaveBeenCalled()
   })
 })

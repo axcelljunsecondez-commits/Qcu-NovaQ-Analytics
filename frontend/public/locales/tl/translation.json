@@ -1571,6 +1571,7 @@
   "setup.incomplete_title": "Hindi pa kumpleto ang iyong Setup.",
   "setup.incomplete_body": "Kailangan pa ng NovaQ: {{items}}. Mag-upload ng file na nagtatakda nito, o ilagay ito sa Mga advanced na setting. Puwedeng tumakbo ang mga plano at simulation, pero walang Decision hangga't hindi kumpleto ang Setup.",
   "setup.incomplete_open": "Buksan ang Mga advanced na setting",
+  "setup.missing_server_count_or_varies": "Fixed server count, o i-tick ang Staffing varies by period kung nagbabago ang bilang ng counter kada oras",
   "setup.basis_reupload": "Ginagamit ang batayan ng panahon kapag binabasa ang file: i-upload muli ang iyong file para sa pagpaplano para magamit ang bago.",
   "setup.step_advanced_help": "Mga pila at counter, mga yugto ng oras, break, lugar ng paghihintay at mga customer na umaalis. Magkakabisa ang mga pagbabago pagkatapos mong pindutin ang Save.",
   "setup.read_decide_later": "Pagpasyahan mamaya",
