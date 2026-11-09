@@ -1,4 +1,12 @@
-"""Synthetic Current DES date-scope regressions; no operational observations."""
+"""Synthetic Current DES date-scope regressions; no operational observations.
+
+OD-C8 (i), owner 2026-11-02: C-PD (spec 2026-10-30, OD-C1 (a), OD-C2 (i), OD-C5 (i)) and C-PD-C supersede
+the bounded single-date guard of d8f89da6 for empirical per-date separate-lines Current DES. Multi-date files
+are simulated one day per date; an open lane with no record on a date is zero arrivals, listed; a date
+without a whole operating segment, an unreadable label, an invalid calendar date, an unknown segment or a
+repeated date/segment/queue identity is still refused with 422 before the engine and before any job.
+Outside that gate the bounded guard applies unchanged.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +43,10 @@ SETUP = {
     ],
 }
 DES_REQUEST = {"sim_hours": 2.0, "max_events": 300, "seed": 42}
+INVALID = "Current dataset records are invalid."
+# Keys the per-date path adds to a one-date result (C-PD spec 2026-10-30 §9a, F7).
+PER_DATE_ADDED_KEYS = ("execution", "days", "zero_arrival_lane_periods")
+ENGINES = ("simulate_segments_with_trace", "simulate_parallel_days_with_trace", "simulate_parallel_days_compact")
 
 
 @pytest.fixture
@@ -103,59 +115,81 @@ def _post_des(client, analysis_id):
     )
 
 
-def _assert_engine_unchanged(client, analysis_id, rows, setup):
+def _assert_engine_unchanged(client, analysis_id, rows, setup, added=()):
     # Independent direct call to the unchanged engine, rather than a hardcoded
     # response copied from the adapter or an altered expected result fixture.
+    # ``added``: additive per-date keys removed before comparing (one-date per-date run, C-PD F7).
     expected = simulate_segments_with_trace(deepcopy(rows), queue_setup=deepcopy(setup), **DES_REQUEST)
     response = _post_des(client, analysis_id)
     assert response.status_code == 200, response.text
     result = response.json()["evidence"]["result"]
     assert result.pop("provenance") == "CURRENT"
     result.pop("summary")
+    if added:
+        assert set(added) <= set(result)
+        result = {key: value for key, value in result.items() if key not in added}
+        for field in ("results", "segments", "trace"):
+            result[field] = [{k: v for k, v in item.items() if k != "date"} for item in result[field]]
     assert result == expected  # Includes exact result values, trace, time and event metadata.
     return result
 
 
-@pytest.mark.parametrize("case", [
-    "two_dates", "two_dates_reversed", "missing_lane_cross_date", "complementary_dates",
-    "malformed_label", "invalid_calendar_date", "unknown_segment", "missing_segment",
-    "duplicate_identity", "duplicate_identity_different_label", "conflicting_period_segments",
-])
-def test_ambiguous_or_invalid_per_date_current_refused_before_engine_or_job(
-    case, synthetic_rows, save_current, client, db_engine, monkeypatch,
-):
-    rows = deepcopy(synthetic_rows)
-    if case == "two_dates_reversed":
-        rows.reverse()
-    elif case == "missing_lane_cross_date":
-        rows = [row for row in rows if not (
-            row["time"].startswith(DATES[0]) and row["segment_id"] == "s2" and row["queue_id"] == QUEUES[0]
-        )]
-    elif case == "complementary_dates":
+def _per_date_detail(message_rows, setup=SETUP):
+    """The per_date_days refusal text for these rows (same grouper as the route, no copied literal)."""
+    from backend.queueing_engine.services.separate_optimization import per_date_days
+
+    period_rows: dict[str, list] = {}
+    for row in message_rows:
+        period_rows.setdefault(str(row["time"]), []).append(row)
+    with pytest.raises(ValueError) as caught:
+        per_date_days(setup, list(period_rows), period_rows)
+    return str(caught.value)
+
+
+def _refuse_case(case, rows):
+    if case == "complementary_dates":
         rows = [row for row in rows if (
             row["time"].startswith(DATES[0]) and row["segment_id"] == "s1"
         ) or (row["time"].startswith(DATES[1]) and row["segment_id"] == "s2")]
         rows.reverse()
-    elif case != "two_dates":
-        rows = rows[:4]
-        if case == "malformed_label":
-            rows[0]["time"] = "not-a-calendar-period"
-        elif case == "invalid_calendar_date":
-            for row in rows:
-                row["time"] = row["time"].replace(DATES[0], "2026-02-30")
-        elif case == "unknown_segment":
-            extra = deepcopy(rows[0])
-            extra.update(time=f"{DATES[0]} unknown UTC", segment_id="unknown")
-            rows.append(extra)
-        elif case == "missing_segment":
-            rows = [row for row in rows if row["segment_id"] == "s1"]
-        elif case in {"duplicate_identity", "duplicate_identity_different_label"}:
-            extra = deepcopy(rows[0])
-            if case == "duplicate_identity_different_label":
-                extra["time"] = f"{DATES[0]} s1 alternate-label UTC"
-            rows.append(extra)
-        elif case == "conflicting_period_segments":
-            rows[0]["segment_id"] = "s2"
+        return rows, _per_date_detail(rows)
+    rows = rows[:4]
+    if case == "malformed_label":
+        rows[0]["time"] = "not-a-calendar-period"
+        return rows, _per_date_detail(rows)
+    if case == "invalid_calendar_date":
+        for row in rows:
+            row["time"] = row["time"].replace(DATES[0], "2026-02-30")
+        return rows, INVALID
+    if case == "unknown_segment":
+        extra = deepcopy(rows[0])
+        extra.update(time=f"{DATES[0]} unknown UTC", segment_id="unknown")
+        rows.append(extra)
+        return rows, INVALID
+    if case == "missing_segment":
+        rows = [row for row in rows if row["segment_id"] == "s1"]
+        return rows, _per_date_detail(rows)
+    if case in {"duplicate_identity", "duplicate_identity_different_label"}:
+        extra = deepcopy(rows[0])
+        if case == "duplicate_identity_different_label":
+            extra["time"] = f"{DATES[0]} s1 alternate-label UTC"
+        rows.append(extra)
+        return rows, INVALID
+    assert case == "conflicting_period_segments"
+    rows[0]["segment_id"] = "s2"
+    return rows, _per_date_detail(rows)
+
+
+@pytest.mark.parametrize("case", [
+    "complementary_dates", "malformed_label", "invalid_calendar_date", "unknown_segment", "missing_segment",
+    "duplicate_identity", "duplicate_identity_different_label", "conflicting_period_segments",
+])
+def test_invalid_per_date_current_refused_before_engine_or_job(
+    case, synthetic_rows, save_current, client, db_engine, monkeypatch,
+):
+    rows, detail = _refuse_case(case, deepcopy(synthetic_rows))
+    if case in {"complementary_dates", "missing_segment"}:
+        assert detail.startswith("Date ") and "has no records for operating segment(s)" in detail  # OD-C5 (i)
     analysis_id, dataset_id = save_current(rows)
     with make_sessionmaker(db_engine)() as db:
         before_jobs = db.scalar(select(func.count()).select_from(Job))
@@ -164,14 +198,45 @@ def test_ambiguous_or_invalid_per_date_current_refused_before_engine_or_job(
     def forbidden_engine(*args, **kwargs):
         pytest.fail("Invalid Current date scope reached the DES engine")
 
-    monkeypatch.setattr(workflow, "simulate_segments_with_trace", forbidden_engine)
+    for name in ENGINES:
+        if hasattr(workflow, name):
+            monkeypatch.setattr(workflow, name, forbidden_engine)
     response = _post_des(client, analysis_id)
     assert response.status_code == 422, response.text
-    assert response.json() == {"detail": "Current dataset records are invalid."}
+    assert response.json() == {"detail": detail}
     with make_sessionmaker(db_engine)() as db:
         assert db.scalar(select(func.count()).select_from(Job)) == before_jobs
         assert db.get(Dataset, dataset_id).normalized_json == saved_rows
         assert db.get(AnalysisProject, analysis_id).queue_setup_json == SETUP
+
+
+@pytest.mark.parametrize("case", ["two_dates", "two_dates_reversed", "missing_lane_cross_date"])
+def test_multi_date_per_date_current_simulates_every_date(case, synthetic_rows, save_current, client):
+    """OD-C8 (i): formerly refused with 422; C-PD simulates each date as its own day (OD-C1 (a), OD-C2 (i))."""
+    rows = deepcopy(synthetic_rows)
+    if case == "two_dates_reversed":
+        rows.reverse()
+    elif case == "missing_lane_cross_date":
+        rows = [row for row in rows if not (
+            row["time"].startswith(DATES[0]) and row["segment_id"] == "s2" and row["queue_id"] == QUEUES[0]
+        )]
+    analysis_id, _ = save_current(rows)
+    response = _post_des(client, analysis_id)
+    assert response.status_code == 200, response.text
+    result = response.json()["evidence"]["result"]
+    assert [day["date"] for day in result["days"]] == list(DATES)
+    assert all(row["simulation_supported"] is True for row in result["results"])
+    pairs = {(row["time"], row["queue_id"]) for row in result["results"]}
+    expected = {(row["time"], row["queue_id"]) for row in synthetic_rows}
+    assert pairs == expected
+    zero = result["zero_arrival_lane_periods"]
+    if case == "missing_lane_cross_date":
+        assert zero == [{"date": DATES[0], "time": f"{DATES[0]} s2 UTC", "segment_id": "s2",
+                         "queue_id": QUEUES[0]}]
+        row = next(r for r in result["results"] if r["time"] == f"{DATES[0]} s2 UTC" and r["queue_id"] == QUEUES[0])
+        assert (row["arrivals"], row["served"]) == (0, 0)
+    else:
+        assert zero == []
 
 
 @pytest.mark.parametrize("basis", ["per_date", "representative_day", None])
@@ -188,24 +253,30 @@ def test_coherent_day_preserves_exact_engine_results_and_trace(
         for row in rows:
             row["time"] = row["segment_id"]
     analysis_id, _ = save_current(rows, setup)
-    result = _assert_engine_unchanged(client, analysis_id, rows, setup)
+    # A one-date per-date run equals the engine once the additive per-date keys are removed (C-PD F7).
+    added = PER_DATE_ADDED_KEYS if basis == "per_date" else ()
+    result = _assert_engine_unchanged(client, analysis_id, rows, setup, added)
     assert len(result["results"]) == 4
     assert result["trace"]
     assert all(row["simulation_supported"] for row in result["results"])
 
 
-def test_missing_active_lane_in_single_date_keeps_existing_unsupported_result(
+def test_missing_active_lane_in_single_date_is_zero_arrivals_and_listed(
     synthetic_rows, save_current, client,
 ):
+    """OD-C8 (i): formerly the engine's "Missing empirical segment/queue record"; OD-C2 (i) now applies."""
     rows = [row for row in synthetic_rows[:4] if not (
         row["segment_id"] == "s2" and row["queue_id"] == QUEUES[0]
     )]
     analysis_id, _ = save_current(rows)
-    result = _assert_engine_unchanged(client, analysis_id, rows, SETUP)
-    assert not any(row["simulation_supported"] for row in result["results"])
-    assert {row["error"] for row in result["results"]} == {
-        "Missing empirical segment/queue record for s2/synthetic_lane_a."
-    }
+    response = _post_des(client, analysis_id)
+    assert response.status_code == 200, response.text
+    result = response.json()["evidence"]["result"]
+    assert all(row["simulation_supported"] is True for row in result["results"])
+    assert result["zero_arrival_lane_periods"] == [
+        {"date": DATES[0], "time": f"{DATES[0]} s2 UTC", "segment_id": "s2", "queue_id": QUEUES[0]}]
+    zero = next(r for r in result["results"] if r["time"] == f"{DATES[0]} s2 UTC" and r["queue_id"] == QUEUES[0])
+    assert (zero["arrivals"], zero["lambda"]) == (0, 0.0)
 
 
 @pytest.mark.parametrize("outside_scope", ["no_segments", "basis_absent", "representative_day", "shared"])

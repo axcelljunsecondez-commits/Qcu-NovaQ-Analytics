@@ -38,9 +38,12 @@ Monte Carlo metric glossary
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import random
-from collections.abc import Iterable, Mapping
+import re
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import time as datetime_time
 from typing import Any
@@ -642,6 +645,21 @@ def simulate_segment(
 # Parallel M/G/1 execution
 # ──────────────────────────────────────────────────────────────────────────────
 
+# NovaQ's per-date period label ``YYYY-MM-DD <segment> UTC`` (same form as separate_optimization._DATE_LABEL).
+_DATED_LABEL = re.compile(r"^(\d{4}-\d{2}-\d{2}) \S.* UTC$")
+CURRENT_PER_DATE_DAYS_EXECUTION = "current_per_date_days"
+# C-PD-C (spec 2026-11-02 §6.4): the compact stored per-date result and the row fields it keeps, in this order.
+CURRENT_PER_DATE_DAYS_COMPACT_EXECUTION = "current_per_date_days_compact"
+COMPACT_ROW_FIELDS = (
+    "time", "date", "segment_id", "queue_id", "queue_structure", "simulation_supported",
+    "arrivals", "served", "waiting", "in_service", "max_queue", "Wq_sim", "rho_sim",
+)
+# K-CPD-2: marks the OD-C2 zero-arrival records the per-date runner generates. The value is a private object,
+# so no stored or posted record (JSON) can carry it; the core copies named fields only, so it never reaches output.
+_ZERO_ARRIVAL_KEY = "_cpd_zero_arrival"
+_ZERO_ARRIVAL_RECORD = object()
+
+
 def _parallel_time_minutes(value: str) -> float:
     parsed = datetime_time.fromisoformat(str(value))
     return parsed.hour * 60 + parsed.minute + parsed.second / 60
@@ -686,13 +704,16 @@ def _parallel_schedule(
         segment_id = str(segment.get("id") or f"segment_{index + 1}")
         active = set(scheduled_active_queue_ids(queue_setup, segment))
         for queue_id in queue_ids:
-            match = next(
-                (
-                    row for row in records
-                    if str(row.get("segment_id")) == segment_id and str(row.get("queue_id")) == queue_id
-                ),
-                None,
-            )
+            # C-PD guard: one schedule needs exactly one record per (segment, lane). Taking the first of
+            # several would silently drop the others (a per-date file has one per date).
+            matches = [
+                row for row in records
+                if str(row.get("segment_id")) == segment_id and str(row.get("queue_id")) == queue_id
+            ]
+            if len(matches) > 1:
+                return (f"Parallel M/G/1 DES received {len(matches)} records for {segment_id}/{queue_id}; "
+                        "it simulates exactly one record per segment and queue.")
+            match = matches[0] if matches else None
             if match is None and queue_id in active:
                 return f"Missing empirical segment/queue record for {segment_id}/{queue_id}."
             if match is None:
@@ -709,7 +730,11 @@ def _parallel_schedule(
                 if match.get("model_id") != "parallel_mg1" or match.get("service_time_source") != "empirical":
                     return f"Parallel M/G/1 DES requires empirical service data for {segment_id}/{queue_id}."
                 samples = match.get("service_samples_hours")
-                if not isinstance(samples, list) or (queue_id in active and not samples):
+                # OD-C2 / K-CPD-2: only a zero-arrival record made by the per-date runner may be open with
+                # no samples. It never draws one: customers are served from their own arrival period's
+                # samples and arrivals start only when lambda > 0. Every other record keeps HEAD's refusal.
+                generated_zero = match.get(_ZERO_ARRIVAL_KEY) is _ZERO_ARRIVAL_RECORD and match.get("lambda") == 0.0
+                if not isinstance(samples, list) or (queue_id in active and not samples and not generated_zero):
                     return f"Missing empirical service samples for {segment_id}/{queue_id}."
                 try:
                     lambda_value = float(match.get("lambda", 0.0))
@@ -732,6 +757,10 @@ def _parallel_schedule(
                 }
                 output.append(contexts[f"{segment_id}:{queue_id}"])
         elapsed += duration
+    dates = sorted({found.group(1) for found in (_DATED_LABEL.match(context["time"]) for context in output) if found})
+    if len(dates) > 1:
+        return (f"Parallel M/G/1 DES received records from {len(dates)} dates ({', '.join(dates)}); "
+                "it simulates one date at a time.")
     return output, {queue_id: {"queue_id": queue_id, "server_id": dedicated_server_id(queue_id)} for queue_id in queue_ids}
 
 
@@ -1027,6 +1056,208 @@ def simulate_segments_with_trace(
         "truncated": recorder.truncated,
         "abandonment_supported": False,
         "segments": summaries,
+    }
+
+
+def _parallel_day_hours(results: list[dict[str, Any]]) -> float:
+    """Hours of one separate-lines day: each segment's duration once (as ``simulate_segments_with_trace``)."""
+    return sum({str(row.get("segment_id")): float(row.get("duration_hours", 0.0)) for row in results}.values())
+
+
+def _zero_arrival_records(records: Sequence[Mapping[str, Any]], queue_setup: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """OD-C2 (i): a lambda-0 record for each lane the Setup opens in a segment that has no record on this date.
+
+    Only a segment with records on this date gets one, under that date's own label for the segment; the
+    lane is open but nobody arrived, which is listed in the result, never hidden. A segment with no
+    record or more than one label on this date gets none, so the engine refuses it as before.
+    """
+    added: list[dict[str, Any]] = []
+    queue_ids = [str(queue_id) for queue_id in queue_setup.get("queue_ids", [])]
+    for index, segment in enumerate(queue_setup.get("segments") or []):
+        segment_id = str(segment.get("id") or f"segment_{index + 1}")
+        rows = [row for row in records if str(row.get("segment_id")) == segment_id]
+        labels = {str(row.get("time")) for row in rows}
+        if len(labels) != 1:
+            continue
+        label = labels.pop()
+        present = {str(row.get("queue_id")) for row in rows}
+        for queue_id in queue_ids:
+            if queue_id in scheduled_active_queue_ids(queue_setup, segment) and queue_id not in present:
+                added.append({
+                    "time": label, "segment_id": segment_id, "queue_id": queue_id, "lambda": 0.0, "c": 1,
+                    "queue_structure": "separate_queues", "model_id": "parallel_mg1",
+                    "server_id": dedicated_server_id(queue_id), "service_time_source": "empirical",
+                    "service_samples_hours": [], _ZERO_ARRIVAL_KEY: _ZERO_ARRIVAL_RECORD,
+                })
+    return added
+
+
+def _closed_lane_records(records: Sequence[Mapping[str, Any]], queue_setup: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """K-A6-3 (E): a lambda-0 record, under that date's own label, for each lane the Setup closes in a segment.
+
+    Without it the engine fills a closed lane with a row labelled by the bare segment id, which splits the date's
+    period in the summary. Only a segment with exactly one label on this date gets one, and never for a lane that
+    already has a record (customers recorded on a closed lane keep today's handling). The record is inactive by
+    the Setup and has no samples, which the engine already accepts for an inactive lane: nothing is drawn and no
+    number changes; only the row's ``time`` is the date's label. These lanes are not zero-arrival periods.
+    """
+    added: list[dict[str, Any]] = []
+    queue_ids = [str(queue_id) for queue_id in queue_setup.get("queue_ids", [])]
+    for index, segment in enumerate(queue_setup.get("segments") or []):
+        segment_id = str(segment.get("id") or f"segment_{index + 1}")
+        rows = [row for row in records if str(row.get("segment_id")) == segment_id]
+        labels = {str(row.get("time")) for row in rows}
+        if len(labels) != 1:
+            continue
+        label = labels.pop()
+        present = {str(row.get("queue_id")) for row in rows}
+        active = set(scheduled_active_queue_ids(queue_setup, segment))
+        for queue_id in queue_ids:
+            if queue_id not in active and queue_id not in present:
+                added.append({
+                    "time": label, "segment_id": segment_id, "queue_id": queue_id, "lambda": 0.0, "c": 1,
+                    "queue_structure": "separate_queues", "model_id": "parallel_mg1",
+                    "server_id": dedicated_server_id(queue_id), "service_time_source": "empirical",
+                    "service_samples_hours": [],
+                })
+    return added
+
+
+def simulate_parallel_days_with_trace(
+    days: Sequence[tuple[str, Sequence[Mapping[str, Any]]]],
+    queue_setup: Mapping[str, Any],
+    sim_hours: float,
+    seeds: Sequence[int | None],
+    max_events: int,
+) -> dict[str, Any]:
+    """C-PD option (a): one separate-lines Current DES day per calendar date, each from empty with its own seed.
+
+    ``days`` is ``[(date, that date's records)]`` in date order and ``seeds`` the seed of each date. Every
+    date runs the unchanged Parallel M/G/1 core; one trace recorder caps the events of all dates together
+    (OD-C3 (i)). Rows, segment entries and events gain an additive ``date``; each ``time`` stays as stored.
+    K-A6-3 (E, OD-K63-1): a lane the Setup closes in a segment gets that date's period label too
+    (``_closed_lane_records``), so every row of a date is dated; its numbers are unchanged. Closed lanes are
+    not listed in ``zero_arrival_lane_periods``. The compact run and day detail call this function, so all
+    three agree. If any date is refused, the whole run is refused for every record with that reason: no
+    partial result.
+    """
+    if len(seeds) != len(days):
+        raise ValueError("simulate_parallel_days_with_trace needs one seed per date.")
+    recorder = _TraceRecorder(max_events)
+    all_records = [record for _, records in days for record in records]
+    results: list[dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
+    days_out: list[dict[str, Any]] = []
+    zero_periods: list[dict[str, Any]] = []
+    for (date, records), seed in zip(days, seeds):
+        zero = _zero_arrival_records(records, queue_setup)
+        closed = _closed_lane_records(records, queue_setup)
+        first_event = len(recorder.events)
+        rows, entries = _simulate_parallel_segments_core([*records, *zero, *closed], queue_setup, sim_hours, seed,
+                                                         recorder, max_events)
+        refused = next((row for row in rows if row.get("simulation_supported") is not True), None)
+        if refused is not None or not rows:
+            message = str((refused or {}).get("error") or "No Parallel M/G/1 simulation contexts were supplied.")
+            refusal, _ = _parallel_capability_error(message, all_records)
+            return {
+                "results": refusal, "trace": [], "trace_hours": sim_hours, "total_hours": 0.0,
+                "event_count": 0, "truncated": False, "abandonment_supported": False, "segments": [],
+                "execution": CURRENT_PER_DATE_DAYS_EXECUTION,
+            }
+        for event in recorder.events[first_event:]:
+            event["date"] = date
+        for item in (*rows, *entries):
+            item["date"] = date
+        results.extend(rows)
+        summaries.extend(entries)
+        zero_periods.extend({"date": date, "time": record["time"], "segment_id": record["segment_id"],
+                             "queue_id": record["queue_id"]} for record in zero)
+        arrivals = sum(int(row["arrivals"]) for row in rows)
+        served = sum(int(row["served"]) for row in rows)
+        waiting = sum(int(row["waiting"]) for row in rows)
+        in_service = sum(int(row["in_service"]) for row in rows)
+        days_out.append({
+            "date": date, "arrivals": arrivals, "served": served, "waiting_at_close": waiting,
+            "in_service_at_close": in_service,
+            "customer_conservation": arrivals == served + waiting + in_service
+            and all(row.get("customer_conservation") is True for row in rows),
+            "day_hours": _parallel_day_hours(rows),
+        })
+    return {
+        "results": results,
+        "trace": recorder.events,
+        "trace_hours": sim_hours,
+        "total_hours": sum(day["day_hours"] for day in days_out),
+        "event_count": len(recorder.events),
+        "truncated": recorder.truncated,
+        "abandonment_supported": False,
+        "segments": summaries,
+        "execution": CURRENT_PER_DATE_DAYS_EXECUTION,
+        "days": days_out,
+        "zero_arrival_lane_periods": zero_periods,
+    }
+
+
+def canonical_digest(value: Any) -> str:
+    """C-PD-C: sha256 of canonical JSON (sorted keys, no spaces, no NaN) of a date's full rows or trace."""
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def simulate_parallel_days_compact(
+    days: Sequence[tuple[str, Sequence[Mapping[str, Any]]]],
+    queue_setup: Mapping[str, Any],
+    sim_hours: float,
+    seeds: Sequence[int | None],
+    max_events: int,
+) -> dict[str, Any]:
+    """C-PD-C (OD-C9 C-rows, OD-C11 (i)): the per-date run stored compactly, with per-date fingerprints.
+
+    Each date is run exactly as its day detail will regenerate it: ``simulate_parallel_days_with_trace`` with
+    that one date, its own seed and its own ``max_events`` recorder. The simulation is the unchanged core with
+    the same zero-arrival records and seeds as the full per-date run. Only key row fields are kept; the trace and
+    segment entries are replaced by the sha256 of the date's full rows and trace, its event count and whether
+    its trace was truncated. A refusal of any date refuses the whole run in the full per-date shape (never
+    compacted), exactly as ``simulate_parallel_days_with_trace`` would.
+    """
+    if len(seeds) != len(days):
+        raise ValueError("simulate_parallel_days_compact needs one seed per date.")
+    all_records = [record for _, records in days for record in records]
+    results: list[dict[str, Any]] = []
+    days_out: list[dict[str, Any]] = []
+    zero_periods: list[dict[str, Any]] = []
+    for (date, records), seed in zip(days, seeds):
+        detail = simulate_parallel_days_with_trace([(date, records)], queue_setup, sim_hours, [seed], max_events)
+        refused = next((row for row in detail["results"] if row.get("simulation_supported") is not True), None)
+        if refused is not None or not detail["results"]:
+            message = str((refused or {}).get("error") or "No Parallel M/G/1 simulation contexts were supplied.")
+            refusal, _ = _parallel_capability_error(message, all_records)
+            return {
+                "results": refusal, "trace": [], "trace_hours": sim_hours, "total_hours": 0.0,
+                "event_count": 0, "truncated": False, "abandonment_supported": False, "segments": [],
+                "execution": CURRENT_PER_DATE_DAYS_EXECUTION,
+            }
+        results.extend({field: row.get(field) for field in COMPACT_ROW_FIELDS} for row in detail["results"])
+        zero_periods.extend(detail["zero_arrival_lane_periods"])
+        days_out.append({
+            **detail["days"][0],
+            "rows_digest": canonical_digest(detail["results"]),
+            "trace_digest": canonical_digest(detail["trace"]),
+            "event_count": detail["event_count"],
+            "truncated": detail["truncated"],
+        })
+    return {
+        "results": results,
+        "trace": [],
+        "trace_hours": sim_hours,
+        "total_hours": sum(day["day_hours"] for day in days_out),
+        "event_count": 0,
+        "truncated": False,
+        "abandonment_supported": False,
+        "segments": [],
+        "execution": CURRENT_PER_DATE_DAYS_COMPACT_EXECUTION,
+        "days": days_out,
+        "zero_arrival_lane_periods": zero_periods,
     }
 
 

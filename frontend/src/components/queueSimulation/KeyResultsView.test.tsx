@@ -11,6 +11,17 @@ import { buildContext, type RunChoice } from './simulationContext'
 
 // Key Results (spec 2026-10-29 §7.3, §7.4; owner decisions B5, B6).
 
+// A6: observe CSV downloads, and fail if Key results ever asks for a day's detail (it must not fetch).
+const spies = vi.hoisted(() => ({ downloadCsv: vi.fn(), getCurrentDay: vi.fn() }))
+vi.mock('../../lib/format', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/format')>()),
+  downloadCsv: (...args: unknown[]) => spies.downloadCsv(...args),
+}))
+vi.mock('../../api/workflow', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/workflow')>()),
+  getCurrentDay: (...args: unknown[]) => spies.getCurrentDay(...args),
+}))
+
 const perPeriod: RunSummary = {
   basis: 'per_period', average_wait_hours: 0.1, longest_line: 4, arrivals: null, served: null, in_system_at_close: null,
   periods: [{ time: '08:00', average_wait_hours: 0.1, longest_line: 4, arrivals: null, served: null }],
@@ -260,5 +271,174 @@ describe('Longest Single Line table (B6)', () => {
   it('is not shown for a shared line', () => {
     renderView('current', { separate: false, plan: null })
     expect(screen.queryByTestId('longest-line-table')).not.toBeInTheDocument()
+  })
+})
+
+// ── A6: per-date separate-lines Current (C-PD, C-PD-C); SYNTHETIC values ─────────────────────────────────
+
+const D1 = '2000-01-03'
+const D2 = '2000-01-04'
+const compactRow = (date: string, segment: string, queue: string, maxQueue: number, arrivals = 4) => ({
+  time: `${date} ${segment} UTC`, date, segment_id: segment, queue_id: queue, queue_structure: 'separate', simulation_supported: true,
+  arrivals, served: arrivals, waiting: 0, in_service: 0, max_queue: maxQueue, Wq_sim: 0.05, rho_sim: 0.4,
+})
+const compactRows = [
+  compactRow(D1, 's1', 'c1', 2), compactRow(D1, 's1', 'c2', 5), compactRow(D1, 's2', 'c1', 1), compactRow(D1, 's2', 'c2', 0),
+  compactRow(D2, 's1', 'c1', 9), compactRow(D2, 's1', 'c2', 1), compactRow(D2, 's2', 'c1', 3), compactRow(D2, 's2', 'c2', 0, 0),
+]
+const allDates: RunSummary = {
+  basis: 'per_period', average_wait_hours: 0.1, longest_line: 9, arrivals: null, served: null, in_system_at_close: null,
+  periods: [D1, D2].flatMap((date) => ['s1', 's2'].map((segment) => (
+    { time: `${date} ${segment} UTC`, average_wait_hours: 0.05, longest_line: 1, arrivals: null, served: null }))),
+}
+const day = (date: string) => ({
+  date, arrivals: 16, served: 16, waiting_at_close: 0, in_service_at_close: 0, customer_conservation: true, day_hours: 2,
+  rows_digest: 'a'.repeat(64), trace_digest: 'b'.repeat(64), event_count: 48, truncated: false,
+})
+const zeroD2 = [{ date: D2, time: `${D2} s2 UTC`, segment_id: 's2', queue_id: 'c2' }]
+const compactCurrent = {
+  ...emptyTrace, results: compactRows, summary: allDates, execution: 'current_per_date_days_compact',
+  days: [day(D1), day(D2)], zero_arrival_lane_periods: zeroD2, seed_used: 77,
+}
+
+function renderCurrent(result: unknown, { route = '/simulation/results?analysis=7', lang = 'en' as 'en' | 'tl', seed = null as number | null } = {}) {
+  const analysis = {
+    id: 7, name: 'Checkout',
+    queue_setup: {
+      queue_structure: 'separate_queues', event_period_basis: 'per_date', queue_ids: ['c1', 'c2'], breaks: [],
+      segments: [{ id: 's1', start_time: '08:00', end_time: '09:00', active_queue_ids: null }, { id: 's2', start_time: '09:00', end_time: '10:00', active_queue_ids: null }],
+    },
+  } as unknown as AnalysisProjectOut
+  const workflow = {
+    analysis_id: 7, selection: null, scenario: null, des: null,
+    des_current: job('workflow_des_current', result, { seed }),
+    mc: null, validation: null, mc_current: null, validation_current: null, decision: null, decision_stale: false,
+  } as unknown as WorkflowEvidence
+  return renderWithProviders(<KeyResultsView context={buildContext(7, analysis, workflow)} run="current" />, { route, lang })
+}
+
+const longestRow = (time: string) => within(within(screen.getByTestId('longest-line-table')).getByRole('row', { name: new RegExp(`^${time}`) }))
+  .getAllByRole('cell').map((cell) => cell.textContent)
+
+describe('Key results for a per-date Current run stored compactly (A6)', () => {
+  it('keeps the all-dates cards and shows the first date in the tables, chart and More results', async () => {
+    const user = userEvent.setup()
+    spies.downloadCsv.mockReset()
+    spies.getCurrentDay.mockReset()
+    renderCurrent(compactCurrent)
+    const cards = screen.getByRole('group', { name: 'Key Results' })
+    expect(within(cards).getByRole('region', { name: 'Average wait' })).toHaveTextContent('Current: 6 min')
+    expect(within(cards).getByRole('region', { name: 'Longest Single Line' })).toHaveTextContent('Current: 9')
+    expect(screen.getByTestId('current-dates-note')).toHaveTextContent(
+      'Average wait and Longest Single Line cover all 2 dates. The tables and the chart by period show the chosen date.')
+    expect(screen.getByLabelText('Date')).toHaveValue(D1)
+    expect(longestRow(`${D1} s1 UTC`)).toEqual(['2', '5', '5'])
+    expect(screen.getByTestId('longest-line-table')).not.toHaveTextContent(D2)
+    const periods = screen.getByRole('region', { name: en['simulation.period_table'] })
+    expect(within(periods).getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([`${D1} s1 UTC`, `${D1} s2 UTC`])
+    expect(screen.getByRole('img', { name: en['simulation.chart_wait_by_period'] })).not.toHaveTextContent(D2)
+    const more = screen.getByRole('region', { name: en['simulation.des_table_caption'] })
+    expect(within(more).getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(
+      [`${D1} s1 UTC`, `${D1} s1 UTC`, `${D1} s2 UTC`, `${D1} s2 UTC`])
+    expect(screen.queryByTestId('current-zero-note')).not.toBeInTheDocument()
+    expect(screen.getByTestId('key-details')).toHaveTextContent(
+      `${en['simulation.run_current']} · ${en['simulation.run_basis_continuous_per_date']} · ${en['charts.chip_no_breaks']} · Random seed: 77`)
+    await user.click(screen.getByRole('button', { name: en['simulation.download_csv'] }))
+    expect(spies.downloadCsv).toHaveBeenCalledWith(`novaq_unified_des_${D1}.csv`, compactRows.slice(0, 4))
+    expect(spies.getCurrentDay).not.toHaveBeenCalled()
+  })
+
+  it('follows ?date= and names the zero-arrival periods of that date, in English and Tagalog', () => {
+    renderCurrent(compactCurrent, { route: `/simulation/results?analysis=7&date=${D2}` })
+    expect(screen.getByLabelText('Date')).toHaveValue(D2)
+    expect(longestRow(`${D2} s1 UTC`)).toEqual(['9', '1', '9'])
+    expect(screen.getByTestId('current-zero-note')).toHaveTextContent(
+      'On this date, 1 open queue period had no customer records; it is shown with zero arrivals.')
+  })
+
+  it('renders the draft notes verbatim in Tagalog', () => {
+    renderCurrent(compactCurrent, { route: `/simulation/results?analysis=7&date=${D2}`, lang: 'tl' })
+    expect(screen.getByTestId('current-dates-note')).toHaveTextContent(tl['simulation.current_all_dates_note'].replace('{{dates}}', '2'))
+    expect(screen.getByTestId('current-zero-note')).toHaveTextContent(tl['simulation.current_zero_arrival_note_one'].replace('{{count}}', '1'))
+  })
+
+  it('falls back to the first date for a date the run does not have, and shows the requested seed when one was sent', () => {
+    renderCurrent(compactCurrent, { route: '/simulation/results?analysis=7&date=1999-12-31', seed: 5 })
+    expect(screen.getByLabelText('Date')).toHaveValue(D1)
+    expect(screen.getByTestId('key-details')).toHaveTextContent('Random seed: 5')
+  })
+})
+
+describe('Key results for a one-date per-date Current run (A6)', () => {
+  const oneDate = {
+    ...emptyTrace, results: compactRows.slice(0, 4).map((row) => ({ ...row, lambda: 2, mu: 3, c: 1, status: 'Normal', error: null })),
+    summary: { ...allDates, periods: allDates.periods.slice(0, 2) }, execution: 'current_per_date_days',
+    days: [day(D1)], zero_arrival_lane_periods: [{ date: D1, time: `${D1} s2 UTC`, segment_id: 's2', queue_id: 'c2' }],
+  }
+
+  it('renders the full result as before: no picker or all-dates note, every row, the usual file; N2 when listed', async () => {
+    const user = userEvent.setup()
+    spies.downloadCsv.mockReset()
+    renderCurrent(oneDate)
+    expect(screen.queryByLabelText('Date')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('current-dates-note')).not.toBeInTheDocument()
+    expect(screen.getByTestId('current-zero-note')).toHaveTextContent('On this date, 1 open queue period had no customer records; it is shown with zero arrivals.')
+    expect(within(screen.getByRole('region', { name: en['simulation.des_table_caption'] })).getAllByRole('rowheader')).toHaveLength(4)
+    expect(screen.getByTestId('key-details')).toHaveTextContent(en['charts.chip_seed_not_saved'])
+    await user.click(screen.getByRole('button', { name: en['simulation.download_csv'] }))
+    expect(spies.downloadCsv).toHaveBeenCalledWith('novaq_unified_des.csv', oneDate.results)
+  })
+
+  it('keeps today\'s longest-line sentence for a one-date run (no date in it)', () => {
+    renderCurrent(oneDate)
+    expect(screen.getByTestId('longest-take')).toHaveTextContent(
+      `Longest line in today’s simulated run: 5 people, at c2 during ${D1} s1 UTC.`)
+  })
+})
+
+// ── A6 wording follow-up (B1 N2 plural, B2 per-date sentence; owner delegation 2026-11-03) ───────────────
+
+const zeroOn = (date: string, count: number) => Array.from({ length: count }, (_, index) => (
+  { date, time: `${date} s${index + 1} UTC`, segment_id: `s${index + 1}`, queue_id: `c${index + 1}` }))
+
+describe('N2 zero-arrival note, plural forms (B1)', () => {
+  it('uses the singular for one period and the plural for two in English', () => {
+    const one = renderCurrent({ ...compactCurrent, zero_arrival_lane_periods: zeroOn(D1, 1) })
+    expect(screen.getByTestId('current-zero-note')).toHaveTextContent(
+      'On this date, 1 open queue period had no customer records; it is shown with zero arrivals.')
+    one.unmount()
+    renderCurrent({ ...compactCurrent, zero_arrival_lane_periods: zeroOn(D1, 2) })
+    expect(screen.getByTestId('current-zero-note')).toHaveTextContent(
+      'On this date, 2 open queue periods had no customer records; they are shown with zero arrivals.')
+  })
+
+  it.each([1, 2, 3])('reads the same Tagalog text for %s (Intl tl = fil: "one" also covers 2, 3, 5)', (count) => {
+    renderCurrent({ ...compactCurrent, zero_arrival_lane_periods: zeroOn(D1, count) }, { lang: 'tl' })
+    expect(screen.getByTestId('current-zero-note')).toHaveTextContent(
+      `Sa petsang ito, ${count} bukas na queue period ang walang rekord ng customer; ipinapakita ang mga ito na walang pagdating.`)
+  })
+})
+
+describe('Longest-line sentence of a compact per-date Current run (B2)', () => {
+  it('names the chosen date instead of "today", in English and Tagalog', () => {
+    const view = renderCurrent(compactCurrent)
+    expect(screen.getByTestId('longest-take')).toHaveTextContent(`Longest line on ${D1}: 5 people, at c2 during ${D1} s1 UTC.`)
+    expect(screen.getByTestId('longest-take')).not.toHaveTextContent('today')
+    view.unmount()
+    renderCurrent(compactCurrent, { route: `/simulation/results?analysis=7&date=${D2}`, lang: 'tl' })
+    expect(screen.getByTestId('longest-take')).toHaveTextContent(
+      tl['charts.longest_take_current_date_other'].replace('{{date}}', D2).replace('{{count}}', '9')
+        .replace('{{where}}', `c1 ${tl['charts.conn_during']} ${D2} s1 UTC`))
+  })
+
+  it('uses the singular for a longest line of one person', () => {
+    const ones = compactRows.map((row) => ({ ...row, max_queue: row.date === D1 ? (row.queue_id === 'c1' && row.segment_id === 's1' ? 1 : 0) : row.max_queue }))
+    renderCurrent({ ...compactCurrent, results: ones })
+    expect(screen.getByTestId('longest-take')).toHaveTextContent(`Longest line on ${D1}: 1 person, at c1 during ${D1} s1 UTC.`)
+  })
+
+  it('keeps the plan sentence for a Suggested run', () => {
+    renderView('suggested')
+    expect(screen.getByTestId('longest-take')).toHaveTextContent('Longest line in the plan’s simulated day: 3 people, at c1 during 08:00.')
   })
 })

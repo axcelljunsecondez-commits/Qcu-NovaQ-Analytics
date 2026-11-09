@@ -55,6 +55,13 @@ without operating segments already runs periods separately and is preserved. A
 missing basis is not guessed. Only workflow.py and new guard regressions may change;
 simulation engines/statistics, Current MC, formulas and request/response shapes remain.
 
+Note 2026-11-02 (OD-C8 (i), owner): C-PD (spec 2026-10-30-current-separate-per-date-des, OD-C1 (a) and
+OD-C2 (i)) and C-PD-C (spec 2026-11-02-current-per-date-compact-result) supersede this bounded guard for
+empirical per-date separate-lines Current DES (separate_queues, per_date_continuous, every record empirical):
+each date is simulated as its own day and an open lane with no record on a date is zero arrivals, listed.
+The guard's calendar-date, unknown-segment and duplicate-identity refusals stay in force there, and the
+guard applies unchanged outside that gate. The change ships only in one PR together with C-PD-C and A6.
+
 ## Additional frontend truth corrections
 
 Independent Chrome review identified context/completeness caption defects. Parent

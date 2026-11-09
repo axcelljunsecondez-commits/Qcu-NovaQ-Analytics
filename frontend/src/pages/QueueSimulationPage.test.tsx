@@ -665,6 +665,41 @@ describe('Current runs', () => {
     expect(runSelectedDesMock).not.toHaveBeenCalled()
   })
 
+  // A6 (C-PD-C W1): a per-date separate-lines Current run too large to save names its date count in the
+  // reader's language; the server's English detail is never shown.
+  const perDateSetup = { event_period_basis: 'per_date', queue_ids: ['c1'],
+    segments: [{ id: 's1', start_time: '08:00:00', end_time: '09:00:00', active_queue_ids: null }] }
+  const tooLarge = (detail: string) => Object.assign(new Error('413'), { response: { status: 413, data: { detail } } })
+  const placeholder = 'PLACEHOLDER: per-date Current result too large (14 dates, 1253317 bytes, limit 524288 bytes).'
+
+  it.each([['en', en], ['tl', tl]] as const)('shows the too-large message with the date count in %s (W1)', async (lang, catalog) => {
+    const user = userEvent.setup()
+    getAnalysisMock.mockResolvedValue(setupOf('separate_queues', perDateSetup))
+    runDesCurrentMock.mockRejectedValue(tooLarge(placeholder))
+    renderPage('/simulation/results?analysis=7', lang)
+    await user.click(await screen.findByRole('button', { name: catalog['simulation.run_full_operation'] }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(catalog['simulation.current_too_large'].replace('{{dates}}', '14'))
+    expect(alert).not.toHaveTextContent('PLACEHOLDER')
+    expect(screen.getByText(new RegExp(catalog['simulation.run_basis_continuous_per_date']))).toHaveTextContent(catalog['charts.chip_no_breaks'])
+  })
+
+  it('shows the generic server error for a per-date 413 without a date count, and the old text elsewhere', async () => {
+    const user = userEvent.setup()
+    getAnalysisMock.mockResolvedValue(setupOf('separate_queues', perDateSetup))
+    runDesCurrentMock.mockRejectedValue(tooLarge('Something else.'))
+    const view = renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(en['errors.server'])
+    view.unmount()
+    // Not per-date: the existing 413 text, unchanged.
+    getAnalysisMock.mockResolvedValue(setupOf('separate_queues'))
+    runDesCurrentMock.mockRejectedValue(tooLarge('Workflow evidence is too large. Reduce the playback event cap.'))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Workflow evidence is too large. Reduce the playback event cap.')
+  })
+
   it('does not claim the separate Current run drains the lines at closing (K-UC-12)', async () => {
     renderPage()
     const bar = await screen.findByRole('region', { name: en['simulation.run_bar'] })

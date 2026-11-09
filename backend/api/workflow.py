@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import secrets
 import statistics
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from backend.api.evidence_status import (
     PRECEDENCE,
     SELECTED_DES_ENGINE,
     SELECTED_MC_ENGINE,
+    AccountingRequirement,
     ArtifactRef,
     CurrentContext,
     Dependency,
@@ -87,7 +89,11 @@ from backend.queueing_engine.services.separate_optimization import (
     validate_des_replication_config,
 )
 from backend.queueing_engine.simulation.simulation import (
+    CURRENT_PER_DATE_DAYS_COMPACT_EXECUTION,
+    canonical_digest,
     mc_simulate_segments,
+    simulate_parallel_days_compact,
+    simulate_parallel_days_with_trace,
     simulate_segments_with_trace,
     validate_with_simulation,
 )
@@ -96,6 +102,24 @@ from backend.queueing_engine.utilization import THRESHOLD_TOLERANCE
 router = APIRouter(prefix="/analyses", tags=["workflow"])
 
 ENGINE_VERSION = "novaq-2026-09-unified-des-v1"
+# C-PD (OD-C4 (i)): written on every separate-lines Current DES job since per-date files run one day per date.
+CURRENT_DES_BASIS = "per_date_days_v3"
+# OD-C15 (i): v1 jobs (C-PD before the compact result) are a known earlier basis. OD-K63-2 (i): v2 jobs (closed
+# lanes labelled with the bare segment id, K-A6-3) are too. Recalculate under v3.
+CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1", "per_date_days_v2"})
+CURRENT_DES_BASIS_KEY = "current_des_basis"
+# C-PD-C day detail (spec 2026-11-02 §6.7). Final EN text of W3 and W2 (spec §9.1, owner delegation 2026-11-03).
+CURRENT_DAY_DETAIL_EXECUTION = "current_per_date_day_detail"
+CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL = "This date is not in the latest Current run. Run Current again."  # W3, 404
+CURRENT_DAY_DETAIL_MISMATCH_DETAIL = (  # W2, 409
+    "This date of the Current run can't be rebuilt exactly, so it isn't shown. Run Current again."
+)
+# OD-C7 (iii): a per-date Current result over the stored-result cap is refused with its own reason. Final EN text of
+# W1 (spec §9.1, owner delegation 2026-11-03); the frontend reads "{dates} dates". .format() also receives
+# size_bytes and limit_bytes, which str.format ignores when the text does not name them.
+CURRENT_PER_DATE_TOO_LARGE_DETAIL = (
+    "This Current run is too large to save: it covers {dates} dates. Upload a file with fewer dates."
+)
 WORKFLOW_KINDS = {
     "workflow_selection",
     "workflow_des",
@@ -732,21 +756,29 @@ def _validate_current_des_date_scope(analysis: AnalysisProject, segments: list[d
         days = per_date_days(setup, list(period_rows), period_rows)
         if len(days) != 1:
             raise ValueError("Current DES requires one unambiguous calendar date.")
-        configured = {_segment_window(segment)[0] for segment in setup.get("segments") or []
-                      if isinstance(segment, dict)}
-        identities: set[tuple[str, str, str]] = set()
-        for calendar_date, periods in days:
-            datetime.fromisoformat(calendar_date)  # The shared grouper checks label shape, not calendar validity.
-            for label, segment_id in periods:
-                if segment_id not in configured:
-                    raise ValueError("Unknown operating segment.")
-                for row in period_rows[label]:
-                    identity = (calendar_date, segment_id, str(row.get("queue_id")))
-                    if identity in identities:
-                        raise ValueError("Duplicate date/segment/queue identity.")
-                    identities.add(identity)
+        _check_current_day_identities(setup, days, period_rows)
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="Current dataset records are invalid.") from None
+
+
+def _check_current_day_identities(
+    setup: dict[str, Any], days: list[tuple[str, list[tuple[str, str]]]], period_rows: dict[str, list]
+) -> None:
+    """Raise ValueError for a calendar-invalid date, an unknown operating segment or a repeated
+    (date, segment, queue) identity in ``per_date_days`` output (bounded guard d8f89da6; also used by C-PD)."""
+    configured = {_segment_window(segment)[0] for segment in setup.get("segments") or []
+                  if isinstance(segment, dict)}
+    identities: set[tuple[str, str, str]] = set()
+    for calendar_date, periods in days:
+        datetime.fromisoformat(calendar_date)  # The shared grouper checks label shape, not calendar validity.
+        for label, segment_id in periods:
+            if segment_id not in configured:
+                raise ValueError("Unknown operating segment.")
+            for row in period_rows[label]:
+                identity = (calendar_date, segment_id, str(row.get("queue_id")))
+                if identity in identities:
+                    raise ValueError("Duplicate date/segment/queue identity.")
+                identities.add(identity)
 
 
 def _job_matches(job: Job, analysis_id: int, scenario_id: int | None = None) -> bool:
@@ -788,6 +820,11 @@ def _job_out(job: Job | None) -> dict[str, Any] | None:
     }
 
 
+def _encoded_size(result: dict[str, Any]) -> int:
+    """Bytes of a result as stored: the size rule ``_save_job`` applies to ``result_jsonb_max_bytes``."""
+    return len(json.dumps(result, allow_nan=False, ensure_ascii=False).encode("utf-8"))
+
+
 def _save_job(
     db: Session,
     user: User,
@@ -814,8 +851,7 @@ def _save_job(
         binding = _recorded_generation(scenario.dataset_generation)
         if binding is None or binding != dataset.generation:
             raise HTTPException(status_code=409, detail=SCENARIO_PROVENANCE_DETAIL)
-    encoded = json.dumps(result, allow_nan=False, ensure_ascii=False).encode("utf-8")
-    if len(encoded) > settings.result_jsonb_max_bytes:
+    if _encoded_size(result) > settings.result_jsonb_max_bytes:
         raise HTTPException(
             status_code=413,
             detail="Workflow evidence is too large. Reduce the playback event cap.",
@@ -950,11 +986,18 @@ _NOT_CONSULTED = "<not consulted on the persisted-evidence path>"
 def _current_evidence_policy() -> EvidencePolicy:
     """The version knowledge applied to persisted workflow evidence: recorded job identity only.
 
-    D7 (Step 3) and Step 5 are dataset-identity and dependency-integrity rules. Analytical
-    version policy — the recorded workflow engine version and the Current DES accounting marker
-    (spec M3, written by no code yet) — belongs to the separately authorized versioning phase,
-    so ``workflow_engine`` and ``current_des_accounting`` stay unset: no stored job is made
-    unusable here by a version rule.
+    D7 (Step 3) and Step 5 are dataset-identity and dependency-integrity rules. The recorded
+    workflow engine version belongs to the separately authorized versioning phase, so
+    ``workflow_engine`` stays unset.
+
+    ``current_des_accounting`` is set by C-PD (owner decision OD-C4 (i), 2026-11-02): a
+    ``workflow_des_current`` job with separate-lines rows is current only when its params record
+    ``current_des_basis = "per_date_days_v3"``, which ``run_des_current`` writes on every
+    separate-lines run since per-date files are simulated one day per date and stored compactly for two
+    or more dates (C-PD-C, OD-C15 (i)), with closed lanes dated (K-A6-3, OD-K63-2 (i)).
+    ``per_date_days_v1`` and ``per_date_days_v2`` are historical; separate-lines Current DES
+    jobs with no marker (main's guard era) are not Current either. Both need one rerun. The hook applies
+    to no other kind and to no shared-lines result (``evidence_status.job_record``).
 
     ``job_engine`` and ``selected_des_basis`` name the values the backend actually records
     (``workflow.py`` writes exactly two ``params.engine`` values and two ``result.execution``
@@ -983,7 +1026,10 @@ def _current_evidence_policy() -> EvidencePolicy:
             "selected-plan DES basis",
             current={SELECTED_DES_PER_PERIOD_EXECUTION, SELECTED_DES_CONTINUOUS_DAY_EXECUTION}),
         workflow_engine=None,
-        current_des_accounting=None,
+        current_des_accounting=AccountingRequirement(
+            VersionFamily.of("Current DES accounting", current={CURRENT_DES_BASIS},
+                             historical=CURRENT_DES_BASIS_HISTORICAL),
+            CURRENT_DES_BASIS_KEY, frozenset({"workflow_des_current"})),
         generation_kinds=GENERATION_KINDS if _generation_enforced() else frozenset(),
     )
 
@@ -1487,23 +1533,179 @@ def run_des_current(
     analysis = own_analysis(db, user, analysis_id)
     dataset = _current_dataset(db, user, analysis)
     segments = _current_segments_for(analysis, dataset)
-    _validate_current_des_date_scope(analysis, segments)
-    result = simulate_segments_with_trace(
-        segments,
-        sim_hours=payload.sim_hours,
-        queue_overload_threshold=payload.queue_overload_threshold,
-        max_events=payload.max_events,
-        seed=payload.seed,
-        carryover=payload.carryover,
-        queue_setup=analysis.queue_setup_json,
-    )
+    setup = analysis.queue_setup_json or {}
+    separate = setup.get("queue_structure") == "separate_queues"
+    per_date_dates: int | None = None
+    if (separate and per_date_continuous(setup)
+            and all(row.get("service_time_source") == "empirical" for row in segments)):
+        # C-PD (OD-C1 (a)) supersedes the bounded single-date guard here (OD-C8 (i)): every date is simulated.
+        result, per_date_dates = _run_current_per_date_des(segments, setup, payload)
+    else:
+        # Outside the C-PD gate the bounded guard (d8f89da6) applies unchanged.
+        _validate_current_des_date_scope(analysis, segments)
+        result = simulate_segments_with_trace(
+            segments,
+            sim_hours=payload.sim_hours,
+            queue_overload_threshold=payload.queue_overload_threshold,
+            max_events=payload.max_events,
+            seed=payload.seed,
+            carryover=payload.carryover,
+            queue_setup=analysis.queue_setup_json,
+        )
     result["provenance"] = "CURRENT"
     result["summary"] = _run_summary(result)
+    if per_date_dates is not None:
+        size = _encoded_size(result)
+        if size > settings.result_jsonb_max_bytes:
+            # OD-C7 (iii): refused with its own reason before anything is stored; other paths keep _save_job's 413.
+            raise HTTPException(status_code=413, detail=CURRENT_PER_DATE_TOO_LARGE_DETAIL.format(
+                dates=per_date_dates, size_bytes=size, limit_bytes=settings.result_jsonb_max_bytes))
+    params = payload.model_dump()
+    if separate:
+        # OD-C4 (i): only separate-lines Current DES jobs carrying this marker are Current evidence.
+        params = {**params, CURRENT_DES_BASIS_KEY: CURRENT_DES_BASIS}
     job = _save_job(
         db, user, "workflow_des_current", analysis, None,
-        payload.model_dump(), result, settings, dataset,
+        params, result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
+
+
+def _current_per_date_groups(
+    segments: list[dict[str, Any]], setup: dict[str, Any]
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    """The Current records of a per-date separate-lines analysis, one ``(date, records)`` per calendar date.
+
+    Grouping is ``per_date_days`` (the B13 rule for plans); its ValueError names the period, or the date and
+    segment (OD-C5 (i)). The bounded guard's identity checks stay in force (OD-C8 (i)): an unknown segment
+    would be dropped silently by the engine, and an invalid calendar date or a repeated identity is not one
+    day per date; they raise ``_InvalidCurrentRecords``. Records keep their stored order within a date.
+    """
+    labels = list(dict.fromkeys(str(row.get("time")) for row in segments))
+    rows_by_label: dict[str, list] = {label: [] for label in labels}
+    for row in segments:
+        rows_by_label[str(row.get("time"))].append(row)
+    groups = per_date_days(setup, labels, rows_by_label)
+    try:
+        _check_current_day_identities(setup, groups, rows_by_label)
+    except (TypeError, ValueError):
+        raise _InvalidCurrentRecords from None
+    days = []
+    for date, items in groups:
+        date_labels = {label for label, _ in items}
+        days.append((date, [row for row in segments if str(row.get("time")) in date_labels]))
+    return days
+
+
+class _InvalidCurrentRecords(Exception):
+    """Current records that fail the bounded guard's identity checks (HTTP 422 "records are invalid")."""
+
+
+def _run_current_per_date_des(
+    segments: list[dict[str, Any]], setup: dict[str, Any], payload: WorkflowDesRequest
+) -> tuple[dict[str, Any], int]:
+    """C-PD option (a): a per-date separate-lines Current run simulates each calendar date as its own day.
+
+    A date without records for a configured segment, an unreadable period or invalid records refuse the
+    whole run with HTTP 422 and nothing is stored (OD-C5 (i), OD-C8 (i)). Date ``i`` uses
+    ``date_seed(seed, i)``, so one date keeps the request's seed.
+
+    C-PD-C: one date keeps the full C-PD result (OD-C10 (i)). Two or more dates are stored compactly
+    (OD-C9 C-rows) with per-date fingerprints; each date's detail is regenerated on request from
+    ``seed_used`` (OD-C11 (i)). A null request seed is replaced by a server-drawn seed recorded as
+    ``result.seed_used``; ``params.seed`` keeps the request's value (OD-C12 (i)). Returns the result and
+    the number of dates.
+    """
+    try:
+        days = _current_per_date_groups(segments, setup)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except _InvalidCurrentRecords:
+        raise HTTPException(status_code=422, detail="Current dataset records are invalid.") from None
+    if len(days) < 2:
+        return simulate_parallel_days_with_trace(
+            days, setup, payload.sim_hours, [date_seed(payload.seed, index) for index in range(len(days))],
+            payload.max_events,
+        ), len(days)
+    seed_used = payload.seed if payload.seed is not None else secrets.randbelow(2**31)
+    result = simulate_parallel_days_compact(
+        days, setup, payload.sim_hours, [date_seed(seed_used, index) for index in range(len(days))],
+        payload.max_events,
+    )
+    if result.get("execution") == CURRENT_PER_DATE_DAYS_COMPACT_EXECUTION:
+        result["seed_used"] = seed_used
+    return result, len(days)
+
+
+def _strict_int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+@router.get(
+    "/{analysis_id}/workflow/simulation/des/current/days/{date}",
+    dependencies=[Depends(user_rate_limit("compute"))],
+)
+def get_des_current_day(
+    analysis_id: int,
+    date: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """C-PD-C day detail (spec 2026-11-02 §6.7): one date of the current compact Current DES run, regenerated.
+
+    The job is the one GET workflow serves as ``des_current`` (latest completed, and current by
+    ``_evidence_is_current``). Its date is re-simulated from the stored dataset, Setup, ``sim_hours``,
+    ``max_events`` and ``date_seed(seed_used, index)``, and served only when its rows, trace and day totals
+    match the stored fingerprints (OD-C13 (i): otherwise 409, nothing served). Nothing is stored.
+    """
+    analysis = own_analysis(db, user, analysis_id)
+    job = _latest_job(db, user, "workflow_des_current", analysis.id)
+    if job is None or not _evidence_is_current(db, job, _evidence_context(db, user, analysis),
+                                               _current_evidence_policy()):
+        raise HTTPException(status_code=404, detail=CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL)
+    stored = job.result_json or {}
+    params = job.params_json or {}
+    raw_days = stored.get("days")
+    stored_days: list[Any] = raw_days if isinstance(raw_days, list) else []
+    index = next((i for i, day in enumerate(stored_days) if isinstance(day, dict) and day.get("date") == date), None)
+    if stored.get("execution") != CURRENT_PER_DATE_DAYS_COMPACT_EXECUTION or index is None:
+        raise HTTPException(status_code=404, detail=CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL)
+    stored_day = stored_days[index]
+    seed_used = _strict_int(stored.get("seed_used"))
+    max_events = _strict_int(params.get("max_events"))
+    sim_hours = params.get("sim_hours")
+    dataset_id = _recorded_id(params.get("dataset_id"))
+    dataset = db.get(Dataset, dataset_id) if dataset_id is not None else None
+    if (seed_used is None or max_events is None or dataset is None
+            or not isinstance(sim_hours, (int, float)) or isinstance(sim_hours, bool)):
+        raise HTTPException(status_code=409, detail=CURRENT_DAY_DETAIL_MISMATCH_DETAIL)
+    setup = analysis.queue_setup_json or {}
+    try:
+        groups = _current_per_date_groups(_current_segments_for(analysis, dataset), setup)
+    except (ValueError, _InvalidCurrentRecords, HTTPException):
+        raise HTTPException(status_code=409, detail=CURRENT_DAY_DETAIL_MISMATCH_DETAIL) from None
+    if index >= len(groups) or groups[index][0] != date:
+        raise HTTPException(status_code=409, detail=CURRENT_DAY_DETAIL_MISMATCH_DETAIL)
+    detail = simulate_parallel_days_with_trace(
+        [groups[index]], setup, float(sim_hours), [date_seed(seed_used, index)], max_events)
+    fresh = (detail.get("days") or [{}])[0]
+    if (any(row.get("simulation_supported") is not True for row in detail["results"])
+            or canonical_digest(detail["results"]) != stored_day.get("rows_digest")
+            or canonical_digest(detail["trace"]) != stored_day.get("trace_digest")
+            or any(fresh.get(key) != stored_day.get(key)
+                   for key in ("arrivals", "served", "customer_conservation"))
+            or detail["event_count"] != stored_day.get("event_count")
+            or detail["truncated"] != stored_day.get("truncated")):
+        raise HTTPException(status_code=409, detail=CURRENT_DAY_DETAIL_MISMATCH_DETAIL)
+    response = {key: value for key, value in detail.items() if key not in {"execution", "days"}}
+    response.update({
+        "execution": CURRENT_DAY_DETAIL_EXECUTION,
+        "date": date,
+        "job_id": job.id,
+        "days": [stored_day],
+        "summary": _run_summary(detail),
+    })
+    return response
 
 
 @router.post(

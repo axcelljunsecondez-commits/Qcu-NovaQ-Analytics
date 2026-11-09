@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { getAnalysisCurrent } from '../../api/analyses'
 import { runSelectedDes, runWorkflowDes, runWorkflowDesCurrent } from '../../api/workflow'
+import { shownSeed, tooLargeDates } from '../../lib/currentPerDate'
 import { parseSeed, requestError } from '../../lib/simulationEvidence'
 import { operatingHours } from '../../lib/replay'
 import { HoursChip } from '../ui/HoursChip'
-import { breakNoticeKey, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
+import { breakNoticeKey, currentNoBreaksChip, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** One-row run bar (D30): hours, closing rule, status, Run full operation, Advanced. */
 export function RunBar({ context, run }: { context: SimulationContext; run: RunChoice }) {
@@ -22,6 +23,15 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
   const legacyOptions = () => ({
     sim_hours: Number(hours), queue_overload_threshold: Number(overload), max_events: Number(maxEvents), seed: parseSeed(seed), carryover: true,
   })
+  // A6: a per-date separate-lines Current run too large to save (W1) names its date count, read from the
+  // server's detail; the detail itself is never shown (it is English only). Other refusals are as before.
+  const runError = (err: unknown): string => {
+    if (run === 'current' && context.perDateDays && (err as { response?: { status?: number } } | null)?.response?.status === 413) {
+      const dates = tooLargeDates(err)
+      return dates === null ? t('errors.server') : t('simulation.current_too_large', { dates })
+    }
+    return requestError(err, t('errors.server'))
+  }
   const runMutation = useMutation({
     mutationFn: async () => {
       if (run === 'current') return runWorkflowDesCurrent(analysisId, legacyOptions())
@@ -29,7 +39,7 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
       return runWorkflowDes(analysisId, legacyOptions())
     },
     onSuccess: refresh,
-    onError: (err) => setError(requestError(err, t('errors.server'))),
+    onError: (err) => setError(runError(err)),
   })
   const stored = run === 'current' ? currentRun(context) : suggestedRun(context)?.result ?? null
   // D7: name the dataset Current would run on only from a settled server lookup.
@@ -43,7 +53,8 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
   const lookedUp = currentDataset.isSuccess && !currentDataset.isFetching ? currentDataset.data.dataset.id : undefined
   const legacy = run === 'current' || !context.selectedSeparate
   const canRun = run === 'current' || context.scenario !== null
-  const usedSeed = run === 'current' ? context.workflow.des_current?.params.seed : context.workflow.des?.params.seed
+  // A compact Current run records the seed the server drew when none was requested (OD-C12 (i)).
+  const usedSeed = run === 'current' ? shownSeed(context.workflow.des_current?.params, currentRun(context)) : context.workflow.des?.params.seed
   // A run whose periods could not be simulated is not kept as evidence; say why instead of "Not run".
   const returnedRows = ((runMutation.data?.evidence.result as { results?: Array<{ time?: unknown; error?: unknown; simulation_supported?: unknown }> } | undefined)?.results) ?? []
   const capabilityErrors = [...new Set(returnedRows.filter((row) => row.simulation_supported === false && typeof row.error === 'string')
@@ -80,6 +91,7 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
       </div>
       <p className="form-hint">
         {t(runBasisKey(context, run))}
+        {currentNoBreaksChip(context, run) && ` · ${t('charts.chip_no_breaks')}`}
         {stored && typeof usedSeed === 'number' && ` · ${t('simulation.run_seed', { seed: usedSeed })}`}
         {run === 'current' && stored && <> · <span className="badge badge-ok">{t('simulation.current_badge')}</span></>}
       </p>

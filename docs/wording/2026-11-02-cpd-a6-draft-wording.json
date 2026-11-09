@@ -1,0 +1,70 @@
+{
+  "title": "A6 per-date separate-lines Current: wording (C-PD and C-PD-C)",
+  "policy": "Approved by owner delegation on 2026-11-03; placed verbatim in both catalogs, and the backend W1-W3 constants hold the final English text. frontend/src/lib/cpdDraftWording.test.ts keeps the catalogs equal to this register and requires the status below on every entry.",
+  "entries": [
+    {
+      "key": "simulation.current_too_large",
+      "slot": "W1",
+      "en": "This Current run is too large to save: it covers {{dates}} dates. Upload a file with fewer dates.",
+      "tl": "Masyadong malaki para i-save ang Current run na ito: {{dates}} na petsa ang saklaw nito. Mag-upload ng file na may mas kaunting petsa.",
+      "source": "spec 2026-11-02-current-per-date-compact-result §9.1 W1; {dates} written as {{dates}}; owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    },
+    {
+      "key": "simulation.current_day_not_found",
+      "slot": "W3",
+      "en": "This date is not in the latest Current run. Run Current again.",
+      "tl": "Wala ang petsang ito sa pinakabagong Current run. Patakbuhin muli ang Current.",
+      "source": "spec 2026-11-02-current-per-date-compact-result §9.1 W3; owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    },
+    {
+      "key": "simulation.current_day_mismatch",
+      "slot": "W2",
+      "en": "This date of the Current run can't be rebuilt exactly, so it isn't shown. Run Current again.",
+      "tl": "Hindi ma-rebuild nang eksakto ang petsang ito ng Current run, kaya hindi ito ipinapakita. Patakbuhin muli ang Current.",
+      "source": "spec 2026-11-02-current-per-date-compact-result §9.1 W2; owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    },
+    {
+      "key": "simulation.current_all_dates_note",
+      "slot": "N1",
+      "en": "Average wait and Longest Single Line cover all {{dates}} dates. The tables and the chart by period show the chosen date.",
+      "tl": "Saklaw ng Karaniwang paghihintay at Pinaka Mahabang Pila ang lahat ng {{dates}} petsa. Ipinapakita ng mga talahanayan at ng chart ayon sa period ang napiling petsa.",
+      "source": "Chrome draft (A6 ORDER), kept by the parent after checking the code; owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    },
+    {
+      "key": "simulation.current_zero_arrival_note_one",
+      "slot": "N2 (one)",
+      "en": "On this date, {{count}} open queue period had no customer records; it is shown with zero arrivals.",
+      "tl": "Sa petsang ito, {{count}} bukas na queue period ang walang rekord ng customer; ipinapakita ang mga ito na walang pagdating.",
+      "source": "plan 2026-11-02-a6-current-per-date-frontend, owner wording decisions 2026-11-03 1a and Parent correction (TL one = TL other: Intl 'tl' resolves to fil, whose 'one' also covers 2, 3, 5); owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    },
+    {
+      "key": "simulation.current_zero_arrival_note_other",
+      "slot": "N2 (other)",
+      "en": "On this date, {{count}} open queue periods had no customer records; they are shown with zero arrivals.",
+      "tl": "Sa petsang ito, {{count}} bukas na queue period ang walang rekord ng customer; ipinapakita ang mga ito na walang pagdating.",
+      "source": "plan 2026-11-02-a6-current-per-date-frontend, owner wording decisions 2026-11-03 1a; owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    },
+    {
+      "key": "charts.longest_take_current_date_one",
+      "slot": "2a (one)",
+      "en": "Longest line on {{date}}: {{count}} person, at {{where}}.",
+      "tl": "Pinaka Mahabang Pila noong {{date}}: {{count}} na tao, sa {{where}}.",
+      "source": "plan 2026-11-02-a6-current-per-date-frontend, owner wording decisions 2026-11-03 2a; owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    },
+    {
+      "key": "charts.longest_take_current_date_other",
+      "slot": "2a (other)",
+      "en": "Longest line on {{date}}: {{count}} people, at {{where}}.",
+      "tl": "Pinaka Mahabang Pila noong {{date}}: {{count}} na tao, sa {{where}}.",
+      "source": "plan 2026-11-02-a6-current-per-date-frontend, owner wording decisions 2026-11-03 2a; owner delegation 2026-11-03: \"commit you can decide the accurate word need for me, i go to work make it precise\"",
+      "status": "approved_owner_delegated_2026-11-03"
+    }
+  ]
+}
