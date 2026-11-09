@@ -498,6 +498,8 @@ These do not reopen any closed decision; they come from code facts found while s
 
 EN/TL are exact. `{{x}}` = i18next variable. "←" notes a mechanical change from the draft.
 
+**Owner wording review, 2026-11-09 (§17):** every rendered row marked "drafted" below is APPROVED by the owner as live on `main` `736e4232`. Rows for keys removed in §17.2 no longer exist.
+
 ### A.1 Owner wording (ulit, decision A) — changed keys
 
 | Key | EN (new) | TL (new) | Status |
@@ -624,7 +626,7 @@ The Many variations range needs no clamp note: a failure share and its Wilson bo
 
 ## Appendix B. Wording drafted under owner delegation (W1-W26)
 
-All rows: **Draft — awaiting owner approval.** Facts named in the "Facts" column were checked in this session. `{{x}}` values come only from the API fields named.
+All rows: ~~Draft — awaiting owner approval.~~ **APPROVED by the owner 2026-11-09 (§17)**, as live on `main` `736e4232`, except W6 (`charts.key_unavailable_explain_shared`), which was never rendered and is removed (§17.2). Facts named in the "Facts" column were checked in this session. `{{x}}` values come only from the API fields named.
 
 | Slot | Key | EN | TL | Facts / values |
 |---|---|---|---|---|
@@ -663,3 +665,40 @@ All rows: **Draft — awaiting owner approval.** Facts named in the "Facts" colu
 | W26 | `charts.mc_take_shared_above` | Highest risk, above the {{cap}} cap: {{time}}, with {{rate}} of {{trials}} variations failing. | Pinakamataas na risk, lampas sa {{cap}} cap: {{time}}, {{rate}} ng {{trials}} na variation ang bumagsak. | as W25, shared line |
 
 Plural note for the owner: in TL, i18next picks `_one` for 1, 2 and 3 (`Intl.PluralRules('tl')`). Every TL `_one`/`_other` pair therefore uses the same text with "{{count}} na tao" or "{{count}} customer", which reads for any count.
+
+## 17. Owner wording review (2026-11-09)
+
+The owner reviewed every drafted text that `main` `736e4232` renders. The review went in seven batches, grouped by screen, and used the exact EN/TL text from the live locale files. That text includes Codex's later "hour" → "period" edits (K-UC-7). The owner approved every text as it is:
+
+| Batch | Screen | Owner reply |
+|---|---|---|
+| 1 | Analysis Results: What the plan changes (visible text, W1/W2 TL, W17) | "1–11 OK" |
+| 2 | Same chart: ⓘ, range, cut-at-0 (W15, W16), details chips | "1–14 OK" |
+| 3 | Analysis Results: Your day, by Busy Level (W8, W10) | "1–8 OK" |
+| 4 | Queue Simulation: Key Results, basis ⓘ (W12, W18–W20), Unavailable ⓘ (W21), closing alert | "1–14 OK" |
+| 5 | Queue Simulation: Longest Single Line (W3, W11), run chips (W22), W23, W24 | "1–15 OK, fix 10" |
+| 6 | Checks and Decisions: Many variations (W7, W13, W25, W26) | "1–13 OK" |
+| 7 | Shared full-day charts (W9) | "1–3 OK" |
+
+Batch 5 "fix 10" (`charts.longest_chip_runs`, "1 simulation run per period") needed no text change. On `736e4232` this key is not rendered anywhere (VERIFIED by `git grep`; the only reference was a test asserting it is absent). The separate Current table already shows `simulation.run_basis_continuous_no_breaks`. The key is removed in §17.2.
+
+Already approved elsewhere and not part of this review:
+- the per-date Current texts and messages, approved under owner delegation on 2026-11-03 (`docs/wording/2026-11-02-cpd-a6-draft-wording.json`);
+- upload D4, D8 and D9, approved on 2026-10-30.
+
+No wording-lock record is added. The owner decided on 2026-10-29 that the ulit list is a reference only. `docs/wording/2026-10-27-local-wording-application.json` and `wordingPolicy.test.ts` are unchanged.
+
+### 17.1 Unchanged
+
+No text that users see changes. The approvals only change the status from draft to approved.
+
+### 17.2 Unused keys removed (owner option B, 2026-11-09)
+
+Four keys were never rendered on `736e4232`. `git grep` over `frontend/src` found no `t()` use and no dynamically built `charts.*` key. They are removed from both locale files, which stay symmetric:
+
+- `charts.wait_chip_recorded`: the record-count chip was left out (§12), because there is no API field for customer records.
+- `charts.longest_chip_breaks`: replaced by `simulation.run_basis_continuous_no_breaks` (K-UC-3).
+- `charts.longest_chip_runs`: replaced the same way.
+- `charts.key_unavailable_explain_shared` (W6): the older shared run panel it served was removed in the shared-queue merge (K-UC-16).
+
+`KeyResultsView.test.tsx` used to check that `charts.longest_chip_runs` was absent. It now checks that the literal text "1 simulation run per period" does not appear, so the guard against the false per-period claim stays.
