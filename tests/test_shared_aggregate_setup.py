@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from backend.api.analysis_schemas import QueueSetup
-from backend.data.analysis_ingestion import AnalysisIngestionError
+from backend.data.analysis_ingestion import AnalysisIngestionError, normalize_analysis_input
 from backend.data.shared_aggregate_setup import derive_shared_aggregate
 from tests.test_shared_segments import NOVAMART_AVERAGE_ROWS
 
@@ -129,3 +129,47 @@ def test_first_primary_apply_is_enough_when_only_missing_file_facts_are_filled()
     result = derive_shared_aggregate(owner_frame(), saved())
     assert result["diff"]
     assert result["needs_confirmation"] is False
+
+
+EVENTS = {"arrival_time": "2026-10-01 05:00:00", "service_start": "2026-10-01 05:01:00", "service_end": "2026-10-01 05:04:00"}
+
+
+def unreadable_frame(case):
+    frame = owner_frame()
+    if case == "missing_c":
+        return frame.drop(columns=["c"])
+    if case == "missing_lambda_and_mu":
+        return frame.drop(columns=["lambda", "mu"])
+    if case == "partial_customer_records":
+        return frame.drop(columns=["c"]).assign(arrival_time=EVENTS["arrival_time"])
+    return frame.assign(**EVENTS)  # both schemas
+
+
+@pytest.mark.parametrize("case,message", [
+    ("missing_c", "Schema could not be identified. Missing aggregate columns: c."),
+    ("missing_lambda_and_mu", "Schema could not be identified. Missing aggregate columns: lambda, mu."),
+    ("partial_customer_records", "Missing customer-event columns: service_end ("),
+    ("both_schemas", "The file contains both aggregate and customer-event schemas; upload only one schema."),
+])
+def test_missing_required_columns_raise_the_usual_upload_message(case, message):
+    """D3: a file the usual upload cannot read is unreadable here too, with the same words."""
+    frame = unreadable_frame(case)
+    with pytest.raises(AnalysisIngestionError) as usual:
+        normalize_analysis_input(frame, QueueSetup.model_validate(saved()))
+    with pytest.raises(AnalysisIngestionError) as read:
+        derive_shared_aggregate(frame, saved())
+    assert str(read.value) == str(usual.value)
+    assert str(read.value).startswith(message)
+
+
+@pytest.mark.parametrize("case", ["business_names", "full_customer_records"])
+def test_readable_files_outside_this_path_still_decline(case):
+    if case == "business_names":
+        frame = owner_frame().rename(columns={"c": "cashiers", "lambda": "arrival rate"})
+    else:
+        frame = pd.DataFrame([EVENTS, EVENTS])
+    result = derive_shared_aggregate(frame, saved())
+    assert result["mode"] == "declined"
+    assert result["derived_setup"] is None
+    assert [reason["code"] for reason in result["reasons"]] == ["outside_slice"]
+

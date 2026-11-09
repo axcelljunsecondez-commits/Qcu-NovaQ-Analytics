@@ -209,6 +209,9 @@ class Settings:
         self.rate_limit_window_seconds = _int("RATE_LIMIT_WINDOW_SECONDS", 60, 1, 3600)
         self.rate_limit_auth = _int("RATE_LIMIT_AUTH", 10, 1, 1000)
         self.rate_limit_upload = _int("RATE_LIMIT_UPLOAD", 10, 1, 1000)
+        # Shared-file previews only read the file (nothing saved); the page reads again on every
+        # file or purpose change, so they must not use up the upload (Apply) budget.
+        self.rate_limit_upload_preview = _int("RATE_LIMIT_UPLOAD_PREVIEW", 60, 1, 1000)
         self.rate_limit_report = _int("RATE_LIMIT_REPORT", 10, 1, 1000)
         # Report previews only build the report model (no file); the Reports page asks for two per visit.
         self.rate_limit_report_preview = _int("RATE_LIMIT_REPORT_PREVIEW", 60, 1, 1000)

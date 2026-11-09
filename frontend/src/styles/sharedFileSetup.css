@@ -12,6 +12,9 @@
 .setup-page .file-missing-choices .radio-row { min-height: 44px; display: flex; gap: var(--space-sm); align-items: center; }
 .setup-page .shared-file-apply > .alert { margin-top: var(--space-md); }
 .setup-page .shared-file-apply li { overflow-wrap: anywhere; }
+/* Hour labels such as 05:00-06:00 stay on one line; the table scrolls inside .table-scroll. */
+.setup-page .file-read-summary th[scope='row'] { overflow-wrap: normal; white-space: nowrap; }
+.setup-page .file-read-summary thead th { overflow-wrap: normal; }
 @media (max-width: 600px) {
   .setup-page .file-read-facts { grid-template-columns: minmax(0, 1fr); }
 }

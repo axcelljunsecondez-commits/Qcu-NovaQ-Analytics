@@ -21,6 +21,7 @@ import { HelpLink } from '../components/ui/HelpLink'
 import { FileReadSummary } from '../components/setup/FileReadSummary'
 import { MissingChoices, type ClosingChoice } from '../components/setup/MissingChoices'
 import { deferredSharedChoices, sharedChoicesComplete } from '../lib/sharedAggregateSetup'
+import { focusAfterCancel } from '../lib/focusAfterCancel'
 import '../styles/sharedFileSetup.css'
 
 const emptySetup: QueueSetup = { queue_structure: 'unknown', fixed_server_count: null, staffing_varies_by_period: false, capacity_mode: 'unknown', total_system_capacity: null, abandonment_mode: 'unknown', patience_rate_per_hour: null, segments: [], separate_queue_closure_policy: 'drain_existing',     queue_ids: [], breaks: [] }
@@ -178,6 +179,21 @@ function AnalysisSetupForId({ id }: { id: number }) {
     },
     onError: (error) => setNotice(messageOf(error, t('errors.upload'))),
   })
+  // Keyboard focus follows the replacement confirmation: its title (never the Replace button, so a
+  // held Enter cannot confirm), back to the primary button on Cancel, and the success message after it.
+  const confirmTitle = useRef<HTMLElement>(null)
+  const primaryApply = useRef<HTMLButtonElement>(null)
+  const appliedAlert = useRef<HTMLDivElement>(null)
+  const applyCard = useRef<HTMLDivElement>(null)
+  const returnFocus = useRef(false)
+  const focusApplied = useRef(false)
+  useEffect(() => {
+    if (confirmShared) confirmTitle.current?.focus()
+    else if (returnFocus.current) { returnFocus.current = false; focusAfterCancel(primaryApply.current, applyCard.current) }
+  }, [confirmShared])
+  useEffect(() => {
+    if (applied && focusApplied.current) { focusApplied.current = false; appliedAlert.current?.focus() }
+  }, [applied])
   if (analysis.isLoading) return <ApiState.Loading />
   if (analysis.isError || !analysis.data) return <ApiState.ErrorState error={analysis.error} />
   const separate = setup.queue_structure === 'separate_queues'
@@ -297,6 +313,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
       void client.resetQueries({ queryKey: ['workflow', id] })
       void client.resetQueries({ queryKey: ['scenarios', id] })
       if (currentInput.current.file === selected && currentInput.current.purpose === 'planning') {
+        focusApplied.current = confirmReplace
         setApplied(true); setConfirmShared(false); setSetup(normalizeSetup(result.analysis.queue_setup))
       }
       // Closing is a separately persisted, explicit operational choice, never part of the Setup fingerprint.
@@ -455,21 +472,21 @@ function AnalysisSetupForId({ id }: { id: number }) {
           )}
         </li>}
         {aggregate?.mode === 'shared_aggregate' && aggregate.derived_setup && <li className="setup-step">
-          <div className="card shared-file-apply">
+          <div ref={applyCard} tabIndex={-1} className="card shared-file-apply">
             <MissingChoices closing={closing} onClosingChange={setClosing}
               savedClosing={savedClosing.data?.closing_policy} closingReady={savedClosing.isSuccess} analysisId={id} disabled={applying || applied} />
             {!applied && !sharedChoicesComplete(aggregate, choices) && <Link to={`/simulation/results?analysis=${id}&plan=current&advanced=model`}>{t('setup.incomplete_open')}</Link>}
             {savedClosing.isPending && <p role="status">{t('continuous.closing_title')}: {t('common.loading')}</p>}
             {savedClosing.isError && <p role="alert">{t('continuous.closing_title')}: {messageOf(savedClosing.error, t('errors.server'))}{' '}<Link to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.change')}</Link></p>}
             {aggregate.conflicts.length > 0 && <div role="alert" className="alert alert-error"><ul>{aggregate.conflicts.map((conflict) => <li key={conflict.code}>{conflict.detail}{conflict.problems && <ul>{conflict.problems.filter((problem) => !conflict.detail.includes(problem)).map((problem) => <li key={problem}>{problem}</li>)}</ul>}</li>)}</ul></div>}
-            {!applied && !confirmShared && <button type="button" className="btn-primary" disabled={applying || aggregate.conflicts.length > 0 || !sharedChoicesComplete(aggregate, choices)} onClick={() => void applyFile()}>{applying ? t('common.saving') : t('analyses.process')}</button>}
+            {!applied && !confirmShared && <button ref={primaryApply} type="button" className="btn-primary" disabled={applying || aggregate.conflicts.length > 0 || !sharedChoicesComplete(aggregate, choices)} onClick={() => void applyFile()}>{applying ? t('common.saving') : t('analyses.process')}</button>}
             {confirmShared && !applied && <div className="alert alert-warn" role="status">
-              <strong>{t(aggregate.diff.length ? 'analyses.upload_confirm_title' : 'analyses.upload')}</strong><p>{t(aggregate.diff.length ? 'analyses.upload_confirm_help' : 'setup.purpose_planning_help')}</p>
+              <strong id="shared-confirm-title" ref={confirmTitle} tabIndex={-1}>{t(aggregate.diff.length ? 'analyses.upload_confirm_title' : 'analyses.upload')}</strong><p>{t(aggregate.diff.length ? 'analyses.upload_confirm_help' : 'setup.purpose_planning_help')}</p>
               <ul>{aggregate.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}: {sharedDiffValue(change.field, change.saved, aggregate.saved_setup)} → {sharedDiffValue(change.field, change.derived, aggregate.derived_setup!)}</li>)}</ul>
               <button type="button" disabled={applying} onClick={() => void applyFile(true)}>{applying ? t('common.saving') : t(aggregate.diff.length ? 'analyses.upload_confirm' : 'analyses.process')}</button>
-              <button type="button" className="btn-ghost" disabled={applying} onClick={() => setConfirmShared(false)}>{t('common.cancel')}</button>
+              <button type="button" className="btn-ghost" disabled={applying} onClick={() => { returnFocus.current = true; setConfirmShared(false) }}>{t('common.cancel')}</button>
             </div>}
-            {applied && <div role="status" className="alert alert-ok"><p>{t('analyses.setup_saved')} · {t('datasets.purpose_planning_current')}</p><div className="button-row">
+            {applied && <div ref={appliedAlert} tabIndex={-1} role="status" className="alert alert-ok"><p>{t('analyses.setup_saved')} · {t('datasets.purpose_planning_current')}</p><div className="button-row">
               <Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link>
               <Link className="button-link" to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.title')}</Link>
             </div></div>}

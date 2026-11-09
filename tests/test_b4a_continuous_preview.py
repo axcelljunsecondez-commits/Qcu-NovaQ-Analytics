@@ -374,3 +374,87 @@ def test_a_run_says_when_the_setup_or_data_changed_since(db_engine, client):
         db.commit()
     later = client.get(f"/analyses/{ids['analysis_id']}/continuous/runs/{run['id']}").json()
     assert later["dataset_is_current"] is False
+
+
+# ── K-UF-1: the data's hours while only the Setup questions refuse ──────────────────────────
+NINE_TO_TEN = {"start_minute": 480, "end_minute": 600}
+
+
+def test_kyoya_setup_hours_differ_from_the_data_hours_the_run_uses(db_engine, client):
+    """Setup segments say 05:00-18:00, the uploaded rows are 08:00-10:00: the server reports 08:00-10:00."""
+    create_user(db_engine, "hours@example.com", "pw")
+    assert login(client, "hours@example.com", "pw") == 200
+    segments = [{"id": "early", "start_time": "05:00", "end_time": "06:00", "active_queue_ids": None},
+                {"id": "late", "start_time": "17:00", "end_time": "18:00", "active_queue_ids": None}]
+    made = client.post("/analyses", headers=csrf_header(client), json={"name": "Hours", "queue_setup": {
+        "queue_structure": "shared_queue", "staffing_varies_by_period": True, "segments": segments}})
+    assert made.status_code == 201, made.text
+    analysis = made.json()["analysis"]
+    csv = b"time,lambda,mu,c\n08:00-09:00,10,6,2\n09:00-10:00,12,6,3\n"
+    uploaded = client.post(f"/analyses/{analysis['id']}/datasets", headers=csrf_header(client),
+                           files={"file": ("rates.csv", csv, "text/csv")})
+    assert uploaded.status_code == 201, uploaded.text
+    _choose_rule(client, analysis["id"])
+    current = _compat(client, analysis["id"])["plans"]["current"]
+    assert current["compatible"] is False
+    assert _codes(current) == ["capacity_or_abandonment_unknown"]  # the reasons are the Setup gate's alone
+    assert current["horizon"] == NINE_TO_TEN != {"start_minute": 300, "end_minute": 1080}
+    assert current["dataset_id"] == uploaded.json()["dataset"]["id"]
+    assert current["expected_customers_per_day"] is None and current["service_model"] is None
+    assert _run(client, analysis["id"]).status_code == 422
+    assert _job_count(db_engine) == 0
+    answered = {**analysis["queue_setup"], "capacity_mode": "unlimited", "abandonment_mode": "not_modeled"}
+    assert client.patch(f"/analyses/{analysis['id']}", headers=csrf_header(client),
+                        json={"queue_setup": answered}).status_code == 200
+    current = _compat(client, analysis["id"])["plans"]["current"]
+    assert current["compatible"] is True and current["horizon"] == NINE_TO_TEN  # the run's own hours
+
+
+@pytest.mark.parametrize(("setup_change", "code"), [
+    ({"capacity_mode": "unknown"}, "capacity_or_abandonment_unknown"),
+    ({"abandonment_mode": "unknown"}, "capacity_or_abandonment_unknown"),
+    ({"capacity_mode": "finite", "total_system_capacity": 9}, "capacity_or_abandonment"),
+])
+def test_setup_gate_refusals_report_the_data_horizon_for_both_plans(db_engine, client, setup_change, code):
+    ids = _signed_in(client, db_engine, setup={**SHARED_SETUP, **setup_change})
+    _choose_rule(client, ids["analysis_id"])
+    _select_plan(client, ids)
+    plans = _compat(client, ids["analysis_id"])["plans"]
+    for name in ("current", "suggested"):
+        assert plans[name]["compatible"] is False
+        assert _codes(plans[name]) == [code]
+        assert plans[name]["horizon"] == NINE_TO_TEN
+        assert plans[name]["dataset_id"] == ids["dataset_id"]
+    assert plans["current"]["scenario_id"] is None
+    assert plans["suggested"]["scenario_id"] == ids["scenario_id"]
+    assert _run(client, ids["analysis_id"]).status_code == 422
+    assert _job_count(db_engine) == 0
+
+
+@pytest.mark.parametrize(("setup_change", "rows", "codes"), [
+    # The data cannot give a timeline: today's behaviour, and no data reason is added to the Setup gate's.
+    ({"capacity_mode": "unknown"}, [ROWS[0], {**ROWS[1], "time": "09:30-10:00"}], ["capacity_or_abandonment_unknown"]),
+    ({"capacity_mode": "unknown"}, [{**row, "variance": 0.01} for row in ROWS], ["capacity_or_abandonment_unknown"]),
+    # A line-structure gate never reads the data.
+    ({"queue_structure": "separate_queues", "queue_ids": ["a"]}, ROWS, ["separate_lines"]),
+])
+def test_no_horizon_when_the_data_gives_none_or_the_structure_refuses(db_engine, client, setup_change, rows, codes):
+    ids = _signed_in(client, db_engine, setup={**SHARED_SETUP, **setup_change}, rows=rows, plan=False)
+    _choose_rule(client, ids["analysis_id"])
+    current = _compat(client, ids["analysis_id"])["plans"]["current"]
+    assert _codes(current) == codes
+    assert (current["horizon"], current["dataset_id"]) == (None, None)
+
+
+def test_no_data_means_no_horizon_while_the_questions_are_unanswered(db_engine, client):
+    create_user(db_engine, "nodata@example.com", "pw")
+    assert login(client, "nodata@example.com", "pw") == 200
+    made = client.post("/analyses", headers=csrf_header(client), json={"name": "No data", "queue_setup": {
+        "queue_structure": "shared_queue", "staffing_varies_by_period": True, "segments": [
+            {"id": "day", "start_time": "05:00", "end_time": "18:00", "active_queue_ids": None}]}})
+    analysis_id = made.json()["analysis"]["id"]
+    _choose_rule(client, analysis_id)
+    current = _compat(client, analysis_id)["plans"]["current"]
+    assert _codes(current) == ["capacity_or_abandonment_unknown"]
+    assert (current["horizon"], current["dataset_id"]) == (None, None)
+

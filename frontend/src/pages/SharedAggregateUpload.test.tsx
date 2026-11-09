@@ -136,6 +136,56 @@ describe('shared planning file read and apply', () => {
     expect(screen.queryByText('This file would change your saved Setup')).not.toBeInTheDocument()
   })
 
+  it('moves focus to the confirmation title (not Replace), and Cancel returns it to the primary button (D2)', async () => {
+    mocks.preview.mockResolvedValue({ ...preview, needs_confirmation: true, diff: [{ field: 'fixed_server_count', saved: 5, derived: null }] })
+    renderPage()
+    const { user } = await chooseFile()
+    await waitForRead()
+    screen.getByRole('button', { name: 'Upload and process' }).focus()
+    await user.keyboard('{Enter}')
+    const title = await screen.findByText('This file would change your saved Setup')
+    await waitFor(() => expect(document.activeElement).toBe(title))
+    expect(title).toHaveAttribute('tabindex', '-1')
+    await user.tab()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Replace Setup and upload' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Upload and process' })))
+    expect(mocks.apply).not.toHaveBeenCalled()
+  })
+
+  it('focuses the confirmation title when the server asks for confirmation (D2, 409 path)', async () => {
+    mocks.apply.mockRejectedValueOnce({ response: { status: 409, data: { detail: { code: 'confirmation_required' } } } })
+    renderPage()
+    const { user } = await chooseFile()
+    await waitForRead()
+    await user.click(screen.getByRole('button', { name: 'Upload and process' }))
+    await waitFor(() => expect(document.activeElement).toBe(document.getElementById('shared-confirm-title')))
+    expect(mocks.apply).toHaveBeenCalledTimes(1)
+  })
+
+  it('focuses the success message after a confirmed replacement (D2, decision 3)', async () => {
+    mocks.preview.mockResolvedValue({ ...preview, needs_confirmation: true, diff: [{ field: 'fixed_server_count', saved: 5, derived: null }] })
+    renderPage()
+    const { user } = await chooseFile()
+    await waitForRead()
+    await user.click(screen.getByRole('button', { name: 'Upload and process' }))
+    await user.click(await screen.findByRole('button', { name: 'Replace Setup and upload' }))
+    const success = (await screen.findByRole('link', { name: 'Full-day run' })).closest('.alert') as HTMLElement
+    await waitFor(() => expect(document.activeElement).toBe(success))
+    expect(success).toHaveAttribute('role', 'status')
+    expect(mocks.apply).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows an unreadable-file detail as an alert with no Upload and process button (D3)', async () => {
+    mocks.preview.mockRejectedValue({ response: { status: 422, data: { detail: 'Schema could not be identified. Missing aggregate columns: c.' } } })
+    renderPage()
+    await chooseFile()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Schema could not be identified. Missing aggregate columns: c.')
+    expect(screen.queryByRole('button', { name: 'Upload and process' })).not.toBeInTheDocument()
+    expect(mocks.apply).not.toHaveBeenCalled()
+    expect(mocks.upload).not.toHaveBeenCalled()
+  })
+
   it('confirms a planning-file replacement without claiming an unchanged Setup will change', async () => {
     mocks.preview.mockResolvedValue({ ...preview, needs_confirmation: true, diff: [] })
     renderPage()
