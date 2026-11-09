@@ -128,7 +128,7 @@ describe('Key Results cards (B5)', () => {
     expect(chips[0]).toHaveTextContent(`${en['simulation.run_current']} · ${en['simulation.run_basis_continuous_no_breaks']}`)
     expect(chips[0]).not.toHaveTextContent(en['simulation.run_basis_per_period'])
     expect(screen.getByTestId('longest-line-table')).toHaveTextContent(en['simulation.run_basis_continuous_no_breaks'])
-    expect(screen.getByTestId('longest-line-table')).not.toHaveTextContent(en['charts.longest_chip_runs'])
+    expect(screen.getByTestId('longest-line-table')).not.toHaveTextContent(/1 simulation run per period/i)
     expect(document.body).not.toHaveTextContent(/one period at a time/i)
     expect(screen.getByText(en['simulation.chart_waiting_needs_plan_day'])).toBeInTheDocument()
     unmount()
