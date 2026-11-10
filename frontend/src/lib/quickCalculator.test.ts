@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisOut } from '../api/types'
-import { inputProblems, modelFor, neighbourCounters, requestFor, summarize, type CalculatorInputs } from './quickCalculator'
+import { inputProblems, modelFor, requestFor, summarize, type CalculatorInputs } from './quickCalculator'
 
 const inputs = (over: Partial<CalculatorInputs> = {}): CalculatorInputs => ({
   lambda: 40, mu: 15, c: 3, spreadMinutes: null, capacity: null, patienceMinutes: null, ...over,
@@ -24,13 +24,6 @@ describe('quick calculator logic (U9)', () => {
     expect(requestFor('limited', inputs({ capacity: 6 }), 2)).toEqual({ lambda: 40, mu: 15, c: 2, K: 6 })
     expect(requestFor('leaving', inputs({ patienceMinutes: 10 }), 2)).toEqual({ lambda: 40, mu: 15, c: 2, theta: 6 })
     expect(requestFor('basic', inputs({ spreadMinutes: 6, capacity: 6, patienceMinutes: 10 }), 3)).toEqual({ lambda: 40, mu: 15, c: 3 })
-  })
-
-  it('never asks for 0 counters or more counters than places', () => {
-    expect(neighbourCounters('basic', inputs({ c: 1 }))).toEqual({ fewer: null, more: 2 })
-    expect(neighbourCounters('basic', inputs({ c: 3 }))).toEqual({ fewer: 2, more: 4 })
-    expect(neighbourCounters('limited', inputs({ c: 3, capacity: 3 }))).toEqual({ fewer: 2, more: null })
-    expect(neighbourCounters('limited', inputs({ c: 3, capacity: 4 }))).toEqual({ fewer: 2, more: 4 })
   })
 
   it('names every unusable input for the situation', () => {

@@ -5,8 +5,6 @@ import { THRESHOLD_TOLERANCE, utilizationBand, type UtilizationBand } from './ut
 
 export type ResultRow = Record<string, unknown>
 
-const BAND_ORDER: UtilizationBand[] = ['Lean', 'Normal', 'Peak', 'Critical', 'Unstable']
-
 export function finiteNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
   if (typeof value !== 'string' || value.trim() === '') return null
@@ -40,84 +38,12 @@ export function busyLevel(row: ResultRow): UtilizationBand | null {
   return rho === null ? null : utilizationBand(rho)
 }
 
-function worse(left: UtilizationBand | null, right: UtilizationBand | null): UtilizationBand | null {
-  if (left === null) return right
-  if (right === null) return left
-  return BAND_ORDER.indexOf(right) > BAND_ORDER.indexOf(left) ? right : left
-}
-
 export function levelKey(level: UtilizationBand | null): string {
   return level === null ? 'results.unavailable' : `results.level.${level.toLowerCase()}`
 }
 
 export function levelClass(level: UtilizationBand | null): string {
   return level === null ? 'busy-unknown' : `busy-${level.toLowerCase()}`
-}
-
-export interface StripPeriod {
-  time: string
-  level: UtilizationBand | null
-  /** Highest workload of any line in the period (one shared line: the counter group). */
-  rho: number | null
-  lines: number
-}
-
-/** One cell per period in upload order; separate lines take their busiest line. */
-export function dayStrip(rows: ResultRow[]): StripPeriod[] {
-  const periods: StripPeriod[] = []
-  const byTime = new Map<string, StripPeriod>()
-  for (const row of rows) {
-    const time = timeOf(row)
-    let period = byTime.get(time)
-    if (!period) {
-      period = { time, level: null, rho: null, lines: 0 }
-      byTime.set(time, period)
-      periods.push(period)
-    }
-    period.lines += 1
-    period.level = worse(period.level, busyLevel(row))
-    const rho = finiteNumber(row.rho)
-    if (rho !== null && (period.rho === null || rho > period.rho)) period.rho = rho
-  }
-  return periods
-}
-
-export interface AttentionPeriod {
-  time: string
-  line: string | null
-  waitHours: number | null
-}
-
-/** Periods where counters can't keep up first, then the highest estimated wait (spec §7.7). */
-export function periodsNeedingAttention(rows: ResultRow[]): { cantKeepUp: AttentionPeriod[]; highestWait: AttentionPeriod | null } {
-  const overloaded = rows.filter(cantKeepUp).map((row) => ({ time: timeOf(row), line: lineOf(row), waitHours: null }))
-  let highestWait: AttentionPeriod | null = null
-  for (const row of rows) {
-    if (cantKeepUp(row)) continue
-    const wait = finiteNumber(row.Wq)
-    if (wait === null) continue
-    if (highestWait === null || wait > (highestWait.waitHours ?? -Infinity)) {
-      highestWait = { time: timeOf(row), line: lineOf(row), waitHours: wait }
-    }
-  }
-  return { cantKeepUp: overloaded, highestWait }
-}
-
-export interface PeriodWarning {
-  time: string
-  level: UtilizationBand | null
-  aboveTarget: boolean
-}
-
-/** Critical or can't-keep-up periods, plus periods above the selected plan's target when one exists (D19). */
-export function periodWarnings(strip: StripPeriod[], planTarget: number | null): PeriodWarning[] {
-  return strip
-    .map((period) => ({
-      time: period.time,
-      level: period.level,
-      aboveTarget: planTarget !== null && (period.level === 'Unstable' || (period.rho !== null && period.rho > planTarget)),
-    }))
-    .filter((warning) => warning.level === 'Critical' || warning.level === 'Unstable' || warning.aboveTarget)
 }
 
 export function isProcessed(dataset: DatasetOut): boolean {
