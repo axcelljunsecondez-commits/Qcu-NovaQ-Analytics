@@ -63,7 +63,7 @@ export function HomePage() {
         <QueueTypesComparison open={queuesOpen} onOpenChange={setQueuesOpen} />
       </main>
 
-      <footer className="home-footer"><span>NovaQ v1.0 · {t('nav.capstone')}</span></footer>
+      <footer className="home-footer"><span>NovaQ v1.0</span></footer>
     </div>
   )
 }

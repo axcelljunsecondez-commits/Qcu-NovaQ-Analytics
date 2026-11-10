@@ -73,13 +73,15 @@ function ReportsRedirect() {
   return <Navigate to={`/reports?analysis=${analysisId ?? ''}`} replace />
 }
 
-// The workspace Simulate page became Queue simulation (spec §5, D28); named mode is kept.
+// Old workspace links use the standard simulation and keep their other query/hash values.
 // oxlint-disable-next-line react/only-export-components -- router module intentionally mixes layout components with the router constant
 function SimulateRedirect() {
   const { analysisId } = useParams()
   const location = useLocation()
-  const named = new URLSearchParams(location.search).get('mode') === 'named'
-  return <Navigate to={`/simulation/results?analysis=${analysisId ?? ''}${named ? '&mode=named' : ''}`} replace />
+  const params = new URLSearchParams(location.search)
+  params.delete('mode')
+  params.set('analysis', analysisId ?? '')
+  return <Navigate to={`/simulation/results?${params.toString()}${location.hash}`} replace />
 }
 
 export function createAppRouter() {

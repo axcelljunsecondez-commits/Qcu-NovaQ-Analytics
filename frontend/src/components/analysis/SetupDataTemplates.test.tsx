@@ -16,14 +16,14 @@ vi.mock('../../api/templates', () => ({
 
 const guide = {
   structure: 'separate_queues',
-  schema: 'aggregate',
-  columns: ['time', 'queue_id', 'lambda', 'mu', 'c', 'variance'],
+  schema: 'events',
+  columns: ['arrival_time', 'queue_id', 'service_start', 'service_end'],
   example_rows: [
-    { time: '08:00-09:00', queue_id: 'queue_1', lambda: 10, mu: 12, c: 1, variance: 0.006 },
+    { arrival_time: '08:00', queue_id: 'queue_1', service_start: '08:02', service_end: '08:04' },
   ],
   field_guide: [
     { field: 'queue_id', meaning: 'Which waiting line the row belongs to.', required: 'Required for separate queues', example: 'queue_1', notes: '' },
-    { field: 'lambda', meaning: 'Average arrivals per hour.', required: 'Required', example: '30', notes: '' },
+    { field: 'arrival_time', meaning: 'When the customer arrived.', required: 'Required', example: '08:00', notes: '' },
   ],
   accepted_aliases: {},
 }
@@ -49,7 +49,7 @@ describe('SetupDataTemplates', () => {
     await screen.findByText('Which waiting line the row belongs to.')
     expect(screen.getAllByText('queue_id').length).toBeGreaterThan(0)
     await user.click(screen.getByRole('button', { name: 'Download CSV Template' }))
-    expect(downloadTemplateMock).toHaveBeenCalledWith('separate_queues', 'aggregate', 'csv')
+    expect(downloadTemplateMock).toHaveBeenCalledWith('separate_queues', 'events', 'csv')
   })
 
   it('marks the field guide table so field names stay on one line', async () => {
@@ -69,11 +69,16 @@ describe('SetupDataTemplates', () => {
     expect(css).toMatch(/\.app-shell \.table-scroll table\.field-guide-table\s*\{[^}]*min-width: 40rem;/)
   })
 
-  it('switches between totals and events schemas', async () => {
+  it('shows only Customer Events and downloads the shared events workbook', async () => {
     const user = userEvent.setup()
     renderWithProviders(<SetupDataTemplates queueStructure="shared_queue" />)
-    await user.click(screen.getByRole('button', { name: "Customer Events" }))
+    expect(screen.getByRole('heading', { name: /Customer Events/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Totals and Rates' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /About: Customer Events/ }))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/Download the template/)
     await user.click(screen.getByRole('button', { name: 'View Example and Field Guide' }))
     expect(getTemplateGuideMock).toHaveBeenCalledWith('shared_queue', 'events')
+    await user.click(screen.getByRole('button', { name: 'Download XLSX Template' }))
+    expect(downloadTemplateMock).toHaveBeenCalledWith('shared_queue', 'events', 'xlsx')
   })
 })

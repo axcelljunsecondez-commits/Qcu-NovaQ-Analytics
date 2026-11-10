@@ -1,6 +1,6 @@
 import { headingText } from '../lib/headingText'
 import { useId, useRef, useState, type FormEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { listDatasets } from '../api/datasets'
 import type { AnalysisProjectOut } from '../api/types'
@@ -11,18 +11,59 @@ import { selectWorkflowScenario } from '../api/workflow'
 import { currentDatasetId, isForPlanning } from '../lib/datasets'
 import { fmt, fmtPctDecimal, messageOf } from '../lib/format'
 import { HelpLink } from './ui/HelpLink'
-import { SeparateScheduleCard } from './SeparateScheduleCard'
+import { SavedPlanPicker } from './SavedPlanPicker'
+import { Pagination } from './ui/Pagination'
 
 type Checked = {
   result: SupervisorPreview; request: SupervisorRequest; signature: string
   setup: string; rowCount: number; applied: boolean
 }
+
+type BreakMove = NonNullable<SupervisorPreview['breaks']>['moves'][number]
+
+function BreakMoves({ moves }: { moves: BreakMove[] }) {
+  const { t } = useTranslation()
+  const [pageIndex, setPageIndex] = useState(0)
+  const pageSize = 4
+  const pageCount = Math.ceil(moves.length / pageSize)
+  const page = Math.min(pageIndex, pageCount - 1)
+  const visibleMoves = moves.slice(page * pageSize, (page + 1) * pageSize)
+
+  return (
+    <>
+      <div className="table-scroll supervisor-break-table" role="region" tabIndex={0} aria-label={t('supervisor.break_changes')}>
+        <table>
+          <caption>{t('supervisor.break_changes')}</caption>
+          <thead><tr>
+            <th scope="col">{t('supervisor.cashier')}</th>
+            <th scope="col">{t('supervisor.current_time')}</th>
+            <th scope="col">{t('supervisor.proposed_time')}</th>
+            <th scope="col">{t('supervisor.length')}</th>
+          </tr></thead>
+          <tbody>{visibleMoves.map((move) => (
+            <tr key={`${move.queue_id}-${move.from}-${move.to}`}>
+              <th scope="row">{move.queue_id}<br />{move.label.replace(/^Break (\d+)$/, (_, n) => t('optimize.breaks_label', { number: n }))}</th>
+              <td>{move.from.slice(0, 5)}</td>
+              <td>{move.to.slice(0, 5)}</td>
+              <td>{move.duration_minutes}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <Pagination page={page} pageCount={pageCount} onPageChange={setPageIndex} />
+    </>
+  )
+}
+
 export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const files = useQuery({ queryKey: ['datasets', analysis.id], queryFn: () => listDatasets(analysis.id) })
+  const selectingPlan = useIsMutating({ mutationKey: ['select-saved-plan', analysis.id] }) > 0
   const [picked, setPicked] = useState<string | null>(null)
-  const datasetId = picked ?? String(currentDatasetId(files.data?.datasets) ?? '')
+  const planningId = currentDatasetId(files.data?.datasets)
+  const hasPlanningFile = files.data?.datasets.some((file) => file.id === planningId && file.validation?.ok && isForPlanning(file))
+  const datasetId = picked ?? String(planningId ?? '')
   const dataset = files.data?.datasets.find(d => String(d.id) === datasetId)
   const [percent, setPercent] = useState('70')
   const [allow, setAllow] = useState(false)
@@ -57,8 +98,12 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
   const saveEligible = !!result && !stale && !pendingMoves && !result.blockers.includes('not_current_data') && result.schedule.overall === 'COMPLETE' &&
     (!checked?.request.allow_break_changes || checked.applied ||
       result.blockers.every(b => b === 'no_moves'))
-  const canApply = !!result?.can_apply && !stale && !checked?.applied && !busy
+  const canApply = !!result?.can_apply && !stale && !checked?.applied && !busy && !selectingPlan
   const paired = breaks?.des.comparison.paired_wait_change
+  const moves = breaks?.moves ?? []
+  const blockers = checked?.applied ? [] : (result?.blockers ?? []).filter((blocker) => (
+    blocker !== 'no_moves' && blocker !== 'break_changes_off'
+  ))
   const numericPercent = percent.trim() ? Number(percent) : NaN
   const validPercent = Number.isFinite(numericPercent) && numericPercent >= 40 && numericPercent <= 90
 
@@ -120,7 +165,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
     } finally { setBusy(null) }
   }
   async function save(use: boolean) {
-    if (!checked || !saveEligible || busy || !name.trim()) return
+    if (!checked || !saveEligible || busy || selectingPlan || !name.trim()) return
     setBusy('save'); setError(null); setSaved(false); setUsed(false); setSelectionError(null)
     const schedule = checked.result.schedule
     const options = {
@@ -146,9 +191,9 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
           await selectWorkflowScenario(analysis.id, Number(out.scenario.id))
           setUsed(true)
           void qc.invalidateQueries({ queryKey: ['workflow', analysis.id] })
-          void qc.invalidateQueries({ queryKey: ['separate-comparison', analysis.id] })
         } catch (err) { setSelectionError(messageOf(err, t('errors.server'))) }
       }
+      void qc.invalidateQueries({ queryKey: ['separate-comparison', analysis.id] })
     } catch (err) { setError(messageOf(err, t('errors.server'))) }
     finally { setBusy(null) }
   }
@@ -257,54 +302,24 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
           <p>{t('supervisor.check_first')}</p>
           <button type="button" className="btn-ghost" onClick={() => goStep(0)}>{t('supervisor.back_settings')}</button>
         </> : <>
-        <p role="status">{t(result.schedule.overall !== 'COMPLETE' || (breaks && !result.can_apply && !checked?.applied && result.blockers.some(b => b !== 'no_moves'))
-          ? 'supervisor.needs_changes' : 'supervisor.checked')}</p>
-        {result.blockers.filter(b => b !== 'break_changes_off' && !(b === 'no_moves' && checked?.applied)).length > 0 && !checked?.applied &&
-          <ul className="supervisor-reasons">{result.blockers.filter(b => b !== 'break_changes_off').map(b => <li key={b}>{t('supervisor.blockers.' + b)}</li>)}</ul>}
-        {result.schedule.reason && <p>{result.schedule.reason}</p>}
-        {breaks && <>
-          <dl className="supervisor-metrics">
-            <div><dt>{t('supervisor.peak_slot')}</dt><dd>{fmtPctDecimal(breaks.peak_rho.before)} → {fmtPctDecimal(breaks.peak_rho.after)}</dd></div>
-            <div><dt>{t('supervisor.wait')}</dt><dd>{fmt(breaks.des.current.summary.mean_wait_minutes)} → {fmt(breaks.des.proposed.summary.mean_wait_minutes)}</dd></div>
-            <div><dt>{t('supervisor.changed_breaks')}</dt><dd>{breaks.moves.length}</dd></div>
-          </dl>
-          <p>{t('supervisor.wait_verdict.' + (paired?.verdict ?? 'unavailable'))}</p>
-          {paired?.ci_lower != null && paired.ci_upper != null &&
-            <p className="form-hint">{t('supervisor.wait_interval', { lower: fmt(paired.ci_lower), upper: fmt(paired.ci_upper), count: paired.n })}</p>}
-          {breaks.moves.length > 0 && <div className="table-scroll supervisor-break-table" role="region" tabIndex={0} aria-label={t('supervisor.break_changes')}>
-            <table><caption>{t('supervisor.break_changes')}</caption><thead><tr>
-              <th scope="col">{t('supervisor.cashier')}</th><th scope="col">{t('supervisor.break')}</th>
-              <th scope="col">{t('supervisor.current_time')}</th><th scope="col">{t('supervisor.proposed_time')}</th>
-              <th scope="col">{t('supervisor.length')}</th>
-            </tr></thead><tbody>{breaks.moves.map((m, i) => <tr key={i}>
-              <th scope="row">{m.queue_id}</th><td>{m.label.replace(/^Break (\d+)$/, (_, n) => t('optimize.breaks_label', { number: n }))}</td>
-              <td>{m.from.slice(0, 5)}</td><td>{m.to.slice(0, 5)}</td><td>{m.duration_minutes}</td>
-            </tr>)}</tbody></table>
-          </div>}
-          {breaks.moves.length > 0 && <div className="supervisor-break-cards" aria-label={t('supervisor.break_changes')}>
-            {breaks.moves.map((m, i) => <div className="supervisor-break-card" key={i}>
-              <strong>{m.queue_id} · {m.label.replace(/^Break (\d+)$/, (_, n) => t('optimize.breaks_label', { number: n }))}</strong>
-              <dl><div><dt>{t('supervisor.current_time')}</dt><dd>{m.from.slice(0, 5)}</dd></div>
-                <div><dt>{t('supervisor.proposed_time')}</dt><dd>{m.to.slice(0, 5)}</dd></div>
-                <div><dt>{t('supervisor.length')}</dt><dd>{m.duration_minutes}</dd></div></dl>
-            </div>)}
-          </div>}
-          <details className="supervisor-advanced"><summary>{t('supervisor.break_details')}</summary>
-            <p>{t('supervisor.avg_longest_line')}: {fmt(breaks.des.current.summary.max_queue)} → {fmt(breaks.des.proposed.summary.max_queue)}</p>
-            <p>{t('supervisor.slot_basis')}</p>
-            <div className="table-scroll" role="region" tabIndex={0} aria-label={t('supervisor.slot_details')}>
-              <table><caption>{t('supervisor.slot_details')}</caption><thead><tr>
-                <th scope="col">{t('optimize.sep_col_time')}</th><th scope="col">{t('supervisor.current_load')}</th><th scope="col">{t('supervisor.proposed_load')}</th>
-              </tr></thead><tbody>{breaks.slots.map(s => <tr key={s.start}><th scope="row">{s.start}–{s.end}</th>
-                <td>{fmtPctDecimal(s.rho_before)}</td><td>{fmtPctDecimal(s.rho_after)}</td></tr>)}</tbody></table>
-            </div>
-          </details>
-        </>}
-        <p className="form-hint">{t('supervisor.staffing_basis', { target: fmtPctDecimal(result.schedule.target_utilization), count: result.schedule.des.replications, seed: result.schedule.des.base_seed })}</p>
-        <details className="supervisor-evidence"><summary>{t('supervisor.schedule_details')}</summary>
-          <SeparateScheduleCard schedule={result.schedule} />
-        </details>
-        <p className="form-hint">{t('supervisor.claim_limit')}</p>
+        {blockers.length > 0 && <ul className="supervisor-reasons">
+          {blockers.map((blocker) => <li key={blocker}>{t('supervisor.blockers.' + blocker)}</li>)}
+        </ul>}
+        {result.schedule.overall !== 'COMPLETE' && result.schedule.reason && <p>{result.schedule.reason}</p>}
+        {breaks && moves.length > 0 ? (
+          <>
+            <BreakMoves key={result.preview_hash} moves={moves} />
+            <dl className="supervisor-metrics">
+              <div><dt>{t('supervisor.peak_slot')}</dt><dd>{fmtPctDecimal(breaks.peak_rho.before)} → {fmtPctDecimal(breaks.peak_rho.after)}</dd></div>
+              <div><dt>{t('supervisor.wait')}</dt><dd>{fmt(breaks.des.current.summary.mean_wait_minutes)} → {fmt(breaks.des.proposed.summary.mean_wait_minutes)}</dd></div>
+            </dl>
+            <p>{t('supervisor.wait_verdict.' + (paired?.verdict ?? 'unavailable'))}</p>
+          </>
+        ) : result.blockers.includes('no_moves') ? (
+          <p>{t('supervisor.blockers.no_moves')}</p>
+        ) : result.blockers.includes('break_changes_off') && (
+          <p>{t('supervisor.blockers.break_changes_off')}</p>
+        )}
         <div className="supervisor-actions">
           <button ref={reviewContinueRef} type="button" onClick={() => goStep(2)}>{t('supervisor.continue_confirm')}</button>
           <button type="button" className="btn-ghost" onClick={() => goStep(0)}>{t('supervisor.back_settings')}</button>
@@ -314,29 +329,48 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
       <section className="card supervisor-panel supervisor-confirm" role="tabpanel" tabIndex={0}
         id={`${panelId}-panel-2`} aria-labelledby={`${panelId}-tab-2`} hidden={step !== 2}>
         <h2 lang="en">{headingText(t, 'supervisor.confirm')}</h2>
-        {!result ? <>
+        {!checked ? <>
           <p>{t('supervisor.check_first')}</p>
           <button type="button" className="btn-ghost" onClick={() => goStep(0)}>{t('supervisor.back_settings')}</button>
         </> : <>
-        {checked?.applied ? <p role="status" className="alert alert-success">{t('supervisor.applied')}</p> :
-          breaks && breaks.moves.length > 0 ? <>
-            <h3 lang="en">{headingText(t, 'supervisor.confirm_title')}</h3>
+        <ul>
+          <li>{t('optimize.target_utilization')} · {fmtPctDecimal(checked.request.target_utilization)}</li>
+          <li>{t('supervisor.allow_breaks')} · {t(checked.request.allow_break_changes ? 'guided.yes' : 'guided.no')}</li>
+          {checked.request.allow_break_changes && <li>{t('supervisor.max_move')} · {checked.request.max_shift_minutes}</li>}
+          {checked.request.lambda_multiplier !== 1 && <li>{t('supervisor.demand')} · {fmt(checked.request.lambda_multiplier)}</li>}
+          {checked.request.server_cost_per_hr !== DEFAULT_OPTIONS.server_cost_per_hr &&
+            <li>{t('optimize.server_cost')} · ₱{fmt(checked.request.server_cost_per_hr)}</li>}
+          {checked.request.customer_waiting_cost !== DEFAULT_OPTIONS.customer_waiting_cost &&
+            <li>{t('optimize.waiting_cost')} · ₱{fmt(checked.request.customer_waiting_cost)}</li>}
+          {moves.map((move) => (
+            <li key={`${move.queue_id}-${move.from}-${move.to}`}>
+              {move.queue_id} · {move.from.slice(0, 5)} → {move.to.slice(0, 5)} · {t('analyses.break_minutes', { minutes: move.duration_minutes })}
+            </li>
+          ))}
+        </ul>
+        {blockers.length > 0 && <ul className="supervisor-reasons">
+          {blockers.map((blocker) => <li key={blocker}>{t('supervisor.blockers.' + blocker)}</li>)}
+        </ul>}
+        {checked.applied ? <p role="status" className="alert alert-success">{t('supervisor.applied')}</p> :
+          moves.length > 0 && <>
             <p>{t('supervisor.confirm_message')}</p>
+            {step === 2 && paired?.verdict === 'no_clear_difference' && (
+              <p className="form-hint">{t('supervisor.wait_verdict.no_clear_difference')}</p>
+            )}
             <div className="supervisor-actions">
               <button type="button" disabled={!canApply} aria-busy={busy === 'apply'} onClick={() => void apply()}>
                 {t(busy === 'apply' ? 'supervisor.applying' : 'supervisor.apply')}
               </button>
-              <span className="form-hint">{t('supervisor.apply_hint')}</span>
             </div>
-          </> : <p>{t('supervisor.no_break_changes')}</p>}
+          </>}
         <div className="supervisor-save">
           <h3 lang="en">{headingText(t, 'page2.save_scenario')}</h3>
           <label htmlFor="sup-name">{t('optimize.scenario_name')}</label>
           <input id="sup-name" value={name} onChange={e => { setName(e.target.value); setNameTyped(e.target.value !== '') }} disabled={!!busy} />
           {pendingMoves && <p className="form-hint">{t('supervisor.save_after_apply')}</p>}
           <div className="supervisor-actions">
-            <button type="button" disabled={!saveEligible || !!busy || !name.trim()} onClick={() => void save(true)}>{t('plans.use_this_plan')}</button>
-            <button type="button" className="btn-ghost" disabled={!saveEligible || !!busy || !name.trim()} onClick={() => void save(false)}>{t('plans.save_without_using')}</button>
+            <button type="button" disabled={!saveEligible || !!busy || selectingPlan || !name.trim()} onClick={() => void save(true)}>{t('plans.use_this_plan')}</button>
+            <button type="button" className="btn-ghost" disabled={!saveEligible || !!busy || selectingPlan || !name.trim()} onClick={() => void save(false)}>{t('plans.save_without_using')}</button>
           </div>
           {saved && !used && !stale && !selectionError && <p role="status">{t('optimize.saved')}</p>}
           {used && !stale && <p role="status">{t('plans.used')}</p>}
@@ -346,6 +380,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
           <button type="button" className="btn-ghost" disabled={!!busy} onClick={backToReview}>{t('supervisor.back_review')}</button>
         </div>
         </>}
+        {step === 2 && hasPlanningFile && <SavedPlanPicker analysisId={analysis.id} separate disabled={!!busy} />}
       </section>
     </div>
   )

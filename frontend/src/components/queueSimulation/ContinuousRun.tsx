@@ -1,5 +1,5 @@
 import { headingText } from '../../lib/headingText'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
@@ -116,12 +116,13 @@ function staleNotes(run: ContinuousRunOut, t: (key: string) => string): string[]
 }
 
 /** The run bar for the full-day run: hours, closing rule, status, Run full operation, Advanced (D24, D30). */
-function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
+function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored, compact = false }: {
   analysisId: number
   plan: ContinuousPlan
   compatibility: ContinuousCompatibility
   rule: ClosingPolicy | null
   stored: ContinuousRunOut | null
+  compact?: boolean
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -165,17 +166,20 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
     ? `${clockOfMinutes(view.horizon.start_minute)} - ${clockOfMinutes(view.horizon.end_minute)}`
     : view.compatible ? null : t('results.unavailable')
   const blocking = view.reasons.filter((reason) => reason.code !== 'no_closing_policy')
+  const status = <span className={`badge ${run.isPending ? 'badge-warn' : stored ? 'badge-ok' : 'badge-neutral'}`} role="status" data-testid="continuous-status">
+    {t(run.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
+  </span>
   return (
-    <section className="card run-bar" aria-label={t('continuous.title')}>
+    <section className={compact ? 'run-bar' : 'card run-bar'} aria-label={t('continuous.title')}>
+      {compact && <div className="run-bar-row"><span className="form-hint">{t('simulation.status')}</span>{status}</div>}
+      <div hidden={compact}>
       <div className="title-row"><h2 className="section-title"><span lang="en">{headingText(t, 'continuous.title')}</span> <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2><HelpLink topic="simulation" section="methods" /></div>
       <div className="run-bar-row">
         {hours ? <HoursChip text={t('simulation.operating_hours', { hours })} /> : <span>{t('simulation.operating_hours_unknown')}</span>}
         <ClosingRule analysisId={analysisId} rule={rule} />
       </div>
       <div className="run-bar-row">
-        <span className={`badge ${run.isPending ? 'badge-warn' : stored ? 'badge-ok' : 'badge-neutral'}`} role="status" data-testid="continuous-status">
-          {t(run.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
-        </span>
+        {!compact && status}
         <button type="button" className="btn-primary" onClick={start} disabled={!view.compatible || run.isPending || settingsPending}>
           {run.isPending ? t('common.loading') : t('continuous.run')}
         </button>
@@ -196,6 +200,7 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
         <summary>{t('continuous.preview_what')}</summary>
         <p>{t('continuous.preview_explained')}</p>
       </details>
+      </div>
       {stored && (
         <p className="form-hint">{t('continuous.stored', { repeats: stored.evidence.params.replications, seed: stored.evidence.params.seed })} · {t(`continuous.closing_short_${stored.evidence.params.closing_policy}`)}{stored.evidence.params.service_model === 'recorded' && ` · ${t('continuous.service_recorded_short')}`}</p>
       )}
@@ -206,13 +211,13 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
           <ReasonList reasons={blocking} />
           {blocking.some((reason) => reason.code === 'no_selected_plan') && <Link to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>}
           {blocking.some((reason) => reason.code === 'capacity_or_abandonment' || reason.code === 'capacity_or_abandonment_unknown') && (
-            <button type="button" className="btn-ghost" onClick={() => {
+            <span hidden={compact}><button type="button" className="btn-ghost" onClick={() => {
               setAdvancedOpen(true); setFocusModelOptions((value) => value + 1)
-            }}>{t('setup.incomplete_open')}</button>
+            }}>{t('setup.incomplete_open')}</button></span>
           )}
         </div>
       )}
-      <details className="run-advanced" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+      <div hidden={compact}><details className="run-advanced" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
         <summary>{t('simulation.advanced')}</summary>
         <SimulationModelChoices analysisId={analysisId} disabled={run.isPending} focusRequest={focusModelOptions} onPendingChange={setSettingsPending} />
         <div className="form-row">
@@ -221,7 +226,7 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored }: {
             <input id="continuous-seed" type="number" min={0} step={1} value={seed} onChange={(event) => setSeed(event.target.value)} />
           </div>
         </div>
-      </details>
+      </details></div>
       {error && <div role="alert" className="alert alert-error">{error}</div>}
     </section>
   )
@@ -615,17 +620,18 @@ function ContinuousChecks({ shown }: { shown: ContinuousRunOut | null }) {
 }
 
 /** B4a: the full-day shared-line run (preview) on each Queue simulation page (spec section 6). */
-export function ContinuousSection({ analysisId, run, page }: { analysisId: number; run: ContinuousPlan; page: SimulationPageName }) {
+export function ContinuousSection({ analysisId, run, page, navigation }: { analysisId: number; run: ContinuousPlan; page: SimulationPageName; navigation?: ReactNode }) {
   const { t } = useTranslation()
   const { closing, compatibility, current, suggested } = useContinuous(analysisId)
-  if (closing.isLoading || compatibility.isLoading) return <p className="form-hint">{t('common.loading')}</p>
+  if (closing.isLoading || compatibility.isLoading) return <div className="page-stack continuous-section"><p className="form-hint">{t('common.loading')}</p>{navigation}</div>
   if (!compatibility.data || !closing.data) {
-    return <div role="alert" className="alert alert-error">{requestError(compatibility.error ?? closing.error, t('errors.server'))}</div>
+    return <div className="page-stack continuous-section"><div role="alert" className="alert alert-error">{requestError(compatibility.error ?? closing.error, t('errors.server'))}</div>{navigation}</div>
   }
   const shown = run === 'suggested' ? suggested : current
   return (
     <div className="page-stack continuous-section">
-      <ContinuousRunBar key={`continuous-${run}`} analysisId={analysisId} plan={run} compatibility={compatibility.data} rule={closing.data.closing_policy} stored={shown} />
+      <ContinuousRunBar key={`continuous-${run}`} analysisId={analysisId} plan={run} compatibility={compatibility.data} rule={closing.data.closing_policy} stored={shown} compact={page !== 'results'} />
+      {navigation}
       {page === 'results' && <ContinuousResults analysisId={analysisId} shown={shown} current={current} suggested={suggested} />}
       {page === 'replay' && <ContinuousReplay key={`replay-${shown?.evidence.id}`} analysisId={analysisId} shown={shown} />}
       {page === 'checks' && <ContinuousChecks shown={shown} />}

@@ -63,7 +63,7 @@ beforeEach(() => {
 })
 
 describe('Quick calculator (U9 + B2)', () => {
-  it.each([false, true])('discloses Erlang-A workload for main and neighbors (signed in: %s)', async (signedIn) => {
+  it.each([false, true])('discloses Erlang-A workload for the submitted inputs (signed in: %s)', async (signedIn) => {
     if (signedIn) meMock.mockResolvedValue({ user: { id: 1, email: 'a@b.c', role: 'analyst', active: true, created_at: '2026-01-01T00:00:00Z' } })
     // Unchanged Erlang-A responses for synthetic 20/h, 6/h/counter, theta=1/h.
     const erlang: Record<number, Partial<AnalysisOut>> = {
@@ -91,15 +91,9 @@ describe('Quick calculator (U9 + B2)', () => {
     // focus/toggle behavior belongs to unchanged InfoTip, not this caption repair.
     await user.hover(within(card).getByRole('button', { name: 'About: Queue workload per customer served' }))
     expect(screen.getByRole('tooltip')).toHaveTextContent("This is not an individual customer's average wait.")
-    const lines = within(screen.getByTestId('calculator-meaning')).getAllByRole('listitem')
-    expect(lines).toHaveLength(3)
-    for (const line of lines) {
-      expect(line).toHaveTextContent('queue workload per customer served')
-      expect(line).toHaveTextContent("not an individual customer's average wait")
-      expect(line).not.toHaveTextContent('customers wait about')
-    }
+    expect(screen.queryByTestId('calculator-meaning')).not.toBeInTheDocument()
     const used = signedIn ? runAnalysisMock : runGuestMock
-    expect(used.mock.calls.map(([model, body]) => [model, body.c, body.theta])).toEqual([['erlang_a', 2, 1], ['erlang_a', 1, 1], ['erlang_a', 3, 1]])
+    expect(used.mock.calls.map(([model, body]) => [model, body.c, body.theta])).toEqual([['erlang_a', 2, 1]])
     expect(signedIn ? runGuestMock : runAnalysisMock).not.toHaveBeenCalled()
   })
 
@@ -112,7 +106,8 @@ describe('Quick calculator (U9 + B2)', () => {
     const card = await screen.findByTestId('calculator-wait')
     expect(card).toHaveTextContent('Queue workload bawat naserbisyuhang customer')
     expect(card).toHaveTextContent('40.8599')
-    expect(screen.getByTestId('calculator-meaning')).toHaveTextContent('Hindi ito ang average na oras ng paghihintay ng isang customer.')
+    await user.hover(within(card).getByRole('button'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Hindi ito ang average na oras ng paghihintay ng isang customer.')
   })
 
   it.each(['variable', 'limited'] as const)('keeps the ordinary wait meaning for %s service', async (situation) => {
@@ -132,28 +127,28 @@ describe('Quick calculator (U9 + B2)', () => {
     const card = await screen.findByTestId('calculator-wait')
     expect(card).toHaveTextContent('Average wait in line')
     expect(card).toHaveTextContent(situation === 'variable' ? '7.5 min' : '0 min')
-    expect(screen.getByTestId('calculator-meaning')).not.toHaveTextContent('workload')
   })
 
-  it('lets a guest calculate with c - 1, c and c + 1 from three real calls', async () => {
+  it('uses one guest request and places every value below its label and tooltip', async () => {
     const user = userEvent.setup()
     renderCalculator()
     await fill(user, { "Customer Arriving per hour": '40', "Customer Served per hour (one counter only)": '15', "Current Open Counter": '3' })
     await user.click(screen.getByRole('button', { name: 'Calculate' }))
-    await waitFor(() => expect(runGuestMock).toHaveBeenCalledTimes(3))
-    expect(runGuestMock.mock.calls.map(([model, body]) => [model, body.c])).toEqual([['mmc', 3], ['mmc', 2], ['mmc', 4]])
+    await waitFor(() => expect(runGuestMock).toHaveBeenCalledTimes(1))
+    expect(runGuestMock.mock.calls.map(([model, body]) => [model, body.c])).toEqual([['mmc', 3]])
     expect(runAnalysisMock).not.toHaveBeenCalled()
     expect(await screen.findByTestId('calculator-wait')).toHaveTextContent('9.5701 min')
     expect(screen.getByTestId('calculator-busy')).toHaveTextContent('88.8889%')
     expect(screen.getByTestId('calculator-waiting')).toHaveTextContent('6.3801')
     expect(screen.getByTestId('calculator-keep_up')).toHaveTextContent('Yes')
     expect(screen.getByText('Model: M/M/c')).toBeInTheDocument()
-    const lines = within(screen.getByTestId('calculator-meaning')).getAllByRole('listitem').map((item) => item.textContent)
-    expect(lines).toEqual([
-      'With 3 counter(s), customers wait about 9.5701 minutes in line on average, and counters are busy 88.8889% of the time.',
-      'With 2 counter(s): cannot keep up — the line keeps growing.',
-      'With 4 counter(s), customers wait about 1.1353 minutes in line on average, and counters are busy 66.6667% of the time.',
-    ])
+    for (const id of ['wait', 'busy', 'waiting', 'keep_up']) {
+      const card = screen.getByTestId('calculator-' + id)
+      const label = card.firstElementChild
+      expect(label).toContainElement(within(card).getByRole('button'))
+      expect(label?.nextElementSibling).toBe(card.querySelector('strong'))
+    }
+    expect(screen.queryByTestId('calculator-meaning')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: "Start an Analysis" })).toHaveAttribute('href', '/login?next=%2Fanalyses%2Fnew')
   })
 
@@ -165,7 +160,7 @@ describe('Quick calculator (U9 + B2)', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: "Start an Analysis" })).toHaveAttribute('href', '/analyses/new'))
     await fill(user, { "Customer Arriving per hour": '40', "Customer Served per hour (one counter only)": '15', "Current Open Counter": '3' })
     await user.click(screen.getByRole('button', { name: 'Calculate' }))
-    await waitFor(() => expect(runAnalysisMock).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(runAnalysisMock).toHaveBeenCalledTimes(1))
     expect(runGuestMock).not.toHaveBeenCalled()
   })
 
@@ -175,8 +170,8 @@ describe('Quick calculator (U9 + B2)', () => {
     renderCalculator()
     await fill(user, { "Customer Arriving per hour": '10', "Customer Served per hour (one counter only)": '15', "Current Open Counter": '1' })
     await user.click(screen.getByRole('button', { name: 'Calculate' }))
-    await waitFor(() => expect(runGuestMock).toHaveBeenCalledTimes(2))
-    expect(runGuestMock.mock.calls.map(([model, body]) => [model, body.c])).toEqual([['mm1', 1], ['mmc', 2]])
+    await waitFor(() => expect(runGuestMock).toHaveBeenCalledTimes(1))
+    expect(runGuestMock.mock.calls.map(([model, body]) => [model, body.c])).toEqual([['mm1', 1]])
   })
 
   it('shows no wait when counters cannot keep up', async () => {
@@ -187,8 +182,7 @@ describe('Quick calculator (U9 + B2)', () => {
     await user.click(screen.getByRole('button', { name: 'Calculate' }))
     expect(await screen.findByTestId('calculator-wait')).toHaveTextContent('—')
     expect(screen.getByTestId('calculator-keep_up')).toHaveTextContent('No')
-    expect(within(screen.getByTestId('calculator-meaning')).getAllByRole('listitem')[0])
-      .toHaveTextContent('With 2 counter(s): cannot keep up — the line keeps growing.')
+
   })
 
   it('names missing inputs without calling NovaQ, and shows a refusal from the server', async () => {

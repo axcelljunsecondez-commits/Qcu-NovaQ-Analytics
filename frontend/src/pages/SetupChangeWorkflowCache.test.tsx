@@ -38,7 +38,7 @@ vi.mock('../api/workflow', () => ({
   runSelectedDecision: (...args: unknown[]) => unexpectedCall(...args),
   createWorkflowDecision: (...args: unknown[]) => unexpectedCall(...args),
   selectWorkflowScenario: (...args: unknown[]) => unexpectedCall(...args),
-  getSeparateComparison: (...args: unknown[]) => unexpectedCall(...args),
+  getSeparateComparison: vi.fn(async () => ({ selected_scenario_id: null, plans: [] })),
   getObservedWait: (...args: unknown[]) => unexpectedCall(...args),
 }))
 

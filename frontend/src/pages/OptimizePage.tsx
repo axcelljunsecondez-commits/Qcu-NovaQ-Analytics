@@ -14,6 +14,7 @@ import { optimizeBatch, DEFAULT_OPTIONS, type OptimizeOptions } from '../api/opt
 import { createScenario } from '../api/scenarios'
 import { selectWorkflowScenario } from '../api/workflow'
 import { SupervisorSchedule } from '../components/SupervisorSchedule'
+import { SavedPlanPicker } from '../components/SavedPlanPicker'
 import { currentDatasetId, isForPlanning } from '../lib/datasets'
 import type { DatasetOut, OptimizationOut, SegmentRow } from '../api/types'
 import { NovaQInsights } from '../components/insights/NovaQInsights'
@@ -27,7 +28,7 @@ import { fmt, fmtPctDecimal, messageOf } from '../lib/format'
 import { segmentsOf } from '../lib/queue'
 import { utilizationBand } from '../lib/utilization'
 import { ApiState } from '../components/ui/ApiState'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
 import { HelpLink } from '../components/ui/HelpLink'
 
@@ -173,6 +174,7 @@ export function OptimizePage() {
   const datasetId = pickedDatasetId !== null ? pickedDatasetId
     : defaultDatasetId !== null && planningFiles.some((d: DatasetOut) => d.id === defaultDatasetId) ? String(defaultDatasetId) : ''
   const queryClient = useQueryClient()
+  const selectingPlan = useIsMutating({ mutationKey: ['select-saved-plan', analysisId] }) > 0
   const [options, setOptions] = useState<OptimizeOptions>(DEFAULT_OPTIONS)
   const [multiplier, setMultiplier] = useState('')
   const [snapshot, setSnapshot] = useState<{ signature: string; datasetId: string; segments: SegmentRow[]; options: OptimizeOptions; factor: number; calculatedAt: string } | null>(null)
@@ -251,7 +253,7 @@ export function OptimizePage() {
   }
 
   async function handleSave(use = false) {
-    if (!rows?.length || !snapshot || stale || running || !scenarioName.trim()) {
+    if (!rows?.length || !snapshot || stale || running || selectingPlan || !scenarioName.trim()) {
       return
     }
     setSaving(true)
@@ -309,6 +311,9 @@ export function OptimizePage() {
           <p className="page-caption">{t('optimize.description')}</p>
         </div>
       </div>
+
+      {analysis.data && analysisId !== undefined && planningFiles.some((file) => file.id === defaultDatasetId && file.validation?.ok) &&
+        <SavedPlanPicker key={analysisId} analysisId={analysisId} disabled={saving} />}
 
       {(analysis.data?.analysis.queue_setup.counter_breaks?.length ?? 0) > 0 && (
         <p className="form-hint" data-testid="counter-breaks-note">{t('optimize.counter_breaks_note')}</p>
@@ -699,7 +704,7 @@ export function OptimizePage() {
                 <button
                   type="button"
                   onClick={() => void handleSave(true)}
-                  disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}
+                  disabled={saving || running || selectingPlan || stale || !snapshot || !rows?.length || !scenarioName.trim()}
                 >
                   {t('plans.use_this_plan')}
                 </button>
@@ -707,7 +712,7 @@ export function OptimizePage() {
                   type="button"
                   className="btn-ghost"
                   onClick={() => void handleSave()}
-                  disabled={saving || running || stale || !snapshot || !rows?.length || !scenarioName.trim()}
+                  disabled={saving || running || selectingPlan || stale || !snapshot || !rows?.length || !scenarioName.trim()}
                 >
                   {t('plans.save_without_using')}
                 </button>

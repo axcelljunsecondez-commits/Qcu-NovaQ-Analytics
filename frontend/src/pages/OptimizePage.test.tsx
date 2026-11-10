@@ -48,6 +48,7 @@ vi.mock('../api/scenarios', () => ({
 const selectWorkflowScenarioMock = vi.fn()
 vi.mock('../api/workflow', () => ({
   selectWorkflowScenario: (...args: unknown[]) => selectWorkflowScenarioMock(...args),
+  getWorkflow: vi.fn(async () => ({})),
 }))
 
 vi.mock('../api/analyses', () => ({
@@ -607,7 +608,7 @@ describe('Use this plan (spec §7.6, D4)', () => {
     await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('The plan was saved but not selected: Scenario provenance is not verified.')
-    expect(alert).toHaveTextContent('You can select it in Analysis results.')
+    expect(alert).toHaveTextContent('You can select it in Suggested Plans.')
     expect(createScenarioMock).toHaveBeenCalledTimes(1)
     expect(screen.queryByText('Plan saved and selected. Queue simulation will use this plan.')).not.toBeInTheDocument()
   })

@@ -6,8 +6,7 @@ import { renderWithProviders } from '../../test/test-utils'
 import { PlanChanges } from './PlanChanges'
 import type { SelectedPlan } from './useSelectedPlan'
 
-// The plan section after the chart redesign (spec 2026-10-29 §5.4, §6, OD-5/W17): Switcher,
-// calculated result and cost line stay; the per-period plan table moved into the chart tabs.
+// Results retains the calculated summary. Suggested Plans owns selecting a saved plan.
 
 const dataset: DatasetOut = {
   id: 11, analysis_id: 7, name: 'n', source_filename: 'n.xlsx', source_format: 'xlsx', row_count: 3, created_at: '', normalized: null,
@@ -51,22 +50,22 @@ describe('PlanChanges after the chart redesign', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.getByText('The calculation suggests these counter changes: noon: 2 → 3 counters.')).toBeInTheDocument()
     expect(screen.getByText('Wait (average of the periods): Calculated estimate 11.4 min → Suggested plan, simulated 1.2 min.')).toBeInTheDocument()
-    expect(screen.getByTestId('plan-cost')).toHaveTextContent('Unavailable → ₱1,500.75 per average day (from 14 days of data)')
+    expect(screen.queryByRole('heading', { name: 'What the plan changes' })).not.toBeInTheDocument()
     expect(screen.getByText(/^Total cost: Unavailable → ₱1,500\.75 per average day \(from 14 days of data\)\./)).toBeInTheDocument()
   })
 
   it('separate lines: no label when the total is not the period sum or the basis is not a day basis', () => {
     const { unmount } = renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1400)} dataset={dataset} periodBasis="representative_day" segments={hourly} />)
-    expect(screen.getByTestId('plan-cost')).toHaveTextContent(/→ ₱1,400$/)
+    expect(screen.getByText(/^Total cost: Unavailable → ₱1,400\./)).toBeInTheDocument()
     unmount()
     renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1500.75)} dataset={dataset} periodBasis={undefined} segments={hourly} />)
-    expect(screen.getByTestId('plan-cost')).toHaveTextContent(/→ ₱1,500\.75$/)
+    expect(screen.getByText(/^Total cost: Unavailable → ₱1,500\.75\./)).toBeInTheDocument()
   })
 
   it('separate lines: no label when a Setup segment is not 60 minutes (period costs are hourly rates, K-UC-1)', () => {
     const halfHour: AnalysisSegment[] = [{ ...hourly[0], end_time: '08:30' }, hourly[1]]
     renderWithProviders(<PlanChanges analysisId={7} plan={separatePlan(1500.75)} dataset={dataset} periodBasis="representative_day" segments={halfHour} />)
-    expect(screen.getByTestId('plan-cost')).toHaveTextContent(/→ ₱1,500\.75$/)
+    expect(screen.getByText(/^Total cost: Unavailable → ₱1,500\.75\./)).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/per average day|total for \d+ days/)
   })
 

@@ -453,8 +453,8 @@ describe('Current dataset changes and cached workflow evidence', () => {
     expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
     await waitFor(() => expect(getAnalysisCurrentMock.mock.calls.length).toBeGreaterThan(lookupsBefore))
     await waitFor(() => expect(getAnalysisCurrentMock.mock.results.at(-1)?.type).toBe('return'))
-    // Separate lines: the Current run is one continuous run (K-UC-3), so its button reads Run full operation.
-    expect(screen.getByRole('button', { name: 'Run full operation' })).toBeInTheDocument()
+    // Run controls live on Key Results; Checks keeps only the Current run status.
+    expect(screen.queryByRole('button', { name: 'Run full operation' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Run period by period' })).not.toBeInTheDocument()
     expect(watch.stop()).toEqual([])
   })
@@ -486,11 +486,11 @@ describe('Current dataset changes and cached workflow evidence', () => {
     const user = userEvent.setup()
     renderApp('/results?analysis=7')
     expect(await screen.findByText('Calculated result · not yet checked by simulation')).toBeInTheDocument()
-    expect(screen.getByText('Total cost (counters and waiting) now → with the plan:')).toBeInTheDocument()
+    expect(screen.getByText(/^Total cost:/)).toBeInTheDocument()
 
     await uploadOnSetup(user, 12)
     const release = holdScenarioRequests()
-    const watch = watchForText(['Calculated result · not yet checked by simulation', 'Total cost (counters and waiting) now'])
+    const watch = watchForText(['Calculated result · not yet checked by simulation', 'Total cost:'])
     const requestsBefore = listScenariosMock.mock.calls.length
     await user.click(screen.getByRole('link', { name: 'Open Results' }))
     expect(watch.seen()).toEqual([])

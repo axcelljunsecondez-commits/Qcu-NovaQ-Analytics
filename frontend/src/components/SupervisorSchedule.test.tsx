@@ -9,11 +9,11 @@ import { OptimizePage } from '../pages/OptimizePage'
 import type { SupervisorPreview } from '../api/optimization'
 
 const mocks = vi.hoisted(() => ({ preview: vi.fn(), apply: vi.fn(), analysis: vi.fn(),
-  files: vi.fn(), save: vi.fn(), select: vi.fn() }))
+  files: vi.fn(), save: vi.fn(), select: vi.fn(), comparison: vi.fn() }))
 vi.mock('../api/analyses', () => ({ getAnalysis: mocks.analysis }))
 vi.mock('../api/datasets', () => ({ listDatasets: mocks.files, getDataset: vi.fn() }))
 vi.mock('../api/scenarios', () => ({ createScenario: mocks.save }))
-vi.mock('../api/workflow', () => ({ selectWorkflowScenario: mocks.select }))
+vi.mock('../api/workflow', () => ({ selectWorkflowScenario: mocks.select, getSeparateComparison: mocks.comparison }))
 vi.mock('../api/optimization', async importOriginal => ({
   ...await importOriginal<typeof import('../api/optimization')>(),
   previewSupervisorSchedule: mocks.preview, applySupervisorSchedule: mocks.apply,
@@ -72,6 +72,7 @@ beforeEach(() => {
   mocks.preview.mockImplementation(async (_id, request) => preview(request.allow_break_changes))
   mocks.save.mockResolvedValue({ scenario: { id: 9 } })
   mocks.select.mockResolvedValue({})
+  mocks.comparison.mockResolvedValue({ selected_scenario_id: null, plans: [] })
   mocks.apply.mockImplementation(async () => {
     const updated = { ...analysis, queue_setup: { ...setup, breaks: [{ ...setup.breaks[0], scheduled_start_time: '11:00:00' }] } }
     mocks.analysis.mockResolvedValue({ analysis: updated })
@@ -204,9 +205,51 @@ describe('supervisor schedule workflow', () => {
     expect(mocks.preview).toHaveBeenCalledWith(7, expect.objectContaining({ allow_break_changes: true, max_shift_minutes: 120 }))
     expect(screen.getByText(/No clear change in wait/)).toBeVisible()
     expect(screen.getByRole('table', { name: 'Break Changes to Review' })).toHaveTextContent('11:00')
+    expect(screen.queryByText('Break check details')).not.toBeInTheDocument()
+    expect(screen.queryByText('Schedule and calculation details')).not.toBeInTheDocument()
     await confirm(user)
+    expect(screen.getByText('Target utilization · 70%')).toBeVisible()
+    expect(screen.getByText('a · 10:00 → 11:00 · 30 min')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeDisabled()
     expect(mocks.apply).not.toHaveBeenCalled()
+  })
+  it.each([4, 5])('shows at most four break moves per page with %s moves', async (count) => {
+    const value = preview(true)
+    const move = value.breaks!.moves[0]
+    value.breaks!.moves = Array.from({ length: count }, (_, index) => ({ ...move, queue_id: `lane-${index + 1}` }))
+    mocks.preview.mockResolvedValue(value)
+    render()
+    const user = await run(true)
+    const table = screen.getByRole('table', { name: 'Break Changes to Review' })
+    expect(within(table).getAllByRole('rowheader')).toHaveLength(4)
+    if (count === 4) {
+      expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument()
+    } else {
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      expect(within(table).getAllByRole('rowheader')).toHaveLength(1)
+      expect(within(table).getByRole('rowheader', { name: /lane-5/ })).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+      await user.click(screen.getByRole('button', { name: 'Previous' }))
+      expect(within(table).getAllByRole('rowheader')).toHaveLength(4)
+    }
+  })
+  it('offers a plan saved without selection in Confirm and uses it for simulation on request', async () => {
+    mocks.comparison.mockImplementation(async () => ({
+      selected_scenario_id: mocks.select.mock.calls.length ? 9 : null,
+      plans: mocks.save.mock.calls.length ? [{ scenario_id: 9, name: 'Schedule at 70%', valid: true, stale: false }] : [],
+    }))
+    render()
+    const user = await run()
+    await confirm(user)
+    await user.click(screen.getByRole('button', { name: 'Save without using' }))
+    const picker = await screen.findByRole('combobox', { name: 'Plan' })
+    expect(mocks.select).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
+    await user.selectOptions(picker, '9')
+    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+    await waitFor(() => expect(mocks.select).toHaveBeenCalledWith(7, 9))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument())
   })
   it('Back and Escape return to Review, restore focus and never apply', async () => {
     render(); const user = await run(true)
@@ -315,13 +358,16 @@ describe('supervisor schedule workflow', () => {
     await screen.findByRole('alert')
     expect(mocks.preview).not.toHaveBeenCalled()
   })
-  it('keeps missing metrics unavailable and shows flagged near-target evidence', async () => {
+  it('keeps missing cost and near-target diagnostics out of the compact review and confirmation', async () => {
     const value = preview(false)
     value.schedule.periods[0].optimum = { ...value.schedule.periods[0].optimum!, near_target_noise: true, total_cost: null }
     mocks.preview.mockResolvedValue(value)
     render(); const user = await run()
-    await user.click(screen.getByText('Schedule and calculation details'))
-    expect(screen.getByText(/within simulation noise/)).toBeVisible()
-    expect(within(screen.getAllByRole('table')[0]).getByText('—')).toBeInTheDocument()
+    expect(screen.queryByText('Schedule and calculation details')).not.toBeInTheDocument()
+    await confirm(user)
+    const confirmation = screen.getByRole('tabpanel', { name: 'Confirm' })
+    expect(confirmation).toHaveTextContent('Target utilization · 70%')
+    expect(confirmation).not.toHaveTextContent(/₱0|within simulation noise/)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 })
