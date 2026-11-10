@@ -1,5 +1,4 @@
 import { http } from '../lib/http'
-import { downloadReport } from './reports'
 import type { AnalysisCurrentOut, AnalysisProjectOut, DatasetOut, DatasetPreviewOut, DatasetPurpose, QueueSetup, SharedAggregateApplyIn, SharedAggregateApplyOut, SharedAggregatePreviewOut } from './types'
 
 export interface AnalysisInput {
@@ -76,11 +75,6 @@ export async function applySharedAggregateDataset(id: number, file: File, metada
   body.append('metadata', JSON.stringify(metadata))
   const { data } = await http.post<SharedAggregateApplyOut>(`/analyses/${id}/datasets/shared-aggregate/apply`, body, { params: { purpose: 'planning' } })
   return data
-}
-
-export async function downloadSetupWorkbook(id: number): Promise<void> {
-  const res = await http.get(`/analyses/${id}/setup/workbook`, { responseType: 'blob' })
-  downloadReport(res.data as Blob, `novaq_setup_${id}.xlsx`)
 }
 
 // B3: datasetId reads any processed file of the analysis (read-only); omitted, the planning file.

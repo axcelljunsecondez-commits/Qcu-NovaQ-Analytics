@@ -57,13 +57,6 @@ export function requestFor(situation: Situation, inputs: CalculatorInputs, count
   return body
 }
 
-/** One fewer and one more counter, when that is a valid input: never 0 counters, never more counters than places. */
-export function neighbourCounters(situation: Situation, inputs: CalculatorInputs): { fewer: number | null; more: number | null } {
-  const fewer = inputs.c - 1 >= 1 ? inputs.c - 1 : null
-  const limit = situation === 'limited' ? inputs.capacity ?? inputs.c : Number.POSITIVE_INFINITY
-  return { fewer, more: inputs.c + 1 <= limit ? inputs.c + 1 : null }
-}
-
 export type KeepUp = 'yes' | 'no' | 'not_calculated'
 
 export interface CalculatorSummary {

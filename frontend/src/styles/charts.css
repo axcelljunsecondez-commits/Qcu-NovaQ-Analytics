@@ -29,10 +29,6 @@
 .cv-readout p { margin: 0; overflow-wrap: anywhere; }
 .cv-readout .cv-readout-title { font-weight: 700; color: var(--color-text-primary); }
 
-/* Results tabs: the app's .tabs/.tab pattern with 44 px targets */
-.cv-tabs .tab { min-height: 44px; }
-.cv-tab-panel:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
-
 /* Row chart (SVG) */
 .cv-chart-wrap { min-width: 0; }
 .cv-chart { position: relative; width: 100%; min-width: 0; border-radius: 8px; }
@@ -73,16 +69,6 @@
 .cv-day-chart { display: block; width: 100%; height: auto; overflow: visible; }
 .cv-day-chart .cv-line { fill: none; stroke: var(--color-data-optimized); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .cv-day-chart .cv-close { stroke: var(--color-text-secondary); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
-
-/* Busy Level ribbon: colours come from the existing busy-* level classes */
-.cv-ribbon { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 4px; }
-/* Every button is display: inline-flex (global.css), which laid time, level and % side by side and pushed
-   them past the cell at 375 px; stack the three lines as in the mockup. */
-.cv-ribbon button { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 64px; border: 2px solid transparent; border-radius: 8px; padding: 6px 4px; text-align: center; cursor: pointer; line-height: 1.25; }
-.cv-ribbon button .cv-t, .cv-ribbon button .cv-l { display: block; font-size: 12px; font-weight: 700; }
-.cv-ribbon button .cv-v { display: block; font-size: 12px; font-variant-numeric: tabular-nums; }
-.cv-ribbon button[aria-pressed='true'] { border-color: var(--color-text-primary); }
-.cv-detail { margin-top: 10px; }
 
 /* Longest Single Line matrix */
 .cv-matrix { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
