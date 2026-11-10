@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { Route, Routes, useLocation } from 'react-router-dom'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useQuery } from '@tanstack/react-query'
@@ -38,6 +38,20 @@ const createContinuousRunMock = vi.fn()
 const listContinuousRunsMock = vi.fn()
 const getContinuousRunMock = vi.fn()
 const getContinuousPlaybackMock = vi.fn()
+const dialogDescriptors = new Map<string, PropertyDescriptor | undefined>()
+
+beforeAll(() => {
+  // Explicit JSDOM stand-ins; browser focus containment is checked separately.
+  for (const key of ['showModal', 'close']) dialogDescriptors.set(key, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, key))
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.setAttribute('open', '') } })
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value(this: HTMLDialogElement) { this.removeAttribute('open') } })
+})
+afterAll(() => {
+  for (const [key, descriptor] of dialogDescriptors) {
+    if (descriptor) Object.defineProperty(HTMLDialogElement.prototype, key, descriptor)
+    else Reflect.deleteProperty(HTMLDialogElement.prototype, key)
+  }
+})
 
 vi.mock('../api/workflow', () => ({
   getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
@@ -224,7 +238,8 @@ function renderLegacyComponents(path = '/simulation/results?analysis=7') {
 
 function Where() {
   const location = useLocation()
-  return <output data-testid="where">{location.pathname}{location.search}</output>
+  const navigation = useNavigationType()
+  return <output data-testid="where" data-navigation={navigation}>{location.pathname}{location.search}{location.hash}</output>
 }
 
 function renderPage(path = '/simulation/results?analysis=7', lang: 'en' | 'tl' = 'en') {
@@ -239,6 +254,10 @@ function renderPage(path = '/simulation/results?analysis=7', lang: 'en' | 'tl' =
     </>,
     { route: path, lang },
   )
+}
+
+function expectBefore(first: Element, second: Element) {
+  expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 }
 
 function currentDatasetResponse(datasetId: number) {
@@ -289,23 +308,204 @@ describe('Queue simulation shell (D28)', () => {
     expect(within(pages).getByRole('link', { name: 'Replay' })).toHaveAttribute('href', '/simulation/replay?analysis=7&plan=current')
   })
 
-  it('renders the named view for ?mode=named without a plan or workflow request', async () => {
+  it('opens the standard Current view for a retired named link without a selected plan', async () => {
     getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
     renderPage('/simulation/results?analysis=7&mode=named')
-    expect(await screen.findByTestId('named-view')).toBeInTheDocument()
-    expect(getWorkflowMock).not.toHaveBeenCalled()
+    expect(await screen.findByRole('region', { name: en['continuous.title'] })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: en['simulation.run_current'] })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByTestId('named-view')).not.toBeInTheDocument()
+    expect(getWorkflowMock).toHaveBeenCalledWith(7)
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
   })
 
-  it('switches between the legacy and named modes through the address', async () => {
-    const user = userEvent.setup()
-    renderPage()
-    await user.click(await screen.findByRole('radio', { name: /named/i }))
-    expect(screen.getByTestId('where')).toHaveTextContent('mode=named')
-    expect(await screen.findByTestId('named-view')).toBeInTheDocument()
+  it.each((['en', 'tl'] as const).flatMap((lang) => (['results', 'replay', 'checks'] as const)
+    .flatMap((page) => (['named', 'legacy'] as const).map((mode) => ({ lang, page, mode })))))
+  ('opens the standard $page view for retired $mode links in $lang without writing evidence', async ({ lang, page, mode }) => {
+    const text = lang === 'en' ? en : tl
+    const saved = workflow()
+    const savedIdentity = JSON.stringify(saved)
+    getWorkflowMock.mockResolvedValue(saved)
+    renderPage(`/simulation/${page}?analysis=7&plan=suggested&t=08%3A30&date=2026-09-08&from=email&from=bookmark&mode=${mode}#saved-run`, lang)
+    const bar = await screen.findByRole('region', { name: text['continuous.title'] })
+    expect(screen.getByRole('navigation', { name: text['simulation.pages_label'] })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: text['simulation.run_suggested'] })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('where')).toHaveTextContent(`/simulation/${page}?analysis=7&plan=suggested&t=08%3A30&date=2026-09-08&from=email&from=bookmark#saved-run`)
+    expect(screen.getByTestId('where')).toHaveAttribute('data-navigation', 'REPLACE')
+    expect(screen.queryByTestId('named-view')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: text['simulation.named_mode_label'] })).not.toBeInTheDocument()
+    expect(screen.queryByText(text['simulation.named_mode_named'])).not.toBeInTheDocument()
+    expect(screen.queryByText(text['simulation.named_mode_legacy'])).not.toBeInTheDocument()
+    expect(within(bar).queryByRole('button', { name: text['continuous.run'] })).toBe(page === 'results' ? within(bar).getByRole('button', { name: text['continuous.run'] }) : null)
+    expect(getWorkflowMock).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(saved)).toBe(savedIdentity)
+    for (const request of [createContinuousRunMock, runDesMock, runDesCurrentMock, runSelectedDesMock, runMcMock, runMcCurrentMock,
+      runSelectedMcMock, runValidationMock, runValidationCurrentMock, runSelectedValidationMock, createDecisionMock, runSelectedDecisionMock,
+      patchAnalysisMock, putClosingPolicyMock, optimizeSpy]) expect(request).not.toHaveBeenCalled()
   })
 })
 
 describe('shared full-day-only screen', () => {
+  it.each(['results', 'replay', 'checks'] as const)('keeps one shared run panel above tabs and %s content', async (page) => {
+    listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
+      setup_matches_current: true, dataset_is_current: true, plan_is_selected: true }] })
+    getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested'))
+    renderPage(`/simulation/${page}?analysis=7&plan=suggested`)
+    const bar = await screen.findByRole('region', { name: en['continuous.title'] })
+    const tabs = screen.getByRole('navigation', { name: en['simulation.pages_label'] })
+    expect(screen.getAllByRole('region', { name: en['continuous.title'] })).toHaveLength(1)
+    expectBefore(screen.getByText('Selected Plan: Plan A (id 3)'), bar)
+    expectBefore(bar, tabs)
+    expect(within(bar).getAllByTestId('continuous-status')).toHaveLength(1)
+    await waitFor(() => expect(within(bar).getByTestId('continuous-status')).toHaveTextContent(en['simulation.status_done']))
+    if (page === 'results') {
+      expect(within(bar).getByRole('button', { name: 'Run full operation' })).toBeVisible()
+      expect(within(bar).getByText(en['simulation.advanced'])).toBeVisible()
+    } else {
+      expect(bar).not.toHaveClass('card')
+      expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+      expect(within(bar).queryAllByRole('spinbutton')).toHaveLength(0)
+      expect(within(bar).queryAllByRole('radio')).toHaveLength(0)
+      expect(within(bar).getByText(en['simulation.advanced'])).not.toBeVisible()
+    }
+    const content = page === 'results' ? await screen.findByRole('group', { name: en['continuous.key_results'] })
+      : page === 'replay' ? await screen.findByRole('region', { name: 'Live queue floor' })
+        : await screen.findByRole('region', { name: en['continuous.checks_title'] })
+    expectBefore(tabs, content)
+  })
+
+  it.each(['results', 'replay', 'checks'])('retains %s navigation while shared compatibility is loading', async (page) => {
+    getCompatibilityMock.mockImplementation(() => new Promise(() => {}))
+    renderPage(`/simulation/${page}?analysis=7`)
+    const tabs = await screen.findByRole('navigation', { name: en['simulation.pages_label'] })
+    expect(within(tabs).getAllByRole('link')).toHaveLength(3)
+    expectBefore(screen.getByText(en['common.loading']), tabs)
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['results', 'replay', 'checks'])('retains %s navigation when shared compatibility fails', async (page) => {
+    getCompatibilityMock.mockRejectedValue(new Error('Synthetic compatibility unavailable.'))
+    renderPage(`/simulation/${page}?analysis=7`)
+    const failure = await screen.findByRole('alert')
+    const tabs = screen.getByRole('navigation', { name: en['simulation.pages_label'] })
+    expectBefore(failure, tabs)
+    expect(within(tabs).getAllByRole('link')).toHaveLength(3)
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+  })
+
+  it('preserves the focused tab when shared compatibility finishes loading', async () => {
+    let finish!: (value: ReturnType<typeof compatibility>) => void
+    getCompatibilityMock.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    renderPage('/simulation/results?analysis=7')
+    const tabs = await screen.findByRole('navigation', { name: en['simulation.pages_label'] })
+    const link = within(tabs).getByRole('link', { name: 'Replay' })
+    act(() => link.focus())
+    await act(async () => { finish(compatibility()) })
+    await screen.findByRole('region', { name: en['continuous.title'] })
+    expect(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).toBe(tabs)
+    expect(link).toHaveFocus()
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['results', 'replay', 'checks'])('retains %s tabs with missing-plan guidance and no run controls', async (page) => {
+    getWorkflowMock.mockResolvedValue(workflow({ scenario: null, selection: null }))
+    renderPage(`/simulation/${page}?analysis=7&plan=suggested&t=08%3A30`)
+    const tabs = await screen.findByRole('navigation', { name: en['simulation.pages_label'] })
+    expect(within(tabs).getAllByRole('link')).toHaveLength(3)
+    expect(screen.getByText(en['simulation.select_scenario_first'], { exact: false })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run full operation' })).not.toBeInTheDocument()
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps shared tab parameters and saved evidence without creating runs or checks', async () => {
+    const user = userEvent.setup()
+    const saved = workflow({ des: job('workflow_des', trace) })
+    const savedIdentity = JSON.stringify(saved)
+    getWorkflowMock.mockResolvedValue(saved)
+    listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
+      setup_matches_current: true, dataset_is_current: true, plan_is_selected: true }] })
+    getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested'))
+    renderPage('/simulation/results?analysis=7&plan=suggested&t=08%3A30&date=2026-09-08&mode=legacy')
+    for (const name of ['Replay', 'Checks and Decisions']) {
+      const tabs = await screen.findByRole('navigation', { name: en['simulation.pages_label'] })
+      const link = within(tabs).getByRole('link', { name })
+      expect(link.getAttribute('href')).toContain('analysis=7&plan=suggested&t=08%3A30&date=2026-09-08')
+      expect(link.getAttribute('href')).not.toContain('mode=')
+      await user.click(link)
+      expect(screen.getByTestId('where')).toHaveTextContent('analysis=7&plan=suggested&t=08%3A30&date=2026-09-08')
+      expect(screen.getByTestId('where')).not.toHaveTextContent('mode=')
+    }
+    expect(JSON.stringify(saved)).toBe(savedIdentity)
+    for (const request of [createContinuousRunMock, runDesMock, runDesCurrentMock, runSelectedDesMock, runMcMock, runSelectedMcMock,
+      runValidationMock, runSelectedValidationMock, createDecisionMock, runSelectedDecisionMock]) expect(request).not.toHaveBeenCalled()
+  })
+
+  it('keeps a shared seed draft and open settings across Results, Replay and Results', async () => {
+    const user = userEvent.setup()
+    createContinuousRunMock.mockResolvedValue(continuousRun(21, 'suggested'))
+    renderPage('/simulation/results?analysis=7')
+    let bar = await screen.findByRole('region', { name: en['continuous.title'] })
+    await user.click(within(bar).getByText(en['simulation.advanced']))
+    const seed = within(bar).getByRole('spinbutton', { name: en['continuous.seed'] })
+    await user.clear(seed)
+    await user.type(seed, '123')
+    await user.click(within(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).getByRole('link', { name: 'Replay' }))
+    bar = screen.getByRole('region', { name: en['continuous.title'] })
+    expect(within(bar).queryByRole('spinbutton', { name: en['continuous.seed'] })).not.toBeInTheDocument()
+    expect(createContinuousRunMock).not.toHaveBeenCalled()
+    await user.click(within(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).getByRole('link', { name: 'Key Results' }))
+    bar = screen.getByRole('region', { name: en['continuous.title'] })
+    expect(within(bar).getByRole('spinbutton', { name: en['continuous.seed'] })).toHaveValue(123)
+    await user.click(within(bar).getByRole('button', { name: 'Run full operation' }))
+    await waitFor(() => expect(createContinuousRunMock).toHaveBeenCalledWith(7, { plan: 'suggested', replications: 5, seed: 123 }))
+  })
+
+  it('keeps a shared pending run and its failure visible after navigating to compact Replay', async () => {
+    const user = userEvent.setup()
+    let refuse!: (reason: unknown) => void
+    createContinuousRunMock.mockImplementationOnce(() => new Promise((_resolve, reject) => { refuse = reject }))
+    renderPage('/simulation/results?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    await user.click(within(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).getByRole('link', { name: 'Replay' }))
+    const bar = screen.getByRole('region', { name: en['continuous.title'] })
+    expect(within(bar).getByTestId('continuous-status')).toHaveTextContent(en['simulation.status_running'])
+    expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+    await act(async () => { refuse(Object.assign(new Error('409'), { response: { data: { detail: 'Synthetic run refused.' } } })) })
+    expect(await within(bar).findByRole('alert')).toHaveTextContent('Synthetic run refused.')
+    expect(createContinuousRunMock).toHaveBeenCalledTimes(1)
+    expect(createContinuousRunMock).toHaveBeenCalledWith(7, { plan: 'suggested', replications: 5, seed: 42 })
+  })
+
+  it.each(['replay', 'checks'])('shows shared Not run in compact %s without full controls', async (page) => {
+    renderPage(`/simulation/${page}?analysis=7`)
+    const bar = await screen.findByRole('region', { name: en['continuous.title'] })
+    expect(within(bar).getByTestId('continuous-status')).toHaveTextContent(en['simulation.status_not_run'])
+    expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it.each(['replay', 'checks'])('keeps every shared stale warning visible with Done in compact %s', async (page) => {
+    listContinuousRunsMock.mockResolvedValue({ runs: [{ id: 31, plan: 'suggested', replications: 5, seed: 42, closing_policy: 'DRAIN',
+      setup_matches_current: false, dataset_is_current: false, plan_is_selected: false }] })
+    getContinuousRunMock.mockResolvedValue(continuousRun(31, 'suggested', { extra: { setup_matches_current: false, dataset_is_current: false, plan_is_selected: false } }))
+    renderPage(`/simulation/${page}?analysis=7`)
+    const bar = await screen.findByRole('region', { name: en['continuous.title'] })
+    await waitFor(() => expect(within(bar).getByTestId('continuous-status')).toHaveTextContent(en['simulation.status_done']))
+    for (const key of ['continuous.stale_setup', 'continuous.stale_data', 'continuous.stale_plan'] as const) expect(within(bar).getByText(en[key])).toBeVisible()
+    expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it.each(['replay', 'checks'])('keeps shared capability warnings without model editors on compact %s', async (page) => {
+    getCompatibilityMock.mockResolvedValue(compatibility({ plans: {
+      current: { ...compatiblePlan, compatible: false, reasons: [{ code: 'capacity_or_abandonment_unknown' }] },
+      suggested: { ...compatiblePlan, compatible: false, reasons: [{ code: 'capacity_or_abandonment_unknown' }] },
+    } }))
+    renderPage(`/simulation/${page}?analysis=7`)
+    const refusal = await screen.findByTestId('continuous-refusal')
+    expect(refusal).toBeVisible()
+    expect(within(refusal).queryByRole('button', { name: en['setup.incomplete_open'] })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: en['continuous.title'] })).queryAllByRole('radio')).toHaveLength(0)
+    expect(patchAnalysisMock).not.toHaveBeenCalled()
+  })
+
   it.each(['results', 'replay', 'checks'])('removes the older shared panel on %s without requesting legacy DES', async (page) => {
     renderPage(`/simulation/${page}?analysis=7`)
     await screen.findByRole('region', { name: 'Full-day run' })
@@ -427,7 +627,11 @@ describe('shared selection/checks and legacy renderer contracts', () => {
     expect(runValidationMock).toHaveBeenCalledWith(7, { des_sim_hours: 24, mc_trials: 10000, mc_failure_threshold: 0.75, mc_failure_rate_cap: 0.05, seed: null })
     expect(runValidationMock.mock.invocationCallOrder[0]).toBeLessThan(createDecisionMock.mock.invocationCallOrder[0])
     expect(runMcMock).not.toHaveBeenCalled()
-    expect(await screen.findByText(/Consider Plan A conditionally/)).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Conditional' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Consider Plan A conditionally.')
+    expect(runValidationMock).toHaveBeenCalledTimes(1)
+    expect(createDecisionMock).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Close' }))
     // U10 F5: the plain answer to the spec's question, from the stored status.
     expect(screen.getByRole('heading', { name: 'Should we use this plan?' })).toBeInTheDocument()
     expect(screen.getByTestId('decision-plain')).toHaveTextContent('The plan passed every check, but it costs more than today.')
@@ -567,6 +771,8 @@ describe('shared selection/checks and legacy renderer contracts', () => {
     expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Change the plan first. It did not hold up in: 08:00-09:00')
     expect(screen.getByTestId('decision-basis')).toHaveTextContent(
       'This Decision uses full-day run 31 (5 repeated days, closing rule: Finish serving customers already waiting) and Many variations.')
+    expect(screen.getByTestId('validation-failure')).toHaveTextContent('08:00-09:00 — Simulated workload exceeded the plan target of 85%.')
+    await user.click(screen.getByRole('button', { name: 'Revise' }))
     const rows = within(screen.getByTestId('full-day-periods')).getAllByRole('row').slice(1)
     expect(rows.map((row) => row.textContent)).toEqual(['08:00-09:0091%85%1%Did not pass', '09:00-10:0060%85%2%Passed'])
   })
@@ -582,10 +788,106 @@ describe('shared selection/checks and legacy renderer contracts', () => {
     expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 09:00-10:00')
   })
 
-  it('says a stored shared Decision is out of date', async () => {
-    getWorkflowMock.mockResolvedValue(workflow({ decision: job('workflow_decision', { status: 'adopt' }), decision_stale: true }))
+  it.each([false, true])('says a shared Decision is out of date even when its stale job is stripped: %s', async (stripped) => {
+    getWorkflowMock.mockResolvedValue(workflow({ decision: stripped ? null : job('workflow_decision', { status: 'adopt' }), decision_stale: true }))
     renderPage('/simulation/checks?analysis=7')
     expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Out of date. Your data or setup changed after this check.')
+    expect(screen.queryByRole('button', { name: 'Adopt' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check the plan' })).toHaveClass('btn-primary')
+  })
+
+  it('keeps the authoritative stale warning alongside a later request error with no stored job', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow({ decision: null, decision_stale: true }))
+    runValidationMock.mockRejectedValueOnce(Object.assign(new Error('409'), { response: { data: { detail: 'The saved inputs changed.' } } }))
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The saved inputs changed.')
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent('Out of date.')
+    expect(screen.queryByRole('button', { name: 'Adopt' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Conditional' })).not.toBeInTheDocument()
+    expect(createDecisionMock).not.toHaveBeenCalled()
+  })
+
+  const savedSharedDecision = {
+    status: 'conditional', headline: 'Saved synthetic headline.', recommendation: 'Stored synthetic recommendation.',
+    rationale: ['Stored synthetic rationale.'], missing_evidence: [], scenario_id: 3, scenario_name: 'Plan A',
+    dataset_id: 2, evidence_ids: {}, provenance_warning: '',
+  }
+
+  it.each(['adopt', 'conditional', 'revise', 'insufficient_evidence'] as const)('opens the stored shared %s explanation without any request', async (status) => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow({ decision: job('workflow_decision', { ...savedSharedDecision, status }) }))
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByRole('button', { name: en[`decision.status.${status}`] })
+    const reads = getWorkflowMock.mock.calls.length
+    expect(outcome).toHaveClass('btn-primary')
+    expect(screen.getByRole('button', { name: 'Check the plan' })).toHaveClass('btn-secondary')
+    expect(screen.queryByRole('link', { name: en['simulation.open_decision'] })).not.toBeInTheDocument()
+    await user.click(outcome)
+    const dialog = screen.getByRole('dialog', { name: en['decision.plain.details'] })
+    expect(dialog).toHaveTextContent(savedSharedDecision.headline)
+    expect(dialog).toHaveTextContent(savedSharedDecision.recommendation)
+    expect(dialog).toHaveTextContent(savedSharedDecision.rationale[0])
+    expect(getWorkflowMock).toHaveBeenCalledTimes(reads)
+    for (const request of [runMcMock, runValidationMock, createDecisionMock, runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock]) expect(request).not.toHaveBeenCalled()
+  })
+
+  it('reruns a saved shared outcome once and suppresses it after the first request fails', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow({ decision: job('workflow_decision', savedSharedDecision) }))
+    let refuse!: (reason: unknown) => void
+    runValidationMock.mockImplementationOnce(() => new Promise((_resolve, reject) => { refuse = reject }))
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByRole('button', { name: 'Conditional' })
+    await user.click(screen.getByRole('button', { name: 'Check the plan' }))
+    expect(outcome).toBeDisabled()
+    expect(screen.getByRole('button', { name: en['common.loading'] })).toBeDisabled()
+    await act(async () => { refuse(Object.assign(new Error('409'), { response: { data: { detail: 'Saved checks changed.' } } })) })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Saved checks changed.')
+    expect(screen.queryByRole('button', { name: 'Conditional' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('decision-plain')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check the plan' })).toHaveClass('btn-primary')
+    expect(runValidationMock).toHaveBeenCalledTimes(1)
+    expect(createDecisionMock).not.toHaveBeenCalled()
+  })
+
+  it('reruns one legacy check chain from an existing saved outcome', async () => {
+    const user = userEvent.setup()
+    getWorkflowMock.mockResolvedValue(workflow({ decision: job('workflow_decision', savedSharedDecision) }))
+    renderPage('/simulation/checks?analysis=7')
+    await screen.findByRole('button', { name: 'Conditional' })
+    await user.click(screen.getByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(createDecisionMock).toHaveBeenCalledTimes(1))
+    expect(runValidationMock).toHaveBeenCalledTimes(1)
+    expect(runValidationMock.mock.invocationCallOrder[0]).toBeLessThan(createDecisionMock.mock.invocationCallOrder[0])
+    expect(runMcMock).not.toHaveBeenCalled()
+  })
+
+  it('honors a later stale response instead of reusing a locally returned shared outcome', async () => {
+    const user = userEvent.setup()
+    const { queryClient } = renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Conditional' })).toBeEnabled())
+    const stale = workflow({ decision: job('workflow_decision', savedSharedDecision), decision_stale: true })
+    getWorkflowMock.mockResolvedValue(stale)
+    act(() => queryClient.setQueryData(['workflow', 7], stale))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Conditional' })).not.toBeInTheDocument())
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent('Out of date.')
+  })
+
+  it('keeps an unpersisted response plain and inline without calling it a saved outcome', async () => {
+    const user = userEvent.setup()
+    createDecisionMock.mockResolvedValueOnce({ decision: { ...savedSharedDecision, status: 'insufficient_evidence' }, persisted: false })
+    renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    await screen.findByTestId('decision-plain')
+    expect(screen.queryByRole('button', { name: 'Insufficient evidence' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check the plan' })).toHaveClass('btn-primary')
+    const disclosure = screen.getByText(en['decision.plain.details']).closest('details')!
+    await user.click(within(disclosure).getByText(en['decision.plain.details']))
+    expect(disclosure).toHaveTextContent(savedSharedDecision.rationale[0])
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('keeps a stored validation verdict bound to its saved cap when next-run settings change', async () => {
@@ -601,6 +903,64 @@ describe('shared selection/checks and legacy renderer contracts', () => {
     await user.type(cap, '0.001')
     expect(screen.getByText('Simulation validation passed.')).toBeInTheDocument()
     expect(screen.getByText(/Run settings changed/)).toBeInTheDocument()
+  })
+
+  it('explains a failed legacy Results check below the evidence using the saved limit', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({
+      validation: job('workflow_validation', { results: [{ ...validationRow, sim_status: 'Normal', mc_failure_rate: 0.09 }] },
+        { mc_failure_rate_cap: 0.05 }),
+    }))
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByTestId('validation-failure')
+    expect(outcome).toHaveTextContent('Validation: FAIL')
+    expect(outcome).toHaveTextContent('The simulated failure rate exceeded the saved limit of 5%.')
+    const card = outcome.closest('details')!
+    expectBefore(within(card).getByRole('region', { hidden: true }), outcome)
+  })
+
+  // K-SAI-2 (owner 2026-11-10): the Decision counts a period without enough evidence as failed, so the check says FAIL.
+  it('shows FAIL with not enough evidence when the saved check has inadequate Monte Carlo evidence', async () => {
+    getWorkflowMock.mockResolvedValue(workflow({
+      validation: job('workflow_validation', { results: [{ ...validationRow, sim_status: 'Normal', mc_failure_rate: 0.09, mc_failure_rate_adequate: false }] },
+        { mc_failure_rate_cap: 0.05 }),
+    }))
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByTestId('validation-failure')
+    expect(outcome).toHaveTextContent(en['simulation.sep_validation_fail'])
+    expect(within(outcome).getAllByRole('listitem').map((item) => item.textContent))
+      .toEqual([`08:00-09:00 — ${en['decision.status.insufficient_evidence']}`])
+    expect(screen.queryByText(en['simulation.sep_validation_insufficient'])).not.toBeInTheDocument()
+  })
+
+  it('lists as FAIL exactly the periods the saved Decision counted as failed', async () => {
+    // One row per workflow.py row_passes condition; only the first passes there.
+    const rows = [
+      { ...validationRow, time: '08:00-09:00' },
+      { ...validationRow, time: '09:00-10:00', mc_failure_rate_adequate: false },
+      { ...validationRow, time: '10:00-11:00', sim_status: 'ERROR' },
+      { ...validationRow, time: '11:00-12:00', simulation_supported: false, validation_reason: 'Synthetic unsupported period.' },
+      { ...validationRow, time: '12:00-13:00', mc_failure_rate: 0.09 },
+      { ...validationRow, time: '13:00-14:00', sim_status: 'Critical' },
+      { ...validationRow, time: '14:00-15:00', mc_failure_rate: null },
+    ]
+    const decision = { ...savedSharedDecision, status: 'revise', facts: { validation_intervals: 7, failed_intervals: 6, failure_rate_cap: 0.05 } }
+    getWorkflowMock.mockResolvedValue(workflow({
+      validation: job('workflow_validation', { results: rows }, { mc_failure_rate_cap: 0.05 }),
+      decision: job('workflow_decision', decision),
+    }))
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByTestId('validation-failure')
+    const items = within(outcome).getAllByRole('listitem').map((item) => item.textContent)
+    expect(items).toHaveLength(decision.facts.failed_intervals)
+    const enough = en['decision.status.insufficient_evidence']
+    expect(items).toEqual([
+      `09:00-10:00 — ${enough}`,
+      `10:00-11:00 — ${enough}`,
+      `11:00-12:00 — ${enough}: Synthetic unsupported period.`,
+      '12:00-13:00 — The simulated failure rate exceeded the saved limit of 5%.',
+      `13:00-14:00 — ${en['simulation.failure_workload'].replace('{{level}}', en['results.level.critical'])}`,
+      `14:00-15:00 — ${enough}`,
+    ])
   })
 
   it('blocks invalid failure-rate settings before execution', async () => {
@@ -705,6 +1065,24 @@ describe('Current runs', () => {
     const bar = await screen.findByRole('region', { name: en['simulation.run_bar'] })
     expect(await within(bar).findByRole('button', { name: 'Run full operation' })).toBeInTheDocument()
     expect(within(bar).queryByText(en['simulation.closing_rule_separate'])).not.toBeInTheDocument()
+  })
+
+  it('keeps a separate unsupported-run reason visible in compact Replay without creating new evidence', async () => {
+    const user = userEvent.setup()
+    runDesCurrentMock.mockResolvedValueOnce({ evidence: job('workflow_des_current', {
+      ...trace, results: [{ ...desRow, simulation_supported: false, status: 'ERROR', error: 'Synthetic unsupported model.' }],
+    }, { scenario_id: null }) })
+    renderPage('/simulation/results?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    await screen.findByTestId('run-capability-errors')
+    await user.click(within(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).getByRole('link', { name: 'Replay' }))
+    const bar = screen.getByRole('region', { name: en['simulation.run_bar'] })
+    expect(within(bar).getByTestId('run-capability-errors')).toBeVisible()
+    expect(within(bar).getByTestId('run-capability-errors')).toHaveTextContent('Synthetic unsupported model.')
+    expect(within(bar).getByTestId('run-status')).toHaveTextContent(en['simulation.status_not_run'])
+    expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+    expect(runDesCurrentMock).toHaveBeenCalledTimes(1)
+    expect(runDesCurrentMock).toHaveBeenCalledWith(7, { sim_hours: 24, queue_overload_threshold: 20, max_events: 3000, seed: null, carryover: true })
   })
 
   it('names the dataset Current would run on when no Current run exists', async () => {
@@ -835,6 +1213,92 @@ describe('a selected separate-lines plan', () => {
     getWorkflowMock.mockResolvedValue(workflow({ scenario: v2scenario, selection: job('workflow_selection', { scenario_id: 9 }), ...overrides }))
   }
 
+  it.each(['results', 'replay', 'checks'] as const)('keeps selected-plan text and one separate run panel above tabs and %s content', async (page) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    renderPage(`/simulation/${page}?analysis=7&plan=suggested`)
+    const bar = await screen.findByRole('region', { name: en['simulation.run_bar'] })
+    const tabs = screen.getByRole('navigation', { name: en['simulation.pages_label'] })
+    expect(screen.getAllByRole('region', { name: en['simulation.run_bar'] })).toHaveLength(1)
+    expectBefore(screen.getByText('Selected Plan: Optimal @ 70% (id 9)'), bar)
+    expectBefore(bar, tabs)
+    expect(within(bar).getAllByTestId('run-status')).toHaveLength(1)
+    expect(within(bar).getByTestId('run-status')).toHaveTextContent(en['simulation.status_done'])
+    if (page === 'results') {
+      expect(within(bar).getByRole('button', { name: 'Run full operation' })).toBeVisible()
+      expect(within(bar).getByText(en['simulation.advanced'])).toBeVisible()
+    } else {
+      expect(bar).not.toHaveClass('card')
+      expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+      expect(within(bar).queryAllByRole('spinbutton')).toHaveLength(0)
+      expect(within(bar).getByText(en['simulation.advanced'])).not.toBeVisible()
+    }
+    const content = page === 'results' ? await screen.findByRole('region', { name: 'Customer Served' })
+      : page === 'replay' ? await screen.findByTestId('replay-period')
+        : await screen.findByRole('heading', { name: 'Should we use this plan?' })
+    expectBefore(tabs, content)
+  })
+
+  it('navigates separate tabs without rerunning or mutating selected-plan checks', async () => {
+    const user = userEvent.setup()
+    const saved = { des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', mcResult, { scenario_id: 9 }),
+      validation: job('workflow_validation', validationResult, { scenario_id: 9 }), decision: job('workflow_decision', decision, { scenario_id: 9 }) }
+    const savedIdentity = JSON.stringify(saved)
+    selected(saved)
+    renderPage('/simulation/results?analysis=7&plan=suggested&t=08%3A30&date=2026-09-08')
+    for (const name of ['Replay', 'Checks and Decisions']) {
+      const tabs = await screen.findByRole('navigation', { name: en['simulation.pages_label'] })
+      await user.click(within(tabs).getByRole('link', { name }))
+      expect(screen.getByTestId('where')).toHaveTextContent('analysis=7&plan=suggested&t=08%3A30&date=2026-09-08')
+    }
+    expect(JSON.stringify(saved)).toBe(savedIdentity)
+    for (const request of [runSelectedDesMock, runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock, createContinuousRunMock]) expect(request).not.toHaveBeenCalled()
+  })
+
+  it('keeps the separate seed draft across Results, Replay and Results without rerunning', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    runSelectedDesMock.mockResolvedValue({ evidence: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    renderPage('/simulation/results?analysis=7')
+    let bar = await screen.findByRole('region', { name: en['simulation.run_bar'] })
+    await user.click(within(bar).getByText(en['simulation.advanced']))
+    const seed = within(bar).getByRole('spinbutton', { name: en['simulation.seed'] })
+    await user.clear(seed)
+    await user.type(seed, '77')
+    await user.click(within(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).getByRole('link', { name: 'Replay' }))
+    expect(within(screen.getByRole('region', { name: en['simulation.run_bar'] })).queryAllByRole('spinbutton')).toHaveLength(0)
+    expect(runSelectedDesMock).not.toHaveBeenCalled()
+    await user.click(within(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).getByRole('link', { name: 'Key Results' }))
+    bar = screen.getByRole('region', { name: en['simulation.run_bar'] })
+    expect(within(bar).getByRole('spinbutton', { name: en['simulation.seed'] })).toHaveValue(77)
+    await user.click(within(bar).getByRole('button', { name: 'Run full operation' }))
+    await waitFor(() => expect(runSelectedDesMock).toHaveBeenCalledWith(7, { seed: 77 }))
+  })
+
+  it('keeps separate Running status and request error visible on compact Replay', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    let refuse!: (reason: unknown) => void
+    runSelectedDesMock.mockImplementationOnce(() => new Promise((_resolve, reject) => { refuse = reject }))
+    renderPage('/simulation/results?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Run full operation' }))
+    await user.click(within(screen.getByRole('navigation', { name: en['simulation.pages_label'] })).getByRole('link', { name: 'Replay' }))
+    const bar = screen.getByRole('region', { name: en['simulation.run_bar'] })
+    expect(within(bar).getByTestId('run-status')).toHaveTextContent(en['simulation.status_running'])
+    expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+    await act(async () => { refuse(Object.assign(new Error('409'), { response: { data: { detail: 'Synthetic selected run refused.' } } })) })
+    expect(await within(bar).findByRole('alert')).toHaveTextContent('Synthetic selected run refused.')
+    expect(runSelectedDesMock).toHaveBeenCalledTimes(1)
+    expect(runSelectedDesMock).toHaveBeenCalledWith(7, { seed: 42 })
+  })
+
+  it.each(['replay', 'checks'])('retains separate Not run context on compact %s', async (page) => {
+    selected()
+    renderPage(`/simulation/${page}?analysis=7`)
+    const bar = await screen.findByRole('region', { name: en['simulation.run_bar'] })
+    expect(within(bar).getByTestId('run-status')).toHaveTextContent(en['simulation.status_not_run'])
+    expect(within(bar).queryAllByRole('button')).toHaveLength(0)
+  })
+
   it('names the plan and runs it once with the default seed', async () => {
     const user = userEvent.setup()
     selected()
@@ -956,8 +1420,18 @@ describe('a selected separate-lines plan', () => {
     expect(screen.getByTestId('selected-decision-scope').closest('details')).toBeNull()
     expect(screen.getByTestId('selected-decision-scope')).toHaveTextContent('Load estimate uncertainty: Not checked.')
     // U10 F15: the evidence row says what the numbers count.
+    const outcome = screen.getByRole('button', { name: 'Conditional' })
+    expect(outcome).toHaveClass('btn-primary')
+    expect(screen.getByRole('button', { name: 'Check the plan' })).toHaveClass('btn-secondary')
+    await user.click(outcome)
+    expect(screen.getByRole('dialog', { name: en['decision.plain.details'] })).toHaveTextContent(decision.rationale[0])
     expect(screen.getByRole('row', { name: /Checks that did not pass/ })).toHaveTextContent('0 of 1')
-    expect(screen.getByRole('link', { name: 'Continue to Reports' })).toHaveAttribute('href', '/reports?analysis=7')
+    expect(runSelectedMcMock).toHaveBeenCalledTimes(1)
+    expect(runSelectedValidationMock).toHaveBeenCalledTimes(1)
+    expect(runSelectedDecisionMock).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('link', { name: 'Continue to Reports' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run decision' })).not.toBeInTheDocument()
     // Each period's lane table scrolls in its own box, so a phone never scrolls the page sideways.
     expect(screen.getByRole('region', { name: 'Period evidence · 08:00' })).toContainElement(screen.getByRole('rowheader', { name: 'east-07' }))
   })
@@ -973,12 +1447,12 @@ describe('a selected separate-lines plan', () => {
     expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
 
-  it('needs a run before the checks, and validation before the decision', async () => {
+  it('needs a run before the check chain and removes the duplicate decision action', async () => {
     selected()
     renderPage('/simulation/checks?analysis=7')
     expect(await screen.findByRole('button', { name: 'Check the plan' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Run validation' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Run decision' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Run decision' })).not.toBeInTheDocument()
   })
 
   it('warns and sends the threshold when it is set below the plan target', async () => {
@@ -1002,8 +1476,88 @@ describe('a selected separate-lines plan', () => {
     renderPage('/simulation/checks?analysis=7')
     expect(await screen.findByText('Decision: REVISE')).toBeInTheDocument()
     expect(screen.getByTestId('decision-plain')).toHaveTextContent('This saved run did not pass in 10:00. Review the plan and estimated loads.')
-    expect(screen.getByRole('link', { name: 'Return to Suggested plans' })).toHaveAttribute('href', '/analyses/7/plans')
+    expect(screen.queryByRole('link', { name: 'Return to Suggested plans' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Revise' })).toHaveClass('btn-primary')
     expect(runSelectedDecisionMock).not.toHaveBeenCalled()
+  })
+
+  it('opens a stored separate outcome without rerunning checks and retains the scope warning outside', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: job('workflow_decision', decision, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByRole('button', { name: 'Conditional' })
+    const reads = getWorkflowMock.mock.calls.length
+    await user.click(outcome)
+    const dialog = screen.getByRole('dialog', { name: en['decision.plain.details'] })
+    expect(dialog).toHaveTextContent(decision.rationale[0])
+    expect(within(dialog).getByRole('row', { name: /Checks that did not pass/ })).toHaveTextContent('0 of 1')
+    expect(dialog).toHaveTextContent(en['decision.plain.selected_scope_details'])
+    expect(screen.getByTestId('selected-decision-scope').closest('dialog')).toBeNull()
+    expect(getWorkflowMock).toHaveBeenCalledTimes(reads)
+    for (const request of [runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock]) expect(request).not.toHaveBeenCalled()
+  })
+
+  it('uses an English dialog heading and approved Filipino controls and explanation', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: job('workflow_decision', decision, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7', 'tl')
+    await user.click(await screen.findByRole('button', { name: tl['decision.status.conditional'] }))
+    const dialog = screen.getByRole('dialog', { name: en['decision.plain.details'] })
+    expect(within(dialog).getByRole('heading', { name: en['decision.plain.details'] })).toHaveAttribute('lang', 'en')
+    expect(dialog).toHaveTextContent(tl['decision.plain.selected_scope_details'])
+    expect(within(dialog).getByRole('button', { name: tl['tutorials.close'] })).toHaveFocus()
+    expect(runSelectedDecisionMock).not.toHaveBeenCalled()
+  })
+
+  it.each([null, 'unrecognized_outcome'])('keeps details and a primary check without inventing an outcome for %s', async (status) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: job('workflow_decision', { ...decision, status }, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    const check = await screen.findByRole('button', { name: 'Check the plan' })
+    expect(check).toHaveClass('btn-primary')
+    for (const name of ['Conditional', 'Adopt', 'Revise', 'Insufficient evidence']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    expect(screen.getByText(en['decision.plain.details']).closest('details')).toHaveTextContent(decision.rationale[0])
+    expect(screen.queryByText('Decision: CONDITIONAL')).not.toBeInTheDocument()
+  })
+
+  it('reruns one separate check chain from an existing saved outcome', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: job('workflow_decision', decision, { scenario_id: 9 }) })
+    runSelectedMcMock.mockResolvedValue({ evidence: job('workflow_mc', mcResult, { scenario_id: 9 }) })
+    runSelectedValidationMock.mockResolvedValue({ evidence: job('workflow_validation', validationResult, { scenario_id: 9 }) })
+    runSelectedDecisionMock.mockResolvedValue({ decision, persisted: true, evidence: job('workflow_decision', decision, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    await screen.findByRole('button', { name: 'Conditional' })
+    await user.click(screen.getByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(runSelectedDecisionMock).toHaveBeenCalledTimes(1))
+    for (const request of [runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock]) expect(request).toHaveBeenCalledTimes(1)
+    const order = [runSelectedMcMock, runSelectedValidationMock, runSelectedDecisionMock].map((request) => request.mock.invocationCallOrder[0])
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+  })
+
+  it.each([false, true])('removes a separate stale outcome when its stored job is stripped: %s', async (stripped) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: stripped ? null : job('workflow_decision', decision, { scenario_id: 9 }), decision_stale: true })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Out of date.')
+    expect(screen.queryByRole('button', { name: 'Conditional' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check the plan' })).toHaveClass('btn-primary')
+  })
+
+  it('discards local separate outcome state when a new plan is selected', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
+    runSelectedMcMock.mockResolvedValue({ evidence: job('workflow_mc', mcResult, { scenario_id: 9 }) })
+    runSelectedValidationMock.mockResolvedValue({ evidence: job('workflow_validation', validationResult, { scenario_id: 9 }) })
+    runSelectedDecisionMock.mockResolvedValue({ decision, persisted: true, evidence: job('workflow_decision', decision, { scenario_id: 9 }) })
+    const { queryClient } = renderPage('/simulation/checks?analysis=7')
+    await user.click(await screen.findByRole('button', { name: 'Check the plan' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Conditional' })).toBeEnabled())
+    const nextPlan = workflow({ scenario: { ...v2scenario, id: 10, name: 'A new synthetic plan' } })
+    getWorkflowMock.mockResolvedValue(nextPlan)
+    act(() => queryClient.setQueryData(['workflow', 7], nextPlan))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Conditional' })).not.toBeInTheDocument())
+    expect(screen.queryByTestId('decision-plain')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check the plan' })).toBeDisabled()
+    expect(runSelectedDecisionMock).toHaveBeenCalledTimes(1)
   })
 
   it('shows the operating hours as a 24-hour chip, in English and Tagalog (A6)', async () => {
@@ -1132,13 +1686,13 @@ describe('the continuous full-day run (B4a preview)', () => {
   })
 
   it.each(['capacity_or_abandonment', 'capacity_or_abandonment_unknown'])(
-    'opens local Advanced settings for %s without enabling the run', async (code) => {
+    'opens local Advanced settings on Key Results for %s without enabling the run', async (code) => {
       getAnalysisMock.mockResolvedValue(setupOf('shared_queue', { capacity_mode: 'unknown', abandonment_mode: 'unknown' }))
       getCompatibilityMock.mockResolvedValue(compatibility({
         plans: { current: { ...compatiblePlan, horizon: null, compatible: false, reasons: [{ code }] },
           suggested: { ...compatiblePlan, horizon: null, compatible: false, reasons: [{ code }] } },
       }))
-      renderPage('/simulation/replay?analysis=7')
+      renderPage('/simulation/results?analysis=7')
       const refusal = await screen.findByTestId('continuous-refusal')
       await userEvent.setup().click(within(refusal).getByRole('button', { name: 'Open Advanced settings' }))
       const capacity = screen.getByRole('radio', { name: 'No known limit' })

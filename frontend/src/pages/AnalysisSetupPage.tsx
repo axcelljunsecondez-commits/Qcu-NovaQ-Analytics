@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { applySharedAggregateDataset, downloadSetupWorkbook, getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, previewAnalysisDataset, previewSharedAggregateDataset, uploadAnalysisDataset } from '../api/analyses'
+import { applySharedAggregateDataset, getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, previewAnalysisDataset, previewSharedAggregateDataset, uploadAnalysisDataset } from '../api/analyses'
 import { getClosingPolicy, putClosingPolicy } from '../api/continuous'
 import type { DatasetPreviewOut, DatasetPurpose, EventPeriodBasis, QueueSetup, SharedAggregatePreviewOut } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
@@ -18,7 +18,6 @@ import { missingSetupFields } from '../lib/setupStatus'
 import { MakePeriodsHelper } from '../components/setup/MakePeriodsHelper'
 import { ManualEntry } from '../components/setup/ManualEntry'
 import { HelpLink } from '../components/ui/HelpLink'
-import { FileReadSummary } from '../components/setup/FileReadSummary'
 import { MissingChoices, type ClosingChoice } from '../components/setup/MissingChoices'
 import { deferredSharedChoices, sharedChoicesComplete } from '../lib/sharedAggregateSetup'
 import { focusAfterCancel } from '../lib/focusAfterCancel'
@@ -89,8 +88,14 @@ function AnalysisSetupForId({ id }: { id: number }) {
   const datasets = useQuery({ queryKey: ['datasets', id], queryFn: () => listAnalysisDatasets(id) })
   // B10: results follow the current planning dataset, not the newest upload.
   const currentId = currentDatasetId(datasets.data?.datasets)
+  const [pendingPlanningId, setPendingPlanningId] = useState<number | null>(null)
+  const planningUploadListed = datasets.data?.datasets.some((dataset) => dataset.id === pendingPlanningId)
+  useEffect(() => {
+    if (planningUploadListed) setPendingPlanningId(null)
+  }, [planningUploadListed])
+  const modelDatasetId = planningUploadListed ? currentId : pendingPlanningId ?? currentId
   const aggregatePlanning = datasets.data?.datasets.find((dataset) => dataset.id === currentId)?.validation?.schema === 'aggregate'
-  const current = useQuery({ queryKey: ['current', id, currentId], queryFn: () => getAnalysisCurrent(id), enabled: currentId !== null, retry: false })
+  const current = useQuery({ queryKey: ['current', id, modelDatasetId], queryFn: () => getAnalysisCurrent(id), enabled: modelDatasetId !== null, retry: false })
   const [setup, setSetup] = useState<QueueSetup>(emptySetup)
   const [file, setFile] = useState<File | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -175,6 +180,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
         return
       }
       setNotice(data.dataset.validation.message)
+      if (data.dataset.validation.ok) setPendingPlanningId(data.dataset.id)
       void client.invalidateQueries({ queryKey: ['datasets', id] })
       void client.invalidateQueries({ queryKey: ['current', id] })
       // The new dataset is now current: drop cached workflow evidence so a page never shows the
@@ -191,7 +197,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
   const confirmTitle = useRef<HTMLElement>(null)
   const primaryApply = useRef<HTMLButtonElement>(null)
   const appliedAlert = useRef<HTMLDivElement>(null)
-  const applyCard = useRef<HTMLDivElement>(null)
+  const applyCard = useRef<HTMLElement>(null)
   const returnFocus = useRef(false)
   const focusApplied = useRef(false)
   useEffect(() => {
@@ -304,9 +310,6 @@ function AnalysisSetupForId({ id }: { id: number }) {
       setChecking(false)
     }
   }
-  async function exportWorkbook() {
-    try { await downloadSetupWorkbook(id) } catch (error) { setNoticeIsError(true); setNotice(messageOf(error, t('errors.server'))) }
-  }
   async function saveFileClosing() {
     if (closingSaving || !closingState.current.ready || closingState.current.policy !== null || (closing !== 'DRAIN' && closing !== 'HARD_CUTOFF')) return
     setClosingSaving(true); setClosingError(null)
@@ -330,6 +333,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
       })
       // The server has committed both records; refresh only this analysis's dependent evidence.
       appliedFile.current = selected
+      setPendingPlanningId(result.dataset.id)
       client.setQueryData(['analysis', id], { analysis: result.analysis })
       void client.invalidateQueries({ queryKey: ['datasets', id] })
       void client.invalidateQueries({ queryKey: ['current', id] })
@@ -364,23 +368,45 @@ function AnalysisSetupForId({ id }: { id: number }) {
       }
     } finally { applyLock.current = false; setApplying(false) }
   }
-  const savedIsSeparate = analysis.data.analysis.queue_setup.queue_structure === 'separate_queues'
   const savedIsShared = analysis.data.analysis.queue_setup.queue_structure === 'shared_queue'
-  const read = preview?.derived_setup ?? null
+  const modelEvidence = current.data?.dataset?.id === modelDatasetId ? current.data : undefined
+  const selectedModel = modelEvidence?.selected_model
+  const modelReasons = new Map<string, { model: string; reason: string }>()
+  for (const item of modelEvidence?.explanations ?? []) {
+    const reason = item.selection_reason.trim()
+    if (reason) modelReasons.set(JSON.stringify([item.selected_model, reason]), { model: item.selected_model, reason })
+  }
   // U10 F4/F10: name what the saved Setup still needs, and open the field that sets it.
   const savedMissing = analysis.data.analysis.setup_status === 'incomplete' ? missingSetupFields(normalizeSetup(analysis.data.analysis.queue_setup)) : []
   const bannerMissing = savedMissing.filter((item) => !(savedIsShared && currentId === null && item.field === 'fixed_server_count'))
   const firstMissingInput = savedMissing.find((item) => item.inputId !== null)?.inputId ?? null
-  function sharedDiffValue(field: string, value: unknown, side: QueueSetup): string {
-    if (field === 'fixed_server_count' && value === null && side.staffing_varies_by_period) return t('analyses.staffing_varies')
+  function setupDiffValue(field: string, value: unknown, side: QueueSetup | null): string {
+    if (field === 'fixed_server_count' && value === null && side?.staffing_varies_by_period) return t('analyses.staffing_varies')
     if (value === null || value === undefined) return t('results.unavailable')
     if (typeof value === 'boolean') return t(value ? 'guided.yes' : 'guided.no')
-    if (field === 'segments' && Array.isArray(value)) return `${t('analyses.upload_read_segments', { count: value.length })}${value.length ? ` · ${value.map((entry: QueueSetup['segments'][number]) => `${entry.start_time.slice(0, 5)}–${entry.end_time.slice(0, 5)}`).join(', ')}` : ''}`
-    if ((field === 'breaks' || field === 'counter_breaks') && Array.isArray(value)) return value.length ? value.map((entry: { start_time?: string; scheduled_start_time?: string; duration_minutes?: number }) => `${(entry.start_time ?? entry.scheduled_start_time ?? '').slice(0, 5)} · ${t('analyses.break_minutes', { minutes: entry.duration_minutes })}`).join(', ') : t('analyses.upload_read_no_breaks')
+    if (field === 'segments' && Array.isArray(value)) {
+      const segments = value.map((entry: QueueSetup['segments'][number]) => {
+        const times = entry.start_time.slice(0, 5) + '–' + entry.end_time.slice(0, 5)
+        return entry.active_queue_ids?.length ? times + ' · ' + entry.active_queue_ids.join(', ') : times
+      })
+      const count = t('analyses.upload_read_segments', { count: segments.length })
+      return segments.length ? count + ' · ' + segments.join(', ') : count
+    }
+    if ((field === 'breaks' || field === 'counter_breaks') && Array.isArray(value)) {
+      if (value.length === 0) return t('analyses.upload_read_no_breaks')
+      return value.map((entry: {
+        queue_id?: string; break_name?: string | null; start_time?: string; scheduled_start_time?: string; duration_minutes?: number
+      }) => [
+        entry.queue_id,
+        entry.break_name,
+        (entry.start_time ?? entry.scheduled_start_time ?? '').slice(0, 5),
+        t('analyses.break_minutes', { minutes: entry.duration_minutes }),
+      ].filter(Boolean).join(' · ')).join(', ')
+    }
     if (field === 'queue_structure') return t(structureDisplayKey(value as QueueSetup['queue_structure']))
     if (field === 'capacity_mode' || field === 'abandonment_mode') return t(`analyses.${String(value)}`)
     if (field === 'event_period_basis') return t(`analyses.period_basis_${String(value)}`)
-    if (Array.isArray(value)) return value.join(', ')
+    if (Array.isArray(value)) return value.length ? value.join(', ') : '—'
     return String(value)
   }
   function openField(inputId: string) {
@@ -420,7 +446,6 @@ function AnalysisSetupForId({ id }: { id: number }) {
       <ol className="setup-steps">
         {!savedIsShared && <li className="setup-step">
           <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_template')}</h2>
-          <p className="page-caption">{t('setup.step_template_help')}</p>
           {setup.queue_structure === 'shared_queue' || setup.queue_structure === 'separate_queues'
             ? <SetupDataTemplates queueStructure={setup.queue_structure} />
             : <p className="form-hint">{t('setup.step_template_needs_structure')}</p>}
@@ -460,42 +485,39 @@ function AnalysisSetupForId({ id }: { id: number }) {
               <div className="alert alert-warn" role="status">
                 <strong id="workbook-confirm-title" ref={workbookConfirmTitle} tabIndex={-1}>{t('analyses.upload_confirm_title')}</strong>
                 <p>{t('analyses.upload_confirm_help')}</p>
-                <ul>{preview.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}</li>)}</ul>
+                <ul>{preview.diff.map((change) => (
+                  <li key={change.field}>
+                    <strong>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}</strong>{': '}
+                    {setupDiffValue(change.field, change.saved, preview.saved_setup)} → {setupDiffValue(change.field, change.derived, preview.derived_setup)}
+                  </li>
+                ))}</ul>
                 <button type="button" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) { focusUploadNotice.current = true; upload.mutate({ selected: file, applySetup: true }) } }}>{t('analyses.upload_confirm')}</button>
                 <button type="button" className="btn-ghost" onClick={() => { workbookReturnFocus.current = true; setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
               </div>
             )}
           </div>
         </li>
-        {(aggregate?.facts || preview || current.data || (datasets.data?.datasets.length ?? 0) > 0 || !savedIsShared) && <li className="setup-step">
-          <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_review')}</h2>
-          {aggregate?.mode === 'shared_aggregate' && aggregate.facts && aggregate.derived_setup && (
-            <FileReadSummary facts={aggregate.facts} derived={aggregate.derived_setup} analysisName={analysis.data.analysis.name} />
-          )}
-          {preview && read && (
-            <section className="card" aria-label={t('analyses.upload_read_title')}>
-              <h3 lang="en" className="card-title">{headingText(t, 'analyses.upload_read_title')}</h3>
-              <dl>
-                <dt>{t('analyses.upload_read_queues')}</dt>
-                <dd>{read.queue_ids.join(', ')}</dd>
-                <dt>{t('analyses.upload_read_shifts')}</dt>
-                <dd>{preview.staff.length > 0 ? <ul>{preview.staff.map((row) => <li key={row.queue_id}>{`${row.queue_id}: ${row.shift_start}–${row.shift_end}`}</li>)}</ul> : t('analyses.upload_read_no_staff')}</dd>
-                <dt>{t('analyses.upload_read_segments', { count: read.segments.length })}</dt>
-                <dd><ul>{read.segments.map((segment) => <li key={segment.id ?? segment.start_time}>{`${segment.id}: ${(segment.active_queue_ids ?? read.queue_ids).join(', ')}`}</li>)}</ul></dd>
-                <dt>{t('analyses.upload_read_breaks')}</dt>
-                <dd>{preview.breaks.length > 0 ? <ul>{preview.breaks.map((row) => <li key={row.row}>{`${row.queue_id} · ${row.break_name || t('analyses.break_label', { number: (row.label ?? '').replace(/^Break /, '') })} · ${row.start} · ${t('analyses.break_minutes', { minutes: row.minutes })}`}</li>)}</ul> : t('analyses.upload_read_no_breaks')}</dd>
-                <dt>{t('analyses.period_basis')}</dt>
-                <dd>{t(read.event_period_basis === 'representative_day' ? 'analyses.period_basis_representative_day' : 'analyses.period_basis_per_date')}</dd>
-              </dl>
-            </section>
-          )}
-          {current.data && !aggregate && <div className="card"><h3 lang="en" className="card-title">{headingText(t, 'analyses.why_model')}</h3><p><strong>{current.data.selected_model}</strong></p><details className="collapsible-inline"><summary>{t('filters.show_per_period', { count: current.data.explanations.length })}</summary>{current.data.explanations.map((item, index) => <details key={`${item.time}-${item.queue_id ?? ''}-${index}`}><summary>{item.time}{item.queue_id ? ` · ${item.queue_id}` : ''}: {item.selected_model}</summary><p>{item.selection_reason}</p><h4 lang="en">{headingText(t, 'analyses.operational_facts')}</h4><ul>{item.operational_facts.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4 lang="en">{headingText(t, 'analyses.measured')}</h4><ul>{item.measured_characteristics.map((fact) => <li key={fact}>{fact}</li>)}</ul><h4 lang="en">{headingText(t, 'analyses.assumptions')}</h4><ul>{item.model_assumptions.map((fact) => <li key={fact}>{fact}</li>)}</ul></details>)}</details><Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link></div>}
-          {!current.data && !aggregate && !(preview && read) && (
-            <p className="form-hint">{t(currentId === null && (datasets.data?.datasets.length ?? 0) > 0 ? 'setup.only_review_files' : 'setup.step_review_empty')}</p>
-          )}
-        </li>}
+        {(modelDatasetId !== null || (datasets.data?.datasets.length ?? 0) > 0) && (!aggregate || applied) && (
+          <li className="setup-step">
+            <h2 lang="en" className="setup-step-title">{headingText(t, 'analyses.why_model')}</h2>
+            <div className="card">
+              {selectedModel ? (
+                <>
+                  <p><strong>{selectedModel}</strong></p>
+                  {Array.from(modelReasons, ([key, { model, reason }]) => (
+                    <p key={key}>{model !== selectedModel && <strong>{model} · </strong>}{reason}</p>
+                  ))}
+                  {!applied && <Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link>}
+                </>
+              ) : (
+                <p className="form-hint">{t(modelDatasetId === null ? 'setup.only_review_files' : current.isFetching || datasets.isFetching ? 'common.loading' : 'results.unavailable')}</p>
+              )}
+            </div>
+          </li>
+        )}
         {aggregate?.mode === 'shared_aggregate' && aggregate.derived_setup && <li className="setup-step">
-          <div ref={applyCard} tabIndex={-1} className="card shared-file-apply">
+          <section ref={applyCard} tabIndex={-1} className="card shared-file-apply" aria-label={t('setup.purpose_planning')}>
+            {aggregate.facts && <p className="form-hint">{aggregate.facts.filename} · {aggregate.facts.row_count} {t('datasets.rows')}</p>}
             <MissingChoices closing={closing} onClosingChange={setClosing}
               savedClosing={savedClosing.data?.closing_policy} closingReady={savedClosing.isSuccess} analysisId={id} disabled={applying || applied} />
             {!applied && !sharedChoicesComplete(aggregate, choices) && <Link to={`/simulation/results?analysis=${id}&plan=current&advanced=model`}>{t('setup.incomplete_open')}</Link>}
@@ -505,7 +527,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
             {!applied && !confirmShared && <button ref={primaryApply} type="button" className="btn-primary" disabled={applying || aggregate.conflicts.length > 0 || !sharedChoicesComplete(aggregate, choices)} onClick={() => void applyFile()}>{applying ? t('common.saving') : t('analyses.process')}</button>}
             {confirmShared && !applied && <div className="alert alert-warn" role="status">
               <strong id="shared-confirm-title" ref={confirmTitle} tabIndex={-1}>{t(aggregate.diff.length ? 'analyses.upload_confirm_title' : 'analyses.upload')}</strong><p>{t(aggregate.diff.length ? 'analyses.upload_confirm_help' : 'setup.purpose_planning_help')}</p>
-              <ul>{aggregate.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}: {sharedDiffValue(change.field, change.saved, aggregate.saved_setup)} → {sharedDiffValue(change.field, change.derived, aggregate.derived_setup!)}</li>)}</ul>
+              <ul>{aggregate.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}: {setupDiffValue(change.field, change.saved, aggregate.saved_setup)} → {setupDiffValue(change.field, change.derived, aggregate.derived_setup!)}</li>)}</ul>
               <button type="button" disabled={applying} onClick={() => void applyFile(true)}>{applying ? t('common.saving') : t(aggregate.diff.length ? 'analyses.upload_confirm' : 'analyses.process')}</button>
               <button type="button" className="btn-ghost" disabled={applying} onClick={() => { returnFocus.current = true; setConfirmShared(false) }}>{t('common.cancel')}</button>
             </div>}
@@ -514,10 +536,10 @@ function AnalysisSetupForId({ id }: { id: number }) {
               <Link className="button-link" to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.title')}</Link>
             </div></div>}
             {applied && closingError && <div role="alert" className="alert alert-error"><p>{t('continuous.closing_title')}: {closingError}</p><button type="button" disabled={closingSaving} onClick={() => void saveFileClosing()}>{closingSaving ? t('common.saving') : t('common.save')}</button></div>}
-          </div>
+          </section>
         </li>}
         {savedIsShared && <li className="setup-optional">
-          <details className="setup-manual"><summary>{t('setup.step_template')}</summary><p className="page-caption">{t('setup.step_template_help')}</p><SetupDataTemplates queueStructure="shared_queue" /></details>
+          <details className="setup-manual"><summary>{t('setup.step_template')}</summary><SetupDataTemplates queueStructure="shared_queue" /></details>
           <ManualEntry disabled={purpose === null || upload.isPending || checking || applying} onUpload={(selected) => { setFile(selected); if (purpose !== 'planning') void processFile(selected) }} />
         </li>}
         <li className={savedIsShared ? 'setup-optional' : 'setup-step'}>
@@ -550,13 +572,6 @@ function AnalysisSetupForId({ id }: { id: number }) {
             </form>
           </details>
         </li>
-        {savedIsSeparate && (
-          <li className="setup-step">
-            <h2 lang="en" className="setup-step-title">{headingText(t, 'setup.step_download_setup')}</h2>
-            <button type="button" className="btn-secondary" onClick={() => void exportWorkbook()}>{t('analyses.setup_workbook_download')}</button>
-            <p className="form-hint">{t('analyses.setup_workbook_help')}</p>
-          </li>
-        )}
       </ol>
     </div>
   )

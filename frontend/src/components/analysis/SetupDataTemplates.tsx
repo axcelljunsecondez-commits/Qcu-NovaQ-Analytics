@@ -5,10 +5,10 @@ import { useTranslation } from 'react-i18next'
 import {
   downloadTemplate,
   getTemplateGuide,
-  type TemplateSchema,
   type TemplateStructure,
 } from '../../api/templates'
 import { ApiState } from '../ui/ApiState'
+import { InfoTip } from '../ui/InfoTip'
 
 interface SetupDataTemplatesProps {
   queueStructure: TemplateStructure | 'unknown' | 'single_server'
@@ -16,7 +16,7 @@ interface SetupDataTemplatesProps {
 
 export function SetupDataTemplates({ queueStructure }: SetupDataTemplatesProps) {
   const { t } = useTranslation()
-  const [schema, setSchema] = useState<TemplateSchema>('aggregate')
+  const schema = 'events'
   const [showGuide, setShowGuide] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,26 +46,10 @@ export function SetupDataTemplates({ queueStructure }: SetupDataTemplatesProps) 
 
   return (
     <div className="card" style={{ marginTop: '12px' }}>
-      <h3 lang="en" className="card-title">{headingText(t, 'template.prepare_title')}</h3>
-      <p className="form-hint">{t('template.prepare_help')}</p>
-      <div className="form-row" role="group" aria-label={t('template.schema_label')}>
-        <button
-          type="button"
-          className={schema === 'aggregate' ? 'btn-primary' : 'btn-ghost'}
-          aria-pressed={schema === 'aggregate'}
-          onClick={() => setSchema('aggregate')}
-        >
-          {t('template.schema_aggregate')}
-        </button>
-        <button
-          type="button"
-          className={schema === 'events' ? 'btn-primary' : 'btn-ghost'}
-          aria-pressed={schema === 'events'}
-          onClick={() => setSchema('events')}
-        >
-          {t('template.schema_events')}
-        </button>
-      </div>
+      <h3 className="card-title">
+        <span lang="en">{headingText(t, 'template.schema_events')}</span>{' '}
+        <InfoTip name={t('template.schema_events')} text={t('setup.step_template_help')} />
+      </h3>
       <div className="form-row">
         <button type="button" className="btn-secondary" disabled={downloading} onClick={() => void download('csv')}>
           {t('template.download_csv')}

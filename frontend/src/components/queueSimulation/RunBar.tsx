@@ -10,7 +10,7 @@ import { HoursChip } from '../ui/HoursChip'
 import { breakNoticeKey, currentNoBreaksChip, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** One-row run bar (D30): hours, closing rule, status, Run full operation, Advanced. */
-export function RunBar({ context, run }: { context: SimulationContext; run: RunChoice }) {
+export function RunBar({ context, run, compact = false }: { context: SimulationContext; run: RunChoice; compact?: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { analysisId } = context
@@ -61,6 +61,9 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
     .map((row) => `${String(row.time)}: ${String(row.error)}`))]
   const hoursText = operatingHours(context.analysis.queue_setup)
   const runLabelKey = runBasisKey(context, run) === 'simulation.run_basis_per_period' ? 'simulation.run_period_by_period' : 'simulation.run_full_operation'
+  const status = <span className={`badge ${runMutation.isPending ? 'badge-warn' : stored ? 'badge-ok' : 'badge-neutral'}`} role="status" data-testid="run-status">
+    {t(runMutation.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
+  </span>
 
   function start() {
     if (legacy) {
@@ -76,18 +79,19 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
   }
 
   return (
-    <section className="card run-bar" aria-label={t('simulation.run_bar')}>
+    <section className={compact ? 'run-bar' : 'card run-bar'} aria-label={t('simulation.run_bar')}>
+      {compact && <div className="run-bar-row"><span className="form-hint">{t('simulation.status')}</span>{status}</div>}
+      <div hidden={compact}>
       <div className="run-bar-row">
         {hoursText ? <HoursChip text={t('simulation.operating_hours', { hours: hoursText })} /> : <span>{t('simulation.operating_hours_unknown')}</span>}
         {/* K-UC-12: only the selected-plan separate run drains the lines at closing; the separate Current run and
             legacy separate plans stop at closing (backend simulation.py), so the text would be false there. */}
         {run === 'suggested' && context.selectedSeparate && <span>{t('simulation.closing_rule_separate')}</span>}
-        <span className={`badge ${runMutation.isPending ? 'badge-warn' : stored ? 'badge-ok' : 'badge-neutral'}`} role="status" data-testid="run-status">
-          {t(runMutation.isPending ? 'simulation.status_running' : stored ? 'simulation.status_done' : 'simulation.status_not_run')}
-        </span>
+        {!compact && status}
         <button type="button" className="btn-primary" onClick={start} disabled={!canRun || runMutation.isPending}>
           {runMutation.isPending ? t('common.loading') : t(runLabelKey)}
         </button>
+      </div>
       </div>
       <p className="form-hint">
         {t(runBasisKey(context, run))}
@@ -101,7 +105,7 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
       {run === 'current' && stored === null && lookedUp !== undefined && (
         <p role="status" className="form-hint">{t('simulation.no_current_run', { dataset: lookedUp })}</p>
       )}
-      <details className="run-advanced">
+      <div hidden={compact}><details className="run-advanced">
         <summary>{t('simulation.advanced')}</summary>
         <div className="form-row">
           <div className="form-field">
@@ -129,7 +133,7 @@ export function RunBar({ context, run }: { context: SimulationContext; run: RunC
             </>
           )}
         </div>
-      </details>
+      </details></div>
       {error && <div role="alert" className="alert alert-error">{error}</div>}
       {capabilityErrors.length > 0 && (
         <div role="alert" className="alert alert-warn" data-testid="run-capability-errors">

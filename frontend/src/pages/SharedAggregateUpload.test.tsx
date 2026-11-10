@@ -61,7 +61,7 @@ async function chooseFile() {
   return { user, selected }
 }
 async function waitForRead() {
-  await screen.findByRole('region', { name: "Here's what NovaQ read from your file" })
+  await screen.findByRole('region', { name: 'Use for planning' })
 }
 
 beforeEach(() => {
@@ -82,9 +82,9 @@ describe('shared planning file read and apply', () => {
     renderPage()
     const { selected } = await chooseFile()
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledWith(7, selected))
-    const summary = await screen.findByRole('region', { name: "Here's what NovaQ read from your file" })
-    expect(summary).toHaveTextContent('rates.csv · 2 rows')
-    expect(summary).toHaveTextContent('08:00–10:00')
+    const applyRegion = await screen.findByRole('region', { name: 'Use for planning' })
+    expect(applyRegion).toHaveTextContent('rates.csv · 2 rows')
+    expect(screen.queryByRole('region', { name: "Here's what NovaQ read from your file" })).not.toBeInTheDocument()
     expect(mocks.apply).not.toHaveBeenCalled()
     expect(mocks.upload).not.toHaveBeenCalled()
     expect(screen.queryByTestId('setup-incomplete')).not.toBeInTheDocument()
@@ -108,7 +108,7 @@ describe('shared planning file read and apply', () => {
     expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.saveClosing.mock.invocationCallOrder[0])
     expect(await screen.findByRole('link', { name: 'Full-day run' })).toHaveAttribute('href', '/simulation/results?analysis=7&plan=current')
     expect(screen.getByRole('link', { name: 'View Analysis results' })).toHaveAttribute('href', '/results?analysis=7')
-    expect(screen.getByRole('region', { name: "Here's what NovaQ read from your file" })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Use for planning' })).toBeInTheDocument()
     expect(mocks.apply).toHaveBeenCalledTimes(1)
   })
 
@@ -121,6 +121,26 @@ describe('shared planning file read and apply', () => {
     await waitFor(() => expect(mocks.apply).toHaveBeenCalled())
     expect(mocks.apply.mock.calls[0][2].choices).toMatchObject({ capacity_mode: 'unknown', abandonment_mode: 'unknown' })
     expect(mocks.saveClosing).not.toHaveBeenCalled()
+  })
+
+  it('waits for the replacement calculation before showing its model', async () => {
+    const oldDataset = { ...dataset, id: 10, name: 'Earlier planning data' }
+    const datasetRefresh = deferred<{ datasets: typeof dataset[] }>()
+    const currentRefresh = deferred<{ dataset: typeof dataset; selected_model: string; explanations: [] }>()
+    mocks.datasets.mockResolvedValueOnce({ datasets: [oldDataset] }).mockReturnValue(datasetRefresh.promise)
+    mocks.current.mockResolvedValueOnce({ dataset: oldDataset, selected_model: 'M/M/1', explanations: [] }).mockReturnValue(currentRefresh.promise)
+    renderPage()
+    expect(await screen.findByText('M/M/1')).toBeVisible()
+    const { user } = await chooseFile()
+    await waitForRead()
+    await user.click(screen.getByRole('button', { name: 'Upload and process' }))
+    await screen.findByRole('link', { name: 'Full-day run' })
+    expect(screen.queryByText('M/M/1')).not.toBeInTheDocument()
+    await act(async () => {
+      datasetRefresh.resolve({ datasets: [dataset, { ...oldDataset, is_current: false }] })
+      currentRefresh.resolve({ dataset, selected_model: 'M/M/c', explanations: [] })
+    })
+    expect(await screen.findByText('M/M/c')).toBeVisible()
   })
 
   it('shows replacement confirmation and cancel writes nothing', async () => {
@@ -266,7 +286,7 @@ describe('shared planning file read and apply', () => {
     await user.upload(screen.getByLabelText('Upload Data'), file('new.csv'))
     await waitForRead()
     await act(async () => { old.resolve(preview); await old.promise })
-    expect(screen.getByRole('region', { name: "Here's what NovaQ read from your file" })).toHaveTextContent('new.csv')
+    expect(screen.getByRole('region', { name: 'Use for planning' })).toHaveTextContent('new.csv')
     await user.click(screen.getByRole('button', { name: 'Upload and process' }))
     await waitFor(() => expect(mocks.apply).toHaveBeenCalled())
     expect(mocks.apply.mock.calls[0][2].file_digest).toBe('second')
@@ -279,7 +299,7 @@ describe('shared planning file read and apply', () => {
     const { user } = await chooseFile()
     await user.click(screen.getByRole('radio', { name: /Review only/ }))
     await act(async () => { pending.resolve(preview); await pending.promise })
-    expect(screen.queryByRole('region', { name: "Here's what NovaQ read from your file" })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Use for planning' })).not.toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: 'No known limit' })).not.toBeInTheDocument()
     expect(mocks.apply).not.toHaveBeenCalled()
   })
@@ -294,7 +314,7 @@ describe('shared planning file read and apply', () => {
     await act(async () => { pending.resolve(preview); await pending.promise })
     await screen.findByRole('radio', { name: /Use for planning/ })
     expect(screen.getByLabelText('Upload Data')).toHaveValue('')
-    expect(screen.queryByRole('region', { name: "Here's what NovaQ read from your file" })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Use for planning' })).not.toBeInTheDocument()
     expect(mocks.apply).not.toHaveBeenCalled()
   })
 

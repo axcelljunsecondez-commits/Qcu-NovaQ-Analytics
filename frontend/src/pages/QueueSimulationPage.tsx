@@ -3,12 +3,10 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { TutorialWatch } from '../components/help/TutorialWatch'
-import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { getAnalysis, listAnalyses } from '../api/analyses'
 import { getWorkflow } from '../api/workflow'
 import { ApiState } from '../components/ui/ApiState'
-import { NamedSharedQueueSimulation } from '../components/simulation/NamedSharedQueueSimulation'
-import { SimulationModeSwitch } from '../components/simulation/SimulationModeSwitch'
 import { ChecksView } from '../components/queueSimulation/ChecksView'
 import { ContinuousSection } from '../components/queueSimulation/ContinuousRun'
 import { KeyResultsView } from '../components/queueSimulation/KeyResultsView'
@@ -28,19 +26,25 @@ const PAGES: Array<{ page: SimulationPageName; labelKey: string }> = [
 
 /**
  * Queue simulation (spec 2026-10-09 §7.8, D28): Key results, Replay and Checks and decision as
- * three pages sharing one header and run bar. URL: /simulation/<page>?analysis=&plan=&t=&mode=named
+ * three pages sharing one header and run bar. URL: /simulation/<page>?analysis=&plan=&t=
  */
 export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
   const [params, setParams] = useSearchParams()
   const id = Number(params.get('analysis'))
   const validId = Number.isInteger(id) && id > 0
   const analyses = useQuery({ queryKey: ['analyses'], queryFn: listAnalyses })
   const analysis = useQuery({ queryKey: ['analysis', id], queryFn: () => getAnalysis(id), enabled: validId })
-  const named = analysis.data?.analysis.queue_setup.queue_structure === 'shared_queue' && params.get('mode') === 'named'
-  // Named mode needs no workflow evidence: wait for the analysis to know which mode this is.
-  const workflow = useQuery({ queryKey: ['workflow', id], queryFn: () => getWorkflow(id), enabled: validId && analysis.isSuccess && !named })
+  const workflow = useQuery({ queryKey: ['workflow', id], queryFn: () => getWorkflow(id), enabled: validId && analysis.isSuccess })
+
+  useEffect(() => {
+    if (!params.getAll('mode').some((mode) => mode === 'named' || mode === 'legacy')) return
+    const next = new URLSearchParams(params)
+    next.delete('mode')
+    navigate({ pathname: location.pathname, search: next.toString(), hash: location.hash }, { replace: true })
+  }, [params, location.pathname, location.hash, navigate])
 
   useEffect(() => {
     if (analysis.data) rememberLastAnalysis(analysis.data.analysis.id)
@@ -57,7 +61,6 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     else next.set(key, value)
     setParams(next, { replace: true })
   }
-  const modeSwitch = shared ? <SimulationModeSwitch mode={named ? 'named' : 'legacy'} onChange={(mode) => setParam('mode', mode === 'named' ? 'named' : null)} /> : null
   const analysisOptions = (analyses.data?.analyses ?? []).filter((item) => !item.archived_at || item.id === id)
     .map((item) => ({ id: item.id, name: item.name }))
   if (!(analyses.data?.analyses ?? []).some((item) => item.id === id)) analysisOptions.push({ id, name: analysis.data?.analysis.name ?? String(id) })
@@ -72,12 +75,8 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     </header>
   )
 
-  if (analysis.isLoading || (!named && workflow.isLoading)) return <div className="page-stack">{header}<ApiState.Loading /></div>
+  if (analysis.isLoading || workflow.isLoading) return <div className="page-stack">{header}<ApiState.Loading /></div>
   if (analysis.isError || !analysis.data) return <div className="page-stack">{header}<ApiState.ErrorState error={analysis.error} /></div>
-  if (named) {
-    // Named mode is unchanged (spec §7.8 engine coverage); it needs no plan or workflow evidence.
-    return <div className="page-stack">{header}<NamedSharedQueueSimulation analysisId={id} modeSwitch={modeSwitch} /></div>
-  }
   if (workflow.isError || !workflow.data) return <div className="page-stack">{header}<ApiState.ErrorState error={workflow.error} /></div>
 
   const context = buildContext(id, analysis.data.analysis, workflow.data)
@@ -101,7 +100,7 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
       ))}
     </nav>
   )
-  const top = <>{header}{modeSwitch}{runSwitch}{pageLinks}</>
+  const top = <>{header}{runSwitch}</>
 
   // A plan run needs a selected plan; say why there is none (4f/5e) and where to choose one.
   if (run === 'suggested' && !context.scenario) {
@@ -109,6 +108,7 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
     return (
       <div className="page-stack">
         {top}
+        {pageLinks}
         {unavailable ? (
           <div role="status" className="alert alert-warn" data-testid="selection-unavailable">
             {t('simulation.selection_unavailable', { scenario: unavailable.scenarioId ?? '—', status: t(unavailable.statusKey) })}{' '}
@@ -121,14 +121,13 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
             <Link to={`/analyses/${id}/plans`}>{t('nav.suggested_plans')}</Link>
           </div>
         )}
-        <Link className="button-link" to={`/results?analysis=${id}`}>{t('simulation.choose_saved_plan')}</Link>
       </div>
     )
   }
 
-  const periodRun = (
+  const periodRunBar = <RunBar key={`run-${id}-${run}`} context={context} run={run} compact={context.separate && page !== 'results'} />
+  const periodContent = (
     <>
-      <RunBar key={`run-${id}-${run}`} context={context} run={run} />
       {page === 'results' && <KeyResultsView context={context} run={run} />}
       {page === 'replay' && <ReplayView context={context} run={run} />}
       {page === 'checks' && <ChecksView key={`checks-${id}-${run}`} context={context} run={run} />}
@@ -141,15 +140,15 @@ export function QueueSimulationPage({ page }: { page: SimulationPageName }) {
       {run === 'suggested' && context.scenario && (
         <p className="form-hint">{t('simulation.sep_selected_plan')}: {context.scenario.name} (id {context.scenario.id})</p>
       )}
-      {context.separate ? periodRun : (
+      {context.separate ? <>{periodRunBar}{pageLinks}{periodContent}</> : (
         <>
           {/* Shared results and replay use the continuous day; keep the existing check/evidence contracts. */}
-          <ContinuousSection key={`continuous-${id}`} analysisId={id} run={run} page={page} />
+          <ContinuousSection key={`continuous-${id}`} analysisId={id} run={run} page={page} navigation={pageLinks} />
           {shared && page === 'checks' && <ChecksView key={`checks-${id}-${run}`} context={context} run={run} />}
           {!shared && <section className="page-stack older-run" aria-labelledby="older-run-title">
             <h2 lang="en" id="older-run-title" className="section-title">{headingText(t, 'continuous.older_title')}</h2>
             <p className="form-hint">{t('continuous.older_hint')}</p>
-            {periodRun}
+            {periodRunBar}{periodContent}
           </section>}
         </>
       )}

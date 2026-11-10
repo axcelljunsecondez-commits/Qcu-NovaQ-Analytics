@@ -181,7 +181,7 @@ describe('wait by hour', () => {
 
   it('keeps the view names and kind words in Tagalog while the heading stays English', () => {
     renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={separatePlan(0.01)} />, { lang: 'tl' })
-    expect(screen.getByRole('heading', { name: 'What the plan changes' })).toHaveAttribute('lang', 'en')
+    expect(screen.getByRole('heading', { name: 'Waiting time by period' })).toHaveAttribute('lang', 'en')
     expect(screen.getByRole('button', { name: 'Tantiya vs mungkahing plano' })).toBeInTheDocument()
     expect(within(screen.getByTestId('wait-by-hour')).getAllByText('Naitala').length).toBeGreaterThan(0)
   })

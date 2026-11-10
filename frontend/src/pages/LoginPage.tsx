@@ -82,7 +82,7 @@ export function LoginPage() {
           </div>
         </div>
 
-        <div className="login-brand-foot"><span>NovaQ v1.0 · {t('nav.capstone')}</span><span>{t('nav.motto')}</span></div>
+        <div className="login-brand-foot"><span>NovaQ v1.0</span><span>{t('nav.motto')}</span></div>
       </section>
 
       <main className="login-auth" id="login-form">

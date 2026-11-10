@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { listScenarios, type ScenarioOut } from '../../api/scenarios'
 import type { OptimizationOut, SeparateComparison, SeparatePlanComparison } from '../../api/types'
 import { getSeparateComparison, getWorkflow } from '../../api/workflow'
+import { operationalComparisonComplete } from '../../lib/comparison'
 import { finiteNumber } from '../../lib/results'
 
 export function scenarioRows(scenario: ScenarioOut | null | undefined): OptimizationOut[] {
@@ -22,11 +23,25 @@ export type SelectedPlan =
   | { kind: 'shared'; scenario: ScenarioOut; scenarios: ScenarioOut[]; usable: boolean; target: number | null }
   | { kind: 'separate'; plan: SeparatePlanComparison; comparison: SeparateComparison; usable: boolean; target: number | null }
 
+export type PlanState = SelectedPlan & { scenarios?: ScenarioOut[]; separateComparison?: SeparateComparison }
+
+export function eligibleSavedPlans(plan: PlanState): { id: number; name: string }[] {
+  const comparison = plan.kind === 'separate' ? plan.comparison : plan.separateComparison
+  if (comparison) {
+    return comparison.plans
+      .filter((item) => item.valid && !item.stale)
+      .map((item) => ({ id: item.scenario_id, name: item.name }))
+  }
+  return (plan.scenarios ?? [])
+    .filter((item) => item.provenance === 'verified_snapshot' && isCurrentScenario(item) && operationalComparisonComplete(scenarioRows(item)))
+    .map((item) => ({ id: Number(item.id), name: item.name }))
+}
+
 /**
  * The plan selected for simulation (plans always use the planning file). ``enabled`` is false
  * while a review-only or older file is shown, so no plan, scenario or workflow request is made.
  */
-export function useSelectedPlan(analysisId: number, separate: boolean, enabled: boolean): SelectedPlan & { separateComparison?: SeparateComparison; scenarios?: ScenarioOut[] } {
+export function useSelectedPlan(analysisId: number, separate: boolean, enabled: boolean): PlanState {
   const workflow = useQuery({ queryKey: ['workflow', analysisId], queryFn: () => getWorkflow(analysisId), enabled: enabled && !separate })
   const scenarios = useQuery({ queryKey: ['scenarios', analysisId], queryFn: () => listScenarios(analysisId), enabled: enabled && !separate })
   const comparison = useQuery({ queryKey: ['separate-comparison', analysisId], queryFn: () => getSeparateComparison(analysisId), enabled: enabled && separate })
