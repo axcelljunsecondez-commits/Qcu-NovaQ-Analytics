@@ -30,6 +30,7 @@ from backend.queueing_engine.services.separate_optimization import _segment_wind
 from backend.queueing_engine.utilization import is_saturated
 from backend.reports.report_export import current_only_blocked_lines, generate_excel_report, generate_pdf_report
 from backend.reports.separate_report import build_separate_report_model
+from backend.reports.selected_scope import selected_load_fields
 
 router = APIRouter(
     prefix="/reports",
@@ -344,6 +345,7 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
             "models": models,
         },
         "des": {
+            **selected_load_fields(des_result),
             "job_id": chain["des_job"].id,
             "seed": (des_result.get("seed")),
             "duration_hours": des_result.get("duration_hours"),
@@ -382,6 +384,7 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
             ],
         },
         "mc": {
+            **selected_load_fields(mc_result),
             "job_id": chain["mc_job"].id,
             "num_trials": mc_params.get("num_trials"),
             "failure_threshold": mc_params.get("failure_threshold"),
@@ -390,6 +393,7 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
             "lanes": mc_lanes,
         },
         "validation": {
+            **selected_load_fields(validation_result),
             "job_id": chain["validation_job"].id,
             "verdict": (validation_result.get("verdict") or {}).get("status"),
             "periods": [
@@ -403,7 +407,8 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
                          "Wq_sim": q.get("Wq_sim"),
                          "served": q.get("served"),
                          "mc_failure_rate": q.get("mc_failure_rate"),
-                         "validation_verdict": q.get("validation_verdict")}
+                         "validation_verdict": q.get("validation_verdict"),
+                         **{key: q[key] for key in ("raw_mc_verdict", "load_assessment") if key in q}}
                         for q in (p.get("queues") or []) if isinstance(q, dict)
                     ],
                 }
@@ -411,6 +416,7 @@ def _selected_report_model(db: Session, user: User, analysis: AnalysisProject) -
             ],
         },
         "decision": {
+            **selected_load_fields(decision_result),
             "job_id": chain["decision_job"].id,
             "status": decision_result.get("status"),
             "headline": decision_result.get("headline"),

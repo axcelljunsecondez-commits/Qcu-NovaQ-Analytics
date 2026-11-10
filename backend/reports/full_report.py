@@ -11,10 +11,11 @@ mixing their evidence. Separate lines: the selected-plan chain (``reports._selec
 from __future__ import annotations
 
 import math
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from backend.reports.selected_scope import selected_scope_notice
+from backend.reports.selected_scope import selected_load_fields, selected_load_provenance, selected_scope_notice
 
 FULL_LABEL = "Plan checked by simulation, with the Decision"
 SHARED_SOURCE = "Period-by-period simulation: the evidence used by this Decision."
@@ -33,8 +34,9 @@ def _percent(value: Any) -> str:
 
 
 def _decision(result: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: result.get(key) for key in (
-        "status", "headline", "recommendation", "rationale", "missing_evidence", "provenance_warning", "facts")}
+    return {**{key: result.get(key) for key in (
+        "status", "headline", "recommendation", "rationale", "missing_evidence", "provenance_warning", "facts")},
+        **selected_load_fields(result)}
 
 
 def _headlines(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -185,6 +187,20 @@ def separate_full_sections(*, des: Mapping[str, Any], mc: Mapping[str, Any], val
         {"check": "Results check", "settings": f"allowed failure share {_percent((validation.get('params') or {}).get('failure_rate_cap'))}",
          "outcome": f"{verdict.get('status')}: {total - failed - inadequate} of {total} line-periods passed, {failed} failed, {inadequate} without enough data"},
     ]
+    validation_result = validation.get("result") or {}
+    # The existing three summary rows remain first. Technical provenance travels
+    # through the renderers' existing Settings/Outcome rows, without new labels.
+    details = selected_load_provenance(validation_result)
+    if details:
+        checks.append({"check": "Results check", "settings": json.dumps({
+            key: value for key, value in details.items() if not key.startswith("selected_load_assessment:")},
+            ensure_ascii=False, allow_nan=False), "outcome": str(verdict.get("status"))})
+        for period in validation_result.get("periods") or []:
+            for row in period.get("queues") or []:
+                key = f"selected_load_assessment:{period.get('time')}/{row.get('queue_id')}"
+                if key in details:
+                    checks.append({"check": "Results check", "settings": details[key],
+                                   "outcome": str((row.get("load_assessment") or {}).get("status"))})
     return {
         "decision": {**_decision(decision), "scope_notice": selected_scope_notice(decision)},
         "simulation": {"source": f"Selected-plan simulation of {basis}.", "headlines": _headlines(summary),

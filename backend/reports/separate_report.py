@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from backend.reports.selected_scope import selected_scope_notice
+from backend.reports.selected_scope import selected_load_fields, selected_load_provenance, selected_scope_notice
 
 
 def _is_number(value: Any) -> bool:
@@ -160,6 +160,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
                 "served": queue.get("served") if _is_number(queue.get("served")) else None,
                 "mc_failure_rate": _finite_or_none(queue.get("mc_failure_rate")),
                 "validation_verdict": queue.get("validation_verdict"),
+                **{key: queue[key] for key in ("raw_mc_verdict", "load_assessment") if key in queue},
             })
         validation_periods.append({
             "time": period.get("time"),
@@ -282,6 +283,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
         },
         "schedule": {"periods": sched_periods},
         "des": {
+            **selected_load_fields(des),
             "job_id": des.get("job_id"),
             "seed": des.get("seed"),
             "duration_hours": _finite_or_none(des.get("duration_hours")),
@@ -299,6 +301,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
             ],
         },
         "mc": {
+            **selected_load_fields(mc),
             "job_id": mc.get("job_id"),
             "num_trials": mc.get("num_trials") if _is_number(mc.get("num_trials")) else None,
             "failure_threshold": _finite_or_none(mc.get("failure_threshold")),
@@ -309,11 +312,13 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
             "lanes": mc_lanes,
         },
         "validation": {
+            **selected_load_fields(validation),
             "job_id": validation.get("job_id"),
             "verdict": validation.get("verdict"),
             "periods": validation_periods,
         },
         "decision": {
+            **selected_load_fields(decision),
             "job_id": decision.get("job_id"),
             "status": decision_status,
             "headline": decision.get("headline"),
@@ -342,6 +347,7 @@ def build_separate_report_model(chain: dict[str, Any]) -> dict[str, Any]:
         },
         "limitations": limitations,
         "provenance": {
+            **selected_load_provenance(validation),
             "analysis_id": analysis.get("id"),
             "dataset_id": dataset.get("id"),
             "scenario_id": scenario.get("id"),

@@ -7,6 +7,7 @@ never averages away failures, never converts missing evidence to success.
 """
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 
 import pytest
@@ -45,27 +46,31 @@ def _mc_row(time, qid, rate=0.01, adequate=True, supported=True):
             "simulation_supported": supported, "selected_model": "Parallel M/G/1"}
 
 
-def test_all_pass_periods_yield_overall_pass():
+def test_raw_exact_count_core_all_pass_periods_yield_overall_pass():
     schedule = _schedule({"08:00": ["east-07", "lane-A"], "09:00": ["east-07"]})
-    des = {"periods": _des("08:00", ["east-07", "lane-A"])["periods"]
-           + _des("09:00", ["east-07"])["periods"]}
     mc = [_mc_row("08:00", "east-07"), _mc_row("08:00", "lane-A"),
           _mc_row("09:00", "east-07")]
-    outcome = validate_selected_plan(schedule, des, mc, 0.05)
-    assert outcome["verdict"]["status"] == "pass"
-    assert all(p["status"] == "pass" for p in outcome["periods"])
-    assert outcome["verdict"]["total"] == 3
+    rows = {(row["time"], row["queue_id"]): row for row in mc}
+    pairs = [(period["time"], qid) for period in schedule["periods"] for qid in period["optimum"]["active_queue_ids"]]
+    outcome = _separate_validation_verdict(pairs, rows, 0.05, use_exact_counts=True)
+    assert outcome["status"] == "pass"
+    assert all(_separate_validation_verdict([pair for pair in pairs if pair[0] == period["time"]],
+                                           rows, 0.05, use_exact_counts=True)["status"] == "pass"
+               for period in schedule["periods"])
+    assert outcome["total"] == 3
 
 
-def test_one_fail_forces_overall_fail_without_majority_vote():
+def test_raw_exact_count_core_one_fail_forces_overall_fail_without_majority_vote():
     schedule = _schedule({"08:00": ["a"], "09:00": ["b"], "10:00": ["c"]})
-    des = {"periods": _des("08:00", ["a"])["periods"] + _des("09:00", ["b"])["periods"]
-           + _des("10:00", ["c"])["periods"]}
     mc = [_mc_row("08:00", "a"), _mc_row("09:00", "b", rate=0.40),
           _mc_row("10:00", "c")]
-    outcome = validate_selected_plan(schedule, des, mc, 0.05)
-    assert outcome["verdict"]["status"] == "fail"
-    by_time = {p["time"]: p["status"] for p in outcome["periods"]}
+    rows = {(row["time"], row["queue_id"]): row for row in mc}
+    pairs = [(period["time"], qid) for period in schedule["periods"] for qid in period["optimum"]["active_queue_ids"]]
+    outcome = _separate_validation_verdict(pairs, rows, 0.05, use_exact_counts=True)
+    assert outcome["status"] == "fail"
+    by_time = {period["time"]: _separate_validation_verdict(
+        [pair for pair in pairs if pair[0] == period["time"]], rows, 0.05, use_exact_counts=True)["status"]
+        for period in schedule["periods"]}
     assert by_time == {"08:00": "pass", "09:00": "fail", "10:00": "pass"}
 
 
@@ -78,14 +83,16 @@ def test_missing_lane_evidence_is_insufficient_not_pass():
     assert outcome["periods"][0]["status"] == "insufficient"
 
 
-def test_fail_outranks_insufficient_across_periods():
+def test_raw_exact_count_core_fail_outranks_insufficient_across_periods():
     schedule = _schedule({"08:00": ["a"], "09:00": ["b"], "10:00": ["c"]})
-    des = {"periods": _des("08:00", ["a"])["periods"] + _des("09:00", ["b"])["periods"]
-           + _des("10:00", ["c"])["periods"]}
     mc = [_mc_row("08:00", "a", rate=0.50)]
-    outcome = validate_selected_plan(schedule, des, mc, 0.05)
-    assert outcome["verdict"]["status"] == "fail"
-    by_time = {p["time"]: p["status"] for p in outcome["periods"]}
+    rows = {(row["time"], row["queue_id"]): row for row in mc}
+    pairs = [(period["time"], qid) for period in schedule["periods"] for qid in period["optimum"]["active_queue_ids"]]
+    outcome = _separate_validation_verdict(pairs, rows, 0.05, use_exact_counts=True)
+    assert outcome["status"] == "fail"
+    by_time = {period["time"]: _separate_validation_verdict(
+        [pair for pair in pairs if pair[0] == period["time"]], rows, 0.05, use_exact_counts=True)["status"]
+        for period in schedule["periods"]}
     assert by_time["08:00"] == "fail"
     assert by_time["09:00"] == "insufficient"
     assert by_time["10:00"] == "insufficient"
@@ -116,18 +123,16 @@ def _counted_mc_row(time, qid, failures, trials):
     (5001, 100000, "fail"), (5004, 100000, "fail"),
     (0, 2000, "pass"), (2000, 2000, "fail"),
 ])
-def test_selected_exact_count_boundary(failures, trials, expected, rate_key):
+def test_selected_raw_exact_count_boundary(failures, trials, expected, rate_key):
     row = _counted_mc_row("08:00", "east-07", failures, trials)
     display_rate = row.pop("failure_rate")
     row[rate_key] = display_rate
-    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
-                                     _des("08:00", ["east-07"]), [row], 0.05)
-    period = outcome["periods"][0]
-    assert outcome["verdict"]["status"] == expected
-    assert period["status"] == expected
-    assert period["queues"][0]["validation_verdict"] == expected
-    assert period["queues"][0]["mc_failure_rate"] == display_rate
-    assert outcome["verdict"]["failed"] == ([("08:00", "east-07")] if expected == "fail" else [])
+    outcome = _separate_validation_verdict([("08:00", "east-07")], {("08:00", "east-07"): row},
+                                           0.05, use_exact_counts=True)
+    assert outcome["status"] == expected
+    assert outcome["results"][0]["validation_verdict"] == expected
+    assert outcome["results"][0]["mc_failure_rate"] == display_rate
+    assert outcome["failed"] == ([("08:00", "east-07")] if expected == "fail" else [])
 
 
 @pytest.mark.parametrize("field,value", [
@@ -139,28 +144,27 @@ def test_selected_exact_count_boundary(failures, trials, expected, rate_key):
     ("failure_count", -1), ("failure_count", 2001),
     ("trials_completed", 0), ("trials_completed", -1),
 ])
-def test_selected_exact_count_invalid(field, value):
+def test_selected_raw_exact_count_invalid(field, value):
     row = _counted_mc_row("08:00", "east-07", 0, 2000)
     row[field] = value
-    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
-                                     _des("08:00", ["east-07"]), [row], 0.05)
-    assert outcome["verdict"]["status"] == "insufficient"
-    assert outcome["verdict"]["inadequate"] == [("08:00", "east-07")]
-    assert outcome["periods"][0]["status"] == "insufficient"
-    assert outcome["periods"][0]["queues"][0]["validation_verdict"] == "inadequate"
+    outcome = _separate_validation_verdict([("08:00", "east-07")], {("08:00", "east-07"): row},
+                                           .05, use_exact_counts=True)
+    assert outcome["status"] == "insufficient"
+    assert outcome["inadequate"] == [("08:00", "east-07")]
+    assert outcome["results"][0]["validation_verdict"] == "inadequate"
 
 
 @pytest.mark.parametrize("removed", [
     ("failure_count",), ("trials_completed",), ("failure_count", "trials_completed"),
 ])
-def test_selected_exact_count_missing(removed):
+def test_selected_raw_exact_count_missing(removed):
     row = _counted_mc_row("08:00", "east-07", 0, 2000)
     for field in removed:
         row.pop(field)
-    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
-                                     _des("08:00", ["east-07"]), [row], 0.05)
-    assert outcome["verdict"]["status"] == "insufficient"
-    assert outcome["periods"][0]["status"] == "insufficient"
+    outcome = _separate_validation_verdict([("08:00", "east-07")], {("08:00", "east-07"): row},
+                                           .05, use_exact_counts=True)
+    assert outcome["status"] == "insufficient"
+    assert outcome["results"][0]["validation_verdict"] == "inadequate"
 
 
 @pytest.mark.parametrize("field,value", [
@@ -168,28 +172,29 @@ def test_selected_exact_count_missing(removed):
     ("failure_rate", None), ("failure_rate", float("nan")),
     ("failure_rate", float("inf")), ("failure_rate", -0.1),
 ])
-def test_selected_exact_counts_keep_evidence_gates(field, value):
+def test_selected_raw_exact_counts_keep_evidence_gates(field, value):
     row = _counted_mc_row("08:00", "east-07", 0, 2000)
     row[field] = value
-    outcome = validate_selected_plan(_schedule({"08:00": ["east-07"]}),
-                                     _des("08:00", ["east-07"]), [row], 0.05)
-    assert outcome["verdict"]["status"] == "insufficient"
-    assert outcome["periods"][0]["status"] == "insufficient"
+    outcome = _separate_validation_verdict([("08:00", "east-07")], {("08:00", "east-07"): row},
+                                           .05, use_exact_counts=True)
+    assert outcome["status"] == "insufficient"
+    assert outcome["results"][0]["validation_verdict"] == "inadequate"
 
 
-def test_selected_exact_counts_preserve_coordinate_identity():
-    schedule = _schedule({"08:00": ["east-07", "lane A"], "09:00": ["east-07"]})
-    des = {"periods": _des("08:00", ["east-07", "lane A"])["periods"]
-           + _des("09:00", ["east-07"])["periods"]}
+def test_selected_raw_exact_counts_preserve_coordinate_identity():
     rows = [_counted_mc_row("08:00", "east-07", 4999, 100000),
             _counted_mc_row("08:00", "lane A", 5001, 100000),
             _counted_mc_row("09:00", "east-07", 5000, 100000)]
-    outcome = validate_selected_plan(schedule, des, rows, 0.05)
-    assert outcome["verdict"]["total"] == 3
-    assert outcome["verdict"]["failed"] == [("08:00", "lane A")]
-    assert outcome["verdict"]["status"] == "fail"
-    assert [period["status"] for period in outcome["periods"]] == ["fail", "pass"]
-    assert [row["validation_verdict"] for row in outcome["periods"][0]["queues"]] == ["pass", "fail"]
+    indexed = {(row["time"], row["queue_id"]): row for row in rows}
+    pairs = [("08:00", "east-07"), ("08:00", "lane A"), ("09:00", "east-07")]
+    outcome = _separate_validation_verdict(pairs, indexed, .05, use_exact_counts=True)
+    assert outcome["total"] == 3
+    assert outcome["failed"] == [("08:00", "lane A")]
+    assert outcome["status"] == "fail"
+    periods = [_separate_validation_verdict([pair for pair in pairs if pair[0] == time], indexed,
+                                           .05, use_exact_counts=True) for time in ("08:00", "09:00")]
+    assert [period["status"] for period in periods] == ["fail", "pass"]
+    assert [row["validation_verdict"] for row in periods[0]["results"]] == ["pass", "fail"]
 
 
 def test_current_default_accepts_legacy_rate_without_counts():
@@ -361,14 +366,31 @@ def test_validation_passes_and_persists_with_full_identity(db_engine, client):
     assert workflow["validation"]["id"] == validated.json()["evidence"]["id"]
 
 
-def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows, *, num_trials=2000):
+def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows, *, num_trials=2000, current=False):
     from datetime import datetime, timezone
 
+    from backend.api.workflow import _selected_mc_load_assessment
     from backend.db.models import Job, Scenario, User
+    from backend.queueing_engine.statistics.selected_load_uncertainty import SELECTED_LOAD_METHOD
     from tests.helpers import make_sessionmaker
 
     with make_sessionmaker(db_engine)() as db:
         user = db.query(User).filter_by(email=email).one()
+        result = {"provenance": "SELECTED", "scenario_id": scenario_id,
+                  "des_job_id": des_job_id, "results": rows}
+        method_params = {}
+        if current:
+            # Explicit current synthetic cases use the real DES sufficient statistics
+            # and empirical service mean; legacy/refusal fixtures remain unmarked.
+            rows = [{**row, "mu": 1 / (math.fsum(SAMPLES) / len(SAMPLES)), "c": 1,
+                     "failure_threshold": .75, "failure_rate_cap": .05,
+                     "arrival_noise_fraction": .2, "service_noise_fraction": .1,
+                     "noise_distribution": "independent_uniform", "error": None} for row in rows]
+            scenario = db.get(Scenario, scenario_id)
+            des = db.get(Job, des_job_id).result_json
+            result.update(results=rows, selected_load_method=SELECTED_LOAD_METHOD,
+                          load_uncertainty=_selected_mc_load_assessment(scenario.results_json["schedule"], des, rows))
+            method_params = {"selected_load_method": SELECTED_LOAD_METHOD}
         job = Job(
             user_id=user.id, kind="workflow_mc", status="completed",
             # dataset_id: the scenario's dataset, as every stored scenario-bound job records it.
@@ -377,9 +399,8 @@ def _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_job_id, rows, 
                          "des_job_id": des_job_id, "failure_threshold": 0.75,
                           "failure_rate_cap": 0.05, "num_trials": num_trials,
                          "engine": "selected-plan-measured-mc",
-                         "setup_hash": setup_fingerprint(_setup())},
-            result_json={"provenance": "SELECTED", "scenario_id": scenario_id,
-                         "des_job_id": des_job_id, "results": rows},
+                         "setup_hash": setup_fingerprint(_setup()), **method_params},
+            result_json=result,
             tenant_id=user.tenant_id,
             finished_at=datetime.now(timezone.utc),
         )
@@ -400,7 +421,13 @@ def _mc_result_row(time, qid, rate=0.0, adequate=True):
             "failure_rate_adequate": adequate}
 
 
-def test_selected_exact_counts_persist_and_drive_fresh_decision(db_engine, client):
+def test_selected_exact_counts_persist_as_raw_diagnostics_with_guarded_decision(db_engine, client):
+    """SYNTHETIC consumer contract, not a native MC measurement.
+
+    Positive failures at this known-zero stress corner are intentionally not
+    realizable by the native sampler. Retain the exact-count diagnostic receipt
+    while verifying that it is not substituted for supported load inference.
+    """
     from backend.db.models import Job
     from tests.helpers import make_sessionmaker
 
@@ -418,21 +445,27 @@ def test_selected_exact_counts_persist_and_drive_fresh_decision(db_engine, clien
     # Synthetic persisted count evidence: exercise the consumer without 100,000 MC trials.
     row = _counted_mc_row("08:00", "east-07", 5001, 100000)
     mc_id = _craft_mc_job(db_engine, email, analysis_id, scenario_id, des_id,
-                          [row], num_trials=100000)
+                          [row], num_trials=100000, current=True)
     with make_sessionmaker(db_engine)() as db:
         before = {job_id: deepcopy(db.get(Job, job_id).result_json) for job_id in (des_id, mc_id)}
     validated = _post(client, analysis_id, "simulation/validation/selected")
     assert validated.status_code == 200, validated.text
     validation = validated.json()["evidence"]
     result = validation["result"]
-    assert result["verdict"]["status"] == "fail"
-    assert result["periods"][0]["status"] == "fail"
+    queue = result["periods"][0]["queues"][0]
+    assert queue["raw_mc_verdict"] == "fail"  # Exact5001/100000, despite displayed0.05.
+    assert queue["mc_failure_rate"] == row["failure_rate"]
+    # Independent corner: the frozen available rate is2+1=3/hour; mu=1/.0875.
+    # Even its full envelope lies below .75*threshold*mu, so guarded P(failure)=0.
+    assert queue["load_assessment"]["failure_probability_upper"] == 0
+    assert result["verdict"]["status"] == "pass"
+    assert result["periods"][0]["status"] == "pass"
     assert (result["scenario_id"], result["dataset_id"], result["des_job_id"], result["mc_job_id"]) == (
         scenario_id, dataset_id, des_id, mc_id)
     decided = _post(client, analysis_id, "decision/selected")
     assert decided.status_code == 200, decided.text
     decision = decided.json()["decision"]
-    assert decision["status"] == "revise"
+    assert decision["status"] == "conditional"
     assert decision["evidence_ids"]["validation"] == validation["id"]
     assert decision["evidence_ids"]["mc"] == mc_id
     assert decision["evidence_ids"]["des"] == des_id
@@ -477,7 +510,7 @@ def test_null_failure_rate_stays_null_and_inadequate(db_engine, client):
     null_row["failure_rate"] = None
     null_row["failure_rate_adequate"] = False
     _craft_mc_job(db_engine, "u@example.com", analysis_id, scenario_id,
-                  des_job_id=des_id, rows=[null_row])
+                  des_job_id=des_id, rows=[null_row], current=True)
     validated = _post(client, analysis_id, "simulation/validation/selected")
     assert validated.status_code == 200, validated.text
     result = validated.json()["evidence"]["result"]

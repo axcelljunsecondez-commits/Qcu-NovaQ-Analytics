@@ -97,6 +97,17 @@ from backend.queueing_engine.simulation.simulation import (
     simulate_segments_with_trace,
     validate_with_simulation,
 )
+from backend.queueing_engine.statistics.selected_load_uncertainty import (
+    ASSUMPTIONS,
+    CONFIDENCE_LEVEL,
+    ESTIMAND,
+    SELECTED_LOAD_METHOD,
+    aggregate_assessment_status,
+    assess_probability_bounds,
+    required_family_size,
+    summarize_counts,
+    summary_bounds,
+)
 from backend.queueing_engine.utilization import THRESHOLD_TOLERANCE
 
 router = APIRouter(prefix="/analyses", tags=["workflow"])
@@ -983,7 +994,7 @@ def _require_selection_dataset_generation(selection: Job | None, dataset: Datase
 _NOT_CONSULTED = "<not consulted on the persisted-evidence path>"
 
 
-def _current_evidence_policy() -> EvidencePolicy:
+def _current_evidence_policy(*, selected_context: bool = False) -> EvidencePolicy:
     """The version knowledge applied to persisted workflow evidence: recorded job identity only.
 
     D7 (Step 3) and Step 5 are dataset-identity and dependency-integrity rules. The recorded
@@ -1031,6 +1042,8 @@ def _current_evidence_policy() -> EvidencePolicy:
                              historical=CURRENT_DES_BASIS_HISTORICAL),
             CURRENT_DES_BASIS_KEY, frozenset({"workflow_des_current"})),
         generation_kinds=GENERATION_KINDS if _generation_enforced() else frozenset(),
+        selected_load_method=VersionFamily.of("selected-load method", current={SELECTED_LOAD_METHOD}),
+        selected_load_context=selected_context,
     )
 
 
@@ -1145,7 +1158,7 @@ def _job_evidence_record(
     dataset_id = _recorded_id(params.get("dataset_id"))
     if dataset_id is not None:
         dependencies.append(_dataset_dependency(db, dataset_id))
-    for ref in job_references(job.kind, params, result).refs:
+    for ref in job_references(job.kind, params, result, policy=policy).refs:
         if ref.kind.startswith("job:"):
             dependencies.append(_job_dependency(db, ref, policy, seen))
         elif ref.kind == "scenario":
@@ -1177,7 +1190,11 @@ def require_dependencies_current(
     cannot be rejected on the Simulate page and still support a Decision or a final report.
     """
     context = _evidence_context(db, user, analysis)
-    policy = _current_evidence_policy()
+    selected_context = False
+    if (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues":
+        scenario, _, _ = _selected_scenario_and_dataset(db, user, analysis)
+        selected_context = scenario is not None
+    policy = _current_evidence_policy(selected_context=selected_context)
     for job in jobs:
         assessment = _assess_evidence(db, job, context, policy)
         if not assessment.is_current:
@@ -1283,7 +1300,8 @@ def _current_evidence(
     scenario_id = scenario.id if scenario is not None else None
     full_day = _eligible_full_day_run(db, user, analysis, scenario, scenario_dataset)
     context = _evidence_context(db, user, analysis)
-    policy = _current_evidence_policy()
+    policy = _current_evidence_policy(selected_context=(
+        scenario is not None and (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues"))
 
     def current(job: Job | None) -> Job | None:
         """One rule for every slot, scenario-bound and Current-mode alike.
@@ -3072,10 +3090,143 @@ def run_selected_des(
         db, user, "workflow_des", analysis, scenario,
         {"seed": payload.seed, "engine": "selected-plan-routing-des",
          "periods": len(result["periods"]),
-         "load_replications": payload.load_replications},
+         "load_replications": payload.load_replications, "selected_load_method": SELECTED_LOAD_METHOD},
         result, settings, plan["dataset"],
     )
     return {"evidence": _job_out(job)}
+
+
+def _selected_required_pairs(schedule: dict[str, Any]) -> list[tuple[str, str]] | None:
+    pairs: list[tuple[str, str]] = []
+    seen_times: set[str] = set()
+    for period in schedule.get("periods") or []:
+        if not isinstance(period, dict) or not isinstance(period.get("time"), str):
+            return None
+        label = period["time"]
+        if label in seen_times:
+            return None
+        seen_times.add(label)
+        optimum = period.get("optimum")
+        if not isinstance(optimum, dict) or not isinstance(optimum.get("active_queue_ids"), list):
+            return None
+        pairs.extend((label, queue_id) for queue_id in optimum["active_queue_ids"])
+    return pairs if required_family_size(pairs) is not None else None
+
+
+def _selected_load_metadata(pairs: list[tuple[str, str]] | None, count: Any) -> dict[str, Any]:
+    return {"estimand": ESTIMAND, "confidence_level": CONFIDENCE_LEVEL,
+            "family_size": len(pairs) if pairs is not None else None, "replications": count,
+            "assumptions": list(ASSUMPTIONS), "results": [],
+            "reason_codes": [] if pairs is not None else ["invalid_family"]}
+
+
+def _selected_load_layout(plan: dict[str, Any]) -> dict[str, tuple[float | None, float | None]]:
+    """Frozen input horizons/envelopes, following the unchanged execution adapters."""
+    setup, schedule = plan.get("setup") or {}, plan["schedule"]
+    records = plan["dataset"].normalized_json or []
+    periods = schedule.get("periods") or []
+    labels = [period.get("time") for period in periods]
+    continuous = setup.get("event_period_basis") == "representative_day" or per_date_continuous(setup)
+    keys: dict[str, str] = {}
+    windows: dict[str, tuple[float, float]] = {}
+    origin = None
+    if continuous:
+        try:
+            origin = des_day_start_minutes(setup)
+            raw_windows = [_segment_window(segment) for segment in setup.get("segments") or []
+                           if isinstance(segment, dict)]
+            windows = {key: (low, high) for key, low, high in raw_windows}
+            if origin is None or len(windows) != len(raw_windows):
+                return {}
+            groups = (per_date_days(setup, labels, {label: list(index_period_queues(records, label).values())
+                                                   for label in labels})
+                      if per_date_continuous(setup) else [("", [(label, label) for label in labels])])
+            keys = {label: key for _, items in groups for label, key in items}
+        except (ValueError, TypeError, KeyError):
+            return {}
+    layout = {}
+    multiplier = plan.get("multiplier")
+    for period in periods:
+        label = period.get("time")
+        optimum = period.get("optimum") or {}
+        active = optimum.get("active_queue_ids") or []
+        available = active if continuous else active + (optimum.get("inactive_queue_ids") or [])
+        rows = index_period_queues(records, label)
+        rates = [rows.get(queue_id, {}).get("lambda") for queue_id in available]
+        rate = None
+        if (_finite_non_negative(multiplier) and cast(float, multiplier) > 0 and len(set(available)) == len(available)
+                and all(_finite_non_negative(value) for value in rates)):
+            scaled = [float(cast(float, value)) * cast(float, multiplier) for value in rates]
+            total = sum(scaled)  # Same frozen rates/order as the native adapters.
+            if math.isfinite(total):
+                rate = total
+        duration = _json_number(plan.get("duration_hours")) if not continuous else None
+        if continuous and origin is not None and keys.get(label) in windows:
+            low, high = windows[keys[label]]
+            duration = (high - origin) / 60.0 - (low - origin) / 60.0
+        envelope = rate * duration if rate is not None and duration is not None else None
+        layout[label] = (duration, envelope)
+    return layout
+
+
+def _selected_load_summaries(plan: dict[str, Any], seed: int | None, count: int,
+                             runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Read the already executed runs; never change means, traces or RNG calls."""
+    pairs = _selected_required_pairs(plan["schedule"])
+    assessment = _selected_load_metadata(pairs, count)
+    if pairs is None:
+        return assessment
+    layout = _selected_load_layout(plan)
+    expected_execution = (SELECTED_DES_CONTINUOUS_DAY_EXECUTION
+                          if (plan.get("setup") or {}).get("event_period_basis") == "representative_day"
+                          or per_date_continuous(plan.get("setup")) else SELECTED_DES_PER_PERIOD_EXECUTION)
+    conserved: bool | None = True
+    if any(run.get("overall_conservation") is False for run in runs):
+        conserved = False
+    elif any(run.get("overall_conservation") is not True or run.get("overall_status") != "COMPLETED" for run in runs):
+        conserved = None
+    indexes: list[dict[str, list[dict[str, Any]]]] = []
+    for run in runs:
+        indexed: dict[str, list[dict[str, Any]]] = {}
+        for period in run.get("periods") or []:
+            if isinstance(period, dict) and isinstance(period.get("time"), str):
+                indexed.setdefault(period["time"], []).append(period)
+        indexes.append(indexed)
+    for label, queue_id in pairs:
+        duration, envelope = layout.get(label, (None, None))
+        counts: list[Any] = []
+        reasons = []
+        for run, indexed in zip(runs, indexes):
+            matches = indexed.get(label, [])
+            if len(matches) != 1:
+                counts.append(None)
+                reasons.append("missing_replication_evidence" if not matches else "inconsistent_replication_evidence")
+                continue
+            period = matches[0]
+            actual_duration = (period.get("duration_hours") if expected_execution == SELECTED_DES_CONTINUOUS_DAY_EXECUTION
+                               else run.get("duration_hours"))
+            if actual_duration != duration or isinstance(actual_duration, bool):
+                reasons.append("invalid_duration")
+            if run.get("execution") != expected_execution:
+                reasons.append("inconsistent_replication_evidence")
+            rows = [row for row in period.get("results") or []
+                    if isinstance(row, dict) and row.get("queue_id") == queue_id]
+            if len(rows) != 1:
+                counts.append(None)
+                reasons.append("missing_replication_evidence" if not rows else "inconsistent_replication_evidence")
+                continue
+            row = rows[0]
+            counts.append(row.get("arrivals"))
+            if (row.get("active") is not True or row.get("simulation_supported") is not True
+                    or row.get("customer_conservation") is not True or period.get("conservation") is not True):
+                reasons.append("inconsistent_replication_evidence")
+        bounded = summarize_counts(counts, duration_hours=duration, envelope_mean=envelope,
+                                   replications=count, family_size=len(pairs), base_seed=seed, conserved=conserved)
+        if reasons:
+            bounded.update(status="insufficient", mean_rate_lower=None, mean_rate_upper=None,
+                           reason_codes=list(dict.fromkeys([*reasons, *bounded["reason_codes"]])))
+        assessment["results"].append({"time": label, "queue_id": queue_id, **bounded})
+    return assessment
 
 
 def _attach_mean_routed_loads(plan: dict[str, Any], seed: int | None, count: int,
@@ -3110,6 +3261,8 @@ def _attach_mean_routed_loads(plan: dict[str, Any], seed: int | None, count: int
         "seeds": seeds,
         "basis": f"mean routed arrivals over {count} paired DES replications",
     }
+    stored["selected_load_method"] = SELECTED_LOAD_METHOD
+    stored["load_uncertainty"] = _selected_load_summaries(plan, seed, count, runs)
 
 
 def _run_selected_plan_day_des(plan: dict[str, Any], seed: int | None) -> dict[str, Any]:
@@ -3296,6 +3449,57 @@ def _selected_mc_segments(plan: dict[str, Any], des_result: dict[str, Any]) -> l
     return segments
 
 
+def _selected_mc_load_assessment(schedule: dict[str, Any], des_result: dict[str, Any],
+                                  mc_rows: list[dict[str, Any]], *,
+                                  layout: dict[str, tuple[float | None, float | None]] | None = None) -> dict[str, Any]:
+    """Assess persisted sufficient statistics separately from unchanged raw MC rows."""
+    pairs = _selected_required_pairs(schedule)
+    load = des_result.get("load_replications") or {}
+    count = load.get("count") if isinstance(load, dict) else None
+    assessment = _selected_load_metadata(pairs, count)
+    if pairs is None:
+        return assessment
+    source = des_result.get("load_uncertainty")
+    valid_family = (isinstance(source, dict) and source.get("estimand") == ESTIMAND
+                    and source.get("confidence_level") == CONFIDENCE_LEVEL
+                    and type(source.get("family_size")) is int and source["family_size"] == len(pairs)
+                    and type(source.get("replications")) is int and source["replications"] == count
+                    and source.get("assumptions") == list(ASSUMPTIONS)
+                    and des_result.get("selected_load_method") == SELECTED_LOAD_METHOD)
+    source_rows: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in (source.get("results") or []) if isinstance(source, dict) else []:
+        if isinstance(row, dict) and isinstance(row.get("time"), str) and isinstance(row.get("queue_id"), str):
+            source_rows.setdefault((row["time"], row["queue_id"]), []).append(row)
+    raw_rows: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in mc_rows:
+        if isinstance(row, dict) and isinstance(row.get("time"), str) and isinstance(row.get("queue_id"), str):
+            raw_rows.setdefault((row["time"], row["queue_id"]), []).append(row)
+    for pair in pairs:
+        matching = source_rows.get(pair, [])
+        raw = raw_rows.get(pair, [])
+        measurement = matching[0] if len(matching) == 1 else {}
+        bounded = summary_bounds(measurement, replications=count, family_size=len(pairs),
+                                 base_seed=des_result.get("seed"), conserved=des_result.get("overall_conservation"))
+        reasons = list(bounded["reason_codes"])
+        if not valid_family:
+            reasons.append("invalid_family")
+        if len(matching) != 1:
+            reasons.append("missing_replication_evidence" if not matching else "inconsistent_replication_evidence")
+        if layout is not None and (measurement.get("duration_hours"), measurement.get("envelope_mean")) != layout.get(pair[0]):
+            reasons.append("inconsistent_replication_evidence")
+        if len(raw) != 1:
+            reasons.append("missing_replication_evidence" if not raw else "inconsistent_replication_evidence")
+        propagated = assess_probability_bounds(bounded["mean_rate_lower"], bounded["mean_rate_upper"],
+                                                 raw[0] if len(raw) == 1 else {})
+        if reasons:
+            # Unknown endpoints are missing evidence, not a fabricated arithmetic result.
+            extra = [reason for reason in propagated["reason_codes"] if reason != "numeric_failure"]
+            propagated.update(status="insufficient", failure_probability_lower=None, failure_probability_upper=None,
+                              reason_codes=list(dict.fromkeys([*reasons, *extra])))
+        assessment["results"].append({"time": pair[0], "queue_id": pair[1], **bounded, **propagated})
+    return assessment
+
+
 @router.post(
     "/{analysis_id}/workflow/simulation/mc/selected",
     dependencies=[Depends(user_rate_limit("compute"))],
@@ -3363,6 +3567,9 @@ def run_selected_mc(
         "dataset_id": scenario.dataset_id,
         "des_job_id": des_job.id,
         "results": rows,
+        "selected_load_method": SELECTED_LOAD_METHOD,
+        "load_uncertainty": _selected_mc_load_assessment(
+            plan["schedule"], des_job.result_json or {}, rows, layout=_selected_load_layout(plan)),
     }
     job = _save_job(
         db, user, "workflow_mc", analysis, scenario,
@@ -3372,14 +3579,15 @@ def run_selected_mc(
          "failure_threshold_source": threshold_source,
          "load_replications": load["count"],
          "load_seeds": load.get("seeds"),
-         "lambda_basis": load.get("basis")},
+         "lambda_basis": load.get("basis"), "selected_load_method": SELECTED_LOAD_METHOD},
         result, settings, plan["dataset"],
     )
     return {"evidence": _job_out(job)}
 
 
 def validate_selected_plan(schedule: dict[str, Any], des_result: dict[str, Any],
-                           mc_rows: list[dict[str, Any]], failure_cap: float) -> dict[str, Any]:
+                           mc_rows: list[dict[str, Any]], failure_cap: float, *,
+                           mc_result: dict[str, Any] | None = None) -> dict[str, Any]:
     """Validate a selected plan from persisted DES and MC evidence only.
 
     Required evidence derives from the schedule's persisted active lane IDs
@@ -3391,6 +3599,20 @@ def validate_selected_plan(schedule: dict[str, Any], des_result: dict[str, Any],
     so one failing period or lane can never be averaged away.
     """
     sched_periods = schedule.get("periods") or []
+    required = _selected_required_pairs(schedule)
+    computed = _selected_mc_load_assessment(schedule, des_result, mc_rows)
+    recorded = (mc_result or {}).get("load_uncertainty")
+    family_ok = (required is not None and isinstance(recorded, dict)
+                 and (mc_result or {}).get("selected_load_method") == SELECTED_LOAD_METHOD
+                 and des_result.get("selected_load_method") == SELECTED_LOAD_METHOD
+                 and (mc_result or {}).get("results") == mc_rows
+                 and all(recorded.get(key) == computed[key]
+                         for key in ("estimand", "confidence_level", "family_size", "replications", "assumptions")))
+    computed_by_pair = {(row["time"], row["queue_id"]): row for row in computed["results"]}
+    recorded_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in (recorded.get("results") or []) if isinstance(recorded, dict) else []:
+        if isinstance(row, dict) and isinstance(row.get("time"), str) and isinstance(row.get("queue_id"), str):
+            recorded_by_pair.setdefault((row["time"], row["queue_id"]), []).append(row)
     des_by_time = {str(p.get("time")): p for p in (des_result.get("periods") or [])
                    if isinstance(p, dict)}
     mc_by_pair = {(str(row.get("time", "")), str(row.get("queue_id", ""))): row
@@ -3398,7 +3620,10 @@ def validate_selected_plan(schedule: dict[str, Any], des_result: dict[str, Any],
                   if isinstance(row, dict) and isinstance(row.get("queue_id"), str)}
     periods_out: list[dict[str, Any]] = []
     required_pairs: list[tuple[str, str]] = []
-    overall_mc: dict[tuple[str, str], dict[str, Any]] = {}
+    failed: list[tuple[str, str]] = []
+    inadequate: list[tuple[str, str]] = []
+    statuses: list[str] = []
+    all_queue_rows: list[dict[str, Any]] = []
     for sched in sched_periods:
         if not isinstance(sched, dict):
             continue
@@ -3424,31 +3649,65 @@ def validate_selected_plan(schedule: dict[str, Any], des_result: dict[str, Any],
             des_reason = "Selected-plan DES evidence is missing active lanes."
         pairs = [(time_label, q) for q in active]
         required_pairs.extend(pairs)
-        if des_ok:
-            verdict = _separate_validation_verdict(pairs, mc_by_pair, failure_cap, use_exact_counts=True)
-            overall_mc.update({key: mc_by_pair[key] for key in pairs if key in mc_by_pair})
-        else:
-            verdict = {"status": "insufficient", "failed": [], "inadequate": list(pairs),
-                       "total": len(pairs), "results": []}
+        raw_verdict = _separate_validation_verdict(pairs, mc_by_pair, failure_cap, use_exact_counts=True)
+        raw_by_id = {row["queue_id"]: row for row in raw_verdict["results"]}
         queue_rows = []
-        for item in verdict.pop("results"):
-            lane = des_lanes.get(item["queue_id"], {})
+        period_statuses = []
+        for pair in pairs:
+            queue_id = pair[1]
+            item = raw_by_id.get(queue_id, {"time": time_label, "queue_id": queue_id,
+                                          "selected_model": None, "mc_failure_rate": None,
+                                          "mc_failure_rate_adequate": None, "failure_rate_cap": failure_cap,
+                                          "validation_verdict": "missing"})
+            raw_status = item["validation_verdict"]
+            assessment = dict(computed_by_pair.get(pair, {"status": "insufficient", "reason_codes": ["invalid_family"]}))
+            saved = recorded_by_pair.get(pair, [])
+            reasons = []
+            if not family_ok or len(saved) != 1 or saved[0] != assessment:
+                reasons.append("missing_replication_evidence" if not saved else "inconsistent_replication_evidence")
+            if not des_ok:
+                reasons.append("inconsistent_replication_evidence")
+            if raw_status not in ("pass", "fail"):
+                reasons.append("raw_mc_inadequate")
+            raw = mc_by_pair.get(pair, {})
+            if isinstance(raw.get("failure_rate_cap"), bool) or raw.get("failure_rate_cap") != failure_cap:
+                reasons.append("unsupported_mc_configuration")
+            if reasons:
+                assessment.update(status="insufficient", failure_probability_lower=None, failure_probability_upper=None,
+                                  reason_codes=list(dict.fromkeys([*reasons, *assessment["reason_codes"]])))
+            status = assessment["status"]
+            statuses.append(status)
+            period_statuses.append(status)
+            if status == "fail":
+                failed.append(pair)
+            elif status != "pass":
+                inadequate.append(pair)
+            lane = des_lanes.get(queue_id, {})
             queue_rows.append({
                 **item,
+                "raw_mc_verdict": raw_status,
+                "validation_verdict": status if status in ("pass", "fail") else "inadequate",
+                "load_assessment": assessment,
                 "rho_sim": _json_number(lane.get("rho_sim")),
                 "Wq_sim": _json_number(lane.get("Wq_sim")),
                 "served": lane.get("served"),
             })
+        all_queue_rows.extend(queue_rows)
         periods_out.append({
             "time": time_label,
             "active_queue_ids": active,
-            "status": verdict["status"],
+            "status": aggregate_assessment_status(period_statuses, family_size=len(pairs)),
             "des_ok": des_ok,
             "des_reason": des_reason,
             "queues": queue_rows,
         })
-    overall = _separate_validation_verdict(required_pairs, overall_mc, failure_cap, use_exact_counts=True)
-    return {"periods": periods_out, "verdict": overall}
+    overall = {"status": aggregate_assessment_status(statuses, family_size=len(required) if required is not None else 0),
+               "failed": failed, "inadequate": inadequate, "total": len(required_pairs), "results": all_queue_rows}
+    family = {key: value for key, value in computed.items() if key != "results"}
+    family.update(pass_count=statuses.count("pass"), fail_count=statuses.count("fail"),
+                  insufficient_count=statuses.count("insufficient"))
+    return {"periods": periods_out, "verdict": overall,
+            "selected_load_method": SELECTED_LOAD_METHOD, "load_uncertainty": family}
 
 
 @router.post(
@@ -3508,7 +3767,7 @@ def run_selected_validation(
     des_result = des_job.result_json or {}
     mc_rows = ((mc_job.result_json or {}).get("results") or [])
     outcome = validate_selected_plan(
-        plan["schedule"], des_result, mc_rows, float(failure_cap))
+        plan["schedule"], des_result, mc_rows, float(failure_cap), mc_result=mc_job.result_json or {})
     result = {
         "provenance": "SELECTED",
         "engine_version": ENGINE_VERSION,
@@ -3520,11 +3779,13 @@ def run_selected_validation(
         "failure_rate_cap": float(failure_cap),
         "periods": outcome["periods"],
         "verdict": outcome["verdict"],
+        "selected_load_method": SELECTED_LOAD_METHOD,
+        "load_uncertainty": outcome["load_uncertainty"],
     }
     job = _save_job(
         db, user, "workflow_validation", analysis, scenario,
         {"des_job_id": des_job.id, "mc_job_id": mc_job.id,
-         "failure_rate_cap": float(failure_cap)},
+         "failure_rate_cap": float(failure_cap), "selected_load_method": SELECTED_LOAD_METHOD},
         result, settings, plan["dataset"],
     )
     return {"evidence": _job_out(job)}
@@ -3585,6 +3846,8 @@ def _derive_selected_decision(*, scenario: dict[str, Any], schedule: dict[str, A
         "failed_periods": failed_times,
         "inadequate_periods": inadequate_times,
         "provenance": "SELECTED",
+        "selected_load_method": validation_result.get("selected_load_method"),
+        "load_uncertainty": validation_result.get("load_uncertainty"),
         "provenance_warning": (
             "Analytical estimates and simulated results are decision support, "
             "not observed future outcomes."
@@ -3759,7 +4022,7 @@ def create_selected_decision(
     job = _save_job(
         db, user, "workflow_decision", analysis, scenario,
         {"validation_job_id": validation_job.id, "des_job_id": des_job.id,
-         "mc_job_id": mc_job.id},
+         "mc_job_id": mc_job.id, "selected_load_method": SELECTED_LOAD_METHOD},
         decision, settings, plan["dataset"],
     )
     return {"decision": decision, "persisted": True, "evidence": _job_out(job)}
