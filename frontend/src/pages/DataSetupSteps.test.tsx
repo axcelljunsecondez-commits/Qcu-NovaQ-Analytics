@@ -80,11 +80,11 @@ describe('Data and setup steps (spec §7.6)', () => {
     expect(container.querySelector('details.setup-advanced')).toHaveAttribute('open')
   })
 
-  it('adds a fifth step to download the current setup for separate lines', async () => {
+  it('offers the customer events template for separate lines without a current setup download', async () => {
     getAnalysisMock.mockResolvedValue(analysisWith(separate))
-    const { container } = renderPage()
-    expect(await screen.findByRole('heading', { name: 'Download my current setup' })).toBeInTheDocument()
-    expect(container.querySelectorAll('.setup-step')).toHaveLength(5)
+    renderPage()
+    expect(await screen.findByRole('heading', { name: /Customer Events/ })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Download my current setup' })).not.toBeInTheDocument()
   })
 })
 
@@ -153,7 +153,7 @@ describe('Enter numbers without a file (B9)', () => {
   it('is offered only for a saved shared line', async () => {
     getAnalysisMock.mockResolvedValue(analysisWith(separate))
     renderPage()
-    await screen.findByRole('heading', { name: 'Download my current setup' })
+    await screen.findByRole('heading', { name: /Customer Events/ })
     expect(screen.queryByText('No file? Enter the numbers yourself')).not.toBeInTheDocument()
   })
 })

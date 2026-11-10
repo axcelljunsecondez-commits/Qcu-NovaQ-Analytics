@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import type { DatasetOut, QueueSetup } from '../api/types'
 import { ResultsPage } from './ResultsPage'
-import { PlanChanges } from '../components/results/PlanChanges'
+import { SavedPlanPicker } from '../components/SavedPlanPicker'
 
 // Analysis results (spec 2026-10-09 §7.7, plan phase U6). Every value must come from the
 // selected file's response; a review-only or older file never reaches plans or simulation.
@@ -142,26 +142,26 @@ function keyResult(name: string) {
   return screen.getByRole('heading', { name }).closest('section') as HTMLElement
 }
 
-describe('Analysis results: the planning file', () => {
+describe('Saved plan selection in Suggested Plans', () => {
   it('identifies the only saved plan as already selected without creating another selection', async () => {
     getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Only saved plan' }))
     listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Only saved plan', 'CURRENT')] })
-    renderResults()
+    renderWithProviders(<SavedPlanPicker analysisId={7} />)
     const status = await screen.findByText('Only saved plan is the selected scenario for simulation.')
     expect(status).toHaveAttribute('role', 'status')
     expect(screen.getByLabelText('Plan')).toHaveValue('3')
-    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
     expect(selectMock).not.toHaveBeenCalled()
   })
 
-  it('updates the plan selector when the server selection changes while results remains open', async () => {
+  it('updates the plan selector when the server selection changes while Suggested Plans stays open', async () => {
     getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Plan A' }))
     listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Plan A', 'CURRENT'), scenario(4, 'Plan B', 'CURRENT')] })
-    const { queryClient } = renderResults()
+    const { queryClient } = renderWithProviders(<SavedPlanPicker analysisId={7} />)
     expect(await screen.findByLabelText('Plan')).toHaveValue('3')
     act(() => { queryClient.setQueryData(['workflow', 7], workflowWith({ id: 4, name: 'Plan B' })) })
     await waitFor(() => expect(screen.getByLabelText('Plan')).toHaveValue('4'))
-    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
   })
 
   it('discards an unavailable draft plan instead of reviving it when the option reappears', async () => {
@@ -169,14 +169,14 @@ describe('Analysis results: the planning file', () => {
     const planA = scenario(3, 'Plan A', 'CURRENT')
     const planB = scenario(4, 'Plan B', 'CURRENT')
     listScenariosMock.mockResolvedValue({ scenarios: [planA, planB] })
-    const { queryClient } = renderResults()
+    const { queryClient } = renderWithProviders(<SavedPlanPicker analysisId={7} />)
     const user = userEvent.setup()
     await user.selectOptions(await screen.findByLabelText('Plan'), '4')
     act(() => { queryClient.setQueryData(['scenarios', 7], { scenarios: [planA] }) })
     await waitFor(() => expect(screen.getByLabelText('Plan')).toHaveValue('3'))
     act(() => { queryClient.setQueryData(['scenarios', 7], { scenarios: [planA, planB] }) })
     await waitFor(() => expect(screen.getByLabelText('Plan')).toHaveValue('3'))
-    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
     expect(selectMock).not.toHaveBeenCalled()
   })
 
@@ -184,18 +184,16 @@ describe('Analysis results: the planning file', () => {
     const planA = scenario(3, 'Plan A', 'CURRENT')
     const planB = scenario(4, 'Plan B', 'CURRENT')
     const otherPlan = { ...scenario(13, 'Other analysis plan', 'CURRENT'), analysis_id: 8 }
-    const { rerender } = renderWithProviders(<PlanChanges analysisId={7} plan={{
-      kind: 'shared', scenario: planA, scenarios: [planA, planB], usable: true, target: 0.7,
-    }} />)
+    listScenariosMock.mockImplementation(async (analysisId: number) => ({ scenarios: analysisId === 7 ? [planA, planB] : [otherPlan] }))
+    getWorkflowMock.mockImplementation(async (analysisId: number) => workflowWith(analysisId === 7 ? planA : otherPlan))
+    const { rerender } = renderWithProviders(<SavedPlanPicker analysisId={7} />)
     const user = userEvent.setup()
-    await user.selectOptions(screen.getByLabelText('Plan'), '4')
+    await user.selectOptions(await screen.findByLabelText('Plan'), '4')
     expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeEnabled()
-    rerender(<PlanChanges analysisId={8} plan={{
-      kind: 'shared', scenario: otherPlan, scenarios: [otherPlan], usable: true, target: 0.7,
-    }} />)
-    expect(screen.getByLabelText('Plan')).toHaveValue('13')
+    rerender(<SavedPlanPicker analysisId={8} />)
+    expect(await screen.findByLabelText('Plan')).toHaveValue('13')
     expect(screen.getByText('Other analysis plan is the selected scenario for simulation.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
     expect(selectMock).not.toHaveBeenCalled()
   })
 
@@ -207,11 +205,11 @@ describe('Analysis results: the planning file', () => {
       return { selection: {} }
     })
     const user = userEvent.setup()
-    renderResults()
+    renderWithProviders(<SavedPlanPicker analysisId={7} />)
     await user.selectOptions(await screen.findByLabelText('Plan'), '4')
     await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
     expect(await screen.findByText('Plan B is the selected scenario for simulation.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Plan'), '3')
     await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
     expect(await screen.findByText('Plan A is the selected scenario for simulation.')).toBeInTheDocument()
@@ -225,21 +223,21 @@ describe('Analysis results: the planning file', () => {
       getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Saved plan' }))
       return { selection: {} }
     })
-    renderResults()
+    renderWithProviders(<SavedPlanPicker analysisId={7} />)
     const choice = await screen.findByLabelText('Plan')
-    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
     expect(within(choice).queryByRole('option', { name: 'Old plan' })).not.toBeInTheDocument()
     await user.selectOptions(choice, '3')
     await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
     await waitFor(() => expect(selectMock).toHaveBeenCalledWith(7, 3))
-    expect(await screen.findByText('Calculated result · not yet checked by simulation')).toBeInTheDocument()
+    expect(await screen.findByText('Saved plan is the selected scenario for simulation.')).toBeInTheDocument()
   })
 
   it('keeps an unselected saved plan available after a selection refusal, and allows a retry', async () => {
     const user = userEvent.setup()
     listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Saved plan', 'CURRENT')] })
     selectMock.mockRejectedValueOnce({ response: { data: { detail: 'Plan needs recalculation.' } } })
-    renderResults()
+    renderWithProviders(<SavedPlanPicker analysisId={7} />)
     await user.selectOptions(await screen.findByLabelText('Plan'), '3')
     await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Plan needs recalculation.')
@@ -250,13 +248,12 @@ describe('Analysis results: the planning file', () => {
 
   it('offers the first separate saved plan while excluding invalid and stale plans', async () => {
     const user = userEvent.setup()
-    getAnalysisMock.mockResolvedValue(analysis('separate_queues'))
     getSeparateMock.mockResolvedValue({ analysis_id: 7, selected_scenario_id: null, plans: [
       { scenario_id: 21, name: 'Eligible lanes', valid: true, stale: false },
       { scenario_id: 22, name: 'Invalid lanes', valid: false, stale: false },
       { scenario_id: 23, name: 'Old lanes', valid: true, stale: true },
     ] })
-    renderResults()
+    renderWithProviders(<SavedPlanPicker analysisId={7} separate />)
     const choice = await screen.findByLabelText('Plan')
     expect(within(choice).getAllByRole('option').map((option) => option.textContent)).toEqual(['Choose a saved plan', 'Eligible lanes'])
     await user.selectOptions(choice, '21')
@@ -271,11 +268,14 @@ describe('Analysis results: the planning file', () => {
       { ...scenario(4, 'Incomplete', 'CURRENT'), results: { results: [] } },
       { ...scenario(5, 'Unverified', 'CURRENT'), provenance: 'legacy' },
     ] })
-    renderResults()
-    expect(await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toBeInTheDocument()
+    renderWithProviders(<SavedPlanPicker analysisId={7} />)
+    await waitFor(() => expect(listScenariosMock).toHaveBeenCalled())
     expect(screen.queryByLabelText('Plan')).not.toBeInTheDocument()
   })
 
+})
+
+describe('Analysis results: the planning file', () => {
   it('opens the planning file with its dates, tags and key results from the server', async () => {
     renderResults()
     expect(await screen.findByRole('heading', { name: 'Recorded average wait' })).toBeInTheDocument()
@@ -289,67 +289,45 @@ describe('Analysis results: the planning file', () => {
     expect(within(keyResult('Recorded average wait')).getByText('6 min')).toBeInTheDocument()
     expect(within(keyResult('Estimated average wait')).getByText('1.8 min')).toBeInTheDocument()
     expect(within(keyResult('Estimated average wait')).getByText('Leaves out 1 period where counters can\'t keep up.')).toBeInTheDocument()
-    expect(within(keyResult('Busiest period by customer arrivals')).getByText('09:00-10:00')).toBeInTheDocument()
-    expect(within(keyResult('Busiest period by customer arrivals')).getByText('40 customers per hour')).toBeInTheDocument()
     expect(getCurrentMock).toHaveBeenCalledWith(7, undefined)
     expect(getObservedMock).toHaveBeenCalledWith(7, undefined)
     expect(screen.queryByTestId('results-review-banner')).not.toBeInTheDocument()
   })
 
-  it('lists periods where counters can\'t keep up before the highest-wait period', async () => {
-    renderResults()
-    const card = keyResult(await screen.findByRole('heading', { name: 'Period that needs attention' }).then((node) => node.textContent ?? ''))
-    const overloaded = within(card).getByText(/09:00-10:00/)
-    const highest = within(card).getByText(/Then highest estimated wait:/)
-    expect(overloaded.compareDocumentPosition(highest) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(highest).toHaveTextContent('Then highest estimated wait: 08:00-09:00 · 3 min')
-    expect(within(card).getByText('Not the longest wait any one customer had.')).toBeInTheDocument()
-  })
-
-  it('says when no plan is selected and flags no plan target', async () => {
+  it('shows five workload rows in severity order and pages to the remaining rows', async () => {
+    getCurrentMock.mockResolvedValue({
+      ...currentFor(planningFile),
+      rows: [
+        ...planningRows,
+        ...[0.81, 0.96, 0.92, 0.86].map((rho, index) => ({ ...planningRows[0], time: 'Period ' + (index + 1), rho })),
+      ],
+    })
     const user = userEvent.setup()
     renderResults()
-    const prompt = await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')
-    // OD-4: the wait tab shows today's view with the no-plan prompt under the chart, and no Plan view.
-    expect(within(screen.getByTestId('wait-by-hour')).getByText(prompt.textContent ?? '')).toBe(prompt)
-    expect(screen.queryByRole('group', { name: 'Chart view' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: 'Your day, by Busy Level' }))
-    const strip = screen.getByRole('heading', { name: 'Your day, by Busy Level' }).closest('section') as HTMLElement
-    expect(within(strip).getByRole('status')).toHaveTextContent("09:00-10:00: Can't keep up (100% or more)")
-    expect(screen.queryByText(/above this plan's target/)).not.toBeInTheDocument()
-    expect(screen.queryByText('Calculated result · not yet checked by simulation')).not.toBeInTheDocument()
+    const table = await screen.findByRole('table', { name: 'Current operation by period' })
+    const times = () => within(screen.getByRole('table', { name: 'Current operation by period' })).getAllByRole('rowheader').map((row) => row.textContent)
+    expect(within(table).getAllByRole('row')).toHaveLength(6)
+    expect(times()).toEqual(['09:00-10:00', 'Period 2', 'Period 3', 'Period 4', '08:00-09:00'])
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(times()).toEqual(['Period 1'])
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(times()).toHaveLength(5)
+    expect(screen.queryByRole('heading', { name: 'Period that needs attention' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Busiest period by customer arrivals' })).not.toBeInTheDocument()
   })
 
-  it('shows what a current plan changes, its target flags and the calculated result without decision words', async () => {
+  it('shows the calculated result without the management card', async () => {
     getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Plan A' }))
-    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Plan A', 'CURRENT'), scenario(4, 'Plan B', 'CURRENT', 0.8), scenario(5, 'Old plan', 'STALE_DATASET')] })
-    const user = userEvent.setup()
+    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Plan A', 'CURRENT')] })
     renderResults()
     expect(await screen.findByText('Calculated result · not yet checked by simulation')).toBeInTheDocument()
     expect(screen.getByText('The calculation suggests these counter changes: 08:00-09:00: 3 → 4 counters; 09:00-10:00: 3 → 5 counters.')).toBeInTheDocument()
-    // Shared lines: both sides are calculated, so the wait line keeps its wording and no cost-basis label is added.
     expect(screen.getByText('Estimated wait (average of the periods): Unavailable → 0.6 min.')).toBeInTheDocument()
-    expect(screen.queryByText(/per average day|total for \d+ days/)).not.toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: 'Your day, by Busy Level' }))
-    expect(screen.getAllByText(/above this plan's target of 70%/).length).toBeGreaterThan(0)
-    // Today's cost is unknown while counters can't keep up: never a partial total.
-    expect(screen.getByText('Total cost: Unavailable → Unavailable.', { exact: false })).toBeInTheDocument()
-    expect(document.body.textContent).not.toMatch(/adopt|go ahead/i)
-    const switcher = screen.getByLabelText('Plan')
-    expect(within(switcher).getAllByRole('option').map((option) => option.textContent)).toEqual(['Plan A', 'Plan B'])
-    expect(screen.getByRole('button', { name: 'Use for simulation' })).toBeDisabled()
-  })
-
-  it('uses another current plan for simulation and shows a server refusal', async () => {
-    getWorkflowMock.mockResolvedValue(workflowWith({ id: 3, name: 'Plan A' }))
-    listScenariosMock.mockResolvedValue({ scenarios: [scenario(3, 'Plan A', 'CURRENT'), scenario(4, 'Plan B', 'CURRENT')] })
-    selectMock.mockRejectedValueOnce(Object.assign(new Error('409'), { response: { status: 409, data: { detail: 'Plan B is not current.' } } }))
-    const user = userEvent.setup()
-    renderResults()
-    await user.selectOptions(await screen.findByLabelText('Plan'), '4')
-    await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
-    await waitFor(() => expect(selectMock).toHaveBeenCalledWith(7, 4))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Plan B is not current.')
+    expect(screen.queryByRole('heading', { name: 'What the plan changes' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Plan')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument()
   })
 
   it('never shows the numbers of a plan that is no longer current', async () => {
@@ -366,9 +344,9 @@ describe('Analysis results: the planning file', () => {
   it('keeps the chosen period in the address and shows its numbers', async () => {
     const user = userEvent.setup()
     renderResults()
-    await user.click(await screen.findByRole('tab', { name: 'Your day, by Busy Level' }))
-    await user.click(screen.getByRole('button', { name: '08:00-09:00: Peak, 83.33%' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('/results?analysis=7&chart=level&period=08%3A00-09%3A00')
+    await screen.findByRole('heading', { name: 'Current operation by period' })
+    await user.selectOptions(screen.getByLabelText('Time'), '08:00-09:00')
+    expect(screen.getByTestId('where')).toHaveTextContent('/results?analysis=7&period=08%3A00-09%3A00')
     const summary = screen.getByRole('heading', { name: 'Current operation by period' }).closest('section') as HTMLElement
     expect(within(summary).getAllByText('3 min').length).toBeGreaterThan(0)
     await user.click(screen.getByRole('link', { name: 'Inputs and model' }))
@@ -382,7 +360,8 @@ describe('Analysis results: another file', () => {
     renderResults('/results?analysis=7&file=12')
     expect(await screen.findByTestId('results-review-banner')).toHaveTextContent('You are reviewing a previous file. Your current staffing plan has not changed.')
     expect(screen.getByTestId('results-review-banner')).toHaveTextContent('Calculated today from the inputs saved with this file. Results from the upload day were not saved.')
-    await waitFor(() => expect(within(keyResult('Busiest period by customer arrivals')).getByText('07:00-08:00')).toBeInTheDocument())
+    expect(await screen.findByText('No available workload estimates exceeded 80%.')).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Busiest periods with arrival data' })).getByText(/99 customers per hour/)).toBeInTheDocument()
     expect(getCurrentMock).toHaveBeenCalledWith(7, 12)
     expect(screen.getByText('Recorded waiting time is unavailable because this file does not contain customer arrival and service-start times.')).toBeInTheDocument()
     expect(getObservedMock).not.toHaveBeenCalled()
@@ -397,7 +376,7 @@ describe('Analysis results: another file', () => {
     let release: () => void = () => {}
     const user = userEvent.setup()
     renderResults()
-    await waitFor(() => expect(within(keyResult('Busiest period by customer arrivals')).getByText('09:00-10:00')).toBeInTheDocument())
+    expect(await screen.findByRole('rowheader', { name: '09:00-10:00' })).toBeInTheDocument()
     getCurrentMock.mockImplementation(async (_id: number, datasetId?: number) => {
       await new Promise<void>((resolve) => { release = resolve })
       return currentFor(datasetId === 12 ? reviewFile : planningFile)
@@ -408,7 +387,7 @@ describe('Analysis results: another file', () => {
     expect(screen.queryByText('6 min')).not.toBeInTheDocument()
     expect(screen.queryByText('40 customers per hour')).not.toBeInTheDocument()
     release()
-    await waitFor(() => expect(within(keyResult('Busiest period by customer arrivals')).getByText('07:00-08:00')).toBeInTheDocument())
+    expect(await screen.findByText('No available workload estimates exceeded 80%.')).toBeInTheDocument()
     expect(screen.queryByText('40 customers per hour')).not.toBeInTheDocument()
   })
 
@@ -420,11 +399,11 @@ describe('Analysis results: another file', () => {
     getObservedMock.mockResolvedValue({ analysis_id: 7, dataset_id: 11, available: false, periods: [], flagged_any: false, day_modeled_wait: null, day_observed_wait: null, ratio: 2, min_gap_minutes: 1 })
     renderResults()
     expect(await screen.findByRole('heading', { name: 'Estimated average wait' })).toBeInTheDocument()
-    for (const name of ['Recorded average wait', 'Estimated average wait', 'Period that needs attention', 'Busiest period by customer arrivals']) {
+    for (const name of ['Recorded average wait', 'Estimated average wait']) {
       await waitFor(() => expect(within(keyResult(name)).getByText('Unavailable')).toBeInTheDocument())
       expect(within(keyResult(name)).queryByText(/^0/)).not.toBeInTheDocument()
     }
-    expect(screen.getByText('Customers per hour are unavailable for this file.')).toBeInTheDocument()
+    expect(screen.getByText('Workload estimates are incomplete for this selection.')).toBeInTheDocument()
   })
 
   it('falls back to the planning file when the address names a file that is not processed', async () => {
@@ -474,8 +453,7 @@ describe('Inputs and model reference', () => {
     expect(screen.queryByText("Every period's numbers")).not.toBeInTheDocument()
     expect(screen.queryByText('How was this calculated?')).not.toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
-    const arrivals = screen.getByRole('list', { name: 'Customers per hour, by period' })
-    expect(within(arrivals).getByText('40 customers per hour')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Customers per hour, by period' })).not.toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Wait by period. Use the arrow keys to read each period.' })).toBeInTheDocument()
     const table = within(screen.getByRole('region', { name: 'Show as a table' })).getByRole('table')
     expect(within(table).getByText('7.2 min')).toBeInTheDocument()
@@ -493,7 +471,7 @@ describe('Inputs and model reference', () => {
 })
 
 describe('Analysis results: separate lines', () => {
-  it('shows today\'s cost as unavailable with the reason and offers only valid current plans', async () => {
+  it('keeps the separate-queue calculation and its cost limitation', async () => {
     getAnalysisMock.mockResolvedValue(analysis('separate_queues'))
     getCurrentMock.mockResolvedValue({
       ...currentFor(planningFile),
@@ -518,74 +496,18 @@ describe('Analysis results: separate lines', () => {
     })
     renderResults()
     expect(await screen.findByText('Today\'s total cost is not available: Current staffing costs are not stored for separate lines.')).toBeInTheDocument()
-    expect(within(screen.getByLabelText('Plan')).getAllByRole('option').map((option) => option.textContent)).toEqual(['Lanes plan'])
+    expect(screen.queryByLabelText('Plan')).not.toBeInTheDocument()
     expect(screen.getByText('For separate lines, the plan\'s values come from the optimizer\'s routing simulation. This is still not the full simulation check.')).toBeInTheDocument()
-    expect(within(keyResult('Busiest period by customer arrivals')).getByText('10 customers per hour')).toBeInTheDocument()
-    expect(screen.getAllByText(/above this plan's target of 70%/).length).toBeGreaterThan(0)
     expect(getWorkflowMock).not.toHaveBeenCalled()
   })
 })
 
-describe('Analysis results: chart tabs (spec 2026-10-29 §5.1)', () => {
-  it('opens "What the plan changes" first, moves with arrow keys, Home and End, and keeps the tab in the address', async () => {
-    const user = userEvent.setup()
-    renderResults()
-    const list = await screen.findByRole('tablist', { name: 'Analysis Results charts' })
-    const tabs = within(list).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['What the plan changes', 'Your day, by Busy Level'])
-    expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
-    expect(tabs[0]).toHaveAttribute('tabindex', '0')
-    expect(tabs[1]).toHaveAttribute('tabindex', '-1')
-    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tabs[0].id)
-    tabs[0].focus()
-    await user.keyboard('{ArrowRight}')
-    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveFocus()
-    expect(screen.getByTestId('where')).toHaveTextContent('chart=level')
-    expect(screen.getByTestId('busy-level')).toBeInTheDocument()
-    expect(screen.queryByTestId('wait-by-hour')).not.toBeInTheDocument()
-    await user.keyboard('{Home}')
-    expect(screen.getByRole('tab', { name: 'What the plan changes' })).toHaveFocus()
-    expect(screen.getByTestId('where')).toHaveTextContent('chart=wait')
-    await user.keyboard('{End}')
-    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveFocus()
-    await user.keyboard('{ArrowLeft}')
-    expect(screen.getByRole('tab', { name: 'What the plan changes' })).toHaveAttribute('aria-selected', 'true')
-  })
-
-  it('opens the tab named in the address', async () => {
-    renderResults('/results?analysis=7&chart=level')
-    expect(await screen.findByTestId('busy-level')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Your day, by Busy Level' })).toHaveAttribute('aria-selected', 'true')
-  })
-
-  it('falls back to the first available tab for an unknown name', async () => {
-    renderResults('/results?analysis=7&chart=other')
-    expect(await screen.findByTestId('wait-by-hour')).toBeInTheDocument()
-  })
-
-  it('keeps the no-plan prompt visible when the address opens the Busy Level tab (review K-UC-2)', async () => {
-    const user = userEvent.setup()
-    renderResults('/results?analysis=7&chart=level')
-    expect(await screen.findByTestId('busy-level')).toBeInTheDocument()
-    const prompt = await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')
-    expect(screen.getByRole('tabpanel')).not.toContainElement(prompt)
-    expect(screen.getAllByText(prompt.textContent ?? '')).toHaveLength(1)
-    // Back on the wait tab, the prompt moves under the chart and is not repeated.
-    await user.click(screen.getByRole('tab', { name: 'What the plan changes' }))
-    const again = screen.getByText(prompt.textContent ?? '')
-    expect(within(screen.getByTestId('wait-by-hour')).getByText(prompt.textContent ?? '')).toBe(again)
-    expect(screen.getAllByText(prompt.textContent ?? '')).toHaveLength(1)
-  })
-
-  it('shows a single card without a tablist when only Busy Level has content, and the no-plan prompt below', async () => {
-    getObservedMock.mockResolvedValue({ analysis_id: 7, dataset_id: 11, available: false, periods: [], flagged_any: false, day_modeled_wait: null, day_observed_wait: null, ratio: 2, min_gap_minutes: 1 })
-    renderResults()
-    expect(await screen.findByTestId('busy-level')).toBeInTheDocument()
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('wait-by-hour')).not.toBeInTheDocument()
-    expect(await screen.findByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toBeInTheDocument()
-  })
+it('renders the wait comparison and the Suggested Plans link for an old Busy Level URL', async () => {
+  renderResults('/results?analysis=7&chart=level')
+  expect(await screen.findByRole('heading', { name: 'Waiting time by period' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Your day, by Busy Level' })).not.toBeInTheDocument()
+  expect(within(screen.getByTestId('wait-by-hour')).getByRole('link', { name: /Suggested Plans/i })).toHaveAttribute('href', '/analyses/7/plans')
+  expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
 })
 
 describe('Analysis results: separate plan cost by day basis (spec 2026-10-29 §6)', () => {
@@ -622,8 +544,7 @@ describe('Analysis results: separate plan cost by day basis (spec 2026-10-29 §6
     getCurrentMock.mockResolvedValue(currentWith(['morning', 'noon']))
     getSeparateMock.mockResolvedValue(comparisonWith([{ time: 'morning', cost: 200.5 }, { time: 'noon', cost: 119.5 }], 320))
     renderResults()
-    expect(await screen.findByTestId('plan-cost')).toHaveTextContent('Unavailable → ₱320 per average day (from 14 days of data)')
-    expect(screen.getByText(/^Total cost: Unavailable → ₱320 per average day \(from 14 days of data\)\./)).toBeInTheDocument()
+    expect(await screen.findByText(/^Total cost: Unavailable → ₱320 per average day \(from 14 days of data\)\./)).toBeInTheDocument()
     expect(screen.getByText('Wait (average of the periods): Calculated estimate 12 min → Suggested plan, simulated 6 min.')).toBeInTheDocument()
   })
 
@@ -635,7 +556,7 @@ describe('Analysis results: separate plan cost by day basis (spec 2026-10-29 §6
     getCurrentMock.mockResolvedValue(currentWith(times))
     getSeparateMock.mockResolvedValue(comparisonWith(times.map((time, index) => ({ time, cost: 100 + index })), 303))
     renderResults()
-    expect(await screen.findByTestId('plan-cost')).toHaveTextContent('₱303 total for 2 days (2026-03-01 – 2026-03-02)')
+    expect(await screen.findByText(/Total cost:.*₱303 total for 2 days \(2026-03-01 – 2026-03-02\)/)).toBeInTheDocument()
   })
 
   it('shows no label when the plan total is not the sum of its periods', async () => {
@@ -645,7 +566,7 @@ describe('Analysis results: separate plan cost by day basis (spec 2026-10-29 §6
     getCurrentMock.mockResolvedValue(currentWith(['morning', 'noon']))
     getSeparateMock.mockResolvedValue(comparisonWith([{ time: 'morning', cost: 200 }, { time: 'noon', cost: 100 }], 320))
     renderResults()
-    expect(await screen.findByTestId('plan-cost')).toHaveTextContent(/Unavailable → ₱320$/)
+    expect(await screen.findByText(/^Total cost: Unavailable → ₱320\./)).toBeInTheDocument()
     expect(screen.queryByText(/per average day/)).not.toBeInTheDocument()
   })
 })

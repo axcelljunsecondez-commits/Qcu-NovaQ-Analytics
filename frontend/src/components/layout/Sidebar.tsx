@@ -107,7 +107,7 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-product-note">
-            <span>NovaQ v1.0 · {t('nav.capstone')}</span>
+            <span>NovaQ v1.0</span>
             <span>{t('nav.motto')}</span>
           </div>
           <AccountMenu compact={collapsed} />

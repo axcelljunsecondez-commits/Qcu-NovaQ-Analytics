@@ -4,6 +4,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/test-utils'
 import { OptimizePage } from './OptimizePage'
+import { getWorkflow } from '../api/workflow'
 
 const listDatasetsMock = vi.fn()
 const getDatasetMock = vi.fn()
@@ -48,6 +49,7 @@ vi.mock('../api/scenarios', () => ({
 const selectWorkflowScenarioMock = vi.fn()
 vi.mock('../api/workflow', () => ({
   selectWorkflowScenario: (...args: unknown[]) => selectWorkflowScenarioMock(...args),
+  getWorkflow: vi.fn(async () => ({})),
 }))
 
 vi.mock('../api/analyses', () => ({
@@ -607,9 +609,64 @@ describe('Use this plan (spec §7.6, D4)', () => {
     await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('The plan was saved but not selected: Scenario provenance is not verified.')
-    expect(alert).toHaveTextContent('You can select it in Analysis results.')
+    expect(alert).toHaveTextContent('You can select it in Suggested Plans.')
     expect(createScenarioMock).toHaveBeenCalledTimes(1)
     expect(screen.queryByText('Plan saved and selected. Queue simulation will use this plan.')).not.toBeInTheDocument()
+  })
+
+  // K-SAI-3: a plan chosen later in the saved-plan picker replaces the page's older save messages.
+  describe('after another saved plan is chosen in the picker', () => {
+    const savedPlan = (id: number, name: string) => ({
+      id, name, provenance: 'verified_snapshot', evidence_status: 'CURRENT', settings: {}, results: { results: [row] },
+    })
+    function serveSelection() {
+      listScenariosMock.mockResolvedValue({ scenarios: [savedPlan(40, 'plan Z'), savedPlan(41, 'plan A')] })
+      vi.mocked(getWorkflow).mockImplementation(async () => {
+        const last = selectWorkflowScenarioMock.mock.calls.filter((_call, index) =>
+          selectWorkflowScenarioMock.mock.results[index]?.type === 'return').at(-1)
+        const id = last ? Number(last[1]) : null
+        return (id === null ? {} : { scenario: savedPlan(id, id === 40 ? 'plan Z' : 'plan A') }) as never
+      })
+    }
+    async function choosePlanZ(user: ReturnType<typeof userEvent.setup>) {
+      await user.selectOptions(await screen.findByRole('combobox', { name: 'Plan' }), '40')
+      await user.click(screen.getByRole('button', { name: 'Use for simulation' }))
+      await waitFor(() => expect(selectWorkflowScenarioMock).toHaveBeenLastCalledWith(7, 40))
+      expect(await screen.findByText('plan Z is the selected scenario for simulation.')).toBeInTheDocument()
+    }
+
+    it('drops "Plan saved and selected"', async () => {
+      try {
+        serveSelection()
+        createScenarioMock.mockResolvedValue({ scenario: { id: 41 } })
+        selectWorkflowScenarioMock.mockResolvedValue({ selection: { id: 1 } })
+        const user = userEvent.setup()
+        renderPlans()
+        await optimizeShared(user)
+        await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
+        expect(await screen.findByText('Plan saved and selected. Queue simulation will use this plan.')).toBeInTheDocument()
+        await choosePlanZ(user)
+        expect(screen.queryByText('Plan saved and selected. Queue simulation will use this plan.')).not.toBeInTheDocument()
+        expect(screen.queryByText('Scenario saved.')).not.toBeInTheDocument()
+      } finally { vi.mocked(getWorkflow).mockImplementation(async () => ({}) as never) }
+    })
+
+    it('drops "saved but not selected"', async () => {
+      try {
+        serveSelection()
+        createScenarioMock.mockResolvedValue({ scenario: { id: 41 } })
+        selectWorkflowScenarioMock.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Scenario provenance is not verified.' } } })
+        selectWorkflowScenarioMock.mockResolvedValue({ selection: { id: 1 } })
+        const user = userEvent.setup()
+        renderPlans()
+        await optimizeShared(user)
+        await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
+        expect(await screen.findByText(/The plan was saved but not selected/)).toBeInTheDocument()
+        await choosePlanZ(user)
+        expect(screen.queryByText(/The plan was saved but not selected/)).not.toBeInTheDocument()
+        expect(screen.queryByText('Scenario saved.')).not.toBeInTheDocument()
+      } finally { vi.mocked(getWorkflow).mockImplementation(async () => ({}) as never) }
+    })
   })
 
   it('does not select anything when saving fails', async () => {

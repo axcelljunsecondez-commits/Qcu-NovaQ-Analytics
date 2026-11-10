@@ -10,9 +10,7 @@ import { ApiState } from '../components/ui/ApiState'
 import { FileSelector } from '../components/results/FileSelector'
 import { KeyResults } from '../components/results/KeyResults'
 import { NoPlanPrompt, PlanChanges } from '../components/results/PlanChanges'
-import { ResultsChartTabs, type ChartTab } from '../components/results/ResultsChartTabs'
-import { chartTabs } from '../lib/resultsTabs'
-import { ArrivalsChart, WorkloadChart } from '../components/results/ResultsCharts'
+import { WaitByHourCard } from '../components/results/WaitByHourCard'
 import { ResultsDetails } from '../components/results/ResultsDetails'
 import { useSelectedPlan } from '../components/results/useSelectedPlan'
 import { currentDatasetId } from '../lib/datasets'
@@ -26,8 +24,7 @@ import { ResultsSummary } from '../components/results/ResultsSummary'
 
 /**
  * Analysis results (spec 2026-10-09 §7.7, D14–D21, D31): the results of any successfully
- * processed file, read-only, plus "What the plan changes" for the planning file.
- * URL: /results?analysis=:id&file=:datasetId&period=&line=&chart=wait|level (chart tab, spec 2026-10-29 §5.1)
+ * processed file, plus the wait comparison and calculation for the selected plan.
  */
 export function ResultsPage() {
   const { t } = useTranslation()
@@ -118,12 +115,8 @@ export function ResultsPage() {
 
   const rows = current.data?.rows ?? []
   const separateRows = rows.some((row) => lineOf(row) !== null)
-  const planTarget = isPlanningFile && (plan.kind === 'shared' || plan.kind === 'separate') ? plan.target : null
   const observedPeriods = records && observed.data?.available && observed.data.dataset_id === selected.id && observed.data.periods.length > 0 ? observed.data.periods : null
-  // D21 / OD-4: with no selected plan, the wait tab shows today's view with the no-plan prompt under it.
-  // With another tab open (?chart=level) the prompt stays visible in the plan section instead (review K-UC-2).
-  const promptInChart = isPlanningFile && plan.kind === 'none' && observedPeriods !== null
-    && chartTabs(params.get('chart'), observedPeriods, rows, plan).active === 'wait'
+  const noPlanPrompt = isPlanningFile && plan.kind === 'none' ? <NoPlanPrompt analysisId={id} plan={plan} /> : null
 
   return (
     <div className="page-stack">
@@ -150,25 +143,19 @@ export function ResultsPage() {
           <section aria-labelledby="key-results-title">
             <h2 lang="en" id="key-results-title" className="section-title">{headingText(t, 'results.key_results')}</h2>
             <KeyResults
-              rows={rows}
               kpis={current.data.kpis}
               separate={separateRows}
               recorded={{ hasRecords: records, loading: observed.isLoading, dayWaitHours: observed.data?.available && observed.data.dataset_id === selected.id ? observed.data.day_observed_wait : null }}
-              busiest={current.data.busiest_period}
             />
           </section>
-          <ResultsSummary rows={rows} period={period} line={line} planTarget={planTarget} onPeriod={(value) => update({ period: value })} onLine={(value) => update({ line: value })}
+          <ResultsSummary key={selected.id} rows={rows} arrivalsByPeriod={current.data.arrivals_by_period}
+            arrivalRecords={current.data.dataset.normalized} period={period} line={line} onPeriod={(value) => update({ period: value })} onLine={(value) => update({ line: value })}
             referenceLink={<Link to={`/results?${referenceParams}`}>{t('results.reference_title')}</Link>} />
-          <ResultsChartTabs chart={params.get('chart')} onChart={(tab: ChartTab) => update({ chart: tab })} observed={observedPeriods} rows={rows}
-            selectedModel={current.data.selected_model} separate={separate} separateRows={separateRows} plan={plan} planTarget={planTarget}
-            period={period === ALL ? null : period} onPeriod={(time) => update({ period: time })}
+          <WaitByHourCard observed={observedPeriods} rows={rows} selectedModel={current.data.selected_model} separate={separate} plan={plan}
             staffing={{ setup: analysis.data.analysis.queue_setup, records: current.data.dataset.normalized }}
-            noPlanPrompt={promptInChart ? <NoPlanPrompt analysisId={id} plan={plan} /> : undefined} />
-          <div className="results-patterns">
-            <ArrivalsChart periods={current.data.arrivals_by_period} />
-            <WorkloadChart rows={rows} separate={separateRows} />
-          </div>
-          {isPlanningFile && <PlanChanges analysisId={id} plan={plan} dataset={selected} periodBasis={analysis.data.analysis.queue_setup.event_period_basis} segments={analysis.data.analysis.queue_setup.segments} promptShown={promptInChart} />}
+            footer={observedPeriods !== null ? noPlanPrompt : null} />
+          {observedPeriods === null && noPlanPrompt}
+          {isPlanningFile && <PlanChanges analysisId={id} plan={plan} dataset={selected} periodBasis={analysis.data.analysis.queue_setup.event_period_basis} segments={analysis.data.analysis.queue_setup.segments} promptShown />}
         </>
       )}
     </div>

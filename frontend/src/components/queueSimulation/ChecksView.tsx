@@ -3,8 +3,7 @@ import simulationDefaults from '../../api/simulation-defaults.json'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
-import type { SimMcOut } from '../../api/types'
+import type { SelectedDecision, SimMcOut, SimValidateOut } from '../../api/types'
 import {
   createWorkflowDecision,
   runSelectedDecision,
@@ -29,12 +28,11 @@ import {
   storedNumberDiffers,
   storedSeedDiffers,
   validProbability,
-  validationPasses,
-  validationVerdictLabel,
 } from '../../lib/simulationEvidence'
 import { plainDecision, type PlainDecision } from '../../lib/decisionPlain'
 import { ManyVariationsChart, ManyVariationsInfo } from './ManyVariationsChart'
 import { mcRangeText } from '../../lib/manyVariations'
+import { DecisionDetailsDialog } from './DecisionDetailsDialog'
 import { suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 type Status = 'done' | 'not_run' | 'pass' | 'fail' | 'insufficient'
@@ -64,6 +62,25 @@ function useInfoOverSlot(enabled: boolean) {
     return () => observer.disconnect()
   }, [enabled])
   return { frame, slot, place }
+}
+
+type CheckFailure = { time: string; queue?: string | null; reason: string }
+
+function CheckOutcome({ status, failures = [] }: { status: Status; failures?: CheckFailure[] }) {
+  const { t } = useTranslation()
+  if (status === 'not_run') return null
+  if (status === 'pass') return <div role="status" className="alert alert-ok">{t('simulation.passed')}</div>
+  if (status === 'insufficient') return <div role="status" className="alert alert-warn">{t('simulation.sep_validation_insufficient')}</div>
+  return (
+    <div role="alert" className="alert alert-error" data-testid="validation-failure">
+      <strong>{t('simulation.sep_validation_fail')}</strong>
+      {failures.length === 0 ? <p>{t('simulation.failure_reason_unavailable')}</p> : (
+        <ul>{failures.map(({ time, queue, reason }) => <li key={JSON.stringify([time, queue])}>
+          <strong>{time}{queue && <> · {queue}</>}</strong>{' — '}{reason}
+        </li>)}</ul>
+      )}
+    </div>
+  )
 }
 
 function CheckLine({ name, required, status, info, children }: { name: string; required: boolean; status: Status; info?: ReactNode; children?: ReactNode }) {
@@ -96,6 +113,23 @@ function CheckLine({ name, required, status, info, children }: { name: string; r
 function PlainAnswer({ plain }: { plain: PlainDecision | null }) {
   const { t } = useTranslation()
   return plain ? <strong data-testid="decision-plain">{t(plain.key, plain.params)}</strong> : null
+}
+
+function knownDecisionStatus(status: unknown): boolean {
+  return status === 'adopt' || status === 'conditional' || status === 'revise' || status === 'insufficient_evidence'
+}
+
+/** A nullable status can still carry a saved explanation, but cannot name an outcome. */
+function hasSeparateDecisionDetails(value: unknown): value is SelectedDecision {
+  if (isSelectedDecision(value)) return true
+  return typeof value === 'object' && value !== null && 'provenance' in value && value.provenance === 'SELECTED'
+    && 'status' in value && value.status === null && 'rationale' in value && Array.isArray(value.rationale)
+}
+
+function DecisionExplanation({ status, saved, disabled, children }: { status: string | null; saved: boolean; disabled: boolean; children: ReactNode }) {
+  const { t } = useTranslation()
+  return saved && status !== null ? <DecisionDetailsDialog label={t(`decision.status.${status}`)} disabled={disabled}>{children}</DecisionDetailsDialog>
+    : <details className="decision-details"><summary>{t('decision.plain.details')}</summary>{children}</details>
 }
 
 function PrecisionBadge({ level }: { level: SimMcOut['failure_rate_precision'] }) {
@@ -178,9 +212,12 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   const validationEvidence = validationRun.data?.evidence ?? workflow.validation ?? null
   const validationResult = validationEvidence && isSelectedValidationResult(validationEvidence.result) && validationEvidence.result.scenario_id === scenario.id ? validationEvidence.result : null
   const decisionEvidence = decisionRun.data?.evidence ?? workflow.decision ?? null
-  const persisted = decisionEvidence && isSelectedDecision(decisionEvidence.result) && decisionEvidence.result.scenario_id === scenario.id ? decisionEvidence.result : null
-  const fresh = decisionRun.data && isSelectedDecision(decisionRun.data.decision) && decisionRun.data.decision.scenario_id === scenario.id ? decisionRun.data.decision : null
-  const decision = fresh ?? persisted
+  const persisted = decisionEvidence && hasSeparateDecisionDetails(decisionEvidence.result) && decisionEvidence.result.scenario_id === scenario.id ? decisionEvidence.result : null
+  const fresh = decisionRun.data && hasSeparateDecisionDetails(decisionRun.data.decision) && decisionRun.data.decision.scenario_id === scenario.id ? decisionRun.data.decision : null
+  const candidate = fresh ?? persisted
+  const decision = error || workflow.decision_stale ? null : candidate
+  const savedDecision = decision && knownDecisionStatus(decision.status) && (fresh ? decisionRun.data?.persisted === true : persisted !== null)
+  const staleDecision = workflow.decision_stale
   const running = mcRun.isPending || validationRun.isPending || decisionRun.isPending
 
   async function checkPlan() {
@@ -208,13 +245,12 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
               <PlainAnswer plain={plainDecision({ status: decision.status, separate: true, failedPeriods: decision.failed_periods,
                 failedCount: decision.facts?.failed_checks, totalCount: decision.facts?.validation_checks,
                 missing: decision.missing_evidence, inadequatePeriods: decision.inadequate_periods })} />
-              {' '}<span className="badge badge-neutral">{decisionStatusLabel(decision.status, t)}</span>
+              {knownDecisionStatus(decision.status) && <>{' '}<span className="badge badge-neutral">{decisionStatusLabel(decision.status, t)}</span></>}
             </div>
             <p className="alert alert-warn" data-testid="selected-decision-scope">
               <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
             </p>
-            <details className="decision-details">
-            <summary>{t('decision.plain.details')}</summary>
+            <DecisionExplanation status={decision.status} saved={Boolean(savedDecision)} disabled={running}>
             <p>{t('decision.plain.selected_scope_details')}</p>
             {decision.headline && <p className="decision-headline">{decision.headline}</p>}
             {decision.recommendation && <p>{decision.recommendation}</p>}
@@ -231,14 +267,12 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
             {decision.failed_periods.length > 0 && (
               <div><h3 lang="en" className="section-title">{headingText(t, 'simulation.sep_decision_periods')}</h3><ul>{decision.failed_periods.map((time) => <li key={time}>{time}</li>)}</ul></div>
             )}
-            </details>
-            <div className="button-row">
-              {(decision.status === 'conditional' || decision.status === 'adopt') && <Link to={`/reports?analysis=${analysisId}`}>{t('simulation.sep_decision_next_reports')}</Link>}
-              {(decision.status === 'revise' || decision.status === 'insufficient_evidence') && <Link to={`/analyses/${analysisId}/plans`}>{t('simulation.sep_decision_next_compare')}</Link>}
-            </div>
+            </DecisionExplanation>
           </div>
-        ) : <p>{t('simulation.no_decision_yet')}</p>}
-        <button type="button" className="btn-primary" onClick={() => void checkPlan()} disabled={running || !hasDes}>
+        ) : staleDecision ? (
+          <div className="alert alert-warn" role="status"><PlainAnswer plain={plainDecision({ status: null, stale: true, separate: true })} /></div>
+        ) : error ? null : <p>{t('simulation.no_decision_yet')}</p>}
+        <button type="button" className={savedDecision ? 'btn-secondary' : 'btn-primary'} onClick={() => void checkPlan()} disabled={running || !hasDes}>
           {running ? t('common.loading') : t('simulation.check_the_plan')}
         </button>
         {!hasDes && <p className="form-hint">{t('simulation.sep_need_des')}</p>}
@@ -269,10 +303,6 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
         {(!hasDes || mcResult === null) && <p className="form-hint">{t('simulation.sep_need_validation_evidence')}</p>}
         {validationResult && (
           <>
-            <div role={validationResult.verdict.status === 'pass' ? 'status' : 'alert'} className={`alert ${validationResult.verdict.status === 'pass' ? 'alert-ok' : validationResult.verdict.status === 'fail' ? 'alert-error' : 'alert-warn'}`}>
-              {validationVerdictLabel(validationResult.verdict.status, t)}
-            </div>
-            {validationResult.verdict.status === 'insufficient' && <p className="form-hint">{t('simulation.sep_validation_missing_reason')}</p>}
             <div className="table-scroll" role="region" aria-label={t('simulation.sep_validation_title')} tabIndex={0}>
               <table>
                 <thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('optimize.sep_col_lanes')}</th><th scope="col">{t('simulation.sep_col_des')}</th><th scope="col">{t('simulation.sep_col_mc')}</th><th scope="col">{t('simulation.sep_col_validation')}</th></tr></thead>
@@ -301,14 +331,18 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                 </div>
               </details>
             ))}
+            {validationStatus === 'insufficient' && <p className="form-hint">{t('simulation.sep_validation_missing_reason')}</p>}
+            <CheckOutcome status={validationStatus} failures={validationResult.verdict.failed.map((item) => {
+              const [time, queue] = Array.isArray(item) ? item : [item.time, item.queue_id]
+              const row = validationResult.periods.find((period) => period.time === time)?.queues.find((candidate) => candidate.queue_id === queue)
+              const cap = row?.failure_rate_cap ?? validationResult.failure_rate_cap
+              return { time, queue, reason: cap != null && Number.isFinite(cap)
+                ? t('simulation.failure_over_cap', { cap: fmtPct(cap) }) : t('simulation.failure_over_limit') }
+            })} />
           </>
         )}
       </CheckLine>
 
-      <CheckLine name={headingText(t, 'simulation.sep_decision_title')} required status={decision ? 'done' : 'not_run'}>
-        <button type="button" className="btn-secondary" disabled={running || validationResult === null} onClick={() => { setError(null); decisionRun.mutate() }}>{t('simulation.sep_run_decision')}</button>
-        {validationResult === null && <p className="form-hint">{t('simulation.sep_need_validation')}</p>}
-      </CheckLine>
     </div>
   )
 }
@@ -360,13 +394,63 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
     || storedNumberDiffers(settings.cap, validationEvidence?.params.mc_failure_rate_cap)
     || storedSeedDiffers(validationSeed, validationEvidence?.params.seed)
   )
-  const passed = savedCap !== null && validationRows.length > 0 && validationRows.every((row) => validationPasses(row, savedCap))
-  const decision = decisionRun.data?.decision ?? (workflow.decision_stale ? null : workflow.decision?.result ?? null)
-  const staleDecision = !decisionRun.data && workflow.decision_stale && workflow.decision !== null && workflow.decision !== undefined
+  // K-SAI-2 (owner 2026-11-10): a period passes only as the server's Decision counts it (workflow.py
+  // row_passes); every other period is a FAIL, with "not enough evidence" when its check could not finish.
+  const periodPasses = (row: SimValidateOut, cap: number) => row.simulation_supported === true
+    && !row.validation_reason && !['ERROR', 'Critical', 'Unstable'].includes(row.sim_status)
+    && typeof row.mc_failure_rate === 'number' && Number.isFinite(row.mc_failure_rate) && row.mc_failure_rate >= 0
+    && row.mc_failure_rate <= cap && row.mc_failure_rate_adequate === true
+  const failures: CheckFailure[] = []
+  if (savedCap !== null) {
+    for (const row of validationRows) {
+      if (periodPasses(row, savedCap)) continue
+      const reasons: string[] = []
+      if (row.sim_status === 'Critical' || row.sim_status === 'Unstable') {
+        reasons.push(t('simulation.failure_workload', {
+          level: t(row.sim_status === 'Critical' ? 'results.level.critical' : 'results.level.unstable'),
+        }))
+      }
+      const measured = typeof row.mc_failure_rate === 'number' && Number.isFinite(row.mc_failure_rate) && row.mc_failure_rate >= 0
+      if (row.mc_failure_rate_adequate === true && measured && row.mc_failure_rate > savedCap) {
+        reasons.push(t('simulation.failure_over_cap', { cap: fmtPct(savedCap) }))
+      }
+      if (row.simulation_supported !== true || row.validation_reason || row.sim_status === 'ERROR'
+        || row.mc_failure_rate_adequate !== true || !measured) {
+        reasons.push([t('decision.status.insufficient_evidence'), row.validation_reason].filter(Boolean).join(': '))
+      }
+      failures.push({ time: row.time, reason: reasons.join(' ') || t('simulation.failure_reason_unavailable') })
+    }
+  }
+  const validationStatus: Status = validationRows.length === 0 ? 'not_run'
+    : failures.length > 0 ? 'fail'
+      : savedCap !== null ? 'pass' : 'insufficient'
+  const fresh = decisionRun.data?.decision
+  const persisted = workflow.decision?.result
+  const candidate = fresh ?? persisted ?? null
+  const decision = error || workflow.decision_stale || (candidate?.scenario_id != null && candidate.scenario_id !== context.scenario?.id) ? null : candidate
+  const savedDecision = decision && knownDecisionStatus(decision.status) && (fresh ? decisionRun.data?.persisted === true : persisted !== undefined)
+  const staleDecision = workflow.decision_stale
   const running = mcRun.isPending || validationRun.isPending || decisionRun.isPending
   // OD-UX-13 "Full-day run first": the server names the basis a new Decision will use.
   const fullDay = workflow.decision_basis === 'full_day_run'
   const usedRun = decision?.basis === 'full_day_run' ? decision.facts?.full_day_run ?? null : null
+  const checkedPeriods = fullDay && savedDecision && decision.basis === 'full_day_run' && decision.scenario_id === context.scenario?.id
+    ? decision.facts?.periods ?? [] : []
+  const dayFailures = checkedPeriods.filter((period) => period.verdict === 'fail').map((period) => {
+    const reasons = []
+    if (period.day_run === 'fail') {
+      reasons.push(period.target_utilization == null ? t('simulation.failure_workload_over_target')
+        : t('simulation.failure_workload_over_saved_target', { target: fmtPct(period.target_utilization) }))
+    }
+    if (period.variations === 'fail') {
+      reasons.push(period.variations_failure_cap == null ? t('simulation.failure_over_limit')
+        : t('simulation.failure_over_cap', { cap: fmtPct(period.variations_failure_cap) }))
+    }
+    return { time: period.time, reason: reasons.join(' ') || t('simulation.failure_reason_unavailable') }
+  })
+  const dayCheckStatus: Status = dayFailures.length > 0 ? 'fail'
+    : checkedPeriods.length > 0 && checkedPeriods.every((period) => period.verdict === 'pass') ? 'pass'
+      : savedDecision && decision.basis === 'full_day_run' ? 'insufficient' : 'not_run'
 
   function validationProblem(): string | null {
     const trials = Number(validationTrials)
@@ -398,20 +482,33 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
         {decision ? (
           <div className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'conditional' || decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`} role="status">
             <PlainAnswer plain={plainDecision({ status: decision.status, separate: false, failedPeriods: decision.facts?.failed_periods, failedCount: decision.facts?.failed_intervals, totalCount: decision.facts?.validation_intervals, missing: decision.missing_evidence, inadequatePeriods: decision.facts?.insufficient_periods, todayOverloaded: decision.facts?.today_overloaded_periods })} />
-            {' '}<span className="badge badge-neutral">{t(`decision.status.${decision.status}`)}</span>
+            {knownDecisionStatus(decision.status) && <>{' '}<span className="badge badge-neutral">{t(`decision.status.${decision.status}`)}</span></>}
             {usedRun && <p className="form-hint" data-testid="decision-basis">{t('simulation.basis_full_day', { run: usedRun.id, repeats: usedRun.replications ?? '—', rule: usedRun.closing_policy ? t(`continuous.closing_option_${usedRun.closing_policy}`) : '—' })}</p>}
-            <details className="decision-details"><summary>{t('decision.plain.details')}</summary><p>{decision.headline}</p>{decision.recommendation && <p>{decision.recommendation}</p>}</details>
           </div>
         ) : staleDecision ? (
           <div className="alert alert-warn" role="status"><PlainAnswer plain={plainDecision({ status: null, stale: true, separate: false })} /></div>
-        ) : <p>{t('simulation.no_decision_yet')}</p>}
+        ) : error ? null : <p>{t('simulation.no_decision_yet')}</p>}
         {fullDay && !usedRun && workflow.full_day_run_id != null && <p className="form-hint" data-testid="decision-next-basis">{t('simulation.basis_next_full_day', { run: workflow.full_day_run_id })}</p>}
         {decision?.facts?.periods && decision.facts.periods.length > 0 && <FullDayPeriods periods={decision.facts.periods} />}
-        <Link to={`/analyses/${analysisId}/decision`}>{t('simulation.open_decision')}</Link>
-        <button type="button" className="btn-primary" onClick={() => void checkPlan()} disabled={running}>{running ? t('common.loading') : t('simulation.check_the_plan')}</button>
+        <div className="button-row">
+          {decision && <DecisionExplanation status={decision.status} saved={Boolean(savedDecision)} disabled={running}>
+            <p>{decision.headline}</p>{decision.recommendation && <p>{decision.recommendation}</p>}
+            {decision.rationale.length > 0 && <>
+              <h3 lang="en" className="section-title">{headingText(t, 'simulation.sep_decision_rationale')}</h3>
+              <ul>{decision.rationale.map((line, index) => <li key={index}>{line}</li>)}</ul>
+            </>}
+          </DecisionExplanation>}
+          <button type="button" className={savedDecision ? 'btn-secondary' : 'btn-primary'} onClick={() => void checkPlan()} disabled={running}>{running ? t('common.loading') : t('simulation.check_the_plan')}</button>
+        </div>
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </section>
-      <CheckLine name={headingText(t, 'simulation.check_results')} required={!fullDay} status={validationRows.length === 0 ? 'not_run' : passed ? 'pass' : 'fail'}>
+      {fullDay && (
+        <CheckLine name={headingText(t, 'simulation.check_results')} required status={dayCheckStatus}>
+          {dayCheckStatus === 'not_run' && <p className="form-hint">{t('simulation.full_day_check_first')}</p>}
+          <CheckOutcome status={dayCheckStatus} failures={dayFailures} />
+        </CheckLine>
+      )}
+      <CheckLine name={headingText(t, fullDay ? 'simulation.period_result_check' : 'simulation.check_results')} required={!fullDay} status={validationStatus}>
         <p className="form-hint">{t('simulation.validation_saved_scenario')}</p>
         <div className="form-row">
           <div className="form-field"><label htmlFor="validation-hours">{t('simulation.validate_des_hours')}</label><input id="validation-hours" type="number" value={validationHours} onChange={(e) => setValidationHours(e.target.value)} /></div>
@@ -425,16 +522,20 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
             {savedCap === null ? <div role="status" className="alert alert-warn">{t('simulation.validation_parameters_missing')}</div> : (
               <>
                 <p className="form-hint">{t('simulation.validation_saved_cap', { cap: fmtPct(savedCap) })}</p>
-                <div role="status" className={`alert ${passed ? 'alert-ok' : 'alert-warn'}`}>{passed ? t('simulation.passed') : t('simulation.failed')}</div>
               </>
             )}
             <div className="table-scroll" role="region" aria-label={t('simulation.validation_table_caption')} tabIndex={0}>
               <table><caption className="sr-only">{t('simulation.validation_table_caption')}</caption><thead><tr><th scope="col">{t('common.time')}</th><th scope="col">{t('simulation.status')}</th><th scope="col">{t('simulation.sim_wq')}</th><th scope="col">{t('simulation.failure_rate')}</th><th scope="col">{t('simulation.precision')}</th></tr></thead>
-                <tbody>{validationRows.map((row) => <tr key={row.time}><th scope="row">{row.time}</th><td><span className={`badge ${savedCap === null ? 'badge-neutral' : validationPasses(row, savedCap) ? 'badge-ok' : 'badge-bad'}`}>{row.sim_status}</span></td><td>{fmt(row.sim_Wq == null ? null : row.sim_Wq * 60, 2)}</td><td>{fmtPct(row.mc_failure_rate)}</td><td><PrecisionBadge level={row.mc_failure_rate_precision} /></td></tr>)}</tbody>
+                <tbody>{validationRows.map((row) => <tr key={row.time}><th scope="row">{row.time}</th><td><span className={`badge ${savedCap === null ? 'badge-neutral' : periodPasses(row, savedCap) ? 'badge-ok' : 'badge-bad'}`}>{row.sim_status}</span></td><td>{fmt(row.sim_Wq == null ? null : row.sim_Wq * 60, 2)}</td><td>{fmtPct(row.mc_failure_rate)}</td><td><PrecisionBadge level={row.mc_failure_rate_precision} /></td></tr>)}</tbody>
               </table>
             </div>
           </>
         )}
+        {validationStatus === 'insufficient' && validationRows.some((row) => row.validation_reason) &&
+          <ul>{validationRows.filter((row) => row.validation_reason).map((row) => (
+            <li key={row.time}><strong>{row.time}</strong>{' — '}{row.validation_reason}</li>
+          ))}</ul>}
+        <CheckOutcome status={validationStatus} failures={failures} />
       </CheckLine>
       <CheckLine name={headingText(t, 'simulation.check_variations')} required={fullDay} status={mcRows.length > 0 ? 'done' : 'not_run'}
         info={mcRows.length > 0 ? <ManyVariationsInfo rows={mcRows} /> : undefined}>
@@ -511,9 +612,6 @@ function CurrentChecks({ context }: { context: SimulationContext }) {
       <CheckLine name={headingText(t, 'simulation.check_results')} required={false} status={status}>
         {!context.separate ? <p className="form-hint">{t('simulation.current_validation_separate_only')}</p> : validationRows.length > 0 ? (
           <>
-            {verdict?.status === 'pass' && <div role="status" className="alert alert-ok">{t('simulation.passed')}</div>}
-            {verdict?.status === 'fail' && <div role="status" className="alert alert-warn">{t('simulation.failed')}</div>}
-            {verdict?.status === 'insufficient' && <div role="status" className="alert alert-warn">{t('decision.status.insufficient_evidence')}</div>}
             <div className="table-scroll" role="region" aria-label={t('simulation.validation_table_caption')} tabIndex={0}>
               <table>
                 <caption className="sr-only">{t('simulation.validation_table_caption')}</caption>
@@ -528,6 +626,12 @@ function CurrentChecks({ context }: { context: SimulationContext }) {
         ) : mcRows.length > 0 ? (
           <button type="button" className="btn-primary" disabled={running} onClick={() => validationRun.mutate()}>{t('simulation.validate_run')}</button>
         ) : <p className="form-hint">{t('simulation.validation_requires_mc')}</p>}
+        {context.separate && <CheckOutcome status={status} failures={(verdict?.failed ?? []).map((item) => {
+          const [time, queue] = Array.isArray(item) ? item : [item.time, item.queue_id]
+          const cap = validationRows.find((row) => row.time === time && row.queue_id === queue)?.failure_rate_cap
+          return { time, queue, reason: cap != null && Number.isFinite(cap)
+            ? t('simulation.failure_over_cap', { cap: fmtPct(cap) }) : t('simulation.failure_over_limit') }
+        })} />}
       </CheckLine>
     </div>
   )
@@ -535,7 +639,8 @@ function CurrentChecks({ context }: { context: SimulationContext }) {
 
 /** Checks and decision (D28, D30): the Decision first, then one line per check. */
 export function ChecksView({ context, run }: { context: SimulationContext; run: RunChoice }) {
+  const identity = `${context.analysisId}-${context.scenario?.id ?? 'current'}`
   if (run === 'current') return <CurrentChecks context={context} />
-  if (context.selectedSeparate) return <SeparatePlanChecks context={context} />
-  return <LegacyPlanChecks context={context} />
+  if (context.selectedSeparate) return <SeparatePlanChecks key={identity} context={context} />
+  return <LegacyPlanChecks key={identity} context={context} />
 }

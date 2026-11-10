@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
@@ -44,8 +44,8 @@ vi.mock('./api/templates', () => ({
   downloadTemplate: vi.fn(),
 }))
 
-function renderAt(path: string) {
-  const router = createMemoryRouter(createAppRouter().routes, { initialEntries: [path] })
+function renderAt(path: string, previous?: string) {
+  const router = createMemoryRouter(createAppRouter().routes, { initialEntries: previous ? [previous, path] : [path] })
   render(
     <QueryClientProvider client={makeQueryClient()}>
       <I18nextProvider i18n={testI18n()}>
@@ -62,7 +62,7 @@ describe('Data and setup address (spec §5)', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/analyses/7/data'))
     expect(router.state.location.search).toBe('?from=email')
     expect(router.state.location.hash).toBe('#upload')
-    expect(await screen.findByRole('heading', { level: 1, name: "Data and Setup" })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: "Data and Setup" }, { timeout: 10000 })).toBeInTheDocument()
   })
 
   it('opens Data and setup for a bare analysis address', async () => {
@@ -79,11 +79,29 @@ describe('Data and setup address (spec §5)', () => {
 
   it.each([
     ['/analyses/7/simulate', '?analysis=7'],
-    ['/analyses/7/simulate?mode=named', '?analysis=7&mode=named'],
+    ['/analyses/7/simulate?mode=named', '?analysis=7'],
+    ['/analyses/7/simulate?mode=legacy', '?analysis=7'],
   ])('redirects the old Simulate address %s to Queue simulation', async (from, search) => {
     const router = renderAt(from)
     await waitFor(() => expect(router.state.location.pathname).toBe('/simulation/results'))
     expect(router.state.location.search).toBe(search)
+    expect(router.state.historyAction).toBe('REPLACE')
+  })
+
+  it.each(['named', 'legacy'])('preserves old Simulate query values and hash for %s, with the route analysis taking precedence', async (mode) => {
+    const router = renderAt(`/analyses/7/simulate?analysis=999&plan=current&t=08%3A30&date=2026-09-08&from=email&from=bookmark&mode=${mode}#saved-run`)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/simulation/results'))
+    expect(router.state.location.search).toBe('?analysis=7&plan=current&t=08%3A30&date=2026-09-08&from=email&from=bookmark')
+    expect(router.state.location.hash).toBe('#saved-run')
+    expect(router.state.historyAction).toBe('REPLACE')
+  })
+
+  it('replaces the obsolete Simulate entry so Back returns to the preceding page', async () => {
+    const router = renderAt('/analyses/7/simulate?mode=named', '/analyses/7/data#from-before')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/simulation/results'))
+    await act(async () => { await router.navigate(-1) })
+    await waitFor(() => expect(router.state.location.pathname).toBe('/analyses/7/data'))
+    expect(router.state.location.hash).toBe('#from-before')
   })
 
   it('opens Key results for the bare Queue simulation address and keeps the query', async () => {

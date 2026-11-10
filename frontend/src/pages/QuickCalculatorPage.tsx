@@ -3,7 +3,6 @@ import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { runAnalysis, runGuestCalculator, type AnalysisModel } from '../api/analysis'
-import type { AnalysisOut } from '../api/types'
 import { useAuth } from '../auth/useAuth'
 import { InfoTip } from '../components/ui/InfoTip'
 import { fmtDecimal, fmtPctDecimal } from '../lib/format'
@@ -11,7 +10,6 @@ import {
   SITUATIONS,
   inputProblems,
   modelFor,
-  neighbourCounters,
   requestFor,
   summarize,
   type CalculatorInputs,
@@ -29,18 +27,10 @@ const FIELDS: Record<Situation, FieldKey[]> = {
   leaving: ['lambda', 'mu', 'c', 'patience'],
 }
 
-interface Outcome {
-  model: AnalysisModel
-  counters: number
-  summary: CalculatorSummary
-  error: string | null
-}
-
 interface Calculation {
   situation: Situation
-  main: Outcome
-  fewer: Outcome | null
-  more: Outcome | null
+  model: AnalysisModel
+  summary: CalculatorSummary
 }
 
 function numberOrNull(value: string): number | null {
@@ -84,21 +74,12 @@ export function QuickCalculatorPage() {
       .concat(FIELDS[situation].filter((field) => ['lambda', 'mu', 'c'].includes(field) && values[field].trim() === ''))
     setProblems([...new Set(found)])
     if (found.length > 0) return
-    const { fewer, more } = neighbourCounters(situation, inputs)
-    async function outcome(counters: number): Promise<Outcome> {
-      const model = modelFor(situation, inputs, counters)
-      const result: AnalysisOut = await run(model, requestFor(situation, inputs, counters))
-      return { model, counters, summary: summarize(situation, result), error: result.error }
-    }
+    const model = modelFor(situation, inputs, inputs.c)
     setRunning(true)
     setError(null)
     try {
-      const [main, fewerOutcome, moreOutcome] = await Promise.all([
-        outcome(inputs.c),
-        fewer === null ? Promise.resolve(null) : outcome(fewer),
-        more === null ? Promise.resolve(null) : outcome(more),
-      ])
-      setCalculation({ situation, main, fewer: fewerOutcome, more: moreOutcome })
+      const result = await run(model, requestFor(situation, inputs, inputs.c))
+      setCalculation({ situation, model, summary: summarize(situation, result) })
     } catch (failure) {
       setCalculation(null)
       setError(requestError(failure, t('errors.server')))
@@ -153,8 +134,7 @@ export function QuickCalculatorPage() {
 
 function Results({ calculation }: { calculation: Calculation }) {
   const { t } = useTranslation()
-  const { situation, main } = calculation
-  const s = main.summary
+  const { situation, model, summary: s } = calculation
   const cards: Array<{ key: string; value: string }> = [
     { key: 'wait', value: s.waitMinutes === null ? '—' : t('calculator.minutes', { value: fmtDecimal(s.waitMinutes) }) },
     { key: 'busy', value: fmtPctDecimal(s.busy) },
@@ -166,40 +146,18 @@ function Results({ calculation }: { calculation: Calculation }) {
   return (
     <section className="card" aria-label={t('calculator.results')}>
       <h2 lang="en" className="card-title">{headingText(t, 'calculator.results')}</h2>
-      <p className="form-hint">{t('calculator.model_used', { model: t(`calculator.model.${main.model}`) })}</p>
+      <p className="form-hint">{t('calculator.model_used', { model: t(`calculator.model.${model}`) })}</p>
       <div className="card-grid">
         {cards.map((card) => {
           const label = card.key === 'wait' && situation === 'leaving' ? 'workload' : card.key
           return (
-            <div className="card kpi-card" key={card.key} data-testid={`calculator-${card.key}`}>
-              <span className="kpi-label">{t(`calculator.result.${label}`)} <InfoTip name={t(`calculator.result.${label}`)} text={t(`calculator.result_info.${label}`)} /></span>
+            <div className="card kpi-card calculator-result-card" key={card.key} data-testid={`calculator-${card.key}`}>
+              <span className="kpi-label calculator-result-label">{t(`calculator.result.${label}`)} <InfoTip name={t(`calculator.result.${label}`)} text={t(`calculator.result_info.${label}`)} /></span>
               <strong className="kpi-value">{card.value}</strong>
             </div>
           )
         })}
       </div>
-      <h3 lang="en" className="card-title">{headingText(t, 'calculator.what_this_means')}</h3>
-      <ul className="calculator-meaning" data-testid="calculator-meaning">
-        <li>{meaning(t, situation, main)}</li>
-        {calculation.fewer && <li>{meaning(t, situation, calculation.fewer)}</li>}
-        {calculation.more && <li>{meaning(t, situation, calculation.more)}</li>}
-      </ul>
     </section>
   )
-}
-
-/** One sentence built only from the returned fields; no advice. */
-function meaning(t: (key: string, options?: Record<string, unknown>) => string, situation: Situation, outcome: Outcome): string {
-  const s = outcome.summary
-  const counters = outcome.counters
-  if (s.keepUp === 'no') return t('calculator.meaning.cannot_keep_up', { counters })
-  if (s.waitMinutes === null || s.busy === null) {
-    return t('calculator.meaning.not_calculated', { counters })
-  }
-  const base = t(situation === 'leaving' ? 'calculator.meaning.workload' : 'calculator.meaning.result', {
-    counters, wait: fmtDecimal(s.waitMinutes), busy: fmtPctDecimal(s.busy),
-  })
-  if (situation === 'limited') return `${base} ${t('calculator.meaning.turned_away', { share: fmtPctDecimal(s.turnedAway) })}`
-  if (situation === 'leaving') return `${base} ${t('calculator.meaning.leaving', { share: fmtPctDecimal(s.leaving) })}`
-  return base
 }

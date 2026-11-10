@@ -118,25 +118,28 @@ beforeEach(() => {
 })
 
 describe('three-sheet upload', () => {
-  it('fills an unknown Setup directly and shows what NovaQ read', async () => {
+  it('fills an unknown Setup directly without a file-read summary', async () => {
     const { file } = await uploadFile('novamart.xlsx')
     await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file, { applySetup: true }))
-    const summary = await screen.findByRole('region', { name: "Here's what NovaQ read from your file" })
-    expect(within(summary).getByText('cashier_1, cashier_2')).toBeInTheDocument()
-    expect(within(summary).getByText('cashier_1: 05:00–07:00')).toBeInTheDocument()
-    expect(within(summary).getByText('05:00-06:00: cashier_1')).toBeInTheDocument()
-    expect(within(summary).getByText('cashier_1 · Break 1 · 05:30 · 15 min')).toBeInTheDocument()
-    expect(within(summary).getByText('cashier_2 · Lunch · 06:15 · 30 min')).toBeInTheDocument()
-    expect(within(summary).getByText('Representative day (average all observed dates)')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: "Here's what NovaQ read from your file" })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Replace Setup and upload' })).not.toBeInTheDocument()
   })
 
   it('keeps a different saved Setup until the user confirms', async () => {
     getAnalysisMock.mockResolvedValue(analysisWith({ ...unknownSetup, queue_structure: 'separate_queues', queue_ids: ['lane_a'] }))
-    previewMock.mockResolvedValue(preview({ needs_confirmation: true }))
+    const savedBreaks = [{ queue_id: 'lane_a', scheduled_start_time: '05:45:00', duration_minutes: 30 }]
+    previewMock.mockResolvedValue(preview({
+      needs_confirmation: true,
+      saved_setup: { ...unknownSetup, queue_ids: ['lane_a'], breaks: savedBreaks },
+      diff: [
+        { field: 'queue_ids', saved: ['lane_a'], derived: derived.queue_ids },
+        { field: 'breaks', saved: savedBreaks, derived: derived.breaks },
+      ],
+    }))
     const { user, file } = await uploadFile('novamart.xlsx')
     const confirm = (await screen.findByText('This file would change your saved Setup')).closest('.alert') as HTMLElement
-    expect(within(confirm).getByText('Queue IDs')).toBeInTheDocument()
+    expect(within(confirm).getByText('Queue IDs').closest('li')).toHaveTextContent('lane_a → cashier_1, cashier_2')
+    expect(within(confirm).getByText(/lane_a · 05:45/)).toHaveTextContent(/lane_a · 05:45 · 30.*→.*cashier_1 · 05:30 · 15.*cashier_2 · Lunch · 06:15 · 30/)
     expect(uploadMock).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Replace Setup and upload' }))
     await waitFor(() => expect(uploadMock).toHaveBeenCalledWith(7, file, { applySetup: true }))
@@ -200,12 +203,12 @@ describe('three-sheet upload', () => {
 })
 
 describe('setup workbook export and break labels', () => {
-  it('downloads the setup workbook for separate queues only', async () => {
-    const user = userEvent.setup()
+  it('hides the setup workbook action for separate queues', async () => {
     getAnalysisMock.mockResolvedValue(analysisWith(derived))
     renderPage()
-    await user.click(await screen.findByRole('button', { name: 'Download setup workbook' }))
-    expect(downloadMock).toHaveBeenCalledWith(7)
+    await screen.findByRole('heading', { name: /Customer Events/ })
+    expect(screen.queryByRole('button', { name: 'Download setup workbook' })).not.toBeInTheDocument()
+    expect(downloadMock).not.toHaveBeenCalled()
   })
 
   it('hides the export for a non-separate Setup', async () => {
@@ -259,9 +262,10 @@ describe('Why This Model?', () => {
   beforeEach(() => {
     vi.mocked(listAnalysisDatasets).mockResolvedValue({ datasets: [{ id: 3 }] } as never)
     vi.mocked(getAnalysisCurrent).mockResolvedValue({
+      dataset: { id: 3 },
       selected_model: 'Parallel M/G/1',
       explanations: ['cashier_1', 'cashier_2'].map((queue_id) => ({
-        time: '05:00-06:00', queue_id, selected_model: 'Parallel M/G/1', selection_reason: `reason ${queue_id}`,
+        time: '05:00-06:00', queue_id, selected_model: 'Parallel M/G/1', selection_reason: 'Source reason for the model',
         operational_facts: [], measured_characteristics: [], model_assumptions: [],
       })),
     } as never)
@@ -272,13 +276,11 @@ describe('Why This Model?', () => {
     vi.mocked(getAnalysisCurrent).mockReset()
   })
 
-  it('keeps per-period reasons behind one closed disclosure and names each service line', async () => {
+  it('shows the actual model and a repeated reason once', async () => {
     renderPage()
-    const toggle = await screen.findByText('Show per-period details (2)')
-    const disclosure = toggle.closest('details')!
-    expect(disclosure).not.toHaveAttribute('open')
-    expect(within(disclosure).getByText('05:00-06:00 · cashier_1: Parallel M/G/1')).toBeInTheDocument()
-    expect(within(disclosure).getByText('05:00-06:00 · cashier_2: Parallel M/G/1')).toBeInTheDocument()
+    expect(await screen.findByText('Parallel M/G/1')).toBeVisible()
+    expect(screen.getByText('Source reason for the model')).toBeVisible()
+    expect(screen.queryByText('Show per-period details (2)')).not.toBeInTheDocument()
   })
 })
 

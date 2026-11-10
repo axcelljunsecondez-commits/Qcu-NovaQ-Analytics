@@ -147,7 +147,7 @@ export function WaitByHourCard({ observed, rows, selectedModel, separate, plan, 
 
   return (
     <section className="card" aria-labelledby="wait-hour-title" data-testid="wait-by-hour">
-      <h2 lang="en" id="wait-hour-title" className="section-title">{headingText(t, 'results.plan_changes')}</h2>
+      <h2 lang="en" id="wait-hour-title" className="section-title">{headingText(t, 'results.wait_comparison')}</h2>
       {takeaway && <p className="cv-takeaway">{takeaway}</p>}
       {views.length > 1 && (
         <div className="cv-view-switch" role="group" aria-label={t('charts.view_group')}>
