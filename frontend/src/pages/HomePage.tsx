@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/useAuth'
+import { usePageContent } from '../lib/useContentEntrance'
 import { LanguageSelect } from '../components/layout/LanguageSelect'
-import { ThemeToggle } from '../components/layout/ThemeToggle'
 import { ExpandableSlides } from '../components/home/ExpandableSlides'
 import { QueueTypesComparison } from '../components/home/QueueTypesComparison'
 import { QueueingLessons } from '../components/learning/QueueingLessons'
@@ -15,6 +15,7 @@ const START_PATH = '/analyses/new'
 // Help (plan U8) and the Quick calculator (plan U9/B2) are public and linked from the header.
 export function HomePage() {
   const { t } = useTranslation()
+  const contentRef = usePageContent<HTMLElement>()
   const { user } = useAuth()
   const [howOpen, setHowOpen] = useState(false)
   const [queuesOpen, setQueuesOpen] = useState(false)
@@ -30,14 +31,13 @@ export function HomePage() {
           <Link to="/calculator">{t('nav.quick_calculator')}</Link>
           <Link to="/help">{t('nav.help')}</Link>
           <LanguageSelect />
-          <ThemeToggle />
           {user
             ? <Link className="btn-ghost home-header-link" to="/analyses">{t('home.go_to_analyses')}</Link>
             : <Link className="btn-ghost home-header-link" to="/login">{t('home.sign_in')}</Link>}
         </nav>
       </header>
 
-      <main className="home-main home-spotlight" id="home-main">
+      <main className="home-main home-spotlight" id="home-main" tabIndex={-1} ref={contentRef}>
         <div className="home-spotlight-column">
         <section className="home-hero" aria-labelledby="home-title">
           <p className="home-tagline">{t('nav.motto')}</p>

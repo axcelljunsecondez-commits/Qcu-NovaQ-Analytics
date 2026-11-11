@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { ObservedWaitPeriod } from '../../api/types'
 import type { StaffingSetup } from '../../lib/longestLine'
 import { headingText } from '../../lib/headingText'
+import { useContentEntrance } from '../../lib/useContentEntrance'
 import { chartTabs, type ChartTab } from '../../lib/resultsTabs'
 import type { ResultRow } from '../../lib/results'
 import { BusyLevelCard } from './BusyLevelCard'
@@ -41,6 +42,7 @@ export function ResultsChartTabs({ chart, onChart, observed, rows, selectedModel
   const { t } = useTranslation()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const { available, active } = chartTabs(chart, observed, rows, plan)
+  const panelRef = useContentEntrance<HTMLDivElement>(chart, 205, { animateInitial: false, contentKey: active })
   if (active === null) return null
 
   const panel = active === 'wait'
@@ -70,7 +72,7 @@ export function ResultsChartTabs({ chart, onChart, observed, rows, selectedModel
           </button>
         ))}
       </div>
-      <div className="cv-tab-panel" id="results-chart-panel" role="tabpanel" aria-labelledby={`results-chart-tab-${active}`} tabIndex={0}>
+      <div ref={panelRef} className="cv-tab-panel" id="results-chart-panel" role="tabpanel" aria-labelledby={`results-chart-tab-${active}`} tabIndex={0}>
         {panel}
       </div>
     </div>

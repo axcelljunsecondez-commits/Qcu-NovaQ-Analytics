@@ -1,3 +1,4 @@
+import { usePageContent } from '../lib/useContentEntrance'
 import { headingText } from '../lib/headingText'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
@@ -17,6 +18,7 @@ function CheckIcon() {
 }
 
 export function LoginPage() {
+  const contentRef = usePageContent<HTMLDivElement>()
   const { t } = useTranslation()
   const { login, isLoading, user } = useAuth()
   const navigate = useNavigate()
@@ -52,7 +54,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="login-page">
+    <div className="login-page" ref={contentRef} tabIndex={-1}>
       <a className="skip-link" href="#login-form">{t('common.skip_to_content')}</a>
       <section className="login-brand" aria-labelledby="login-hero-title">
         <div className="login-brand-logo">
@@ -112,7 +114,7 @@ export function LoginPage() {
               <Link to="/verify-email" className="link">{t('auth.resend')}</Link>
             </div>
             {error && <div className="alert alert-error" role="alert">{error}</div>}
-            <button type="submit" disabled={submitting || isLoading} className="button-full">{t('login.submit')}</button>
+            <button type="submit" disabled={submitting || isLoading} aria-busy={submitting || isLoading} className="btn-primary button-full">{t('login.submit')}</button>
           </form>
 
           <div className="login-new">{t('auth.no_account')} <Link to={registerLink}>{t('auth.register')}</Link></div>

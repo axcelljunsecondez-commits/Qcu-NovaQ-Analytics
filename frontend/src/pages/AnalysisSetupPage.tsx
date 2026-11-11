@@ -401,7 +401,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
             </fieldset>
             <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" disabled={applying || upload.isPending} onChange={pick} />
             {(!savedIsShared || purpose === 'review' || aggregate?.mode === 'declined') && (
-              <button type="button" disabled={!file || purpose === null || upload.isPending || checking || applying} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
+              <button type="button" className="btn-primary" disabled={!file || purpose === null || upload.isPending || checking || applying} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
             )}
             {purpose === null && <p className="form-hint">{t('setup.purpose_required')}</p>}
             {sharedChecking && <p role="status" className="form-hint">{t('common.loading')}</p>}
@@ -421,7 +421,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
                 <strong>{t('analyses.upload_confirm_title')}</strong>
                 <p>{t('analyses.upload_confirm_help')}</p>
                 <ul>{preview.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}</li>)}</ul>
-                <button type="button" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) upload.mutate({ selected: file, applySetup: true }) }}>{t('analyses.upload_confirm')}</button>
+                <button type="button" className="btn-primary" disabled={upload.isPending} onClick={() => { setPendingConfirm(false); if (file) upload.mutate({ selected: file, applySetup: true }) }}>{t('analyses.upload_confirm')}</button>
                 <button type="button" className="btn-ghost" onClick={() => { setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
               </div>
             )}
@@ -466,14 +466,14 @@ function AnalysisSetupForId({ id }: { id: number }) {
             {confirmShared && !applied && <div className="alert alert-warn" role="status">
               <strong>{t(aggregate.diff.length ? 'analyses.upload_confirm_title' : 'analyses.upload')}</strong><p>{t(aggregate.diff.length ? 'analyses.upload_confirm_help' : 'setup.purpose_planning_help')}</p>
               <ul>{aggregate.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}: {sharedDiffValue(change.field, change.saved, aggregate.saved_setup)} → {sharedDiffValue(change.field, change.derived, aggregate.derived_setup!)}</li>)}</ul>
-              <button type="button" disabled={applying} onClick={() => void applyFile(true)}>{applying ? t('common.saving') : t(aggregate.diff.length ? 'analyses.upload_confirm' : 'analyses.process')}</button>
+              <button type="button" className="btn-primary" disabled={applying} onClick={() => void applyFile(true)}>{applying ? t('common.saving') : t(aggregate.diff.length ? 'analyses.upload_confirm' : 'analyses.process')}</button>
               <button type="button" className="btn-ghost" disabled={applying} onClick={() => setConfirmShared(false)}>{t('common.cancel')}</button>
             </div>}
             {applied && <div role="status" className="alert alert-ok"><p>{t('analyses.setup_saved')} · {t('datasets.purpose_planning_current')}</p><div className="button-row">
               <Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link>
               <Link className="button-link" to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.title')}</Link>
             </div></div>}
-            {applied && closingError && <div role="alert" className="alert alert-error"><p>{t('continuous.closing_title')}: {closingError}</p><button type="button" disabled={closingSaving} onClick={() => void saveFileClosing()}>{closingSaving ? t('common.saving') : t('common.save')}</button></div>}
+            {applied && closingError && <div role="alert" className="alert alert-error"><p>{t('continuous.closing_title')}: {closingError}</p><button type="button" className="btn-primary" disabled={closingSaving} onClick={() => void saveFileClosing()}>{closingSaving ? t('common.saving') : t('common.save')}</button></div>}
           </div>
         </li>}
         {savedIsShared && <li className="setup-optional">
@@ -497,7 +497,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
               {setup.queue_structure === 'shared_queue' && <CounterBreakEditor breaks={setup.counter_breaks ?? []} onChange={(breaks) => set('counter_breaks', breaks)} />}
               <div className="form-field"><label htmlFor="server-count">{t('analyses.server_count')}</label><input id="server-count" type="number" min="1" disabled={setup.queue_structure === 'single_server'} value={setup.queue_structure === 'single_server' ? 1 : setup.fixed_server_count ?? ''} onChange={(e) => set('fixed_server_count', e.target.value ? Number(e.target.value) : null)} /></div>
               <label><input type="checkbox" checked={setup.staffing_varies_by_period} onChange={(e) => set('staffing_varies_by_period', e.target.checked)} /> {t('analyses.staffing_varies')}</label>
-              {periodLayout && <div className="card"><h4 lang="en" className="card-title">{headingText(t, 'analyses.segments')}</h4>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{separate && setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<MakePeriodsHelper hasSegments={setup.segments.length > 0} onMake={(periods) => set('segments', periods.map((period, index) => ({ id: `segment_${index + 1}`, start_time: period.start, end_time: period.end, active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null })))} /><button type="button" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
+              {periodLayout && <div className="card"><h4 lang="en" className="card-title">{headingText(t, 'analyses.segments')}</h4>{setup.segments.map((segment, index) => <fieldset key={segment.id ?? `segment-${index}`} className="form-field"><legend>{segment.id ?? `Segment ${index + 1}`}</legend><label htmlFor={`segment-start-${index}`}>{t('analyses.segment_start')}</label><input id={`segment-start-${index}`} type="time" value={segment.start_time} onChange={(e) => updateSegment(index, { start_time: e.target.value })} /><label htmlFor={`segment-end-${index}`}>{t('analyses.segment_end')}</label><input id={`segment-end-${index}`} type="time" value={segment.end_time} onChange={(e) => updateSegment(index, { end_time: e.target.value })} />{separate && setup.staffing_varies_by_period && <div>{setup.queue_ids.map((queueId) => <label key={queueId}><input type="checkbox" checked={(segment.active_queue_ids ?? []).includes(queueId)} onChange={() => toggleSegmentQueue(index, queueId)} /> {queueId}</label>)}</div>}<button type="button" className="btn-danger" onClick={() => set('segments', setup.segments.filter((_, segmentIndex) => segmentIndex !== index))}>{t('analyses.remove_segment')}</button></fieldset>)}<MakePeriodsHelper hasSegments={setup.segments.length > 0} onMake={(periods) => set('segments', periods.map((period, index) => ({ id: `segment_${index + 1}`, start_time: period.start, end_time: period.end, active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null })))} /><button type="button" className="btn-secondary" onClick={() => set('segments', [...setup.segments, { id: nextSegmentId(setup.segments), start_time: '07:00', end_time: '08:00', active_queue_ids: separate && setup.staffing_varies_by_period ? [...setup.queue_ids] : null }])}>{t('analyses.add_segment')}</button></div>}
               {!savedIsShared && setup.queue_structure !== 'shared_queue' && <>
               <div className="form-field"><label htmlFor="capacity-mode">{t('analyses.capacity')}</label><select id="capacity-mode" value={setup.capacity_mode} onChange={(e) => { const value = e.target.value as QueueSetup['capacity_mode']; setSetup((old) => ({ ...old, capacity_mode: value, ...(value !== 'finite' ? { total_system_capacity: null } : {}) })) }}><option value="unknown">{t('analyses.unknown')}</option><option value="unlimited">{t('analyses.unlimited')}</option><option value="finite">{t('analyses.finite')}</option></select></div>
               {setup.capacity_mode === 'finite' && <div className="form-field"><label htmlFor="capacity-total">{t('analyses.total_capacity')}</label><input id="capacity-total" type="number" min="1" value={setup.total_system_capacity ?? ''} onChange={(e) => set('total_system_capacity', e.target.value ? Number(e.target.value) : null)} /></div>}
@@ -506,7 +506,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
               </>}
               {formError && <div className="alert alert-error" role="alert">{formError}</div>}
               {save.isError && <div className="alert alert-error">{messageOf(save.error, t('errors.server'))}</div>}
-              <button type="submit" disabled={save.isPending || applying}>{t('common.save')}</button>
+              <button type="submit" className="btn-primary" disabled={save.isPending || applying}>{t('common.save')}</button>
             </form>
           </details>
         </li>

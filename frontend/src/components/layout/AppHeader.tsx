@@ -1,6 +1,5 @@
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ThemeToggle } from './ThemeToggle'
 import { breadcrumbKeys } from './navigation'
 
 export function AppHeader() {
@@ -19,7 +18,6 @@ export function AppHeader() {
           </ol>
         </nav>
       ) : <span />}
-      <ThemeToggle />
     </header>
   )
 }

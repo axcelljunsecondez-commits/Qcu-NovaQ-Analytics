@@ -73,7 +73,7 @@ export function ManualEntry({ disabled, onUpload }: ManualEntryProps) {
             </table>
           </div>
           <p className="form-hint">{t('setup.manual_saved_as', { name: MANUAL_ENTRY_DATASET_NAME })}</p>
-          <button type="submit" disabled={disabled}>{t('setup.manual_upload')}</button>
+          <button type="submit" className="btn-primary" disabled={disabled}>{t('setup.manual_upload')}</button>
         </form>
       )}
       {error && <div className="alert alert-error" role="alert">{error}</div>}

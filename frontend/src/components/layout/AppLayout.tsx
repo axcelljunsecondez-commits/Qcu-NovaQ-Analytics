@@ -1,21 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { readStorage, writeStorage } from '../../lib/safeStorage'
 import { AppHeader } from './AppHeader'
+import { usePageContent } from '../../lib/useContentEntrance'
 import { Sidebar } from './Sidebar'
 
 export const SIDEBAR_KEY = 'novaq_sidebar'
 
 export function AppLayout() {
   const { t } = useTranslation()
-  const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
+  const contentRef = usePageContent<HTMLDivElement>(mainRef)
   const [collapsed, setCollapsed] = useState(() => readStorage(SIDEBAR_KEY) === 'hidden')
-
-  useEffect(() => {
-    mainRef.current?.focus({ preventScroll: true })
-  }, [location.pathname])
 
   function toggleCollapsed() {
     const next = !collapsed
@@ -29,7 +26,7 @@ export function AppLayout() {
       <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       <main className="app-main" id="main-content" ref={mainRef} tabIndex={-1}>
         <AppHeader />
-        <Outlet />
+        <div className="route-content" ref={contentRef}><Outlet /></div>
       </main>
     </div>
   )

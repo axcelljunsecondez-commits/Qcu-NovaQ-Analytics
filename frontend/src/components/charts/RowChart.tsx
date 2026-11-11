@@ -202,7 +202,7 @@ export function RowChart({ name, rows, max, ticks, formatTick, unit, reference =
         })}
         <div className="cv-row-axis-grid" style={gridStyle} aria-hidden="true">
           <svg className="cv-ax" style={{ gridColumn: compact ? 1 : 2 }} viewBox={`0 0 ${plotWidth} ${AXIS_HEIGHT}`} width={plotWidth} height={AXIS_HEIGHT} focusable="false">
-            {shownTicks.map((tick) => <text key={tick} x={x(tick)} y={16} textAnchor="middle">{formatTick(tick)}</text>)}
+            {shownTicks.map((tick) => <text className="numeric-value" key={tick} x={x(tick)} y={16} textAnchor="middle">{formatTick(tick)}</text>)}
             {unit && <text x={x1} y={AXIS_HEIGHT - 2} textAnchor="end">{unit}</text>}
           </svg>
         </div>

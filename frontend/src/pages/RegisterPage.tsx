@@ -1,3 +1,4 @@
+import { usePageContent } from '../lib/useContentEntrance'
 import { headingText } from '../lib/headingText'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -7,6 +8,7 @@ import { rememberIntent } from '../auth/intent'
 import { LanguageSelect } from '../components/layout/LanguageSelect'
 
 export function RegisterPage() {
+  const contentRef = usePageContent<HTMLDivElement>()
   const { t } = useTranslation()
   const [params] = useSearchParams()
   const resend = params.get('mode') === 'resend'
@@ -40,7 +42,7 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="login-page"><div className="card login-card">
+    <div className="login-page" ref={contentRef} tabIndex={-1}><div className="card login-card">
       <LanguageSelect />
       <h1 lang="en" className="login-title">{headingText(t, resend ? 'auth.resend_title' : 'auth.register_title')}</h1>
       {sent ? <div className="alert alert-ok">{t('auth.verification_sent')}</div> : (
@@ -51,7 +53,7 @@ export function RegisterPage() {
             <div className="form-field"><label htmlFor="register-confirm">{t('auth.confirm_password')}</label><input id="register-confirm" type="password" minLength={8} maxLength={128} value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" /></div>
           </>}
           {error && <div className="alert alert-error">{error}</div>}
-          <button type="submit" disabled={submitting}>{t(resend ? 'auth.resend' : 'auth.register')}</button>
+          <button type="submit" className="btn-primary" aria-busy={submitting} disabled={submitting}>{t(resend ? 'auth.resend' : 'auth.register')}</button>
         </form>
       )}
       <Link to="/login">{t('auth.back_login')}</Link>
