@@ -122,7 +122,7 @@ export function PreferencesSettings() {
           />
           {save.isError && <div className="alert alert-error" role="alert">{messageOf(save.error, t('settings.preferences_error'))}</div>}
           {save.isSuccess && <div className="alert alert-ok" role="status">{t('settings.preferences_saved')}</div>}
-          <button type="submit" disabled={save.isPending}>{save.isPending ? t('common.saving') : t('settings.preferences_save')}</button>
+          <button type="submit" className="btn-primary" disabled={save.isPending}>{save.isPending ? t('common.saving') : t('settings.preferences_save')}</button>
         </form>
       )}
     </div>

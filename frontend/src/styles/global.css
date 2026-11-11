@@ -13,7 +13,7 @@ body {
   background: var(--bg-page);
   color: var(--text-primary);
   font-family: var(--font-family);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
 }
 
@@ -102,9 +102,9 @@ select:focus {
 
 button {
   font-family: var(--font-family);
-  background: var(--accent);
-  color: #1b2a4a;
-  border: none;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--color-border-control, var(--border));
   border-radius: 7px;
   padding: 9px 14px;
   font-size: 14px;
@@ -113,7 +113,7 @@ button {
 }
 
 button:hover {
-  background: var(--accent-hover);
+  background: var(--bg-secondary);
 }
 
 button:disabled {
@@ -4101,7 +4101,10 @@ th {
 .workflow-stepper {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* An overflowing stepper must stay scrollable to its first step: `safe` uses start alignment on overflow.
+     Browsers without `safe` ignore that declaration and also align to the start, so nothing is clipped. */
+  justify-content: flex-start;
+  justify-content: safe center;
   gap: 4px;
   min-width: 0;
   padding: 0;
@@ -5098,9 +5101,11 @@ summary.setup-step-title::before {
    .results-reference below, so it outranks `.app-shell .table-scroll table { min-width: 100%; }`. */
 .app-shell .table-scroll table.field-guide-table { min-width: 40rem; }
 .app-shell :is(a, button, input, select, textarea, [tabindex]):focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 3px; }
+/* Navy sidebar: a light ring keeps the 3:1 non-text minimum; the account popover is a light card and keeps the default ring. */
+.app-shell .sidebar :is(a, button, input, select, textarea, [tabindex]):not(.account-menu-popover *):focus-visible { outline-color: var(--color-text-inverse); }
 .app-shell .page-title[tabindex='-1']:focus { outline: none; }
-.app-shell :is(.btn-primary, .button-primary, .button-link) { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); }
-.app-shell :is(.btn-primary, .button-primary, .button-link):hover { background: var(--color-action-primary-hover); color: var(--color-action-primary-fg); }
+.app-shell :is(.btn-primary, .button-primary) { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); }
+.app-shell :is(.btn-primary, .button-primary):hover { background: var(--color-action-primary-hover); color: var(--color-action-primary-fg); }
 .app-shell :is(button, .button-link, .btn-primary):disabled,
 .app-shell [aria-disabled='true'] { background: var(--color-disabled-bg); color: var(--color-disabled-fg); border-color: var(--color-disabled-border); }
 .app-shell :is(.btn-secondary, .btn-ghost) { border-color: var(--color-border-control); }
@@ -5492,4 +5497,97 @@ html:has(.supervisor-page) { scroll-padding-bottom: 7rem; }
 @media (max-height: 480px) { html:has(.supervisor-page) { scroll-padding-bottom: 0; } }
 @media (max-width: 640px) {
   .supervisor-page .supervisor-break-table :is(th, td) { padding: 8px; white-space: normal; }
+}
+
+/* Cobalt and Brass presentation only. Replay marker geometry and animation rules are unchanged. */
+.route-content { min-width: 0; }
+.numeric-value,
+input[type='number'] { font-family: var(--font-number); font-variant-numeric: tabular-nums lining-nums; }
+.page-title { font-size: 2rem; line-height: 1.25; font-weight: 700; }
+.card-title { font-size: 1.125rem; line-height: 1.3334; }
+.section-title { font-size: 1.5rem; line-height: 1.3334; }
+input, select, textarea { font-size: 1rem; }
+button, label, th, td, .tab, .sidebar-nav a { font-size: 0.875rem; }
+th { text-transform: none; letter-spacing: normal; }
+input:focus, select:focus, textarea:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 3px rgba(0, 85, 218, 0.15); }
+button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.button-link,
+.btn-secondary,
+.app-shell .button-link,
+.app-shell .btn-secondary {
+  background: var(--bg-card);
+  color: var(--color-action-primary-bg);
+  border: 1px solid var(--color-action-primary-bg);
+  border-radius: 8px;
+}
+.button-link:hover, .btn-secondary:hover,
+.app-shell .button-link:hover, .app-shell .btn-secondary:hover { background: #edf4ff; color: var(--color-action-primary-hover); }
+.btn-primary, .button-primary,
+.app-shell :is(.btn-primary, .button-primary),
+.home-page a.btn-primary,
+.login-page .btn-primary {
+  background: var(--color-action-primary-bg);
+  color: var(--color-action-primary-fg);
+  border: 1px solid var(--color-action-primary-bg);
+  border-radius: 8px;
+  font-weight: 600;
+}
+.btn-primary:hover, .button-primary:hover,
+.app-shell :is(.btn-primary, .button-primary):hover,
+.home-page a.btn-primary:hover, .login-page .btn-primary:hover {
+  background: var(--color-action-primary-hover);
+  color: var(--color-action-primary-fg);
+  border-color: var(--color-action-primary-hover);
+  opacity: 1;
+}
+.btn-primary:active, .button-primary:active,
+.app-shell :is(.btn-primary, .button-primary):active,
+.home-page a.btn-primary:active, .login-page .btn-primary:active { background: var(--color-action-primary-pressed); border-color: var(--color-action-primary-pressed); }
+.btn-danger, .app-shell .btn-danger { background: #fff6f6; border: 1px solid var(--color-action-danger); color: var(--color-action-danger); }
+.btn-danger:hover, .app-shell .btn-danger:hover { background: var(--color-action-danger); color: white; }
+:is(button, .btn-primary, .button-primary):disabled,
+.app-shell :is(button, .btn-primary, .button-primary):disabled {
+  background: var(--disabled-bg); color: var(--disabled-text); border-color: var(--color-disabled-border); opacity: 1;
+}
+.app-shell .sidebar { background: var(--brand-navy); }
+.app-shell .sidebar-nav a { position: relative; color: var(--text-sidebar); }
+.app-shell .sidebar-nav a:hover { background: rgba(255, 255, 255, 0.085); color: white; }
+.app-shell .sidebar-nav a.active { background: rgba(255, 255, 255, 0.115); color: white; border-color: transparent; box-shadow: none; }
+.app-shell .sidebar-nav a.active::before { content: ''; position: absolute; inset: 6px auto 6px 0; width: 3px; border-radius: 0 3px 3px 0; background: var(--brand-brass); }
+.app-shell .sidebar .logo b, .home-logo b, .login-page .logo b { color: var(--brand-brass); }
+.tab.active { color: var(--color-action-primary-bg); border-color: var(--color-action-primary-bg); }
+.analyses-page .card-grid { grid-template-columns: minmax(0, 1fr); }
+.analyses-page .card-grid > .card { margin-bottom: 0; border-radius: 12px; padding: 20px; }
+.analyses-page .card-title { margin-bottom: 6px; }
+.analyses-page .card .form-row { margin-top: 16px; }
+.theme-mode { display: inline-block; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+:is(.badge-ok, .alert-ok) { background: var(--color-success-bg); color: var(--color-success-fg); }
+:is(.badge-warn, .alert-warn) { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:is(.badge-bad, .alert-error) { background: var(--color-danger-bg); color: var(--color-danger-fg); }
+.spinner { border-top-color: var(--color-action-primary-bg); }
+@media (max-width: 767px) {
+  .run-switch button, .period-picker button, .icon-btn { min-height: 44px; min-width: 44px; }
+}
+
+/* Real pending feedback only; reserve the glyph space for controls with an actual busy flag. */
+button[aria-busy] { position: relative; padding-inline-start: 32px; }
+button[aria-busy='true']::before {
+  content: ''; position: absolute; left: 10px; top: 50%; width: 14px; height: 14px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  transform: translateY(-50%); animation: nq-operation-spin 700ms linear infinite;
+}
+@keyframes nq-operation-spin { to { transform: translateY(-50%) rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { button[aria-busy='true']::before { animation: none; } }
+
+/* Numeric clock text only; labels, marker geometry and playback animations remain untouched. */
+.live-clock strong { font-family: var(--font-number); font-variant-numeric: tabular-nums; }
+
+/* Existing analysis fields form a compact desktop entry; narrow screens retain the stacked card. */
+@media (min-width: 1024px) {
+  .analyses-page .analysis-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; }
+  .analyses-page .analysis-entry-details { min-width: 0; }
+  .analyses-page .analysis-entry-details > p { margin-block: 4px; }
+  .analyses-page .analysis-actions { margin-top: 0; justify-self: end; flex-wrap: wrap; }
 }

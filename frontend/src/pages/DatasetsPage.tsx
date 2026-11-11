@@ -91,7 +91,7 @@ export function DatasetsPage() {
               onChange={handleFileChange}
             />
           </div>
-          <button type="button" onClick={handleUpload} disabled={!file || uploadMutation.isPending}>
+          <button type="button" className="btn-primary" aria-busy={uploadMutation.isPending} onClick={handleUpload} disabled={!file || uploadMutation.isPending}>
             {t('datasets.upload')}
           </button>
         </div>
@@ -140,7 +140,7 @@ export function DatasetsPage() {
                     </td>
                     <td>{t(d.purpose === 'review' ? 'datasets.purpose_review' : d.is_current ? 'datasets.purpose_planning_current' : 'datasets.purpose_planning')}</td>
                     <td>
-                      <button type="button" className="btn-ghost" onClick={() => handleDelete(d.id)}>
+                      <button type="button" className="btn-danger" onClick={() => handleDelete(d.id)}>
                         {t('datasets.delete')}
                       </button>
                     </td>

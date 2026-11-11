@@ -1,3 +1,4 @@
+import { NumericValue } from '../ui/NumericValue'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fmtDecimal } from '../../lib/format'
@@ -42,11 +43,11 @@ export function KeyResults({ kpis, separate, recorded }: {
         {!recorded.hasRecords
           ? <p className="key-result-note">{t('results.recorded_unavailable')}</p>
           : recorded.loading ? <p className="key-result-note">{t('common.loading')}</p>
-          : <strong>{minutesText(recorded.dayWaitHours, unavailable, unit)}</strong>}
+          : <strong><NumericValue>{minutesText(recorded.dayWaitHours, unavailable, unit)}</NumericValue></strong>}
       </KeyResult>
       <KeyResult id="kr-estimated" label={t('results.estimated_wait')} source={t('results.source_estimate')}
         how={separate ? t('results.how_estimated_separate') : t('results.how_estimated_shared')}>
-        <strong>{minutesText(finiteNumber(kpis.avg_waiting_time), unavailable, unit)}</strong>
+        <strong><NumericValue>{minutesText(finiteNumber(kpis.avg_waiting_time), unavailable, unit)}</NumericValue></strong>
         {!separate && unstableCount > 0 && <p className="key-result-note">{t('results.estimated_excludes', { count: unstableCount })}</p>}
       </KeyResult>
     </div>

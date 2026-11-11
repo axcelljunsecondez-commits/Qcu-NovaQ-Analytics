@@ -223,3 +223,35 @@ describe('Quick calculator (U9 + B2)', () => {
     expect(screen.getByLabelText("Time Consistency in minutes. (Optional)")).toBeInTheDocument()
   })
 })
+
+
+it('animates only an explicit calculator tab change without remounting inputs or making requests', async () => {
+  const original = HTMLElement.prototype.animate
+  const animate = vi.fn((_frames: unknown, _options: { duration: number }) => ({ cancel: vi.fn() }))
+  Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value: animate })
+  try {
+    const user = userEvent.setup()
+    renderCalculator()
+    const input = await screen.findByLabelText('Customer Arriving per hour')
+    const panel = screen.getByRole('tabpanel')
+    await user.type(input, '40')
+    expect(animate).not.toHaveBeenCalled()
+    const leaving = screen.getByRole('tab', { name: 'Line Leaving Rates' })
+    leaving.focus()
+    await user.keyboard('{Enter}')
+    expect(leaving).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel')).toBe(panel)
+    expect(screen.getByLabelText('Customer Arriving per hour')).toBe(input)
+    expect(input).toHaveValue(40)
+    expect(animate).toHaveBeenCalledTimes(1)
+    expect(animate.mock.calls[0][1].duration).toBe(205)
+    await user.type(input, '1')
+    await user.keyboard('{Tab}')
+    expect(animate).toHaveBeenCalledTimes(1)
+    expect(runGuestMock).not.toHaveBeenCalled()
+    expect(runAnalysisMock).not.toHaveBeenCalled()
+  } finally {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value: original })
+    else Reflect.deleteProperty(HTMLElement.prototype, 'animate')
+  }
+})

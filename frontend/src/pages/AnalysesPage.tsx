@@ -81,20 +81,20 @@ export function AnalysesPage() {
   }
 
   return (
-    <div>
+    <div className="analyses-page">
       <div className="page-heading-row">
         <div>
           <h1 lang="en" className="page-title">{headingText(t, 'analyses.title')}</h1>
           <p className="page-caption">{t('analyses.caption')}</p>
         </div>
-        <div className="tutorial-heading-actions"><TutorialWatch id="analysis-workflow" /><Link className="button-link" to="/analyses/new">{t('analyses.new')}</Link></div>
+        <div className="tutorial-heading-actions"><TutorialWatch id="analysis-workflow" /><Link className="button-link btn-primary" to="/analyses/new">{t('analyses.new')}</Link></div>
       </div>
       {archive.isError && <div role="alert" className="alert alert-error">{t('errors.server')}</div>}
       {all.length === 0 ? (
         <div className="card">
           <ApiState.Empty message={t('analyses.empty')} />
           <div className="form-row">
-            <Link className="button-link" to="/analyses/new">{t('analyses.create_first')}</Link>
+            <Link className="button-link btn-primary" to="/analyses/new">{t('analyses.create_first')}</Link>
             <Link to="/help">{t('analyses.empty_help')}</Link>
           </div>
         </div>
@@ -131,7 +131,8 @@ export function AnalysesPage() {
             {analyses.map((analysis) => {
               const window = operatingWindow(analysis)
               return (
-                <article className="card" key={analysis.id}>
+                <article className="card analysis-entry" key={analysis.id}>
+                  <div className="analysis-entry-details">
                   <h2 className="card-title">{analysis.name}</h2>
                   <p>{analysis.location_label || analysis.service_type || t('analyses.no_details')}</p>
                   <span className="badge badge-neutral" data-testid="analysis-structure-badge">
@@ -139,7 +140,8 @@ export function AnalysesPage() {
                   </span>{' '}
                   <span className="badge">{t(`analyses.status.${analysis.setup_status}`)}</span>
                   {window && <p className="form-hint">{t('analyses.operating_window', { window })}</p>}
-                  <div className="form-row">
+                  </div>
+                  <div className="form-row analysis-actions">
                     <Link className="button-link" to={`/analyses/${analysis.id}/data`}>{t('analyses.open')}</Link>
                     {analysis.queue_setup?.queue_structure === 'unknown' && (
                       <Link className="button-link" to={`/analyses/${analysis.id}/guided-setup`}>{t('analyses.choose_structure')}</Link>

@@ -289,7 +289,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
             </div>
           </details>
           <div className="supervisor-actions">
-            <button type="submit" aria-busy={busy === 'check'}>{t(busy === 'check' ? 'supervisor.checking' : 'supervisor.check')}</button>
+            <button type="submit" className="btn-primary" aria-busy={busy === 'check'}>{t(busy === 'check' ? 'supervisor.checking' : 'supervisor.check')}</button>
             <span className="form-hint">{t('supervisor.check_hint')}</span>
           </div>
         </fieldset>
@@ -358,7 +358,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
               <p className="form-hint">{t('supervisor.wait_verdict.no_clear_difference')}</p>
             )}
             <div className="supervisor-actions">
-              <button type="button" disabled={!canApply} aria-busy={busy === 'apply'} onClick={() => void apply()}>
+              <button type="button" className="btn-primary" disabled={!canApply} aria-busy={busy === 'apply'} onClick={() => void apply()}>
                 {t(busy === 'apply' ? 'supervisor.applying' : 'supervisor.apply')}
               </button>
             </div>
@@ -369,7 +369,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
           <input id="sup-name" value={name} onChange={e => { setName(e.target.value); setNameTyped(e.target.value !== '') }} disabled={!!busy} />
           {pendingMoves && <p className="form-hint">{t('supervisor.save_after_apply')}</p>}
           <div className="supervisor-actions">
-            <button type="button" disabled={!saveEligible || !!busy || selectingPlan || !name.trim()} onClick={() => void save(true)}>{t('plans.use_this_plan')}</button>
+            <button type="button" className="btn-primary" disabled={!saveEligible || !!busy || selectingPlan || !name.trim()} onClick={() => void save(true)}>{t('plans.use_this_plan')}</button>
             <button type="button" className="btn-ghost" disabled={!saveEligible || !!busy || selectingPlan || !name.trim()} onClick={() => void save(false)}>{t('plans.save_without_using')}</button>
           </div>
           {saved && !used && !stale && !selectionError && <p role="status">{t('optimize.saved')}</p>}

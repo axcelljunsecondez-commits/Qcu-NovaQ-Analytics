@@ -1,3 +1,5 @@
+import { useContentEntrance } from '../lib/useContentEntrance'
+import { NumericValue } from '../components/ui/NumericValue'
 import { headingText } from '../lib/headingText'
 import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -45,6 +47,7 @@ export function QuickCalculatorPage() {
   const [params, setParams] = useSearchParams()
   const requested = params.get('situation')
   const situation: Situation = (SITUATIONS as readonly string[]).includes(requested ?? '') ? requested as Situation : 'basic'
+  const panelRef = useContentEntrance<HTMLFormElement>(situation, 205, { animateInitial: false })
   const [values, setValues] = useState<Record<FieldKey, string>>({ lambda: '', mu: '', c: '', spread: '', capacity: '', patience: '' })
   const [problems, setProblems] = useState<FieldKey[]>([])
   const [calculation, setCalculation] = useState<Calculation | null>(null)
@@ -105,7 +108,7 @@ export function QuickCalculatorPage() {
         ))}
       </div>
 
-      <form className="card" id="calculator-panel" role="tabpanel" aria-labelledby={`calculator-tab-${situation}`} onSubmit={(event) => void calculate(event)} noValidate>
+      <form ref={panelRef} className="card" id="calculator-panel" role="tabpanel" aria-labelledby={`calculator-tab-${situation}`} onSubmit={(event) => void calculate(event)} noValidate>
         <p className="form-hint">{t(`calculator.situation_help.${situation}`)}</p>
         <div className="form-row">
           {FIELDS[situation].map((field) => {
@@ -123,7 +126,7 @@ export function QuickCalculatorPage() {
             )
           })}
         </div>
-        <button type="submit" className="btn-primary" disabled={running}>{running ? t('common.loading') : t('calculator.calculate')}</button>
+        <button type="submit" className="btn-primary" aria-busy={running} disabled={running}>{running ? t('common.loading') : t('calculator.calculate')}</button>
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </form>
 
@@ -153,7 +156,7 @@ function Results({ calculation }: { calculation: Calculation }) {
           return (
             <div className="card kpi-card calculator-result-card" key={card.key} data-testid={`calculator-${card.key}`}>
               <span className="kpi-label calculator-result-label">{t(`calculator.result.${label}`)} <InfoTip name={t(`calculator.result.${label}`)} text={t(`calculator.result_info.${label}`)} /></span>
-              <strong className="kpi-value">{card.value}</strong>
+              <strong className="kpi-value">{card.key === 'keep_up' ? card.value : <NumericValue>{card.value}</NumericValue>}</strong>
             </div>
           )
         })}

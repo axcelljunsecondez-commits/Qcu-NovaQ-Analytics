@@ -113,7 +113,7 @@ export function AdminPage() {
               <option value="admin">{t('admin.role_admin')}</option>
             </select>
           </div>
-          <button type="submit" disabled={createMutation.isPending}>
+          <button type="submit" className="btn-primary" aria-busy={createMutation.isPending} disabled={createMutation.isPending}>
             {t('admin.create')}
           </button>
         </form>

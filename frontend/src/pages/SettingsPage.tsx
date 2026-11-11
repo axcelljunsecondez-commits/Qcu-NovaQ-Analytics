@@ -3,7 +3,6 @@ import { NavLink, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/useAuth'
 import { LanguageSelector } from '../components/layout/LanguageSelector'
-import { ThemeToggle } from '../components/layout/ThemeToggle'
 import { isSettingsSection, settingsSections, type SettingsSection } from '../components/layout/navigation'
 import { AccountPage } from './AccountPage'
 import { AdminPage } from './AdminPage'
@@ -17,7 +16,7 @@ function AppearanceSettings() {
       <h1 lang="en" className="page-title">{headingText(t, 'settings.section_appearance')}</h1>
       <div className="card settings-appearance">
         <h2 lang="en" className="card-title">{headingText(t, 'settings.theme')}</h2>
-        <ThemeToggle />
+        <p className="theme-mode">{t('theme.light')}</p>
         <h2 lang="en" className="card-title">{headingText(t, 'language.label')}</h2>
         <LanguageSelector />
         <p className="form-hint">{t('settings.saved_on_device')}</p>

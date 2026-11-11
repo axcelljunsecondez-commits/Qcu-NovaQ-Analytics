@@ -1,3 +1,9 @@
+/* Owner-approved local fonts; licenses and pinned provenance are in public/fonts. */
+@font-face { font-family: 'Inter'; src: url('/fonts/InterVariable.woff2') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/IBMPlexMono-Regular-Latin1.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/IBMPlexMono-Medium-Latin1.woff2') format('woff2'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/IBMPlexMono-SemiBold-Latin1.woff2') format('woff2'); font-style: normal; font-weight: 600; font-display: swap; }
+
 :root {
   /* Primitive palette */
   --navy-950: #061a33;
@@ -228,4 +234,76 @@
   --color-data-current-bg: #102a43;
   --color-data-optimized: #c084fc;
   --color-data-optimized-bg: #2b1b3d;
+}
+
+/* Cobalt and Brass amendment, 2026-11-09. Legacy dark mappings above are inactive. */
+:root,
+.app-shell {
+  color-scheme: light;
+  --font-text: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-number: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --font-family: var(--font-text);
+  --brand-navy: #0f2d5c;
+  --brand-brass: #d4a017;
+  --color-bg-canvas: #f5f7fa;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #eef3f8;
+  --color-bg-sidebar: var(--brand-navy);
+  --color-bg-input: #ffffff;
+  --color-text-primary: #101f36;
+  --color-text-secondary: #53647b;
+  --color-text-inverse: #ffffff;
+  --color-border-subtle: #dbe3ee;
+  --color-border-control: #6b7c90;
+  --color-action-primary-bg: #0055da;
+  --color-action-primary-fg: #ffffff;
+  --color-action-primary-hover: #034bbe;
+  --color-action-primary-pressed: #0f367c;
+  --color-action-link: #0055da;
+  --color-focus-ring: #0055da;
+  --color-disabled-bg: #e2e8f0;
+  --color-disabled-fg: #53647b;
+  --color-disabled-border: #94a3b8;
+  --color-success-bg: #eaf8f1;
+  --color-success-fg: #087a4e;
+  --color-warning-bg: #fff4d6;
+  --color-warning-fg: #8a4b00;
+  --color-danger-bg: #fff0f3;
+  --color-danger-fg: #b4233a;
+  --color-info-bg: #eef7ff;
+  --color-info-fg: #185e86;
+  --color-success-border: var(--color-success-fg);
+  --color-warning-border: var(--color-warning-fg);
+  --color-danger-border: var(--color-danger-fg);
+  --color-info-border: var(--color-info-fg);
+  --color-action-danger: #c92337;
+  --bg-page: var(--color-bg-canvas);
+  --bg-card: var(--color-bg-surface);
+  --bg-secondary: var(--color-bg-subtle);
+  --bg-sidebar: var(--color-bg-sidebar);
+  --bg-input: var(--color-bg-input);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-sidebar: #d4e0ef;
+  --text-sidebar-heading: #ffffff;
+  --accent: var(--brand-brass);
+  --accent-hover: #b78c1c;
+  --accent-bg: rgba(212, 160, 23, 0.09);
+  --border: var(--color-border-subtle);
+  --primary: var(--color-action-primary-bg);
+  --primary-contrast: var(--color-action-primary-fg);
+  --focus-ring: var(--color-focus-ring);
+  --disabled-bg: var(--color-disabled-bg);
+  --disabled-text: var(--color-disabled-fg);
+  --success: var(--color-success-fg);
+  --success-bg: var(--color-success-bg);
+  --warning: var(--color-warning-fg);
+  --warning-bg: var(--color-warning-bg);
+  --danger: var(--color-danger-fg);
+  --danger-bg: var(--color-danger-bg);
+  --info: var(--color-info-fg);
+  --info-bg: var(--color-info-bg);
+  --shadow-sm: 0 4px 16px rgba(13, 42, 75, 0.035);
+  --motion-page: 220ms;
+  --motion-tab: 205ms;
 }

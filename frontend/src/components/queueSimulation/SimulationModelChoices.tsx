@@ -123,7 +123,7 @@ function ChoicesForAnalysis({ analysisId, disabled, focusRequest, onPendingChang
         {(choices.capacity_mode === 'finite' || choices.abandonment_mode === 'modeled')
           && <p className="form-hint">{t('continuous.reason.capacity_or_abandonment')}</p>}
         <div className="button-row">
-          <button type="submit" disabled={!draft || !valid || disabled || save.isPending}>{t(save.isPending ? 'common.saving' : 'common.save')}</button>
+          <button type="submit" className="btn-primary" disabled={!draft || !valid || disabled || save.isPending}>{t(save.isPending ? 'common.saving' : 'common.save')}</button>
           {draft && <button type="button" className="btn-ghost" disabled={save.isPending} onClick={() => { setDraft(null); save.reset() }}>{t('common.cancel')}</button>}
         </div>
       </fieldset>
