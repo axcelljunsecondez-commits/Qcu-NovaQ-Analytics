@@ -98,7 +98,7 @@ export function AccountPage() {
         <h2 lang="en" className="page-title">{headingText(t, 'auth.set_password')}</h2>
         <p className="page-caption">{t('auth.set_password_help')}</p>
         {resetSent && <div role="status" className="alert alert-ok">{t('auth.reset_sent')}</div>}
-        <button type="button" onClick={() => void forgotPassword(user.email).then(() => setResetSent(true))}>
+        <button type="button" className="btn-secondary" onClick={() => void forgotPassword(user.email).then(() => setResetSent(true))}>
           {t('auth.send_reset')}
         </button>
       </div> : <div className="card">
@@ -143,7 +143,7 @@ export function AccountPage() {
           </div>
           {error && <div role="alert" className="alert alert-error">{error}</div>}
           {success && <div role="status" className="alert alert-ok">{t('account.password_changed')}</div>}
-          <button type="submit" disabled={submitting}>
+          <button type="submit" className="btn-primary" aria-busy={submitting} disabled={submitting}>
             {t('account.change_password')}
           </button>
         </form>

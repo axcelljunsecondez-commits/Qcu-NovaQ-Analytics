@@ -1,3 +1,4 @@
+import { NumericValue } from '../ui/NumericValue'
 import { headingText } from '../../lib/headingText'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -67,11 +68,13 @@ export function ResultsSummary({ rows, arrivalsByPeriod = [], arrivalRecords, pe
     return [
       { label: t('results.summary_period'), value: timeOf(row) || unavailable },
       ...(separate ? [{ label: t('analyses.service_line'), value: lineOf(row) ?? unavailable }] : []),
-      { label: t('results.summary_counters'), value: finiteNumber(row.c) ?? unavailable },
-      { label: t('results.summary_wait'), value: cantKeepUp(row) ? t('results.cant_keep_up_wait') : wait !== null ? `${fmtDecimal(wait, 2)} ${t('results.min')}` : unavailable },
+      { label: t('results.summary_counters'), numeric: true, value: finiteNumber(row.c) ?? unavailable },
+      { label: t('results.summary_wait'), numeric: true, value: cantKeepUp(row) ? t('results.cant_keep_up_wait') : wait !== null ? `${fmtDecimal(wait, 2)} ${t('results.min')}` : unavailable },
       { label: t('results.col_level'), value: <span className={`status-badge ${levelClass(level)}`}>{t(levelKey(level))} · {fmtPctDecimal(finiteNumber(row.rho))}</span> },
     ]
   }
+  const display = (field: ReturnType<typeof fields>[number]) => 'numeric' in field && field.numeric && (typeof field.value === 'string' || typeof field.value === 'number')
+    ? <NumericValue>{field.value}</NumericValue> : field.value
   return (
     <section className="card results-summary" aria-labelledby="results-summary-title">
       <div className="results-section-heading">
@@ -101,13 +104,13 @@ export function ResultsSummary({ rows, arrivalsByPeriod = [], arrivalRecords, pe
               <caption className="sr-only">{t('results.operation_by_period')}</caption>
               <thead><tr>{fields(visible[0]).map((field) => <th key={field.label} scope="col">{field.label}</th>)}</tr></thead>
               <tbody>{visible.map((row, index) => <tr key={`${timeOf(row)}-${lineOf(row) ?? ''}-${index}`}>
-                {fields(row).map((field, column) => column === 0 ? <th scope="row" key={field.label}>{field.value}</th> : <td key={field.label}>{field.value}</td>)}
+                {fields(row).map((field, column) => column === 0 ? <th scope="row" key={field.label}>{display(field)}</th> : <td key={field.label}>{display(field)}</td>)}
               </tr>)}</tbody>
             </table>
           </div>
           <ul key={'list-' + page} className="results-summary-list results-page-transition" aria-label={t('results.operation_by_period')}>
             {visible.map((row, index) => <li key={`${timeOf(row)}-${lineOf(row) ?? ''}-${index}`}>
-              <dl>{fields(row).map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+              <dl>{fields(row).map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{display(field)}</dd></div>)}</dl>
             </li>)}
           </ul>
         </>

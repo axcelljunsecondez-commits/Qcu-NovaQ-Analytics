@@ -1,3 +1,4 @@
+import { usePageContent } from '../lib/useContentEntrance'
 import { headingText } from '../lib/headingText'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -6,6 +7,7 @@ import { forgotPassword } from '../api/auth'
 import { LanguageSelect } from '../components/layout/LanguageSelect'
 
 export function ForgotPasswordPage() {
+  const contentRef = usePageContent<HTMLDivElement>()
   const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -24,13 +26,13 @@ export function ForgotPasswordPage() {
       setSubmitting(false)
     }
   }
-  return <div className="login-page"><div className="card login-card">
+  return <div className="login-page" ref={contentRef} tabIndex={-1}><div className="card login-card">
     <LanguageSelect />
     <h1 lang="en" className="login-title">{headingText(t, 'auth.forgot_title')}</h1>
     {sent ? <div className="alert alert-ok">{t('auth.reset_sent')}</div> : <form onSubmit={submit}>
       <div className="form-field"><label htmlFor="forgot-email">{t('login.email')}</label><input id="forgot-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></div>
       {error && <div role="alert" className="alert alert-error">{error}</div>}
-      <button type="submit" disabled={submitting}>{t('auth.send_reset')}</button>
+      <button type="submit" className="btn-primary" aria-busy={submitting} disabled={submitting}>{t('auth.send_reset')}</button>
     </form>}
     <Link to="/login">{t('auth.back_login')}</Link>
   </div></div>

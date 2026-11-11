@@ -1,3 +1,4 @@
+import { usePageContent } from '../lib/useContentEntrance'
 import { headingText } from '../lib/headingText'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -7,6 +8,7 @@ import { clearFragment, readFragmentToken } from '../auth/fragmentToken'
 import { LanguageSelect } from '../components/layout/LanguageSelect'
 
 export function ResetPasswordPage() {
+  const contentRef = usePageContent<HTMLDivElement>()
   const { t } = useTranslation()
   // Read without scrubbing during render: a suspended first render is discarded,
   // and scrubbing there would leave the retried render with no token.
@@ -22,14 +24,14 @@ export function ResetPasswordPage() {
     if (!token) { setState('invalid'); return }
     try { await resetPassword(token, password); setState('success') } catch { setState('invalid') }
   }
-  return <div className="login-page"><div className="card login-card">
+  return <div className="login-page" ref={contentRef} tabIndex={-1}><div className="card login-card">
     <LanguageSelect />
     <h1 lang="en" className="login-title">{headingText(t, 'auth.reset_title')}</h1>
     {state === 'form' && <form onSubmit={submit}>
       <div className="form-field"><label htmlFor="reset-password">{t('account.new_password')}</label><input id="reset-password" type="password" minLength={8} maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" /></div>
       <div className="form-field"><label htmlFor="reset-confirm">{t('auth.confirm_password')}</label><input id="reset-confirm" type="password" minLength={8} maxLength={128} value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" /></div>
       {error && <div className="alert alert-error">{error}</div>}
-      <button type="submit">{t('auth.reset_password')}</button>
+      <button type="submit" className="btn-primary">{t('auth.reset_password')}</button>
     </form>}
     {state === 'success' && <div className="alert alert-ok">{t('auth.reset_success')}</div>}
     {state === 'invalid' && <div className="alert alert-error">{t('auth.reset_invalid')}</div>}

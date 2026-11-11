@@ -1,0 +1,49 @@
+{
+  "purpose": "Self-hosted fonts for owner-authorized Cobalt and Brass UI; no runtime third-party font requests.",
+  "inter_commit": "e3a3d4c57d5ecc01453a575621882a384c1995a3",
+  "plex_commit": "48e8676114c04f29033b4b53da4ec579f8846297",
+  "files": [
+    {
+      "file": "InterVariable.woff2",
+      "bytes": 352240,
+      "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+      "source": "https://raw.githubusercontent.com/rsms/inter/e3a3d4c57d5ecc01453a575621882a384c1995a3/docs/font-files/InterVariable.woff2",
+      "modified": false
+    },
+    {
+      "file": "LICENSE-Inter.txt",
+      "bytes": 4380,
+      "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a",
+      "source": "https://raw.githubusercontent.com/rsms/inter/e3a3d4c57d5ecc01453a575621882a384c1995a3/LICENSE.txt",
+      "modified": false
+    },
+    {
+      "file": "IBMPlexMono-Regular-Latin1.woff2",
+      "bytes": 17544,
+      "sha256": "e8993d946649b9d01abb1ed06d574b19d8ea3e66b5c3948602db335c44c18e56",
+      "source": "https://raw.githubusercontent.com/IBM/plex/48e8676114c04f29033b4b53da4ec579f8846297/packages/plex-mono/fonts/split/woff2/IBMPlexMono-Regular-Latin1.woff2",
+      "modified": false
+    },
+    {
+      "file": "IBMPlexMono-Medium-Latin1.woff2",
+      "bytes": 17868,
+      "sha256": "41201b658a328b9d00368215c2f1102770f80b15952ab82631e4006255e6365d",
+      "source": "https://raw.githubusercontent.com/IBM/plex/48e8676114c04f29033b4b53da4ec579f8846297/packages/plex-mono/fonts/split/woff2/IBMPlexMono-Medium-Latin1.woff2",
+      "modified": false
+    },
+    {
+      "file": "IBMPlexMono-SemiBold-Latin1.woff2",
+      "bytes": 17872,
+      "sha256": "b7acd05041ab65f3b7039e218ddd893065e11a07e85ea85019473152a51b6b7d",
+      "source": "https://raw.githubusercontent.com/IBM/plex/48e8676114c04f29033b4b53da4ec579f8846297/packages/plex-mono/fonts/split/woff2/IBMPlexMono-SemiBold-Latin1.woff2",
+      "modified": false
+    },
+    {
+      "file": "LICENSE-IBMPlexMono.txt",
+      "bytes": 4360,
+      "sha256": "91c25c350d3cac39da2736d74f7ba37ef648f5237a4e330a240615bc8d8c4360",
+      "source": "https://raw.githubusercontent.com/IBM/plex/48e8676114c04f29033b4b53da4ec579f8846297/packages/plex-mono/fonts/split/woff2/license.txt",
+      "modified": false
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { usePageContent } from '../lib/useContentEntrance'
 import { headingText } from '../lib/headingText'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -7,6 +8,7 @@ import { takeFragmentToken } from '../auth/fragmentToken'
 import { LanguageSelect } from '../components/layout/LanguageSelect'
 
 export function VerifyEmailPage() {
+  const contentRef = usePageContent<HTMLDivElement>()
   const { t } = useTranslation()
   const [state, setState] = useState<'working' | 'success' | 'invalid'>('working')
   useEffect(() => {
@@ -17,7 +19,7 @@ export function VerifyEmailPage() {
     }
     void verifyEmail(token).then(() => setState('success')).catch(() => setState('invalid'))
   }, [])
-  return <div className="login-page"><div className="card login-card">
+  return <div className="login-page" ref={contentRef} tabIndex={-1}><div className="card login-card">
     <LanguageSelect />
     <h1 lang="en" className="login-title">{headingText(t, 'auth.verify_title')}</h1>
     <div className={`alert ${state === 'success' ? 'alert-ok' : state === 'invalid' ? 'alert-error' : ''}`}>

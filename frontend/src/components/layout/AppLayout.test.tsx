@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useNavigate } from 'react-router-dom'
 import { renderWithProviders } from '../../test/test-utils'
 import { AppLayout, SIDEBAR_KEY } from './AppLayout'
 
@@ -88,10 +88,68 @@ describe('AppLayout hide-sidebar (D10)', () => {
 })
 
 describe('AppHeader', () => {
-  it('shows where the user is and the theme toggle', async () => {
+  it('shows the breadcrumb without a retired theme control', async () => {
     renderLayout('/settings/files')
     const crumbs = await screen.findByRole('navigation', { name: 'Breadcrumb' })
     expect(crumbs).toHaveTextContent('SettingsUploaded files')
-    expect(screen.getByRole('button', { name: /Dark Mode|Light Mode/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Dark Mode|Light Mode/ })).not.toBeInTheDocument()
+  })
+})
+
+function NavigationProbe() {
+  const navigate = useNavigate()
+  return <>
+    <input aria-label="Retained input" defaultValue="initial" />
+    <button type="button" onClick={() => navigate('?t=20')}>Clock query</button>
+    <button type="button" onClick={() => navigate('?q=filtered')}>Filter query</button>
+    <button type="button" onClick={() => navigate('/results')}>New pathname</button>
+    <button type="button" onClick={() => navigate('/reports#details')}>Hash destination</button>
+    <button type="button" onClick={() => navigate(-1)}>History back</button>
+  </>
+}
+
+function renderNavigation(route = '/simulation/replay') {
+  return renderWithProviders(<Routes><Route element={<AppLayout />}><Route path="*" element={<NavigationProbe />} /></Route></Routes>, { route })
+}
+
+describe('pathname-only page context', () => {
+  it('retains input identity, scroll and focus context for replay time and filters', async () => {
+    const user = userEvent.setup()
+    const { container } = renderNavigation()
+    const input = screen.getByRole('textbox', { name: 'Retained input' })
+    await user.clear(input)
+    await user.type(input, 'kept')
+    const main = container.querySelector('main')!
+    const focus = vi.spyOn(main, 'focus')
+    main.scrollTop = 240
+    document.documentElement.scrollTop = 180
+    await user.click(screen.getByRole('button', { name: 'Clock query' }))
+    await user.click(screen.getByRole('button', { name: 'Filter query' }))
+    expect(screen.getByRole('textbox', { name: 'Retained input' })).toBe(input)
+    expect(input).toHaveValue('kept')
+    expect(main.scrollTop).toBe(240)
+    expect(document.documentElement.scrollTop).toBe(180)
+    expect(focus).not.toHaveBeenCalled()
+  })
+
+  it('resets document/main on new pathname and history, while preserving hash destinations', async () => {
+    const user = userEvent.setup()
+    const { container } = renderNavigation()
+    const main = container.querySelector('main')!
+    main.scrollTop = 240
+    document.documentElement.scrollTop = 180
+    await user.click(screen.getByRole('button', { name: 'New pathname' }))
+    expect(main.scrollTop).toBe(0)
+    expect(document.documentElement.scrollTop).toBe(0)
+    expect(main).toHaveFocus()
+    main.scrollTop = 140
+    document.documentElement.scrollTop = 120
+    await user.click(screen.getByRole('button', { name: 'Hash destination' }))
+    expect(main.scrollTop).toBe(140)
+    expect(document.documentElement.scrollTop).toBe(120)
+    await user.click(screen.getByRole('button', { name: 'History back' }))
+    expect(main.scrollTop).toBe(0)
+    expect(document.documentElement.scrollTop).toBe(0)
+    expect(main).toHaveFocus()
   })
 })

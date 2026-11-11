@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { renderWithProviders } from '../test/test-utils'
 import { AppLayout } from '../components/layout/AppLayout'
@@ -79,17 +78,12 @@ describe('Settings (spec §7.10)', () => {
     expect(screen.getByRole('link', { name: 'Uploaded files' })).toHaveAttribute('aria-current', 'page')
   })
 
-  it('keeps the header and Appearance theme controls in agreement', async () => {
+  it('shows the fixed light mode while preserving Appearance and Language', async () => {
     meMock.mockResolvedValue(account(true))
-    const user = userEvent.setup()
     renderSettings('/settings/appearance')
     await screen.findByRole('heading', { level: 1, name: 'Appearance' })
-    const toggles = screen.getAllByRole('button', { name: 'Dark Mode' })
-    expect(toggles).toHaveLength(2)
-    await user.click(toggles[1])
-    expect(screen.getAllByRole('button', { name: 'Light Mode' })).toHaveLength(2)
-    expect(document.documentElement.dataset.theme).toBe('dark')
-    expect(localStorage.getItem('novaq_theme')).toBe('dark')
+    expect(screen.queryByRole('button', { name: /Dark Mode|Light Mode/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Light Mode')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Language' })).toBeInTheDocument()
   })
 })

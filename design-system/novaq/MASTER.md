@@ -1,8 +1,8 @@
 # NovaQ Design System — Master
 
 **Status:** Approved design-system source of truth
-**Version:** 1.1 (amended 2026-10-09)
-**Date:** 2026-09-13; amended 2026-10-09
+**Version:** 1.2 (amended 2026-11-09)
+**Date:** 2026-09-13; amended 2026-11-09
 **Platform:** Responsive web application
 **Stack:** React 19, React Router, global CSS, Plotly, i18next
 **Implementation state:** Contract defined; migration occurs through the approved refinement plan. The 2026-10-09 amendments (Section 0) describe the owner-approved redesign target; they are not implemented yet, and the current application still follows version 1.0 until each redesign phase ships.
@@ -11,6 +11,7 @@
 
 | Date | Section | Change | Source |
 |---|---|---|---|
+| 2026-11-09 | 2,4,5,7,18 | Cobalt content actions, navy/brass navigation, light-only local theme, self-hosted Inter/Plex numeric fonts and scoped pathname/tab entrance; protected replay unchanged | `docs/superpowers/specs/2026-11-09-cobalt-brass-ui.md`, current owner execution request |
 | 2026-10-09 | 7 Motion | Replay speed and smooth customer-marker movement | `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` D29 |
 | 2026-10-09 | 8.1 Breakpoints | Sidebar can be hidden to an icon rail at 1024 px and above | D10 |
 | 2026-10-09 | 9.1 Hierarchy | New global navigation and analysis-level destinations | D3, D10, D28, D32 |
@@ -18,7 +19,7 @@
 | 2026-10-09 | 9.4 Predicates | Plan-selection row renamed; Reports row split into plan report and full report | D4, D31 |
 | 2026-10-09 | 10.4 Evidence sources | Report availability follows the two report levels | D31 |
 
-Every amendment was approved by the product owner on 2026-10-09 and is recorded with its reason in `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` Section 0. None of them changes the protected behavior boundary in Section 13.
+The 2026-10-09 amendments were approved by the product owner on 2026-10-09 and are recorded with their reasons in `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` Section 0. None of them changes the protected behavior boundary in Section 13.
 
 ## 1. Retrieval and precedence
 
@@ -43,9 +44,9 @@ NovaQ is a pilot-deployable queueing analytics and operations-decision tool. Its
 - compact enough for operational data but readable at normal zoom;
 - minimal, grid-based, high-contrast, and low-motion;
 - recognizably NovaQ through the existing navy/gold identity; and
-- equally usable in English and Filipino, light and dark themes, keyboard and touch input.
+- equally usable in English and Filipino, the approved light interface, keyboard and touch input.
 
-Do not adopt the local design search’s Fira fonts, replacement blue palette, marketing gateway layout, or GSAP. The repository’s Inter/system font, navy/gold identity, application shell, global CSS, and Plotly stack remain.
+Do not adopt the local design search’s Fira fonts, marketing gateway layout, or GSAP. The 2026-11-09 approved amendment uses Cobalt and Brass, locally hosted Inter text and IBM Plex Mono numeric values, while retaining the existing application architecture and chart renderers.
 
 ## 3. Non-negotiable design principles
 
@@ -67,30 +68,32 @@ Tokens use three layers:
 
 `frontend/src/styles/theme.css` remains the runtime source. Existing variables such as `--bg-page`, `--text-primary`, `--accent`, and `--border` remain as compatibility aliases during migration; new code uses the canonical names below.
 
-### 4.1 Light and dark color tokens
+### 4.1 Active light tokens and historical dark mappings
+
+The 2026-11-09 UI is light-only. Dark column values below are retained historical mappings, not an exposed mode. The dated Cobalt and Brass specification governs the active light palette; Current/Optimized and status meanings remain intact.
 
 | Canonical token | Light | Dark | Required use |
 |---|---:|---:|---|
-| `--color-bg-canvas` | `#F4F8FC` | `#0B1120` | Application background |
+| `--color-bg-canvas` | `#F5F7FA` | `#0B1120` | Application background |
 | `--color-bg-surface` | `#FFFFFF` | `#162032` | Cards, panels, menus |
-| `--color-bg-subtle` | `#F1F5F9` | `#1E293B` | Grouped rows and secondary surfaces |
-| `--color-bg-sidebar` | `#08213F` | `#070D18` | Global navigation |
+| `--color-bg-subtle` | `#EEF3F8` | `#1E293B` | Grouped rows and secondary surfaces |
+| `--color-bg-sidebar` | `#0F2D5C` | `#070D18` | Global navigation |
 | `--color-bg-input` | `#FFFFFF` | `#1B2A4A` | Editable control background |
-| `--color-text-primary` | `#0A2345` | `#E2E8F0` | Body and headings |
-| `--color-text-secondary` | `#52647A` | `#B0BDCC` | Supporting text; not disabled text |
+| `--color-text-primary` | `#101F36` | `#E2E8F0` | Body and headings |
+| `--color-text-secondary` | `#53647B` | `#B0BDCC` | Supporting text; not disabled text |
 | `--color-text-inverse` | `#FFFFFF` | `#071729` | Text on dark navy or bright gold as appropriate |
-| `--color-border-subtle` | `#DCE6F0` | `#2B3B52` | Decorative separation |
+| `--color-border-subtle` | `#DBE3EE` | `#2B3B52` | Decorative separation |
 | `--color-border-control` | `#6B7C90` | `#7890A8` | Input/control boundary where 3:1 is required |
-| `--color-action-primary-bg` | `#E8A838` | `#F0B84C` | Primary action fill |
-| `--color-action-primary-fg` | `#0A2345` | `#071729` | Primary action label/icon |
-| `--color-action-primary-hover` | `#D4912F` | `#E8A838` | Hover/pressed layer |
+| `--color-action-primary-bg` | `#0055DA` | `#F0B84C` | Primary action fill |
+| `--color-action-primary-fg` | `#FFFFFF` | `#071729` | Primary action label/icon |
+| `--color-action-primary-hover` | `#034BBE` | `#E8A838` | Hover/pressed layer |
 | `--color-action-link` | `#185E86` | `#7CCCF0` | Inline links |
 | `--color-focus-ring` | `#1D63A8` | `#F0B84C` | Keyboard focus indicator |
 | `--color-disabled-bg` | `#E2E8F0` | `#334155` | Disabled fill |
 | `--color-disabled-fg` | `#52647A` | `#94A3B8` | Disabled label; always paired with disabled semantics |
 | `--color-disabled-border` | `#94A3B8` | `#475569` | Disabled control boundary |
 
-The gold primary pair uses navy text, never white. Measured contrast is 7.53:1 in light and 10.03:1 in dark. Primary/secondary text and action-link pairs must meet WCAG AA at implementation time.
+The active cobalt primary pair uses white text. Selected-pair contrast is approximately 6.34:1 at rest, 7.63:1 on hover and 11.42:1 pressed (#0F367C). Brass #D4A017 is a sidebar/brand accent, not a replacement for normal text. Primary/secondary text and action-link pairs must meet WCAG AA at implementation time.
 
 ### 4.2 Semantic status tokens
 
@@ -124,7 +127,7 @@ The primary data colors exceed 5:1 against their main surfaces. Charts also diff
 
 ## 5. Typography
 
-Use the existing `'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif` stack. Do not fetch or install a font.
+Use self-hosted Inter for text and IBM Plex Mono only for actual numeric values, with the existing system fallbacks. The approved 2026-11-09 assets include their license notices and pinned provenance under frontend/public/fonts; no external runtime font request or CSP relaxation is allowed.
 
 | Token | Size / line height | Use |
 |---|---|---|
@@ -191,7 +194,7 @@ Motion is restrained and never required to understand state:
 - Playback time remains controlled by its existing user controls and reducer.
 - Amended 2026-10-09 (D29): replay speeds are 0.25×, 0.5×, 1×, 2×, 5× and 10×, measured against simulated time rather than the length of the trace. Customer markers glide between arriving, their place in line, their counter and finished, using transform and opacity only, with each move lasting about 0.2–0.9 s so markers never teleport or streak. Counts, clock and states stay exact from the reducer; the glide only animates how a marker reaches its exact position. Under reduced motion, markers move without gliding. The base rate (proposed: 1× = 1 simulated minute per real second) awaits owner confirmation.
 - Under `prefers-reduced-motion: reduce`, nonessential animation and smooth scrolling are disabled; loading and playback status remain understandable without motion.
-- Do not add GSAP or route entrance animation.
+- Do not add GSAP. The 2026-11-09 amendment permits 220 ms pathname-only content entrance and 205 ms explicit chart-tab-panel entrance, with reduced-motion cancellation. Never animate/rekey playback on ?t/query updates or change marker timing/geometry.
 
 ## 8. Responsive layout
 
@@ -441,7 +444,7 @@ Rules:
 
 ### 11.1 Theme
 
-- Light and dark mappings are defined together in `theme.css`.
+- Active light mappings are defined in `theme.css`; historical dark mappings may remain inactive. Device-local dark preferences are migrated before render under the 2026-11-09 amendment.
 - Theme state is React-reactive and persisted using the existing `novaq_theme` key.
 - ThemeToggle exposes its current state and action through localized text and `aria-pressed` or equivalent state.
 - Theme changes update charts and all semantic tokens without reloading.
@@ -573,7 +576,7 @@ Verify representative populated, loading, empty, error, unavailable, stale, bloc
 - at 200% text zoom;
 - with keyboard only;
 - with reduced motion;
-- in light and dark themes;
+- in the light interface, including migration from an old saved dark preference;
 - in English and Filipino; and
 - with generated PDF/Excel preview fidelity where Reports is involved.
 

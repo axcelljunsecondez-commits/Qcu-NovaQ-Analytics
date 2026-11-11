@@ -362,7 +362,7 @@ export function OptimizePage() {
                     background: options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes
                       ? 'var(--state-current-bg)' : 'var(--color-bg-surface)',
                     borderColor: options.target_utilization === preset.options.target_utilization && options.max_wait_minutes === preset.options.max_wait_minutes
-                      ? 'var(--accent)' : 'var(--border)',
+                      ? 'var(--color-action-primary-bg)' : 'var(--border)',
                   }}
                 >
                   <span className="goal-preset-label" style={{ fontSize: '14px', fontWeight: 800 }}>
@@ -513,7 +513,8 @@ export function OptimizePage() {
               onClick={handleOptimize}
               disabled={running}
               className="button-primary"
-              style={{ width: '100%', marginTop: '14px', padding: '12px 24px', background: running ? 'var(--disabled-bg)' : 'var(--accent)', color: running ? 'var(--color-disabled-fg)' : 'var(--color-action-primary-fg)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 800, cursor: running ? 'not-allowed' : 'pointer' }}
+              aria-busy={running}
+              style={{ width: '100%', marginTop: '14px', padding: '12px 24px' }}
             >
               {running ? t('common.loading') : t('optimize.run')}
             </button>
@@ -674,9 +675,9 @@ export function OptimizePage() {
                 </div>
                 <button
                   type="button"
-                  onClick={handleWhatIf}
+                  className="btn-secondary" onClick={handleWhatIf}
                   disabled={running}
-                  style={{ padding: '8px 16px', background: 'var(--accent)', color: running ? 'var(--color-disabled-fg)' : 'var(--color-action-primary-fg)', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: running ? 'not-allowed' : 'pointer', height: '35px' }}
+                  style={{ padding: '8px 16px' }}
                 >
                   {t('optimize.what_if')}
                 </button>
@@ -703,7 +704,7 @@ export function OptimizePage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void handleSave(true)}
+                  className="btn-primary" onClick={() => void handleSave(true)}
                   disabled={saving || running || selectingPlan || stale || !snapshot || !rows?.length || !scenarioName.trim()}
                 >
                   {t('plans.use_this_plan')}
