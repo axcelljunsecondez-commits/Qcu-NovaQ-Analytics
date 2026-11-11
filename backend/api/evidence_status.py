@@ -491,6 +491,10 @@ class EvidencePolicy:
     workflow_engine: VersionFamily | None = None
     current_des_accounting: AccountingRequirement | None = None
     generation_kinds: frozenset[str] = frozenset()
+    selected_load_method: VersionFamily | None = None
+    # Per-call context supplied only by a consumer that verified the selected
+    # Separate scenario. Not inferred from metrics or enabled by default.
+    selected_load_context: bool = False
 
     def __post_init__(self) -> None:
         unknown = set(self.generation_kinds) - GENERATION_KINDS
@@ -580,8 +584,32 @@ class JobReferences:
     unrecorded: tuple[str, ...]
 
 
+def selected_load_record(kind: str, params: Mapping[str, Any], result: Mapping[str, Any],
+                         policy: EvidencePolicy | None) -> bool:
+    """Recognize audited selected-producer identity, never its numerical metrics.
+
+    Structural recovery is enabled only by the optional selected-load policy.
+    Scenario binding alone is shared with ordinary shared-line jobs.
+    """
+    if policy is None or policy.selected_load_method is None or kind not in {
+            "workflow_des", "workflow_mc", "workflow_validation", "workflow_decision"}:
+        return False
+    if policy.selected_load_context:
+        return True
+    if (result.get("provenance") == "SELECTED"
+            or kind == "workflow_des" and params.get("engine") == SELECTED_DES_ENGINE
+            or kind == "workflow_mc" and params.get("engine") == SELECTED_MC_ENGINE):
+        return True
+    if kind == "workflow_des":
+        execution = recorded_text(result.get("execution"))
+        return execution is not None and policy.selected_des_basis.classify(execution) != "unrecognized"
+    keys = {"workflow_mc": ("des_job_id",), "workflow_validation": ("des_job_id", "mc_job_id"),
+            "workflow_decision": ("validation_job_id", "des_job_id", "mc_job_id")}[kind]
+    return all(_recorded_int(params.get(key)) is not None for key in keys)
+
+
 def job_references(kind: str, params: Mapping[str, Any] | None,
-                   result: Mapping[str, Any] | None) -> JobReferences:
+                   result: Mapping[str, Any] | None, *, policy: EvidencePolicy | None = None) -> JobReferences:
     """Which records a job references, from recorded params/result keys only.
 
     Scenario-scoped kinds need ``scenario_id``. Selected-plan jobs are recognized by recorded
@@ -605,12 +633,13 @@ def job_references(kind: str, params: Mapping[str, Any] | None,
     if kind in scoped:
         need("scenario", params, "scenario_id", "scenario")
     selected = result.get("provenance") == "SELECTED"
-    if kind == "workflow_mc" and params.get("engine") == SELECTED_MC_ENGINE:
+    guarded_selected = selected_load_record(kind, params, result, policy)
+    if kind == "workflow_mc" and (params.get("engine") == SELECTED_MC_ENGINE or guarded_selected):
         need("selected-plan DES job", params, "des_job_id", "job:workflow_des")
-    elif kind == "workflow_validation" and selected:
+    elif kind == "workflow_validation" and (selected or guarded_selected):
         need("selected-plan DES job", params, "des_job_id", "job:workflow_des")
         need("selected-plan MC job", params, "mc_job_id", "job:workflow_mc")
-    elif kind == "workflow_decision" and selected:
+    elif kind == "workflow_decision" and (selected or guarded_selected):
         need("selected-plan validation job", params, "validation_job_id", "job:workflow_validation")
         need("selected-plan DES job", params, "des_job_id", "job:workflow_des")
         need("selected-plan MC job", params, "mc_job_id", "job:workflow_mc")
@@ -667,14 +696,18 @@ def job_record(*, job_id: int, kind: str, status: str, owner_id: int | None, cre
     if policy.workflow_engine is not None:
         versions.append(VersionRequirement(policy.workflow_engine, recorded_text(params.get("engine_version"))))
     engine = recorded_text(params.get("engine"))
-    if engine is not None:
+    selected_load = selected_load_record(kind, params, result, policy)
+    if engine is not None or selected_load and kind in {"workflow_des", "workflow_mc"}:
         versions.append(VersionRequirement(policy.job_engine, engine))
-    if kind == "workflow_des" and engine == SELECTED_DES_ENGINE:
+    if kind == "workflow_des" and (engine == SELECTED_DES_ENGINE or selected_load):
         versions.append(VersionRequirement(policy.selected_des_basis, recorded_text(result.get("execution"))))
+    if selected_load and policy.selected_load_method is not None:
+        versions.extend(VersionRequirement(policy.selected_load_method, recorded_text(source.get("selected_load_method")))
+                        for source in (params, result))
     accounting = policy.current_des_accounting
     if accounting is not None and kind in accounting.job_kinds and _has_separate_rows(result):
         versions.append(VersionRequirement(accounting.family, recorded_text(params.get(accounting.params_key))))
-    references = job_references(kind, params, result)
+    references = job_references(kind, params, result, policy=policy)
     dataset_id = _recorded_int(params.get("dataset_id"))
     bindings = [(ref, params.get("scenario_generation")) for ref in references.refs if ref.kind == "scenario"]
     if dataset_id is not None:

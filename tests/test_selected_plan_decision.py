@@ -92,13 +92,23 @@ def test_insufficient_validation_stays_insufficient():
     decision = _derive_selected_decision(
         **_inputs(verdict="insufficient", inadequate=[["08:00", "east-07"]]))
     assert decision["status"] == "insufficient_evidence"
-    assert decision["missing_evidence"] != []
+    # OQ-1 (owner 2026-11-11): a completed but inconclusive validation is not missing
+    # evidence, so the UI shows its inadequate periods instead of a "Run: ..." line.
+    # Status, headline and rationale stay unchanged; the recommendation is the
+    # owner-approved sentence for this branch (2026-11-11, "Use this exact wording").
+    assert decision["missing_evidence"] == []
+    assert decision["headline"] == "Insufficient evidence to make a management recommendation."
+    assert decision["recommendation"] == (
+        "The completed checks could not show whether this plan passes in every period. "
+        "Do not adopt it on this run alone; review the plan and its estimated loads first.")
+    assert decision["rationale"] == ["Selected Scenario: Optimal @ 70% (ID 9).", "Inadequate periods: 08:00."]
 
 
 def test_conservation_contradiction_cannot_adopt_or_pass_through():
     decision = _derive_selected_decision(**_inputs(conservation=False))
     assert decision["status"] == "insufficient_evidence"
     assert "conservation" in " ".join(decision["rationale"]).lower()
+    assert decision["missing_evidence"] == ["trustworthy DES evidence with customer conservation"]
 
 
 def test_malformed_validation_verdict_is_insufficient():
@@ -106,6 +116,9 @@ def test_malformed_validation_verdict_is_insufficient():
     inputs["validation_result"] = {"periods": [], "verdict": {"status": "mystery"}}
     decision = _derive_selected_decision(**inputs)
     assert decision["status"] == "insufficient_evidence"
+    assert decision["missing_evidence"] == ["a completed Scenario Validation run"]
+    # A real missing-evidence case keeps its existing recommendation.
+    assert decision["recommendation"] == "Complete the missing workflow evidence before making an adoption decision."
 
 
 # --- API layer -----------------------------------------------------------------------

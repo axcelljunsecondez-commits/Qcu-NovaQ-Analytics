@@ -544,6 +544,9 @@ def generate_separate_excel_report(model: dict) -> io.BytesIO:
         ("Generated at", "generated_at"),
     ], start=2):
         _put(ws_prov, idx, label, (model.get("provenance") or {}).get(key))
+    for key, value in (model.get("provenance") or {}).items():
+        if key.startswith("selected_load_"):
+            _put(ws_prov, ws_prov.max_row + 1, key, value)
 
     plans = model.get("comparison_plans") or []
     if plans:

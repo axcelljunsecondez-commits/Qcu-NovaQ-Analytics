@@ -3,7 +3,7 @@ import simulationDefaults from '../../api/simulation-defaults.json'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import type { SelectedDecision, SimMcOut, SimValidateOut } from '../../api/types'
+import { SELECTED_LOAD_METHOD_V1, type SelectedDecision, type SelectedValidationQueue, type SimMcOut, type SimValidateOut } from '../../api/types'
 import {
   createWorkflowDecision,
   runSelectedDecision,
@@ -64,7 +64,8 @@ function useInfoOverSlot(enabled: boolean) {
   return { frame, slot, place }
 }
 
-type CheckFailure = { time: string; queue?: string | null; reason: string }
+/** `reason` is null when no reason sentence applies (owner OQ-2: a selected-load FAIL whose raw run passed). */
+type CheckFailure = { time: string; queue?: string | null; reason: string | null }
 
 function CheckOutcome({ status, failures = [] }: { status: Status; failures?: CheckFailure[] }) {
   const { t } = useTranslation()
@@ -76,7 +77,7 @@ function CheckOutcome({ status, failures = [] }: { status: Status; failures?: Ch
       <strong>{t('simulation.sep_validation_fail')}</strong>
       {failures.length === 0 ? <p>{t('simulation.failure_reason_unavailable')}</p> : (
         <ul>{failures.map(({ time, queue, reason }) => <li key={JSON.stringify([time, queue])}>
-          <strong>{time}{queue && <> · {queue}</>}</strong>{' — '}{reason}
+          <strong>{time}{queue && <> · {queue}</>}</strong>{reason !== null && <>{' — '}{reason}</>}
         </li>)}</ul>
       )}
     </div>
@@ -181,6 +182,11 @@ function McTable({ rows }: { rows: SimMcOut[] }) {
   )
 }
 
+/** The raw Many variations verdict of a stored row; legacy rows (no `raw_mc_verdict`) recorded it as `validation_verdict`. */
+function rawMcVerdict(queue: SelectedValidationQueue): string | null {
+  return queue.raw_mc_verdict !== undefined ? queue.raw_mc_verdict : queue.validation_verdict
+}
+
 /** Separate-lines plan: Many variations → Results check → Decision (three existing requests). */
 function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   const { t } = useTranslation()
@@ -234,6 +240,11 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   }
 
   const validationStatus: Status = validationResult ? (validationResult.verdict.status === 'pass' ? 'pass' : validationResult.verdict.status === 'fail' ? 'fail' : 'insufficient') : 'not_run'
+  // SEED-001: v1 evidence records the selected-load method; legacy evidence keeps its original wording.
+  const loadAssessed = decision?.selected_load_method === SELECTED_LOAD_METHOD_V1
+  // The missing-DES/MC hint is for truly missing raw evidence, not a completed but inconclusive v1 assessment.
+  const validationEvidenceMissing = validationResult !== null && (validationResult.selected_load_method !== SELECTED_LOAD_METHOD_V1
+    || validationResult.periods.some((period) => period.des_ok === false || period.queues.some((queue) => queue.raw_mc_verdict === 'missing')))
   return (
     <div className="page-stack">
       <section className="card" aria-labelledby="decision-title">
@@ -248,7 +259,9 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
               {knownDecisionStatus(decision.status) && <>{' '}<span className="badge badge-neutral">{decisionStatusLabel(decision.status, t)}</span></>}
             </div>
             <p className="alert alert-warn" data-testid="selected-decision-scope">
-              <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+              {loadAssessed ? t('decision.plain.selected_load_assessment_notice') : <>
+                <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+              </>}
             </p>
             <DecisionExplanation status={decision.status} saved={Boolean(savedDecision)} disabled={running}>
             <p>{t('decision.plain.selected_scope_details')}</p>
@@ -309,7 +322,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                 <tbody>{validationResult.periods.map((period) => (
                   <tr key={period.time}>
                     <th scope="row">{period.time}</th><td>{period.active_queue_ids.length}</td><td>{period.des_ok ? '✓' : t('simulation.sep_des_incomplete')}</td>
-                    <td>{period.queues.length === 0 ? '—' : period.queues.every((q) => q.validation_verdict === 'pass') ? '✓' : period.queues.some((q) => q.validation_verdict === 'fail') ? 'FAIL' : '—'}</td>
+                    <td>{period.queues.length === 0 ? '—' : period.queues.every((q) => rawMcVerdict(q) === 'pass') ? '✓' : period.queues.some((q) => rawMcVerdict(q) === 'fail') ? 'FAIL' : '—'}</td>
                     <td>{period.status === 'pass' ? '✓' : period.status === 'fail' ? 'FAIL' : '—'}</td>
                   </tr>
                 ))}</tbody>
@@ -331,10 +344,12 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                 </div>
               </details>
             ))}
-            {validationStatus === 'insufficient' && <p className="form-hint">{t('simulation.sep_validation_missing_reason')}</p>}
+            {validationStatus === 'insufficient' && validationEvidenceMissing && <p className="form-hint">{t('simulation.sep_validation_missing_reason')}</p>}
             <CheckOutcome status={validationStatus} failures={validationResult.verdict.failed.map((item) => {
               const [time, queue] = Array.isArray(item) ? item : [item.time, item.queue_id]
               const row = validationResult.periods.find((period) => period.time === time)?.queues.find((candidate) => candidate.queue_id === queue)
+              // OQ-2 (owner): a selected-load FAIL whose raw run passed did not exceed the cap; show time and lane only.
+              if (row?.raw_mc_verdict === 'pass') return { time, queue, reason: null }
               const cap = row?.failure_rate_cap ?? validationResult.failure_rate_cap
               return { time, queue, reason: cap != null && Number.isFinite(cap)
                 ? t('simulation.failure_over_cap', { cap: fmtPct(cap) }) : t('simulation.failure_over_limit') }

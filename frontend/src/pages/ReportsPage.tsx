@@ -13,6 +13,7 @@ import {
   type ReportLevel,
   type ReportPreview,
 } from '../api/reports'
+import { SELECTED_LOAD_METHOD_V1 } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { HelpLink } from '../components/ui/HelpLink'
 import { rememberLastAnalysis } from '../lib/lastAnalysis'
@@ -168,7 +169,9 @@ export function ReportsPage() {
             <span className={`badge ${DECISION_BADGE[full.data.model.decision.status] ?? 'badge-neutral'}`} data-testid="full-stamp">{t('reports.page.stamp_full', { decision: t(`decision.status.${full.data.model.decision.status}`) })}</span>
             <p data-testid="report-decision-plain">{decisionAnswer(full.data.model, t)}</p>
             {full.data.model.line_type === 'separate' && <p className="alert alert-warn" data-testid="selected-decision-scope">
-              <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+              {full.data.model.decision.selected_load_method === SELECTED_LOAD_METHOD_V1 ? t('decision.plain.selected_load_assessment_notice') : <>
+                <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+              </>}
             </p>}
           </>
         )}

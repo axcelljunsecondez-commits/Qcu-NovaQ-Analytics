@@ -144,13 +144,6 @@ def test_load_replications_are_bounded_like_des_replications(db_engine, client):
         assert response.status_code == 422, bad
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Known finding (2026-09-19): with the break proposal applied, the Decision "
-    "depends on the base seed. At 13:00 cashier_2 is PASS on seeds 7-8 and FAIL "
-    "on 9-11 (failure rate 0.031 [0.024, 0.040] on seed 8 vs 0.121 [0.107, 0.136] "
-    "on seed 10); only seed 7's CI contains the 0.05 cap. The MC CIs cover trial "
-    "noise only, not the spread in the per-lane arrival rate fed in from the "
-    "selected-plan DES, so check (a) fails."))
 def test_novamart_failing_lanes_are_stable_across_base_seeds(db_engine, client):
     analysis_id, headers = _novamart_selected(db_engine, client, "stable@example.com")
     runs = []

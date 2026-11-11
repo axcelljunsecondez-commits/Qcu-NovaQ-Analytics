@@ -1,6 +1,7 @@
 import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { WorkflowDecision } from '../../api/workflow'
+import { SELECTED_LOAD_METHOD_V1 } from '../../api/types'
 import { plainDecision } from '../../lib/decisionPlain'
 
 interface DecisionEndpointProps {
@@ -66,7 +67,9 @@ export function DecisionEndpoint({
             return plain ? headingText(t, plain.key, plain.params) : decision.headline
           })()}</h2>
           {separate && <p className="alert alert-warn" data-testid="selected-decision-scope">
-            <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+            {decision.selected_load_method === SELECTED_LOAD_METHOD_V1 ? t('decision.plain.selected_load_assessment_notice') : <>
+              <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
+            </>}
           </p>}
           <p className="decision-headline">{decision.headline}</p>
           <p className="decision-recommendation">{decision.recommendation}</p>

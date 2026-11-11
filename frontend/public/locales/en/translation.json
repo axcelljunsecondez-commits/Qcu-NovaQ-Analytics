@@ -707,6 +707,7 @@
   "decision.plain.selected_scope_label": "Load estimate uncertainty: Not checked.",
   "decision.plain.selected_scope_body": "The variation test changes the load around a simulation average. It does not measure how much that average may change.",
   "decision.plain.selected_scope_details": "Repeating the simulation with another seed can change its mean load and the configured-run result. This does not establish seed stability or future operational safety.",
+  "decision.plain.selected_load_assessment_notice": "Validation checks uncertainty in the average customer load estimated by simulation. Unsupported or inconclusive checks remain Insufficient evidence. This does not establish seed stability or future operational safety.",
   "decision.plain.conditional_today_overloaded": "The plan passed every check, but its cost saving can't be calculated: today's staff can't keep up in {{periods}}. Use it only if you accept the cost.",
   "decision.plain.revise_periods": "Change the plan first. It did not hold up in: {{periods}}",
   "decision.plain.revise_count": "Change the plan first. It did not hold up in {{failed}} of {{total}} periods.",

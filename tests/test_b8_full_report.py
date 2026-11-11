@@ -9,6 +9,7 @@ Data: SYNTHETIC (rates and setups made for the test).
 from __future__ import annotations
 
 import base64
+import copy
 import io
 import re
 import statistics
@@ -158,25 +159,37 @@ def test_the_separate_full_report_keeps_todays_chain_and_quotes_it(db_engine, cl
     assert client.post(f"/analyses/{a}/workflow/decision/selected", headers=csrf_header(client), json={}).status_code == 200
     model = _model(client, a).json()["model"]
     assert model["line_type"] == "separate"
-    checks = {item["check"]: item for item in model["checks"]}
+    # SEED-001 spec §4: detail rows reuse the "Results check" label after the three
+    # summary rows, so take the first row of each label rather than a by-label dict.
+    checks: dict[str, Any] = {}
+    for item in model["checks"]:
+        checks.setdefault(item["check"], item)
+    assert [item["check"] for item in model["checks"][:3]] == ["Simulation run", "Many variations", "Results check"]
+    assert checks["Results check"] is model["checks"][2]
     assert checks["Results check"]["outcome"] == "pass: 4 of 4 line-periods passed, 0 failed, 0 without enough data"
     assert checks["Many variations"]["outcome"] == "4 of 4 within the allowed failure share"
     assert "whole day as one continuous run" in model["simulation"]["source"]
     assert model["simulation"]["headlines"][2]["value"] == 6  # customers served on the replayed day
     assert model["decision"]["status"] == "conditional"
-    from backend.reports.selected_scope import SELECTED_SCOPE_NOTICE
+    from backend.reports.full_report import separate_full_sections
+    from backend.reports.selected_scope import SELECTED_LOAD_ASSESSMENT_NOTICE, SELECTED_SCOPE_NOTICE
 
     before = client.get(f"/analyses/{a}/workflow").json()
-    assert model["decision"]["scope_notice"] == SELECTED_SCOPE_NOTICE
+    # This fixture is a current v1 chain: the approved v1 notice replaces the legacy
+    # "Not checked" note, which now applies to legacy evidence only (asserted below).
+    assert before["decision"]["result"]["selected_load_method"] == "selected-load-truncated-hoeffding-v1"
+    assert model["decision"]["scope_notice"] == SELECTED_LOAD_ASSESSMENT_NOTICE
     pdf = client.get(f"/analyses/{a}/reports/full.pdf")
     assert pdf.status_code == 200
-    assert pdf_text(pdf.content).count("Load estimate uncertainty: Not checked.") == 1
+    text = " ".join(pdf_text(pdf.content).split())
+    assert text.count("Load estimate uncertainty: Not checked.") == 0
+    assert text.count(SELECTED_LOAD_ASSESSMENT_NOTICE) == 1
     workbook = load_workbook(io.BytesIO(client.get(f"/analyses/{a}/reports/full.xlsx").content))
     sheet = workbook["Decision"]
     assert sheet["B5"].value == before["decision"]["result"]["headline"]
     assert sheet["B6"].value == before["decision"]["result"]["recommendation"]
     assert sheet.cell(sheet.max_row, 1).value == "Current scope note"
-    assert sheet.cell(sheet.max_row, 2).value == SELECTED_SCOPE_NOTICE
+    assert sheet.cell(sheet.max_row, 2).value == SELECTED_LOAD_ASSESSMENT_NOTICE
     assert sheet.cell(sheet.max_row, 2).alignment.wrap_text is True
     assert sheet.row_dimensions[sheet.max_row].height > 24
     no_note = {**model, "decision": {key: value for key, value in model["decision"].items() if key != "scope_notice"}}
@@ -195,6 +208,21 @@ def test_the_separate_full_report_keeps_todays_chain_and_quotes_it(db_engine, cl
     for key in ("des", "mc", "validation", "decision"):
         assert before[key] == after[key]
     assert "NovaQ plan report" in pdf_text(client.get(f"/analyses/{a}/reports/plan.pdf").content)
+    # Legacy (pre-SEED-001) evidence of the same chain: no method, no assessment rows.
+    # Its original "Not checked" note stays, and no detail rows are appended.
+    stored = copy.deepcopy(before)
+    legacy = {key: {"params": {k: v for k, v in stored[key]["params"].items() if k != "selected_load_method"},
+                    "result": {k: v for k, v in stored[key]["result"].items()
+                               if k not in ("selected_load_method", "load_uncertainty")}}
+              for key in ("des", "mc", "validation", "decision")}
+    for period in legacy["validation"]["result"]["periods"]:
+        period["queues"] = [{k: v for k, v in row.items() if k not in ("raw_mc_verdict", "load_assessment")}
+                            for row in period["queues"]]
+    legacy_sections = separate_full_sections(des=legacy["des"], mc=legacy["mc"], validation=legacy["validation"],
+                                             decision=legacy["decision"]["result"])
+    assert legacy_sections["decision"]["scope_notice"] == SELECTED_SCOPE_NOTICE
+    assert "selected_load_method" not in legacy_sections["decision"]
+    assert [item["check"] for item in legacy_sections["checks"]] == ["Simulation run", "Many variations", "Results check"]
 
 
 def test_other_users_cannot_read_any_report_file(db_engine, client):

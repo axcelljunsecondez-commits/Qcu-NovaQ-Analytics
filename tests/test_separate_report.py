@@ -193,6 +193,75 @@ def test_report_does_not_duplicate_an_identical_scope_notice_in_saved_text():
     assert sections["decision"]["recommendation"] == chain["decision"]["recommendation"]
 
 
+def _v1_chain():
+    """The same synthetic chain recorded under the SEED-001 v1 method (rendering fixture only)."""
+    from backend.queueing_engine.statistics.selected_load_uncertainty import SELECTED_LOAD_METHOD
+
+    family = {"estimand": "conditional_stress_at_expected_routed_load", "confidence_level": 0.95,
+              "family_size": 1, "replications": 5,
+              "assumptions": ["frozen_inputs", "ideal_independent_marginal_replications",
+                              "potential_arrival_poisson_domination"],
+              "reason_codes": [], "pass_count": 0, "fail_count": 0, "insufficient_count": 1}
+    assessment = {"time": "08:00", "queue_id": "east-07", "duration_hours": 8.0, "envelope_mean": 48.0,
+                  "cutoff": 60, "sum_truncated": 230, "mean_rate_lower": 4.1, "mean_rate_upper": 7.2,
+                  "status": "insufficient", "reason_codes": ["threshold_overlap"], "mu": 11.0,
+                  "failure_threshold": 0.75, "failure_rate_cap": 0.05, "arrival_noise_fraction": 0.2,
+                  "service_noise_fraction": 0.1, "noise_distribution": "independent_uniform",
+                  "failure_probability_lower": 0.0, "failure_probability_upper": 0.31}
+    chain = _chain()
+    for key in ("des", "mc", "validation", "decision"):
+        chain[key] = {**chain[key], "selected_load_method": SELECTED_LOAD_METHOD, "load_uncertainty": family}
+    chain["validation"]["verdict"] = "insufficient"
+    chain["validation"]["periods"][0]["queues"][0].update(
+        validation_verdict="insufficient", raw_mc_verdict="pass", load_assessment=assessment)
+    return chain, family, assessment
+
+
+def test_v1_model_uses_the_approved_notice_and_appends_assessment_provenance():
+    import copy
+    import json
+
+    import openpyxl
+
+    from backend.queueing_engine.statistics.selected_load_uncertainty import SELECTED_LOAD_METHOD
+    from backend.reports.report_export import generate_separate_excel_report, generate_separate_pdf_report
+    from backend.reports.selected_scope import SELECTED_LOAD_ASSESSMENT_NOTICE
+    from tests.test_b8_full_report import pdf_text
+
+    chain, family, assessment = _v1_chain()
+    original = copy.deepcopy(chain)
+    model = build_separate_report_model(chain)
+    assert model["decision"]["scope_notice"] == SELECTED_LOAD_ASSESSMENT_NOTICE
+    for key in ("des", "mc", "validation", "decision"):
+        assert model[key]["selected_load_method"] == SELECTED_LOAD_METHOD
+        assert model[key]["load_uncertainty"] == family
+    queue = model["validation"]["periods"][0]["queues"][0]
+    assert (queue["validation_verdict"], queue["raw_mc_verdict"]) == ("insufficient", "pass")
+    assert queue["load_assessment"] == assessment
+    # Identity fields keep their place; the additive selected-load entries follow them.
+    keys = list(model["provenance"])
+    assert keys[:10] == ["analysis_id", "dataset_id", "scenario_id", "des_job_id", "mc_job_id",
+                         "validation_job_id", "decision_job_id", "optimization_engine", "generated_at",
+                         "selected_load_method"]
+    assert keys[10:] == ["selected_load_family", "selected_load_assessment:08:00/east-07"]
+    assert model["provenance"]["selected_load_method"] == SELECTED_LOAD_METHOD
+    assert json.loads(model["provenance"]["selected_load_family"]) == family
+    assert json.loads(model["provenance"]["selected_load_assessment:08:00/east-07"]) == {
+        **assessment, "raw_mc_verdict": "pass"}
+    text = " ".join(pdf_text(generate_separate_pdf_report(model).getvalue()).split())
+    assert text.count(SELECTED_LOAD_ASSESSMENT_NOTICE) == 1
+    assert "Load estimate uncertainty: Not checked." not in text
+    assert f"selected_load_method: {SELECTED_LOAD_METHOD}" in text
+    workbook = openpyxl.load_workbook(generate_separate_excel_report(model))
+    decision = workbook["Decision"]
+    assert decision.cell(decision.max_row, 1).value == "Current scope note"
+    assert decision.cell(decision.max_row, 2).value == SELECTED_LOAD_ASSESSMENT_NOTICE
+    rows = [(row[0].value, row[1].value) for row in workbook["Provenance"].iter_rows(min_row=2)]
+    assert [label for label, _ in rows][:9][-1] == "Generated at"
+    assert rows[9:] == [(key, model["provenance"][key]) for key in keys[9:]]
+    assert chain == original
+
+
 def test_revise_model_titles_schedule_without_approval_language():
     chain = _chain()
     chain["decision"] = {**chain["decision"], "status": "revise",

@@ -86,6 +86,36 @@ describe('DecisionEndpointPage', () => {
     expect(createDecisionMock).not.toHaveBeenCalled()
   })
 
+  it('shows the approved notice instead of the legacy label for v1 selected-load evidence', async () => {
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    getWorkflowMock.mockResolvedValue({ decision_stale: false, decision: { result: {
+      ...insufficient, provenance: 'SELECTED', status: 'conditional', missing_evidence: [], selected_load_method: 'selected-load-truncated-hoeffding-v1',
+      recommendation: 'Original saved wording.', facts: { validation_checks: 60, failed_checks: 0 },
+    } } })
+    renderPage()
+    const scope = await screen.findByTestId('selected-decision-scope')
+    expect(scope).toHaveTextContent('Validation checks uncertainty in the average customer load estimated by simulation. Unsupported or inconclusive checks remain Insufficient evidence. This does not establish seed stability or future operational safety.')
+    expect(scope).not.toHaveTextContent('Load estimate uncertainty: Not checked.')
+    // OQ-4 (owner): the scope details stay in the v1 details.
+    expect(screen.getByText(/Repeating the simulation with another seed/)).toBeInTheDocument()
+  })
+
+  it('reads an inconclusive v1 Decision as not enough data in its periods, not a missing run (OQ-1)', async () => {
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    getWorkflowMock.mockResolvedValue({ decision_stale: false, decision: { result: {
+      ...insufficient, provenance: 'SELECTED', missing_evidence: [], inadequate_periods: ['08:00', '09:00'],
+      selected_load_method: 'selected-load-truncated-hoeffding-v1',
+      recommendation: 'The completed checks could not show whether this plan passes in every period. Do not adopt it on this run alone; review the plan and its estimated loads first.',
+      rationale: ['Selected Scenario: Plan A (ID 3).', 'Inadequate periods: 08:00, 09:00.'],
+      facts: { validation_checks: 4, failed_checks: 0, inadequate_checks: 2 },
+    } } })
+    renderPage()
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 08:00, 09:00')
+    expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('Run:')
+    expect(screen.queryByRole('heading', { name: 'Missing evidence' })).not.toBeInTheDocument()
+    expect(screen.getByText(/The completed checks could not show whether this plan passes in every period\./)).toBeInTheDocument()
+  })
+
   it.each([
     { failed_periods: ['13:00-14:00'], facts: { failed_checks: 2, validation_checks: 60 }, expected: 'in 13:00-14:00' },
     { failed_periods: [], facts: { failed_checks: 2, validation_checks: 60 }, expected: '2 of 60 checks' },

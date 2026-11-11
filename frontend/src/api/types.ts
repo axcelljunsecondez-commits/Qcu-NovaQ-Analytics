@@ -531,6 +531,51 @@ export interface SelectedDesResult {
   days?: Array<{ date: string; admitted: number; served: number; in_system_at_close: number | null; customer_conservation: boolean; day_hours: number }>
 }
 
+/**
+ * SEED-001: the one selected-load method treated as current (spec 2026-11-10 §2). Kept here, not in
+ * api/workflow, so screens can compare against it while tests mock the request module.
+ */
+export const SELECTED_LOAD_METHOD_V1 = 'selected-load-truncated-hoeffding-v1'
+
+/**
+ * SEED-001: one stored selected-load assessment row (a lane in a period). Recorded by the server under
+ * `selected_load_method`; never computed in the browser. Unavailable numbers are null, not zero.
+ */
+export interface SelectedLoadAssessment {
+  time: string
+  queue_id: string
+  duration_hours: number | null
+  envelope_mean: number | null
+  cutoff: number | null
+  sum_truncated: number | null
+  mean_rate_lower: number | null
+  mean_rate_upper: number | null
+  status: string
+  reason_codes: string[]
+  mu?: number | null
+  failure_threshold?: number | null
+  failure_rate_cap?: number | null
+  arrival_noise_fraction?: number | null
+  service_noise_fraction?: number | null
+  noise_distribution?: string | null
+  failure_probability_lower?: number | null
+  failure_probability_upper?: number | null
+}
+
+/** SEED-001: the stored assessment family (Validation and Decision keep the summary without `results`). */
+export interface SelectedLoadUncertainty {
+  estimand: string
+  confidence_level: number
+  family_size: number | null
+  replications: number | null
+  assumptions: string[]
+  reason_codes?: string[]
+  results?: SelectedLoadAssessment[]
+  pass_count?: number
+  fail_count?: number
+  insufficient_count?: number
+}
+
 export interface SelectedMcResult {
   provenance: string | null
   scenario_id: number | null
@@ -538,6 +583,9 @@ export interface SelectedMcResult {
   dataset_id: number | null
   des_job_id: number | null
   results: SimMcOut[]
+  /** SEED-001: absent on legacy evidence. */
+  selected_load_method?: string
+  load_uncertainty?: SelectedLoadUncertainty
 }
 
 export interface SelectedValidationQueue {
@@ -551,6 +599,9 @@ export interface SelectedValidationQueue {
   rho_sim: number | null
   Wq_sim: number | null
   served: number | null
+  /** SEED-001: the raw Many variations point verdict, kept apart from `validation_verdict`; absent on legacy rows. */
+  raw_mc_verdict?: string | null
+  load_assessment?: SelectedLoadAssessment
 }
 
 export interface SelectedValidationPeriod {
@@ -579,6 +630,9 @@ export interface SelectedValidationResult {
   failure_rate_cap: number | null
   periods: SelectedValidationPeriod[]
   verdict: SelectedValidationVerdict
+  /** SEED-001: absent on legacy evidence. */
+  selected_load_method?: string
+  load_uncertainty?: SelectedLoadUncertainty
 }
 
 export interface SelectedDecisionFacts {
@@ -605,6 +659,9 @@ export interface SelectedDecision {
   failed_periods: string[]
   inadequate_periods: string[]
   evidence_ids: Record<string, number | null> | null
+  /** SEED-001: absent on legacy evidence. */
+  selected_load_method?: string
+  load_uncertainty?: SelectedLoadUncertainty
 }
 
 export interface SimMcOut {

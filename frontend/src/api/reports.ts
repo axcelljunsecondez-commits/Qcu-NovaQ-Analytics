@@ -51,7 +51,9 @@ export interface ReportPreview {
     data?: { dataset_id: number | null; dataset_name: string | null }
     assumptions?: { what_if_multiplier?: number | null }
     decision?: { status: string; headline: string; recommendation: string
-      missing_evidence?: string[] | null; facts?: DecisionFacts | null; scope_notice?: string | null }
+      missing_evidence?: string[] | null; facts?: DecisionFacts | null; scope_notice?: string | null
+      /** SEED-001: the recorded selected-load method; absent on legacy evidence. */
+      selected_load_method?: string }
   }
   contents: { pdf: string[]; excel: string[] }
 }

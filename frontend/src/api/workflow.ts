@@ -5,6 +5,7 @@ import type {
   ObservedWaitSummary,
   SelectedDesResult,
   SelectedDecision,
+  SelectedLoadUncertainty,
   SelectedMcResult,
   SelectedValidationResult,
   SeparateComparison,
@@ -102,6 +103,9 @@ export interface WorkflowDecision {
   /** Selected Separate evidence returns these at the result root. */
   failed_periods?: string[]
   inadequate_periods?: string[]
+  /** SEED-001: the recorded selected-load method; absent on legacy evidence. */
+  selected_load_method?: string
+  load_uncertainty?: SelectedLoadUncertainty
 }
 
 /** 4f/5e: why the recorded selection does or does not yield the selected scenario. */
