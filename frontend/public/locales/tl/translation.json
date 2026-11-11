@@ -707,6 +707,7 @@
   "decision.plain.selected_scope_label": "Hindi pa nasusuri kung gaano katiyak ang tantiya ng dami ng customer.",
   "decision.plain.selected_scope_body": "Binabago ng variation test ang dami batay sa average mula sa simulation. Hindi nito sinusukat kung gaano maaaring magbago ang average na iyon.",
   "decision.plain.selected_scope_details": "Maaaring magbago ang average na dami at resulta ng run kapag inulit ang simulation gamit ang ibang seed. Hindi nito pinatutunayang pareho ang resulta sa ibang seed o ligtas ang aktuwal na operasyon sa hinaharap.",
+  "decision.plain.selected_load_assessment_notice": "Sinusuri sa validation kung gaano katiyak ang average na dami ng customer mula sa simulation. Kapag hindi suportado ang pagsusuri o hindi sapat ang ebidensya para magsabing pasado o bagsak, kulang pa ang ebidensya. Hindi nito pinatutunayang pare-pareho ang resulta sa lahat ng seed o ligtas ang aktuwal na operasyon sa hinaharap.",
   "decision.plain.conditional_today_overloaded": "Pumasa ang plano sa bawat check, pero hindi makakalkula ang matitipid: hindi nakakasabay ang kasalukuyang staff sa {{periods}}. Gamitin lang ito kung tanggap mo ang gastos.",
   "decision.plain.revise_periods": "Baguhin muna ang plano. Hindi ito tumagal sa: {{periods}}",
   "decision.plain.revise_count": "Baguhin muna ang plano. Hindi ito tumagal sa {{failed}} sa {{total}} na period.",

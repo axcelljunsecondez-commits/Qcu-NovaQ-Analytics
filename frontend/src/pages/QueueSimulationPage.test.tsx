@@ -1509,6 +1509,102 @@ describe('a selected separate-lines plan', () => {
     expect(runSelectedDecisionMock).not.toHaveBeenCalled()
   })
 
+  // SEED-001 v1 evidence (spec 2026-11-10 §4): synthetic stored rows; the browser computes nothing.
+  const v1 = 'selected-load-truncated-hoeffding-v1'
+  function v1Validation(validation_verdict: string, raw_mc_verdict: string, status: string, overrides: Record<string, unknown> = {}) {
+    const queue = { ...validationResult.periods[0].queues[0], validation_verdict, raw_mc_verdict, load_assessment: { time: '08:00', queue_id: 'east-07', status } }
+    const failed = validation_verdict === 'fail' ? [['08:00', 'east-07']] : []
+    const inadequate = validation_verdict === 'inadequate' ? [['08:00', 'east-07']] : []
+    return { ...validationResult, selected_load_method: v1,
+      periods: [{ ...validationResult.periods[0], status, queues: [queue], ...overrides }],
+      verdict: { status, failed, inadequate, total: 1 } }
+  }
+  const v1Inconclusive = { ...decision, selected_load_method: v1, status: 'insufficient_evidence',
+    headline: 'Insufficient evidence to make a management recommendation.', missing_evidence: [], inadequate_periods: ['08:00'],
+    facts: { ...decision.facts, failed_checks: 0, inadequate_checks: 1 } }
+  const mcCells = (period: string) => within(screen.getAllByRole('row').find((row) => within(row).queryByRole('rowheader', { name: period }) && within(row).queryAllByRole('cell').length === 4)!)
+    .getAllByRole('cell').map((cell) => cell.textContent)
+
+  it('shows the approved v1 notice in place of the legacy label, outside the details, and keeps the scope details', async () => {
+    const user = userEvent.setup()
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: job('workflow_decision', { ...decision, selected_load_method: v1 }, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    const scope = await screen.findByTestId('selected-decision-scope')
+    expect(scope).toHaveTextContent(en['decision.plain.selected_load_assessment_notice'])
+    expect(scope).not.toHaveTextContent(en['decision.plain.selected_scope_label'])
+    expect(scope).not.toHaveTextContent(en['decision.plain.selected_scope_body'])
+    expect(scope.closest('details')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Conditional' }))
+    const dialog = screen.getByRole('dialog', { name: en['decision.plain.details'] })
+    expect(dialog).toHaveTextContent(en['decision.plain.selected_scope_details'])
+    expect(scope.closest('dialog')).toBeNull()
+  })
+
+  it('shows the approved Filipino v1 notice', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: job('workflow_decision', { ...decision, selected_load_method: v1 }, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7', 'tl')
+    expect(await screen.findByTestId('selected-decision-scope')).toHaveTextContent(tl['decision.plain.selected_load_assessment_notice'])
+    expect(screen.getByTestId('selected-decision-scope')).not.toHaveTextContent(tl['decision.plain.selected_scope_label'])
+  })
+
+  it('reads an inconclusive v1 check as not enough data in its periods, without the missing-evidence hint (OQ-1)', async () => {
+    selected({
+      des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', { ...mcResult, selected_load_method: v1 }, { scenario_id: 9 }),
+      validation: job('workflow_validation', v1Validation('inadequate', 'pass', 'insufficient'), { scenario_id: 9 }),
+      decision: job('workflow_decision', v1Inconclusive, { scenario_id: 9 }),
+    })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 08:00')
+    expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('Run:')
+    expect(screen.getByText(en['simulation.sep_validation_insufficient'])).toBeInTheDocument()
+    expect(screen.queryByText(en['simulation.sep_validation_missing_reason'])).not.toBeInTheDocument()
+    // Lanes, DES, MC (raw Many variations: pass), Validation (assessed: not settled).
+    expect(mcCells('08:00')).toEqual(['1', '✓', '✓', '—'])
+  })
+
+  it.each([
+    ['a legacy result', { ...validationResult, periods: [{ ...validationResult.periods[0], status: 'insufficient',
+      queues: [{ ...validationResult.periods[0].queues[0], validation_verdict: 'inadequate' }] }],
+      verdict: { status: 'insufficient', failed: [], inadequate: [['08:00', 'east-07']], total: 1 } }],
+    ['missing v1 DES evidence', v1Validation('inadequate', 'pass', 'insufficient', { des_ok: false, des_reason: 'No selected-plan DES evidence for this period.' })],
+    ['missing v1 raw Many variations evidence', v1Validation('inadequate', 'missing', 'insufficient')],
+  ])('keeps the missing-evidence hint for %s', async (_name, validation) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', mcResult, { scenario_id: 9 }),
+      validation: job('workflow_validation', validation, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByText(en['simulation.sep_validation_missing_reason'])).toBeInTheDocument()
+  })
+
+  it('keeps the legacy label and the MC column from validation_verdict for legacy evidence', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', mcResult, { scenario_id: 9 }),
+      validation: job('workflow_validation', validationResult, { scenario_id: 9 }), decision: job('workflow_decision', decision, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('selected-decision-scope')).toHaveTextContent('Load estimate uncertainty: Not checked.')
+    expect(screen.getByTestId('selected-decision-scope')).not.toHaveTextContent(en['decision.plain.selected_load_assessment_notice'])
+    expect(mcCells('08:00')).toEqual(['1', '✓', '✓', '✓'])
+  })
+
+  it('lists a v1 failure whose raw run passed by time and lane only, with no reason sentence (OQ-2)', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', mcResult, { scenario_id: 9 }),
+      validation: job('workflow_validation', v1Validation('fail', 'pass', 'fail'), { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByTestId('validation-failure')
+    expect(within(outcome).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['08:00 · east-07'])
+    expect(outcome).not.toHaveTextContent('exceeded the saved limit')
+    // The MC column shows the raw pass; the Validation column shows the assessed FAIL.
+    expect(mcCells('08:00')).toEqual(['1', '✓', '✓', 'FAIL'])
+  })
+
+  it('keeps the over-the-limit reason when the raw run really exceeded it (OQ-2)', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', mcResult, { scenario_id: 9 }),
+      validation: job('workflow_validation', v1Validation('fail', 'fail', 'fail'), { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    const outcome = await screen.findByTestId('validation-failure')
+    expect(within(outcome).getAllByRole('listitem').map((item) => item.textContent))
+      .toEqual(['08:00 · east-07 — The simulated failure rate exceeded the saved limit of 5%.'])
+    expect(mcCells('08:00')).toEqual(['1', '✓', 'FAIL', 'FAIL'])
+  })
+
   it.each([null, 'unrecognized_outcome'])('keeps details and a primary check without inventing an outcome for %s', async (status) => {
     selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), decision: job('workflow_decision', { ...decision, status }, { scenario_id: 9 }) })
     renderPage('/simulation/checks?analysis=7')

@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { renderWithProviders } from '../test/test-utils'
 import { ReportsPage } from './ReportsPage'
+import en from '../../public/locales/en/translation.json'
+import tl from '../../public/locales/tl/translation.json'
 
 const listAnalysesMock = vi.fn()
 const getAnalysisMock = vi.fn()
@@ -217,6 +219,20 @@ describe('Reports page (B8, D33)', () => {
     expect(note).toBeVisible()
     expect(note.closest('details')).toBeNull()
     expect(note).toHaveTextContent(lang === 'en' ? 'Load estimate uncertainty: Not checked.' : 'Hindi pa nasusuri')
+  })
+
+  it.each(['en', 'tl'] as const)('shows the approved v1 notice in %s for a v1 Separate Decision', async (lang) => {
+    const separate = { ...fullPreview, model: { ...fullPreview.model, line_type: 'separate',
+      decision: { status: 'conditional', headline: 'Saved headline', recommendation: 'Saved recommendation',
+        selected_load_method: 'selected-load-truncated-hoeffding-v1' } } }
+    previewMock.mockImplementation(async (_id: number, level: string) => level === 'plan' ? planPreview : separate)
+    renderReports('/reports?analysis=7', lang)
+    const note = await screen.findByTestId('selected-decision-scope')
+    expect(note).toBeVisible()
+    expect(note.closest('details')).toBeNull()
+    const locale = lang === 'en' ? en : tl
+    expect(note).toHaveTextContent(locale['decision.plain.selected_load_assessment_notice'])
+    expect(note).not.toHaveTextContent(locale['decision.plain.selected_scope_label'])
   })
 
   it('shows a refused download as an alert', async () => {
