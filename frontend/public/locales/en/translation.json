@@ -950,7 +950,7 @@
   "help.guide.simulation.service.title": "Service times",
   "help.guide.simulation.service.body": "Customer records run with the service times customers actually took. A period without customers uses the nearest recorded period, and the page names it. Counts per period use random (exponential) service times.",
   "help.guide.simulation.breaks.title": "Breaks",
-  "help.guide.simulation.breaks.body": "For separate lines, Current uses the break schedule in Data and setup. New service pauses during each scheduled window; service already underway can finish, and customers keep waiting in their own line. Suggested plans use their saved break schedule and their routing rules. On a shared line each counter break is taken by the first free counter for its full length; a counter on break still counts as staffed. The run names a break it cannot staff.",
+  "help.guide.simulation.breaks.body": "For separate lines, Current uses the break schedule in Data and setup. New service pauses during each scheduled window; service already underway can finish, and customers keep waiting in their own line. Suggested plans use their saved break schedule and their routing rules. On a shared line each counter break is taken by the first free counter for its full length; a counter on break still counts as staffed. A run is refused, naming the break, when its counters cannot cover the break.",
   "help.guide.checks.title": "Checks and Decision",
   "help.guide.checks.action": "On Checks and decision, choose Check the plan.",
   "help.guide.checks.purpose": "Test the plan before making a decision.",
@@ -1150,7 +1150,7 @@
   "optimize.breaks_wait_change_no_range": "Wait change {{change}} min (no 95% range from a single simulated day)",
   "optimize.breaks_des_note": "Both schedules are simulated with the same random seeds. This compares simulation with simulation, never with recorded waits.",
   "optimize.breaks_shared_note": "Break optimization is available for separate queues.",
-  "optimize.breaks_apply": "Confirm plan breaks",
+  "optimize.breaks_apply": "Confirm breaks for this plan",
   "optimize.breaks_apply_running": "Checking plan breaks…",
   "optimize.breaks_apply_confirm_title": "Confirm these breaks for a Suggested plan?",
   "optimize.breaks_apply_move": "{{cashier}} · {{label}}: {{from}} → {{to}}",
@@ -2107,5 +2107,6 @@
   "simulation.run_basis_baseline_breaks": "One continuous run · Current break schedule included",
   "simulation.run_basis_per_date_baseline_breaks": "One continuous run per date · Current break schedule included",
   "simulation.current_breaks_help": "Current uses the break times in Data and setup. Customers stay in their own line, and service already underway can finish. New service pauses until the scheduled break ends. Optimized times apply only to a saved Suggested plan.",
-  "charts.key_basis_baseline_breaks": "The runs use different operating rules: Current keeps each line's demand and original break windows and stops at closing. Suggested routes new customers among open lines, uses its saved breaks, and finishes serving customers already in line at closing."
+  "simulation.current_breaks_moved_warning": "Some break times in this Setup were moved by an earlier version of NovaQ, so they may not match your uploaded file. Upload the file again to use the original break times.",
+  "charts.key_basis_baseline_breaks": "Current and Suggested follow different rules. Current keeps each line's own customers and your uploaded break times. Suggested sends new customers to an open line and uses the plan's saved breaks."
 }

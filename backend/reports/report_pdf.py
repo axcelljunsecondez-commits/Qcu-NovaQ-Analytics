@@ -29,6 +29,28 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from backend.reports.plan_report import (
+    BREAK_CHECK_ALL_BREAKS,
+    BREAK_CHECK_CHANGE,
+    BREAK_CHECK_CHART,
+    BREAK_CHECK_COLUMNS,
+    BREAK_CHECK_HOURLY_CAPTION,
+    BREAK_CHECK_INTRO,
+    BREAK_CHECK_ITEM,
+    BREAK_CHECK_MOVES,
+    BREAK_CHECK_PEAK,
+    BREAK_CHECK_PEAK_CAPTION,
+    BREAK_CHECK_SIDE_MOVED,
+    BREAK_CHECK_SIDE_UPLOADED,
+    BREAK_CHECK_TITLE,
+    BREAK_CHECK_WAIT,
+    BREAK_CHECK_WAIT_MOVED,
+    BREAK_CHECK_WAIT_UPLOADED,
+    BREAKS_SETUP_TITLE,
+    CANNOT_KEEP_UP,
+    NOT_RECORDED,
+)
+
 NAVY, GOLD, LIGHT = colors.HexColor("#14213D"), colors.HexColor("#C9A227"), colors.HexColor("#E8EEF6")
 
 
@@ -50,6 +72,7 @@ def _styles() -> dict[str, ParagraphStyle]:
         "title": ParagraphStyle("B8Title", parent=base["Title"], fontSize=22, textColor=NAVY, spaceAfter=4),
         "label": ParagraphStyle("B8Label", parent=base["Normal"], fontSize=11, textColor=GOLD, spaceAfter=12),
         "h2": ParagraphStyle("B8H2", parent=base["Heading2"], textColor=NAVY, spaceBefore=14, spaceAfter=6),
+        "h3": ParagraphStyle("B8H3", parent=base["Heading3"], textColor=NAVY, fontSize=11, spaceBefore=10, spaceAfter=4),
         "body": ParagraphStyle("B8Body", parent=base["Normal"], fontSize=10, leading=13, spaceAfter=6),
         "cell": ParagraphStyle("B8Cell", parent=base["Normal"], fontSize=8, leading=10),
         "head": ParagraphStyle("B8Head", parent=base["Normal"], fontSize=8, leading=10, fontName="Helvetica-Bold",
@@ -94,8 +117,11 @@ def _chart(title: str, labels: Sequence[str], series: Sequence[tuple[str, Sequen
 def pdf_sections(model: Mapping[str, Any]) -> list[str]:
     """The PDF's section headings in order; the Reports page lists exactly these, and each is printed as written."""
     sections = ["Key results: now and with the plan", "By period"]
-    if model.get("breaks"):
-        sections.append("Breaks in the Setup")
+    # Owner 2026-11-17: the break-check section's B11/B13 tables replace the older breaks table.
+    if model.get("break_check"):
+        sections.append(BREAK_CHECK_TITLE)
+    elif model.get("breaks"):
+        sections.append(model.get("breaks_title") or BREAKS_SETUP_TITLE)
     if model.get("report") == "full":
         sections += ["Decision", "Simulation key results", "Checks", "What is not included"]
     return sections
@@ -124,6 +150,8 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
         ]),
         Paragraph(escape(str(key.get("cost_basis"))), styles["body"]),
     ]
+    if model.get("key_results_note"):
+        story.insert(len(story) - 1, Paragraph(escape(str(model["key_results_note"])), styles["body"]))
     changes = key.get("counter_changes") or []
     story.append(Paragraph("Counter changes: " + ("; ".join(f"{c['time']}: {c['from']} to {c['to']}" for c in changes)
                                                 if changes else "none."), styles["body"]))
@@ -151,11 +179,15 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
         ]),
     ]
     breaks = model.get("breaks") or []
-    if breaks:
-        story += [Paragraph("Breaks in the Setup", styles["h2"]), _table(
+    if model.get("break_check"):
+        story += _break_check_pages(model["break_check"], styles)
+    elif breaks:
+        story += [Paragraph(escape(str(model.get("breaks_title") or BREAKS_SETUP_TITLE)), styles["h2"]), _table(
             styles, ["Line", "Start", "Minutes", "Name"],
             [[item.get("queue_id", "any free counter"), item.get("scheduled_start_time"), item.get("duration_minutes"),
               item.get("break_name") or ""] for item in breaks])]
+        if model.get("breaks_note"):
+            story.append(Paragraph(escape(str(model["breaks_note"])), styles["body"]))
 
     if full:
         story += _full_pages(model, styles)
@@ -168,6 +200,49 @@ def generate_report_pdf(model: Mapping[str, Any]) -> io.BytesIO:
                       title="NovaQ full report" if full else "NovaQ plan report").build(story)
     buffer.seek(0)
     return buffer
+
+
+def _minutes_text(value: Any) -> str:
+    """4 dp; a missing mean is "not recorded", never 0."""
+    return NOT_RECORDED if value is None else number(value, 4)
+
+
+def _break_check_pages(check: Mapping[str, Any], styles: Mapping[str, ParagraphStyle]) -> list[Flowable]:
+    """Option A: the break check stored at plan save (uploaded vs moved breaks, same seeds); nothing is recalculated."""
+    periods = check["periods"]
+    change = check["change"]
+    peak = lambda value: CANNOT_KEEP_UP if value is None else percent(value)  # noqa: E731
+    paired = (f"{_minutes_text(change['mean'])} ({_minutes_text(change['ci_lower'])} to "
+              f"{_minutes_text(change['ci_upper'])}), n = {change['n']}")
+    moves_table = [[row["cashier"], row["break"], row["current_start"], row["new_start"], row["length_minutes"]]
+                   for row in check["moves"]]
+    return [
+        Paragraph(escape(BREAK_CHECK_TITLE), styles["h2"]),
+        Paragraph(escape(BREAK_CHECK_INTRO), styles["body"]),
+        KeepTogether([
+            _chart(BREAK_CHECK_CHART, [str(row["time"]) for row in periods],
+                   [(BREAK_CHECK_WAIT_UPLOADED, [row["wait_uploaded_minutes"] for row in periods]),
+                    (BREAK_CHECK_WAIT_MOVED, [row["wait_moved_minutes"] for row in periods])]),
+            _table(styles, ["Period", BREAK_CHECK_WAIT_UPLOADED, BREAK_CHECK_WAIT_MOVED],
+                   [[row["time"], _minutes_text(row["wait_uploaded_minutes"]), _minutes_text(row["wait_moved_minutes"])]
+                    for row in periods]),
+            Paragraph(escape(BREAK_CHECK_HOURLY_CAPTION), styles["body"]),
+        ]),
+        KeepTogether([
+            _table(styles, [BREAK_CHECK_ITEM, BREAK_CHECK_SIDE_UPLOADED, BREAK_CHECK_SIDE_MOVED], [
+                [BREAK_CHECK_WAIT, _minutes_text(check["wait_uploaded_minutes"]), _minutes_text(check["wait_moved_minutes"])],
+                [BREAK_CHECK_PEAK, peak(check["peak_uploaded"]), peak(check["peak_moved"])],
+                [BREAK_CHECK_CHANGE, paired, ""],
+            ]),
+            Paragraph(escape(BREAK_CHECK_PEAK_CAPTION), styles["body"]),
+            Paragraph(escape(check["verdict_text"]), styles["body"]),
+        ]),
+        Paragraph(escape(BREAK_CHECK_ALL_BREAKS), styles["h3"]),
+        _table(styles, BREAK_CHECK_COLUMNS, [[row["cashier"], row["break"], row["current_start"], row["new_start"],
+                                              row["length_minutes"]] for row in check["breaks"]]),
+        Paragraph(escape(BREAK_CHECK_MOVES), styles["h3"]),
+        _table(styles, BREAK_CHECK_COLUMNS, moves_table),
+    ]
 
 
 def _full_pages(model: Mapping[str, Any], styles: Mapping[str, ParagraphStyle]) -> list[Flowable]:

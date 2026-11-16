@@ -72,7 +72,7 @@ def _plan_model(db: Session, user: User, analysis: AnalysisProject) -> dict[str,
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return build_separate_plan_model(analysis=analysis_view, scenario=scenario_view, dataset=dataset_view,
-                                         setup=plan_setup, current_rows=current)
+                                         setup=plan_setup, current_rows=current, baseline_setup=setup)
     return build_shared_plan_model(analysis=analysis_view, scenario=scenario_view, dataset=dataset_view, setup=setup)
 
 
