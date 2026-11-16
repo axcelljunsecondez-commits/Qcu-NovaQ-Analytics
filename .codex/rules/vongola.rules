@@ -1,0 +1,20 @@
+# Outside-sandbox command-prefix approval checks; no blanket confinement claim.
+prefix_rule(
+    pattern = ["git", ["add", "commit", "push", "merge", "rebase", "reset", "clean", "checkout", "switch", "restore", "rm"]],
+    decision = "prompt",
+    justification = "Confirm established owner authorization and exact Git scope.",
+    match = ["git push origin main", "git add AGENTS.md", "git reset --hard"],
+    not_match = ["git status --short", "git diff", "git log -1"],
+)
+prefix_rule(
+    pattern = [["rm", "rmdir", "del", "Remove-Item", "Move-Item"]],
+    decision = "prompt",
+    justification = "Confirm resolved paths and owner authorization for destructive changes.",
+    match = ["rm -rf synthetic-fixture", "Remove-Item synthetic-fixture"],
+)
+prefix_rule(
+    pattern = [["docker", "wrangler", "cf", "alembic", "psql", "pg_restore"]],
+    decision = "prompt",
+    justification = "Review deployment/database/service scope and owner authorization.",
+    match = ["alembic upgrade head", "docker compose up -d", "wrangler deploy"],
+)

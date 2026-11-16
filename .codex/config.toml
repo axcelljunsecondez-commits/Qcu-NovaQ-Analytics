@@ -1,0 +1,3 @@
+# Parent sandbox, approval policy, models and managed requirements remain inherited.
+[agents]
+enabled = true
