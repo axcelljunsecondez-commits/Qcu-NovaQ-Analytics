@@ -4,14 +4,11 @@ import { RouterProvider } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { initI18n } from './lib/i18n'
 import { queryClient } from './lib/queryClient'
-import { initializeTheme } from './lib/theme'
 import { router } from './App'
 import './styles/global.css'
 import './styles/charts.css'
 
 initI18n()
-
-initializeTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

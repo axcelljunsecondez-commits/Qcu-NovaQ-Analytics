@@ -40,9 +40,7 @@ export function TooltipPopup({ interaction, placement, className, children, id, 
     positionPopup()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(positionPopup)
     if (popupRef.current) observer?.observe(popupRef.current)
-    const theme = new MutationObserver(positionPopup)
-    theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => { observer?.disconnect(); theme.disconnect() }
+    return () => { observer?.disconnect() }
   }, [avoidInput, children, getTrigger, open, placement, popupRef, portalHost])
 
   if (!open || !portalHost) return null

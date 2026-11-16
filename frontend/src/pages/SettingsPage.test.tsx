@@ -54,7 +54,6 @@ function renderSettings(route: string) {
 beforeEach(() => {
   meMock.mockReset()
   localStorage.clear()
-  document.documentElement.dataset.theme = 'light'
 })
 
 describe('Settings (spec §7.10)', () => {
@@ -78,12 +77,14 @@ describe('Settings (spec §7.10)', () => {
     expect(screen.getByRole('link', { name: 'Uploaded files' })).toHaveAttribute('aria-current', 'page')
   })
 
-  it('shows the fixed light mode while preserving Appearance and Language', async () => {
+  it('keeps Language under Appearance with no theme setting', async () => {
     meMock.mockResolvedValue(account(true))
     renderSettings('/settings/appearance')
     await screen.findByRole('heading', { level: 1, name: 'Appearance' })
     expect(screen.queryByRole('button', { name: /Dark Mode|Light Mode/ })).not.toBeInTheDocument()
-    expect(screen.getByText('Light Mode')).toBeInTheDocument()
+    expect(screen.queryByText('Light Mode')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Theme' })).not.toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Language' })).toBeInTheDocument()
+    expect(screen.getByText('Language is saved on this device.')).toBeInTheDocument()
   })
 })

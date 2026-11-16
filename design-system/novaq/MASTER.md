@@ -11,6 +11,7 @@
 
 | Date | Section | Change | Source |
 |---|---|---|---|
+| 2026-11-16 | 4.1, 11.1, 15.3 | Theme selection removed per the owner: no light/dark choice, no `novaq_theme` read/write, no dark CSS; light Cobalt and Brass tokens are the only styles | Owner request 2026-11-16 |
 | 2026-11-09 | 2,4,5,7,18 | Cobalt content actions, navy/brass navigation, light-only local theme, self-hosted Inter/Plex numeric fonts and scoped pathname/tab entrance; protected replay unchanged | `docs/superpowers/specs/2026-11-09-cobalt-brass-ui.md`, current owner execution request |
 | 2026-10-09 | 7 Motion | Replay speed and smooth customer-marker movement | `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` D29 |
 | 2026-10-09 | 8.1 Breakpoints | Sidebar can be hidden to an icon rail at 1024 px and above | D10 |
@@ -70,7 +71,7 @@ Tokens use three layers:
 
 ### 4.1 Active light tokens and historical dark mappings
 
-The 2026-11-09 UI is light-only. Dark column values below are retained historical mappings, not an exposed mode. The dated Cobalt and Brass specification governs the active light palette; Current/Optimized and status meanings remain intact.
+The 2026-11-09 UI is light-only. Theme selection was removed on 2026-11-16 per the owner, and the dark CSS mappings were deleted from `theme.css`; Dark column values below are a historical record only. The dated Cobalt and Brass specification governs the active light palette; Current/Optimized and status meanings remain intact.
 
 | Canonical token | Light | Dark | Required use |
 |---|---:|---:|---|
@@ -319,7 +320,7 @@ An extraction is created only when at least two current consumers need the same 
 - Icon-only controls require an accessible name; icons next to visible text are `aria-hidden="true"`.
 - Pending actions are disabled, retain their width, expose busy state, and show a localized progress label.
 - Disabled actions use native `disabled` where possible. An unavailable navigation link uses `aria-disabled`, prevents activation, and is accompanied by the reason.
-- Hover, focus, pressed, disabled, and busy states are defined in both themes.
+- Hover, focus, pressed, disabled, and busy states are defined in the light interface.
 
 ### 10.2 Fields and numeric inputs with units
 
@@ -444,10 +445,8 @@ Rules:
 
 ### 11.1 Theme
 
-- Active light mappings are defined in `theme.css`; historical dark mappings may remain inactive. Device-local dark preferences are migrated before render under the 2026-11-09 amendment.
-- Theme state is React-reactive and persisted using the existing `novaq_theme` key.
-- ThemeToggle exposes its current state and action through localized text and `aria-pressed` or equivalent state.
-- Theme changes update charts and all semantic tokens without reloading.
+- Theme selection was removed on 2026-11-16 per the owner. There is no light/dark mode, ThemeToggle or Settings theme option; the light Cobalt and Brass tokens in `theme.css` are the only styles, with a static `color-scheme: light`.
+- The old `novaq_theme` device key is no longer read or written; stored values are left untouched.
 - A component may not read a raw theme color from a page-specific constant.
 
 ### 11.2 Icons
@@ -576,7 +575,7 @@ Verify representative populated, loading, empty, error, unavailable, stale, bloc
 - at 200% text zoom;
 - with keyboard only;
 - with reduced motion;
-- in the light interface, including migration from an old saved dark preference;
+- in the light interface (the only interface since 2026-11-16);
 - in English and Filipino; and
 - with generated PDF/Excel preview fidelity where Reports is involved.
 

@@ -86,52 +86,6 @@
   --motion-fast: 120ms;
 }
 
-[data-theme='dark'] {
-  --bg-page: #0b1120;
-  --bg-card: #162032;
-  --bg-secondary: #1e293b;
-  --bg-sidebar: #070d18;
-  --bg-input: #1b2a4a;
-  --bg-code: #0f172a;
-
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-sidebar: #94a3b8;
-  --text-sidebar-heading: #f1f5f9;
-  --text-on-hero: #f1f5f9;
-
-  --accent: #f0b84c;
-  --accent-hover: #e8a838;
-  --accent-bg: rgba(240, 184, 76, 0.1);
-
-  --border: #1e2d45;
-  --border-accent: #f0b84c;
-
-  --success: #2ecc71;
-  --success-bg: rgba(46, 204, 113, 0.12);
-  --warning: #f0b84c;
-  --warning-bg: rgba(240, 184, 76, 0.12);
-  --danger: #e74c3c;
-  --danger-bg: rgba(231, 76, 60, 0.12);
-  --info: #3498db;
-  --info-bg: rgba(52, 152, 219, 0.12);
-
-  --primary: #72bfff;
-  --primary-contrast: #07111f;
-  --focus-ring: #72bfff;
-  --disabled-bg: #263449;
-  --disabled-text: #9aa9bb;
-  --state-stale: #f2bd68;
-  --state-stale-bg: #3b2b16;
-  --state-current: #72bfff;
-  --state-current-bg: #132f4b;
-  --state-optimized: #c4a7ff;
-  --state-optimized-bg: #2f2449;
-
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.3);
-}
-
 /* Approved MASTER tokens, scoped to the signed-in interface. Public theme is unchanged. */
 .app-shell {
   --color-bg-canvas: #f4f8fc;
@@ -203,40 +157,7 @@
   --state-optimized-bg: var(--color-data-optimized-bg);
 }
 
-[data-theme='dark'] .app-shell {
-  --color-bg-canvas: #0b1120;
-  --color-bg-surface: #162032;
-  --color-bg-subtle: #1e293b;
-  --color-bg-sidebar: #070d18;
-  --color-bg-input: #1b2a4a;
-  --color-text-primary: #e2e8f0;
-  --color-text-secondary: #b0bdcc;
-  --color-text-inverse: #071729;
-  --color-border-subtle: #2b3b52;
-  --color-border-control: #7890a8;
-  --color-action-primary-bg: #f0b84c;
-  --color-action-primary-fg: #071729;
-  --color-action-primary-hover: #e8a838;
-  --color-action-link: #7cccf0;
-  --color-focus-ring: #f0b84c;
-  --color-disabled-bg: #334155;
-  --color-disabled-fg: #94a3b8;
-  --color-disabled-border: #475569;
-  --color-success-bg: #0e2f25;
-  --color-success-fg: #66e3a4;
-  --color-warning-bg: #33270f;
-  --color-warning-fg: #f3c76b;
-  --color-danger-bg: #3a1620;
-  --color-danger-fg: #ff8a9c;
-  --color-info-bg: #102c3b;
-  --color-info-fg: #7cccf0;
-  --color-data-current: #60a5fa;
-  --color-data-current-bg: #102a43;
-  --color-data-optimized: #c084fc;
-  --color-data-optimized-bg: #2b1b3d;
-}
-
-/* Cobalt and Brass amendment, 2026-11-09. Legacy dark mappings above are inactive. */
+/* Cobalt and Brass amendment, 2026-11-09. Theme selection removed 2026-11-16 (owner); light only. */
 :root,
 .app-shell {
   color-scheme: light;
