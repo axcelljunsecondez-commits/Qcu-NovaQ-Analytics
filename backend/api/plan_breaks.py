@@ -47,6 +47,30 @@ def build_optimized_break_setup(
     return setup_with_proposed_breaks(baseline, proposal), proposal
 
 
+BREAK_CHECK_BASIS = "plan_save_break_proposal_v1"
+
+
+def break_check_record(proposal: dict[str, Any]) -> dict[str, Any]:
+    """A compact copy of the break proposal the plan save already computed; nothing is recalculated.
+
+    "current" is the analysis Setup's (uploaded) break schedule, "proposed" the plan's; both sides are
+    the routing DES with the same seeds (``compare_break_schedules_des``).
+    """
+    des = proposal["des"]
+
+    def side(name: str) -> dict[str, Any]:
+        return {key: deepcopy(des[name][key]) for key in ("summary", "periods", "replications")}
+
+    return {
+        "basis": BREAK_CHECK_BASIS,
+        "max_shift_minutes": proposal["max_shift_minutes"],
+        "des": {"seeds": list(des["seeds"]), "current": side("current"), "proposed": side("proposed"),
+                "comparison": deepcopy(des["comparison"])},
+        **{key: deepcopy(proposal[key]) for key in
+           ("peak_rho", "slots_above_target", "moves", "current_breaks", "proposed_breaks")},
+    }
+
+
 def break_plan_blockers(proposal: dict[str, Any], schedule: dict[str, Any]) -> list[str]:
     """Existing supervisor guards, shared by preview and independently verified plan save."""
     blockers = []

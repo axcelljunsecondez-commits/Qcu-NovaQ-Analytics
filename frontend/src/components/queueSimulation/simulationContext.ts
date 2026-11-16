@@ -82,6 +82,22 @@ export function currentModelsBreaks(context: SimulationContext): boolean {
     (stored === null || stored.break_policy === 'scheduled_windows_nonpreemptive_v1')
 }
 
+function clockSeconds(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim())
+  return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] ?? 0) : null
+}
+
+/** K-PR58-3: an earlier NovaQ Apply rewrote these Setup break starts and kept the uploaded start in original_start_time. */
+export function setupBreaksMovedEarlier(context: SimulationContext): boolean {
+  return (context.analysis.queue_setup.breaks ?? []).some((entry) => {
+    const original = entry.original_start_time
+    if (typeof original !== 'string' || original.trim() === '') return false
+    const before = clockSeconds(original)
+    const now = clockSeconds(entry.scheduled_start_time)
+    return before === null || now === null ? original.trim() !== entry.scheduled_start_time.trim() : before !== now
+  })
+}
+
 export function breakNoticeKey(context: SimulationContext, run: RunChoice): string | null {
   if ((runSetup(context, run).breaks ?? []).length === 0) return null
   if (run === 'current' && currentModelsBreaks(context)) return null

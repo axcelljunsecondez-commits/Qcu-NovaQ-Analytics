@@ -1360,6 +1360,42 @@ describe('a selected separate-lines plan', () => {
     expect(screen.queryByText(en['simulation.closing_rule_separate'])).not.toBeInTheDocument()
   })
 
+  it('warns on Current when an earlier NovaQ moved a Setup break away from its uploaded time (K-PR58-3)', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) },
+      { ...daySetup, breaks: [{ queue_id: 'east-07', scheduled_start_time: '09:30:00', duration_minutes: 15, original_start_time: '09:00:00' }] })
+    renderPage('/simulation/results?analysis=7&plan=current')
+    const warning = await screen.findByTestId('current-breaks-moved')
+    expect(warning).toHaveTextContent(en['simulation.current_breaks_moved_warning'])
+    expect(warning).toHaveTextContent('Some break times in this Setup were moved by an earlier version of NovaQ, so they may not match your uploaded file. Upload the file again to use the original break times.')
+    expect(screen.getByText(en['simulation.current_breaks_help'])).toBeInTheDocument()
+  })
+
+  it('shows the moved-breaks warning in Filipino, and only on Current', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) },
+      { ...daySetup, breaks: [{ queue_id: 'east-07', scheduled_start_time: '09:30', duration_minutes: 15, original_start_time: '09:00' }] })
+    renderPage('/simulation/results?analysis=7&plan=current', 'tl')
+    expect(await screen.findByTestId('current-breaks-moved')).toHaveTextContent('May mga oras ng pahinga sa Setup na ito na inilipat ng naunang bersyon ng NovaQ, kaya maaaring hindi tugma sa na-upload mong file. I-upload muli ang file para magamit ang orihinal na oras ng pahinga.')
+  })
+
+  it('does not show the moved-breaks warning on Suggested', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) },
+      { ...daySetup, breaks: [{ queue_id: 'east-07', scheduled_start_time: '09:30', duration_minutes: 15, original_start_time: '09:00' }] })
+    renderPage('/simulation/results?analysis=7&plan=suggested')
+    expect(await screen.findByRole('region', { name: en['simulation.run_bar'] })).toBeInTheDocument()
+    expect(screen.queryByTestId('current-breaks-moved')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['no original start', { queue_id: 'east-07', scheduled_start_time: '09:30', duration_minutes: 15 }],
+    ['an empty original start', { queue_id: 'east-07', scheduled_start_time: '09:30', duration_minutes: 15, original_start_time: null }],
+    ['the same time written with seconds', { queue_id: 'east-07', scheduled_start_time: '09:30', duration_minutes: 15, original_start_time: '09:30:00' }],
+  ])('shows no moved-breaks warning on Current for %s', async (_name, entry) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, breaks: [entry] })
+    renderPage('/simulation/results?analysis=7&plan=current')
+    expect(await screen.findByText(en['simulation.current_breaks_help'])).toBeInTheDocument()
+    expect(screen.queryByTestId('current-breaks-moved')).not.toBeInTheDocument()
+  })
+
   it('shows no break notice when the setup has no breaks', async () => {
     selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) }, { ...daySetup, event_period_basis: 'per_date', breaks: [] })
     renderPage('/simulation/results?analysis=7&plan=current')

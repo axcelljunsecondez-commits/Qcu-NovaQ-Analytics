@@ -184,7 +184,9 @@ def _wait_hours(candidate: Mapping[str, Any] | None) -> float | None:
 
 
 def build_separate_plan_model(*, analysis: Mapping[str, Any], scenario: Mapping[str, Any], dataset: Mapping[str, Any],
-                              setup: Mapping[str, Any], current_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+                              setup: Mapping[str, Any], current_rows: Sequence[Mapping[str, Any]],
+                              baseline_setup: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """``setup`` is the plan's effective Setup; ``baseline_setup`` the Analysis Setup (uploaded breaks)."""
     snapshot = (scenario.get("settings") or {}).get("calculation") or {}
     options = snapshot.get("options") or {}
     schedule = (scenario.get("results") or {}).get("schedule") or {}
@@ -221,6 +223,8 @@ def build_separate_plan_model(*, analysis: Mapping[str, Any], scenario: Mapping[
         variance=variance_of.get((str(row.get("time")), str(row.get("queue_id")))),
         novaq_lq=row.get("Lq"), novaq_wq_hours=row.get("Wq")) for row in current_rows]
     cost_now = _sum_or_none([row["cost_now"] for row in periods])
+    breaks_view = _separate_breaks_view(snapshot, scenario.get("results") or {}, setup,
+                                        setup if baseline_setup is None else baseline_setup)
     return {
         "report": "plan", "version": REPORT_VERSION, "line_type": "separate",
         "cover": _cover(analysis, "separate", str(scenario.get("name"))),
@@ -242,6 +246,115 @@ def build_separate_plan_model(*, analysis: Mapping[str, Any], scenario: Mapping[
         "plan_search": {"method": "Simulation of every number of open lanes", "source": "stored", "rows": search_rows},
         "assumptions": {**options},
         "provenance": _provenance(analysis, scenario, dataset, snapshot),
+        **breaks_view,
+    }
+
+
+# ── Break check (owner-approved labels 2026-11-16, English only, verbatim) ──
+
+BREAKS_SETUP_TITLE = "Breaks in the Setup"
+BREAKS_PLAN_TITLE = "Plan break times"  # B17
+BREAK_CHECK_TITLE = "Break times: uploaded vs plan"  # B1
+BREAK_CHECK_SHEET = "Break check"  # B1-tab
+BREAK_CHECK_INTRO = ("This section compares your uploaded break times with the plan's moved break times. Both sides use "
+                     "the plan's simulation, where new customers go to an open line, with the same random runs. Counters "
+                     "per hour do not change.")  # B2
+BREAK_CHECK_WAIT_UPLOADED = "Wait, uploaded breaks (min)"  # B3
+BREAK_CHECK_WAIT_MOVED = "Wait, moved breaks (min)"  # B4
+BREAK_CHECK_CHART = "Average wait in line per period: uploaded vs moved breaks"  # B5 (owner round 2)
+BREAK_CHECK_HOURLY_CAPTION = ("Period values are averages of the simulation runs and have no range. The 95% range is "
+                              "shown for the whole day below.")  # B6 (owner round 2)
+BREAK_CHECK_WAIT = "Simulated average wait (minutes)"  # B7
+BREAK_CHECK_CHANGE = "Change in average wait (minutes, 95% range)"  # B8
+BREAK_CHECK_VERDICTS = {  # B9
+    "shorter": "The paired runs indicate shorter waits.",
+    "no_clear_difference": "No clear change in wait. A lower peak load does not prove shorter waits.",
+    "unavailable": "Wait comparison is unavailable.",
+    "longer": "The paired runs indicate longer waits. These changes cannot be applied.",
+}
+BREAK_CHECK_PEAK = "Busiest 15-minute load"  # B10
+BREAK_CHECK_PEAK_CAPTION = ("The busiest 15-minute load is a formula estimate from all lanes together, not the "
+                            "simulation.")  # B10n
+BREAK_CHECK_ALL_BREAKS = "Your breaks: uploaded vs plan"  # B11
+BREAK_CHECK_COLUMNS = ["Cashier", "Break", "Current start", "New start", "Length (minutes)"]  # B12
+BREAK_CHECK_MOVES = "Breaks the plan moved"  # B13
+BREAK_CHECK_NO_MOVES = "This plan keeps your uploaded break times. No break was moved."  # B14
+BREAK_CHECK_NOT_SAVED = ("The break check is not saved with this plan. Check the plan and save it again to see "
+                         "it.")  # B15
+BREAK_CHECK_KEY_NOTE = ('Both columns use the plan\'s break times. The effect of moving breaks is shown in "Break '
+                        'times: uploaded vs plan".')  # B16
+
+
+def _clock_text(value: Any) -> str:
+    text = str(value or "")
+    return text[:5] if len(text) == 8 and text.endswith(":00") else text
+
+
+def _separate_breaks_view(snapshot: Mapping[str, Any], results: Mapping[str, Any], plan_setup: Mapping[str, Any],
+                          baseline_setup: Mapping[str, Any]) -> dict[str, Any]:
+    """The breaks table heading and the stored break check; reads saved evidence only, never recalculates.
+
+    Plans without the break descriptor (pre-PR58, or saved without break changes) keep the original table.
+    """
+    plan_breaks = [item for item in plan_setup.get("breaks") or [] if isinstance(item, Mapping)]
+    baseline_breaks = [item for item in baseline_setup.get("breaks") or [] if isinstance(item, Mapping)]
+    descriptor = "break_optimization" in snapshot
+    stored = results.get("break_check") if descriptor else None
+    check = stored if isinstance(stored, Mapping) else None
+    differs = len(plan_breaks) != len(baseline_breaks) or any(
+        plan.get("scheduled_start_time") != base.get("scheduled_start_time")
+        for plan, base in zip(plan_breaks, baseline_breaks))
+    # K-BC-1 (owner 2026-11-17): B17 only when the plan's breaks differ from the uploaded Setup.
+    view: dict[str, Any] = {"breaks_title": BREAKS_PLAN_TITLE if descriptor and differs else BREAKS_SETUP_TITLE, "breaks_note": None, "break_check": None,
+                            "key_results_note": None}
+    if not descriptor or not plan_breaks:
+        return view
+    if check is None:
+        view["breaks_note"] = BREAK_CHECK_NOT_SAVED
+        return view
+    if not check.get("moves"):
+        view["breaks_note"] = BREAK_CHECK_NO_MOVES
+        return view
+    view["break_check"] = _break_check_section(check)
+    view["key_results_note"] = BREAK_CHECK_KEY_NOTE
+    return view
+
+
+def _break_check_section(check: Mapping[str, Any]) -> dict[str, Any]:
+    des = check.get("des") or {}
+    current, proposed = des.get("current") or {}, des.get("proposed") or {}
+    moved_by_time = {str(row.get("time")): _finite(row.get("mean_wait_minutes")) for row in proposed.get("periods") or []}
+    periods = [{"time": row.get("time"), "wait_uploaded_minutes": _finite(row.get("mean_wait_minutes")),
+                "wait_moved_minutes": moved_by_time.get(str(row.get("time")))} for row in current.get("periods") or []]
+    paired = (des.get("comparison") or {}).get("paired_wait_change") or {}
+    verdict = str(paired.get("verdict")) if paired.get("verdict") in BREAK_CHECK_VERDICTS else "unavailable"
+    runs = []
+    for before, after in zip(current.get("replications") or [], proposed.get("replications") or []):
+        low, high = _finite(before.get("mean_wait_minutes")), _finite(after.get("mean_wait_minutes"))
+        runs.append({"seed": before.get("seed"), "wait_uploaded_minutes": low, "wait_moved_minutes": high,
+                     "difference_minutes": None if low is None or high is None else high - low})
+    peak = check.get("peak_rho") or {}
+    all_breaks = [{"cashier": item.get("queue_id"), "break": item.get("label"),
+                   "current_start": _clock_text(item.get("current_start_time")),
+                   "new_start": _clock_text(item.get("scheduled_start_time")),
+                   "length_minutes": item.get("duration_minutes"), "moved": bool(item.get("shift_minutes"))}
+                  for item in check.get("proposed_breaks") or [] if isinstance(item, Mapping)]
+    return {
+        "periods": periods,
+        "wait_uploaded_minutes": _finite((current.get("summary") or {}).get("mean_wait_minutes")),
+        "wait_moved_minutes": _finite((proposed.get("summary") or {}).get("mean_wait_minutes")),
+        "peak_uploaded": _finite(peak.get("before")), "peak_moved": _finite(peak.get("after")),
+        "change": {"mean": _finite(paired.get("mean")), "ci_lower": _finite(paired.get("ci_lower")),
+                   "ci_upper": _finite(paired.get("ci_upper")), "n": paired.get("n")},
+        "verdict": verdict, "verdict_text": BREAK_CHECK_VERDICTS[verdict],
+        "breaks": sorted(all_breaks, key=lambda item: not item["moved"]),
+        "moves": [{"cashier": item.get("queue_id"), "break": item.get("label"), "current_start": item.get("from"),
+                   "new_start": item.get("to"), "length_minutes": item.get("duration_minutes")}
+                  for item in check.get("moves") or [] if isinstance(item, Mapping)],
+        "runs": runs,
+        "seeds": list(des.get("seeds") or []),
+        "basis": check.get("basis"),
+        "max_shift_minutes": check.get("max_shift_minutes"),
     }
 
 
@@ -272,7 +385,57 @@ def _table(sheet, title: str, headers: Sequence[str], rows: Sequence[Sequence[An
 def workbook_sheets(model: Mapping[str, Any]) -> list[str]:
     """The workbook's sheets in order; the Reports page lists exactly these (and the workbook asserts them)."""
     full = ["Simulation", "Checks", "Decision"] if model.get("report") == "full" else []
-    return ["Overview", "Your data", "Plan", "Formula check", "Plan search", *full, "Assumptions", "Provenance"]
+    check = [BREAK_CHECK_SHEET] if model.get("break_check") else []
+    return ["Overview", "Your data", "Plan", *check, "Formula check", "Plan search", *full, "Assumptions", "Provenance"]
+
+
+# Not in the owner-approved list (2026-11-16): column headings needed by the tables. Built from approved text where
+# possible ("Random seed" is simulation.seed; the others reuse B3/B4/B8 wording); listed for owner review.
+BREAK_CHECK_ITEM = "Item"
+BREAK_CHECK_SIDE_UPLOADED = "Uploaded breaks"
+BREAK_CHECK_SIDE_MOVED = "Moved breaks"
+BREAK_CHECK_RUN_SEED = "Random seed"
+BREAK_CHECK_RUN_CHANGE = "Change in average wait (minutes)"
+NOT_RECORDED = "not recorded"
+CANNOT_KEEP_UP = "cannot keep up"
+
+
+def _recorded(value: Any) -> Any:
+    return NOT_RECORDED if value is None else value
+
+
+def _write_break_check_sheet(sheet: Worksheet, check: Mapping[str, Any]) -> None:
+    """Values only: the stored break check, as in the PDF section, plus each paired run."""
+    _table(sheet, BREAK_CHECK_TITLE, ["Period", BREAK_CHECK_WAIT_UPLOADED, BREAK_CHECK_WAIT_MOVED],
+           [[row["time"], _recorded(row["wait_uploaded_minutes"]), _recorded(row["wait_moved_minutes"])]
+            for row in check["periods"]])
+    change = check["change"]
+    blocks: list[tuple[list[Any], list[list[Any]]]] = [
+        ([BREAK_CHECK_ITEM, BREAK_CHECK_SIDE_UPLOADED, BREAK_CHECK_SIDE_MOVED], [
+            [BREAK_CHECK_WAIT, _recorded(check["wait_uploaded_minutes"]), _recorded(check["wait_moved_minutes"])],
+            [BREAK_CHECK_PEAK, CANNOT_KEEP_UP if check["peak_uploaded"] is None else check["peak_uploaded"],
+             CANNOT_KEEP_UP if check["peak_moved"] is None else check["peak_moved"]]]),
+        ([BREAK_CHECK_ITEM, "Value", "95% low", "95% high", "Runs"], [
+            [BREAK_CHECK_CHANGE, _recorded(change["mean"]), _recorded(change["ci_lower"]),
+             _recorded(change["ci_upper"]), change["n"]]]),
+        ([check["verdict_text"]], []),
+        ([BREAK_CHECK_PEAK_CAPTION], []),
+        ([BREAK_CHECK_ALL_BREAKS], []),
+        (BREAK_CHECK_COLUMNS, [[row["cashier"], row["break"], row["current_start"], row["new_start"], row["length_minutes"]]
+                               for row in check["breaks"]]),
+        ([BREAK_CHECK_MOVES], []),
+        (BREAK_CHECK_COLUMNS, [[row["cashier"], row["break"], row["current_start"], row["new_start"], row["length_minutes"]]
+                               for row in check["moves"]]),
+        ([BREAK_CHECK_RUN_SEED, BREAK_CHECK_WAIT_UPLOADED, BREAK_CHECK_WAIT_MOVED, BREAK_CHECK_RUN_CHANGE],
+         [[run["seed"], _recorded(run["wait_uploaded_minutes"]), _recorded(run["wait_moved_minutes"]),
+           _recorded(run["difference_minutes"])] for run in check["runs"]]),
+    ]
+    for headers, rows in blocks:
+        if len(headers) > 1 or rows:
+            sheet.append([])
+        sheet.append(list(headers))
+        for row in rows:
+            sheet.append(list(row))
 
 
 def _format_report_workbook(workbook: Workbook) -> None:
@@ -281,6 +444,7 @@ def _format_report_workbook(workbook: Workbook) -> None:
         "Overview": [42, 100], "Plan": [28, 14, 18, 16, 16, 18, 18, 18, 18, 18],
         "Plan search": [28, 14, 50, 18, 18, 18, 18, 18], "Simulation": [65, 24, 18],
         "Checks": [25, 65, 75], "Decision": [25, 110], "Assumptions": [42, 100], "Provenance": [42, 100],
+        BREAK_CHECK_SHEET: [44, 26, 26, 18, 18],
         "Formula check": [28, 20, 22, 22, 26, 14, 24, 22, 20, 22, 24, 22, 24, 26, 60, 3],
     }
     panes = {"Your data": "B4", "Plan": "D4", "Plan search": "C4", "Formula check": "D5"}
@@ -394,6 +558,10 @@ def _format_report_numbers(sheet: Worksheet) -> None:
                 cell.number_format = "0.0%" if name == "target_utilization" else "0" if name == "max_servers" else "#,##0.00"
             elif sheet.title == "Simulation":
                 cell.number_format = "0.0000" if sheet.cell(cell.row, 3).value == "minutes" else "#,##0.00"
+            elif sheet.title == BREAK_CHECK_SHEET:
+                label = sheet.cell(cell.row, 1).value
+                cell.number_format = ("0.0%" if label == BREAK_CHECK_PEAK else "0" if isinstance(cell.value, int)
+                                      else "0.0000")
     if sheet.title == "Simulation":
         percent = False
         for row in range(4, sheet.max_row + 1):
@@ -432,6 +600,8 @@ def generate_plan_workbook(model: Mapping[str, Any]) -> io.BytesIO:
         [[row["time"], row["counters_now"], row["counters_plan"], row["busy_now"], row["busy_plan"],
           row["wait_now_minutes"], row["wait_plan_minutes"], row["cost_now"], row["cost_plan"], row["model"]]
          for row in model["periods"]])
+    if model.get("break_check"):
+        _write_break_check_sheet(workbook.create_sheet(BREAK_CHECK_SHEET), model["break_check"])
     write_formula_sheet(workbook.create_sheet("Formula check"), model["formula_check"], title="Formula check")
     search = model["plan_search"]
     _table(workbook.create_sheet("Plan search"), f"Plan search: {search['method']} ({search['source']})", [

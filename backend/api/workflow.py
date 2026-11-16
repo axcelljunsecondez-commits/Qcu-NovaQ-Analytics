@@ -117,8 +117,10 @@ ENGINE_VERSION = "novaq-2026-09-unified-des-v1"
 # C-PD (OD-C4 (i)): written on every separate-lines Current DES job since per-date files run one day per date.
 CURRENT_DES_BASIS = "current_break_windows_v4"
 # OD-C15 (i): v1 jobs (C-PD before the compact result) are a known earlier basis. OD-K63-2 (i): v2 jobs (closed
-# lanes labelled with the bare segment id, K-A6-3) are too. Recalculate under v3.
+# lanes labelled with the bare segment id, K-A6-3) are too. v3 jobs predate Current's uploaded break windows (PR58).
 CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1", "per_date_days_v2", "per_date_days_v3"})
+# K-PR58-4 (owner 2026-11-17): without Setup breaks, v4 changed nothing for v3 results, so they stay current.
+CURRENT_DES_BASIS_NO_BREAKS = "per_date_days_v3"
 CURRENT_DES_BASIS_KEY = "current_des_basis"
 # C-PD-C day detail (spec 2026-11-02 §6.7). Final EN text of W3 and W2 (spec §9.1, owner delegation 2026-11-03).
 CURRENT_DAY_DETAIL_EXECUTION = "current_per_date_day_detail"
@@ -999,7 +1001,7 @@ def _require_selection_dataset_generation(selection: Job | None, dataset: Datase
 _NOT_CONSULTED = "<not consulted on the persisted-evidence path>"
 
 
-def _current_evidence_policy(*, selected_context: bool = False) -> EvidencePolicy:
+def _current_evidence_policy(*, selected_context: bool = False, setup: dict[str, Any] | None = None) -> EvidencePolicy:
     """The version knowledge applied to persisted workflow evidence: recorded job identity only.
 
     D7 (Step 3) and Step 5 are dataset-identity and dependency-integrity rules. The recorded
@@ -1008,12 +1010,15 @@ def _current_evidence_policy(*, selected_context: bool = False) -> EvidencePolic
 
     ``current_des_accounting`` is set by C-PD (owner decision OD-C4 (i), 2026-11-02): a
     ``workflow_des_current`` job with separate-lines rows is current only when its params record
-    ``current_des_basis = "per_date_days_v3"``, which ``run_des_current`` writes on every
-    separate-lines run since per-date files are simulated one day per date and stored compactly for two
-    or more dates (C-PD-C, OD-C15 (i)), with closed lanes dated (K-A6-3, OD-K63-2 (i)).
-    ``per_date_days_v1`` and ``per_date_days_v2`` are historical; separate-lines Current DES
-    jobs with no marker (main's guard era) are not Current either. Both need one rerun. The hook applies
-    to no other kind and to no shared-lines result (``evidence_status.job_record``).
+    ``current_des_basis = CURRENT_DES_BASIS`` (``"current_break_windows_v4"``), which ``run_des_current``
+    writes on every separate-lines run: per-date files are simulated one day per date and stored compactly
+    for two or more dates (C-PD-C, OD-C15 (i)), closed lanes are dated (K-A6-3, OD-K63-2 (i)), and new
+    service pauses in the Setup's uploaded break windows (PR58). ``per_date_days_v1`` and
+    ``per_date_days_v2`` are historical. ``per_date_days_v3`` is historical when the Analysis Setup has
+    breaks, and current when it has none (K-PR58-4, owner 2026-11-17), so pass the analysis ``setup``;
+    without it v3 stays historical. Separate-lines Current DES jobs with no marker (main's guard era) are
+    not Current either. Historical jobs need one rerun. The hook applies to no other kind and to no
+    shared-lines result (``evidence_status.job_record``).
 
     ``job_engine`` and ``selected_des_basis`` name the values the backend actually records
     (``workflow.py`` writes exactly two ``params.engine`` values and two ``result.execution``
@@ -1031,6 +1036,8 @@ def _current_evidence_policy(*, selected_context: bool = False) -> EvidencePolic
     ``GENERATION_ENFORCEMENT_ENABLED`` is on. Off, it stays empty and no token is consulted.
     """
     sentinel = VersionFamily.of(_NOT_CONSULTED, current={_NOT_CONSULTED})
+    no_breaks = setup is not None and not setup.get("breaks")
+    accounting_current = {CURRENT_DES_BASIS, CURRENT_DES_BASIS_NO_BREAKS} if no_breaks else {CURRENT_DES_BASIS}
     return EvidencePolicy(
         scenario_schema=sentinel,
         separate_plan_engine=sentinel,
@@ -1043,8 +1050,8 @@ def _current_evidence_policy(*, selected_context: bool = False) -> EvidencePolic
             current={SELECTED_DES_PER_PERIOD_EXECUTION, SELECTED_DES_CONTINUOUS_DAY_EXECUTION}),
         workflow_engine=None,
         current_des_accounting=AccountingRequirement(
-            VersionFamily.of("Current DES accounting", current={CURRENT_DES_BASIS},
-                             historical=CURRENT_DES_BASIS_HISTORICAL),
+            VersionFamily.of("Current DES accounting", current=accounting_current,
+                             historical=CURRENT_DES_BASIS_HISTORICAL - accounting_current),
             CURRENT_DES_BASIS_KEY, frozenset({"workflow_des_current"})),
         generation_kinds=GENERATION_KINDS if _generation_enforced() else frozenset(),
         selected_load_method=VersionFamily.of("selected-load method", current={SELECTED_LOAD_METHOD}),
@@ -1199,7 +1206,7 @@ def require_dependencies_current(
     if (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues":
         scenario, _, _ = _selected_scenario_and_dataset(db, user, analysis)
         selected_context = scenario is not None
-    policy = _current_evidence_policy(selected_context=selected_context)
+    policy = _current_evidence_policy(selected_context=selected_context, setup=analysis.queue_setup_json or {})
     for job in jobs:
         assessment = _assess_evidence(db, job, context, policy)
         if not assessment.is_current:
@@ -1306,7 +1313,8 @@ def _current_evidence(
     full_day = _eligible_full_day_run(db, user, analysis, scenario, scenario_dataset)
     context = _evidence_context(db, user, analysis)
     policy = _current_evidence_policy(selected_context=(
-        scenario is not None and (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues"))
+        scenario is not None and (analysis.queue_setup_json or {}).get("queue_structure") == "separate_queues"),
+        setup=analysis.queue_setup_json or {})
 
     def current(job: Job | None) -> Job | None:
         """One rule for every slot, scenario-bound and Current-mode alike.
@@ -1684,7 +1692,7 @@ def get_des_current_day(
     analysis = own_analysis(db, user, analysis_id)
     job = _latest_job(db, user, "workflow_des_current", analysis.id)
     if job is None or not _evidence_is_current(db, job, _evidence_context(db, user, analysis),
-                                               _current_evidence_policy()):
+                                               _current_evidence_policy(setup=analysis.queue_setup_json or {})):
         raise HTTPException(status_code=404, detail=CURRENT_DAY_DETAIL_NOT_FOUND_DETAIL)
     stored = job.result_json or {}
     params = job.params_json or {}
