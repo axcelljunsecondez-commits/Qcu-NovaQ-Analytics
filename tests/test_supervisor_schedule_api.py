@@ -42,8 +42,10 @@ def test_preview_and_confirmed_apply_use_same_checked_schedule(db_engine, client
     out = applied.json()
     assert out["schedule"] == result["schedule"]
     stored = _stored_setup(db_engine, aid)
-    assert {k: v for k, v in stored.items() if k != "breaks"} == {k: v for k, v in setup.items() if k != "breaks"}
-    for old, new, proposed in zip(setup["breaks"], stored["breaks"], result["breaks"]["proposed_breaks"], strict=True):
+    assert stored == setup
+    assert out["analysis"]["queue_setup"] == setup
+    assert out["destination"] == "suggested_plan_draft"
+    for old, new, proposed in zip(setup["breaks"], out["plan_setup"]["breaks"], result["breaks"]["proposed_breaks"], strict=True):
         assert new["queue_id"] == old["queue_id"]
         assert new["duration_minutes"] == old["duration_minutes"]
         assert new["scheduled_start_time"] == proposed["scheduled_start_time"]
@@ -56,12 +58,15 @@ def test_preview_and_confirmed_apply_use_same_checked_schedule(db_engine, client
             "schema_version": 2, "engine_version": out["engine_version"], "analysis_id": aid,
             "dataset_id": body["dataset_id"], "dataset_row_count": 10, "options": options,
             "calculated_at": "2026-10-23T00:00:00+00:00",
+            "setup_hash": result["setup_hash"], "break_optimization": {"max_shift_minutes": 120},
         }}, "results": {"schedule": out["schedule"]},
     })
     assert saved.status_code == 201, saved.text
     assert saved.json()["scenario"]["provenance"] == "verified_snapshot"
-    # Applying changes invalidates the old token, including after replay.
-    assert _post(client, aid, "apply", {**body, "preview_hash": result["preview_hash"]}).status_code == 409
+    assert saved.json()["scenario"]["settings"]["calculation"]["plan_breaks"] == out["plan_setup"]["breaks"]
+    # A nonmutating draft confirmation is idempotent; saved plans never overwrite Current.
+    assert _post(client, aid, "apply", {**body, "preview_hash": result["preview_hash"]}).status_code == 200
+    assert _stored_setup(db_engine, aid) == setup
 
 
 def test_break_off_is_read_only_and_cannot_apply(db_engine, client):
@@ -172,15 +177,12 @@ def test_concurrent_setup_change_during_recheck_is_refused(db_engine, client, mo
     assert setup_fingerprint(_stored_setup(db_engine, aid)) == setup_fingerprint(changed)
 
 
-def test_postgres_change_after_final_read_is_not_overwritten(db_engine, client):
-    if db_engine.dialect.name != "postgresql":
-        pytest.skip("Requires native PostgreSQL concurrent transactions and JSONB")
+def test_confirmation_never_issues_a_baseline_update(db_engine, client):
     aid, setup = _workspace(db_engine)
     login(client, "brk@example.com", "pw")
     body = _body(db_engine, aid)
     result = _post(client, aid, "preview", body).json()
     assert result["can_apply"] is True
-    concurrent = {**setup, "breaks": []}
     intercepted = False
 
     def before_update(conn, cursor, statement, parameters, context, executemany):
@@ -188,23 +190,18 @@ def test_postgres_change_after_final_read_is_not_overwritten(db_engine, client):
         if intercepted or not statement.lstrip().upper().startswith("UPDATE ANALYSIS_PROJECTS SET QUEUE_SETUP_JSON"):
             return
         intercepted = True
-        # Another transaction commits after the endpoint's refresh, immediately before its UPDATE.
-        with db_engine.begin() as other:
-            other.execute(update(AnalysisProject).where(AnalysisProject.id == aid)
-                          .values(queue_setup_json=concurrent))
 
     event.listen(db_engine, "before_cursor_execute", before_update)
     try:
         response = _post(client, aid, "apply", {**body, "preview_hash": result["preview_hash"]})
     finally:
         event.remove(db_engine, "before_cursor_execute", before_update)
-    assert intercepted
-    assert response.status_code == 409, response.text
-    assert "concurrent update" in response.json()["detail"]
-    assert _stored_setup(db_engine, aid) == concurrent
+    assert not intercepted
+    assert response.status_code == 200, response.text
+    assert _stored_setup(db_engine, aid) == setup
 
 
-def test_postgres_simultaneous_applies_have_one_winner(db_engine, client):
+def test_postgres_simultaneous_confirmations_are_idempotent(db_engine, client):
     if db_engine.dialect.name != "postgresql":
         pytest.skip("Requires native PostgreSQL row-lock rechecking and JSONB")
     aid, setup = _workspace(db_engine)
@@ -228,13 +225,12 @@ def test_postgres_simultaneous_applies_have_one_winner(db_engine, client):
             responses = [future.result(timeout=30) for future in futures]
     finally:
         event.remove(db_engine, "before_cursor_execute", before_update)
-    assert sorted(response.status_code for response in responses) == [200, 409], [r.text for r in responses]
+    assert [response.status_code for response in responses] == [200, 200], [r.text for r in responses]
     winner = next(response.json() for response in responses if response.status_code == 200)
     assert winner["schedule"] == result["schedule"]
     stored = _stored_setup(db_engine, aid)
-    assert {k: v for k, v in stored.items() if k != "breaks"} == {k: v for k, v in setup.items() if k != "breaks"}
-    assert [b["scheduled_start_time"] for b in stored["breaks"]] == [
-        b["scheduled_start_time"] for b in result["breaks"]["proposed_breaks"]]
+    assert stored == setup
+    assert all(response.json()["plan_setup"] == winner["plan_setup"] for response in responses)
 
 
 def test_apply_preserves_legacy_setup_fields_without_inserting_defaults(db_engine, client):
@@ -253,7 +249,7 @@ def test_apply_preserves_legacy_setup_fields_without_inserting_defaults(db_engin
     assert {k: v for k, v in stored.items() if k != "breaks"} == {k: v for k, v in setup.items() if k != "breaks"}
 
 
-def test_confirmed_apply_invalidates_earlier_current_evidence(db_engine, client):
+def test_confirmed_apply_preserves_earlier_current_evidence(db_engine, client):
     from tests.test_break_apply_api import _add_job
 
     aid, setup = _workspace(db_engine)
@@ -273,5 +269,5 @@ def test_confirmed_apply_invalidates_earlier_current_evidence(db_engine, client)
     applied = _post(client, aid, "apply", {**body, "preview_hash": proposal["preview_hash"]})
     assert applied.status_code == 200, applied.text
     after = client.get(f"/analyses/{aid}/workflow").json()
-    assert after["des_current"] is None
-    assert after["decision_stale"] is True
+    assert after["des_current"] == before["des_current"]
+    assert after["decision_stale"] is False

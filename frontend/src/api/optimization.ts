@@ -166,19 +166,19 @@ export interface BreakApplyRequest {
   dataset_id: number
 }
 
-/** The server re-runs placement and writes only the break start times into Setup. */
+/** Confirm server-derived break times for a Suggested draft; Current Setup is unchanged. */
 export async function applySeparateBreaks(
   analysisId: number,
   body: BreakApplyRequest,
-): Promise<{ analysis: AnalysisProjectOut; moves_applied: number }> {
-  const { data } = await http.post<{ analysis: AnalysisProjectOut; moves_applied: number }>(
+): Promise<{ analysis: AnalysisProjectOut; moves_applied: number; plan_setup: AnalysisProjectOut['queue_setup']; destination: 'suggested_plan_draft' }> {
+  const { data } = await http.post<{ analysis: AnalysisProjectOut; moves_applied: number; plan_setup: AnalysisProjectOut['queue_setup']; destination: 'suggested_plan_draft' }>(
     `/analyses/${analysisId}/workflow/optimize/separate/breaks/apply`,
     body,
   )
   return data
 }
 
-// Supervisor orchestration is additive; legacy optimization contracts stay unchanged.
+// Supervisor break confirmation targets a Suggested draft, never the Current baseline.
 export interface SupervisorRequest extends SeparateOptimizeOptions {
   dataset_id: number
   allow_break_changes: boolean
@@ -202,8 +202,8 @@ export async function previewSupervisorSchedule(analysisId: number, body: Superv
   return data
 }
 export async function applySupervisorSchedule(analysisId: number, body: SupervisorRequest & { preview_hash: string }):
-  Promise<SupervisorPreview & { analysis: AnalysisProjectOut; moves_applied: number }> {
-  const { data } = await http.post<SupervisorPreview & { analysis: AnalysisProjectOut; moves_applied: number }>(
+  Promise<SupervisorPreview & { analysis: AnalysisProjectOut; moves_applied: number; plan_setup: AnalysisProjectOut['queue_setup']; destination: 'suggested_plan_draft' }> {
+  const { data } = await http.post<SupervisorPreview & { analysis: AnalysisProjectOut; moves_applied: number; plan_setup: AnalysisProjectOut['queue_setup']; destination: 'suggested_plan_draft' }>(
     `/analyses/${analysisId}/workflow/optimize/separate/supervisor/apply`, body)
   return data
 }

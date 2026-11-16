@@ -1,4 +1,4 @@
-"""Apply the break optimizer's proposal to the Analysis Setup (separate queues only).
+"""Confirm the break optimizer's proposal for Suggested without changing Current Setup.
 
 The server re-runs placement on the current Setup and dataset; break times are
 never accepted from the client.
@@ -61,7 +61,7 @@ def test_break_optimize_returns_setup_hash(db_engine, client):
     assert body["dataset_id"] == _dataset_id(db_engine, analysis_id)
 
 
-def test_apply_writes_exactly_the_proposed_start_times(db_engine, client):
+def test_apply_returns_exactly_the_proposed_start_times_and_preserves_current(db_engine, client):
     analysis_id, setup = _workspace(db_engine)
     login(client, "brk@example.com", "pw")
     proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
@@ -71,7 +71,9 @@ def test_apply_writes_exactly_the_proposed_start_times(db_engine, client):
     body = response.json()
     assert body["moves_applied"] == len(proposal["moves"])
     stored = _stored_setup(db_engine, analysis_id)
-    assert [b["scheduled_start_time"] for b in stored["breaks"]] == [
+    assert stored == setup
+    assert body["destination"] == "suggested_plan_draft"
+    assert [b["scheduled_start_time"] for b in body["plan_setup"]["breaks"]] == [
         b["scheduled_start_time"] for b in proposal["proposed_breaks"]]
     assert body["analysis"]["queue_setup"] == stored
     assert body["analysis"]["setup_status"] == "ready"
@@ -82,8 +84,10 @@ def test_apply_keeps_names_durations_and_order(db_engine, client):
     login(client, "brk@example.com", "pw")
     proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
     assert proposal["moves"]
-    assert _apply(client, analysis_id, _from(proposal)).status_code == 200
-    stored = _stored_setup(db_engine, analysis_id)["breaks"]
+    confirmed = _apply(client, analysis_id, _from(proposal))
+    assert confirmed.status_code == 200
+    assert _stored_setup(db_engine, analysis_id) == setup
+    stored = confirmed.json()["plan_setup"]["breaks"]
     kept = ("scheduled_start_time", "original_start_time")
     strip = [{k: v for k, v in b.items() if k not in kept} for b in stored]
     assert strip == [{k: v for k, v in b.items() if k not in kept} for b in setup["breaks"]]
@@ -103,8 +107,7 @@ def test_apply_changes_nothing_else_in_setup(db_engine, client):
     proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
     assert _apply(client, analysis_id, _from(proposal)).status_code == 200
     stored = _stored_setup(db_engine, analysis_id)
-    assert {k: v for k, v in stored.items() if k != "breaks"} == {
-        k: v for k, v in setup.items() if k != "breaks"}
+    assert stored == setup
 
 
 def test_apply_rejects_stale_setup_hash_and_keeps_setup(db_engine, client):
@@ -178,6 +181,9 @@ def _add_job(db, user_id, analysis_id, kind, setup, scenario_id=None, dataset_id
     recorded dataset is not current evidence, so a fixture that omits it no longer stands in for
     a real run.
     """
+    if kind == "workflow_des_current":
+        from backend.api.workflow import CURRENT_DES_BASIS, CURRENT_DES_BASIS_KEY
+        params.setdefault(CURRENT_DES_BASIS_KEY, CURRENT_DES_BASIS)
     db.add(Job(user_id=user_id, kind=kind, status="completed", tenant_id=None,
                params_json={"analysis_id": analysis_id, "scenario_id": scenario_id,
                             "dataset_id": dataset_id,
@@ -185,7 +191,7 @@ def _add_job(db, user_id, analysis_id, kind, setup, scenario_id=None, dataset_id
                result_json={}, finished_at=datetime.now(timezone.utc)))
 
 
-def test_apply_makes_earlier_evidence_stale(db_engine, client):
+def test_apply_preserves_earlier_current_evidence(db_engine, client):
     analysis_id, setup = _workspace(db_engine)
     dataset_id = _dataset_id(db_engine, analysis_id)
     with make_sessionmaker(db_engine)() as db:
@@ -218,8 +224,9 @@ def test_apply_makes_earlier_evidence_stale(db_engine, client):
     assert _apply(client, analysis_id, _from(proposal)).status_code == 200
     after = client.get(f"/analyses/{analysis_id}/workflow").json()
     for key in ("des_current", "mc_current", "validation_current", "decision"):
-        assert after[key] is None, key
-    assert after["decision_stale"] is True
+        assert after[key] == before[key], key
+    assert after["decision_stale"] is False
+    assert _stored_setup(db_engine, analysis_id) == setup
 
 
 def _novamart_apply_and_rerun(db_engine, client) -> tuple[dict, dict, dict]:
@@ -235,16 +242,16 @@ def _novamart_apply_and_rerun(db_engine, client) -> tuple[dict, dict, dict]:
     return first, applied.json(), _run(client, analysis_id, body).json()
 
 
-def test_novamart_apply_then_rerun_starts_from_the_earlier_after_peak(db_engine, client):
+def test_novamart_confirm_then_rerun_keeps_the_original_baseline_peak(db_engine, client):
     first, applied, second = _novamart_apply_and_rerun(db_engine, client)
     assert applied["moves_applied"] == len(first["moves"])
-    assert second["peak_rho"]["before"] == first["peak_rho"]["after"]
+    assert second["peak_rho"]["before"] == first["peak_rho"]["before"]
     assert second["peak_rho"]["after"] <= second["peak_rho"]["before"]
 
 
-def test_novamart_apply_then_rerun_reports_no_moves(db_engine, client):
+def test_novamart_confirm_then_rerun_repeats_the_same_plan_moves(db_engine, client):
     first, _, second = _novamart_apply_and_rerun(db_engine, client)
-    assert second["moves"] == []
+    assert second["moves"] == first["moves"]
     assert second["peak_rho"]["after"] == first["peak_rho"]["after"]
     assert second["peak_rho"]["after"] <= 0.6253
     originals = [b["scheduled_start_time"] for b in expected_novamart_setup()["breaks"]]
@@ -281,8 +288,10 @@ def test_apply_sets_the_anchor_only_on_moved_breaks(db_engine, client):
     analysis_id, setup = _workspace(db_engine)
     login(client, "brk@example.com", "pw")
     proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
-    assert _apply(client, analysis_id, _from(proposal)).status_code == 200
-    stored = _stored_setup(db_engine, analysis_id)["breaks"]
+    response = _apply(client, analysis_id, _from(proposal))
+    assert response.status_code == 200
+    assert _stored_setup(db_engine, analysis_id) == setup
+    stored = response.json()["plan_setup"]["breaks"]
     assert any(p["shift_minutes"] for p in proposal["proposed_breaks"])
     for before, after, proposed in zip(setup["breaks"], stored, proposal["proposed_breaks"], strict=True):
         if proposed["shift_minutes"]:
@@ -301,8 +310,10 @@ def test_apply_never_overwrites_an_existing_anchor(db_engine, client):
     login(client, "brk@example.com", "pw")
     proposal = _run(client, analysis_id, {"des": {"replications": 1}}).json()
     assert proposal["moves"]
-    assert _apply(client, analysis_id, _from(proposal)).status_code == 200
-    stored = _stored_setup(db_engine, analysis_id)["breaks"]
+    response = _apply(client, analysis_id, _from(proposal))
+    assert response.status_code == 200
+    assert _stored_setup(db_engine, analysis_id) == anchored
+    stored = response.json()["plan_setup"]["breaks"]
     assert stored[0]["original_start_time"] == "09:30:00"
     for entry, proposed in zip(stored, proposal["proposed_breaks"], strict=True):
         anchor = entry.get("original_start_time", "10:00:00")

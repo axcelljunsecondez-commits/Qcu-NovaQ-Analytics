@@ -10,7 +10,7 @@ import { SAMPLE_MINUTES, dayOrigin, dayPeriods, mergeDayTrace, scheduledBreaks, 
 import { InfoTip } from '../ui/InfoTip'
 import { DatePicker } from './DatePicker'
 import { LongestLineTable } from './LongestLineTable'
-import { currentNoBreaksChip, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
+import { currentModelsBreaks, currentNoBreaksChip, currentRun, runBasisKey, runSetup, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** Current and Suggested plan side by side, no arrow (owner decision B5): the two runs may be set up differently. */
 function Pair({ now, plan, nowInfo, planInfo, mid }: { now: string; plan: string; nowInfo?: ReactNode; planInfo?: ReactNode; mid?: ReactNode }) {
@@ -46,6 +46,7 @@ function basisTextKey(context: SimulationContext, now: RunSummary | null, plan: 
   if (now.basis !== 'per_period' || plan.basis !== 'continuous_day') return null
   const breaks = (context.analysis.queue_setup.breaks ?? []).length > 0
   if (context.separate) {
+    if (currentModelsBreaks(context)) return 'charts.key_basis_baseline_breaks'
     if (context.perDateDays) return 'charts.key_basis_per_date_separate'
     return breaks ? 'charts.key_basis_separate' : 'charts.key_basis_no_breaks_separate'
   }
@@ -198,7 +199,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
   const shownSummary = run === 'suggested' ? planSummary : nowSummary
   const setup = context.analysis.queue_setup
   const origin = dayOrigin(setup)
-  const breaks = context.separate ? scheduledBreaks(setup) : []
+  const breaks = context.separate ? scheduledBreaks(runSetup(context, run)) : []
   const [params] = useSearchParams()
   const chosenDay = shown?.kind === 'separate' ? dayPeriods(shown.result.periods, context.perDateDays, params.get('date')) : null
   const dayTrace = chosenDay && shownSummary?.basis === 'continuous_day' ? mergeDayTrace(chosenDay.periods) : null
@@ -241,7 +242,7 @@ export function KeyResultsView({ context, run }: { context: SimulationContext; r
 
   const seedChip = (seed: unknown) => (typeof seed === 'number' ? `${t('simulation.seed')}: ${seed}` : t('charts.chip_seed_not_saved'))
   // Only the selected separate-lines plan models the Setup's breaks; Current and the legacy shared run have none.
-  const planBreaksKey = context.selectedSeparate && (setup.breaks ?? []).length > 0 ? 'charts.chip_breaks_included' : 'charts.chip_no_breaks'
+  const planBreaksKey = context.selectedSeparate && (runSetup(context, 'suggested').breaks ?? []).length > 0 ? 'charts.chip_breaks_included' : 'charts.chip_no_breaks'
   // Separate Current's basis chip already says "no breaks" (simulation.run_basis_continuous_no_breaks), except
   // per date (simulation.run_basis_continuous_per_date), which adds the chip. A compact run's server-drawn seed is shown.
   const currentChips = [t('simulation.run_current'), t(runBasisKey(context, 'current')),

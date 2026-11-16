@@ -47,7 +47,7 @@ describe('separate-lines replay states', () => {
   it('lists scheduled breaks on their own row and says when the run has no break events', () => {
     const scheduled = [{ queueId: 'a', startHours: 0.5, endHours: 1, name: null }]
     renderWithProviders(<SeparateSimulationPlayback trace={trace([event(0.1, 'arrival', 1)])} originMinutes={480} scheduled={scheduled} />)
-    expect(screen.getByRole('group', { name: 'Scheduled break (from your setup)' })).toHaveTextContent('a: 08:30–09:00')
+    expect(screen.getByRole('group', { name: 'Scheduled break' })).toHaveTextContent('a: 08:30–09:00')
     expect(screen.getByText('Break state unavailable for this run.')).toBeInTheDocument()
   })
 

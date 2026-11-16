@@ -45,6 +45,7 @@ from backend.api.evidence_status import (
     job_references,
     recorded_text,
 )
+from backend.api.plan_breaks import resolve_scenario_plan_setup, setup_digest, setup_with_proposed_breaks
 from backend.api.scenarios import setup_fingerprint as _setup_fingerprint
 from backend.api.settings import Settings
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
@@ -114,10 +115,10 @@ router = APIRouter(prefix="/analyses", tags=["workflow"])
 
 ENGINE_VERSION = "novaq-2026-09-unified-des-v1"
 # C-PD (OD-C4 (i)): written on every separate-lines Current DES job since per-date files run one day per date.
-CURRENT_DES_BASIS = "per_date_days_v3"
+CURRENT_DES_BASIS = "current_break_windows_v4"
 # OD-C15 (i): v1 jobs (C-PD before the compact result) are a known earlier basis. OD-K63-2 (i): v2 jobs (closed
 # lanes labelled with the bare segment id, K-A6-3) are too. Recalculate under v3.
-CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1", "per_date_days_v2"})
+CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1", "per_date_days_v2", "per_date_days_v3"})
 CURRENT_DES_BASIS_KEY = "current_des_basis"
 # C-PD-C day detail (spec 2026-11-02 §6.7). Final EN text of W3 and W2 (spec §9.1, owner delegation 2026-11-03).
 CURRENT_DAY_DETAIL_EXECUTION = "current_per_date_day_detail"
@@ -422,6 +423,10 @@ def _scenario_setup_problem(scenario: Scenario, analysis: AnalysisProject) -> st
     if snapshot.get("schema_version") == 2:
         if snapshot.get("setup_hash") != _setup_fingerprint(setup):
             return "stale for the current Setup"
+        try:
+            resolve_scenario_plan_setup(setup, snapshot)
+        except ValueError as exc:
+            return str(exc)
         return None
     if _legacy_snapshot_queue_type(snapshot) != _SETUP_QUEUE_TYPE.get(setup.get("queue_structure")):
         return "not verifiable for the current Setup queue structure"
@@ -2391,13 +2396,7 @@ def apply_separate_breaks(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Write the break optimizer's proposed start times into the Setup.
-
-    Placement (no DES) re-runs on the current Setup and latest valid dataset,
-    which must be the ones the proposal was made on. Only each break's
-    ``scheduled_start_time`` changes; queue, duration, name, and list order
-    stay exactly as configured. Earlier evidence then fails its setup_hash.
-    """
+    """Confirm proposed break times for a Suggested draft, leaving Current Setup unchanged."""
     analysis = own_analysis(db, user, analysis_id)
     setup = analysis.queue_setup_json or {}
     if setup.get("queue_structure") != "separate_queues":
@@ -2406,10 +2405,13 @@ def apply_separate_breaks(
         raise HTTPException(status_code=409, detail=BREAK_SETUP_STALE_DETAIL)
     if payload.dataset_id != _current_valid_dataset_id(db, user, analysis):
         raise HTTPException(status_code=409, detail=BREAK_DATA_STALE_DETAIL)
-    records = _current_dataset(db, user, analysis).normalized_json or []
+    dataset = _current_dataset(db, user, analysis)
+    records = dataset.normalized_json or []
     if not isinstance(records, list) or not records:
         raise HTTPException(status_code=422, detail="This Analysis has no Current evidence.")
     breaks = list(setup.get("breaks") or [])
+    data_binding = setup_digest({"generation": dataset.generation, "records": records,
+                                 "validation": dataset.validation_report_json})
     try:
         slots, shifts = slot_inputs_from_setup(setup, records)
         placed = place_breaks(slots, shifts, breaks, [str(q) for q in setup.get("queue_ids") or []],
@@ -2418,25 +2420,20 @@ def apply_separate_breaks(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not placed["moves"]:
         raise HTTPException(status_code=409, detail=BREAK_NOTHING_DETAIL)
-    # proposed_breaks is in Setup list order (place_breaks sorts by original index).
-    # A moved break keeps its first anchor; without one, its pre-apply start
-    # becomes the anchor, so later runs cannot drift beyond ±max_shift of it.
-    updated = [
-        {**entry, "scheduled_start_time": proposed["scheduled_start_time"],
-         "original_start_time": entry.get("original_start_time") or entry.get("scheduled_start_time")}
-        if proposed["shift_minutes"] else entry
-        for entry, proposed in zip(breaks, placed["proposed_breaks"], strict=True)
-    ]
     try:
-        validated = QueueSetup.model_validate({**setup, "breaks": updated})
+        draft = setup_with_proposed_breaks(setup, placed)
     except ValueError as exc:  # pragma: no cover - placement keeps valid clock times
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    analysis.queue_setup_json = validated.model_dump(mode="json")
-    analysis.setup_status = setup_status(validated)
-    analysis.updated_at = datetime.now(timezone.utc)
-    db.commit()
     db.refresh(analysis)
-    return {"analysis": analysis_out(analysis), "moves_applied": len(placed["moves"])}
+    db.refresh(dataset)
+    if payload.setup_hash != _setup_fingerprint(analysis.queue_setup_json):
+        raise HTTPException(status_code=409, detail=BREAK_SETUP_STALE_DETAIL)
+    if (payload.dataset_id != _current_valid_dataset_id(db, user, analysis) or
+            setup_digest({"generation": dataset.generation, "records": dataset.normalized_json,
+                          "validation": dataset.validation_report_json}) != data_binding):
+        raise HTTPException(status_code=409, detail=BREAK_DATA_STALE_DETAIL)
+    return {"analysis": analysis_out(analysis), "moves_applied": len(placed["moves"]),
+            "plan_setup": draft, "destination": "suggested_plan_draft"}
 
 
 def _json_number(value: Any) -> float | None:
@@ -2854,7 +2851,12 @@ def _require_selected_separate_plan(
             status_code=exc.status_code,
             detail=f"Selected plan is not runnable: {exc.detail}",
         ) from exc
-    setup = analysis.queue_setup_json or {}
+    try:
+        setup = resolve_scenario_plan_setup(
+            analysis.queue_setup_json or {}, (scenario.settings_json or {}).get("calculation") or {},
+        )
+    except ValueError as exc:
+        raise SelectedPlanError(str(exc)) from exc
     if setup.get("queue_structure") != "separate_queues":
         raise SelectedPlanError("Selected-plan simulation requires a separate_queues analysis.")
     if setup.get("separate_queue_closure_policy", "drain_existing") != "drain_existing":

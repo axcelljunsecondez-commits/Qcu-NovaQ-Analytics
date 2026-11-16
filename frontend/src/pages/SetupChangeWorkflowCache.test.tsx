@@ -3,6 +3,8 @@ import { Link, Route, Routes } from 'react-router-dom'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient } from '@tanstack/react-query'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { renderWithProviders } from '../test/test-utils'
 import { queryClient as appQueryClient } from '../lib/queryClient'
 import { AnalysisSetupPage } from './AnalysisSetupPage'
@@ -11,8 +13,10 @@ import { QueueSimulationPage } from './QueueSimulationPage'
 import { DecisionEndpointPage } from '../components/analysis/DecisionEndpointPage'
 
 // Every workflow job records the Setup it was computed for, and the server stops serving it once
-// the Setup changes. A Setup save or a break apply must therefore never leave the previous Setup's
-// cached workflow evidence on screen, not even while the fresh workflow request is in flight.
+// the Setup changes. A Setup save invalidates those runs. Confirming Suggested-only break moves
+// leaves Setup unchanged and must preserve Current evidence, including during a workflow refetch.
+
+const english = JSON.parse(readFileSync(resolve(process.cwd(), 'public/locales/en/translation.json'), 'utf8')) as Record<string, string>
 
 const getWorkflowMock = vi.fn()
 const getAnalysisMock = vi.fn()
@@ -349,9 +353,9 @@ async function applyBreaksOnOptimize(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('checkbox', { name: 'Allow break times to change' }))
   await user.click(screen.getByRole('button', { name: 'Check schedule' }))
   await user.click(await screen.findByRole('button', { name: 'Continue to confirm' }))
-  await user.click(screen.getByRole('button', { name: 'Save break changes' }))
-  expect(await screen.findByText('Break times saved in Setup. Earlier Current, Simulation and Decision results need to be rerun.')).toBeInTheDocument()
-  expect(server.setupVersion).toBe(versionBefore + 1)
+  await user.click(screen.getByRole('button', { name: english['supervisor.apply'] }))
+  expect(await screen.findByText(english['supervisor.applied'])).toBeInTheDocument()
+  expect(server.setupVersion).toBe(versionBefore)
 }
 
 beforeEach(() => {
@@ -377,13 +381,14 @@ beforeEach(() => {
   listAnalysisDatasetsMock.mockReset().mockImplementation(async () => ({ datasets: [datasetRow(11)] }))
   listDatasetsMock.mockReset().mockImplementation(async () => ({ datasets: [datasetRow(11)] }))
   previewSupervisorScheduleMock.mockReset().mockResolvedValue(supervisorCheck)
-  // The server writes only the proposed break start times into the Setup (tests/test_break_apply_api.py).
+  // The server confirms only a Suggested draft; its response leaves Current's Setup unchanged.
   applySupervisorScheduleMock.mockReset().mockImplementation(async () => {
-    changeSetup({
+    const plan_setup = {
       ...server.setup,
       breaks: [{ queue_id: 'queue_1', scheduled_start_time: '11:00:00', duration_minutes: 30, original_start_time: '10:00:00' }],
-    })
-    return { ...supervisorCheck, can_apply: false, analysis: { id: 7, name: 'Checkout', queue_setup: structuredClone(server.setup) }, moves_applied: 1 }
+    }
+    return { ...supervisorCheck, can_apply: false, analysis: { id: 7, name: 'Checkout', queue_setup: structuredClone(server.setup) },
+      plan_setup, destination: 'suggested_plan_draft', moves_applied: 1 }
   })
   unexpectedCall.mockReset()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -436,23 +441,24 @@ describe('Setup changes and cached workflow evidence', () => {
     expect(watch.stop()).toEqual([])
   })
 
-  it('never flashes the previous Setup\'s Current runs on Simulate while the workflow refetches after a break apply', async () => {
+  it('preserves Current runs while workflow refetches after confirming Suggested break moves', async () => {
     const user = userEvent.setup()
-    renderApp(SIMULATION_CHECKS)
+    const view = renderApp(SIMULATION_CHECKS)
     expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
 
     await applyBreaksOnOptimize(user)
     const release = holdWorkflowRequests()
-    const watch = watchForText(CURRENT_EVIDENCE_TEXT)
+    // A later ordinary refetch may happen independently of confirmation. Mark stale without
+    // removing the preserved data so this check covers both the cached and refetching states.
+    await view.queryClient.invalidateQueries({ queryKey: ['workflow', 7] })
     const requestsBefore = getWorkflowMock.mock.calls.length
     await user.click(screen.getByRole('link', { name: 'Open Simulate' }))
-    expect(watch.seen()).toEqual([])
+    expect(await screen.findByText('CURRENT configuration')).toBeInTheDocument()
     await waitFor(() => expect(getWorkflowMock.mock.calls.length).toBeGreaterThan(requestsBefore))
-    expect(watch.seen()).toEqual([])
+    expect(screen.getByText('CURRENT configuration')).toBeInTheDocument()
 
     release()
-    expect(await screen.findByText('No current run for dataset #11.')).toBeInTheDocument()
-    expect(watch.stop()).toEqual([])
+    expect(await screen.findByText('Simulation validation passed.')).toBeInTheDocument()
     expect(unexpectedCall).not.toHaveBeenCalled()
   })
 })

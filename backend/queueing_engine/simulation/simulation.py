@@ -79,6 +79,7 @@ logger = get_logger(__name__)
 DEFAULT_QUEUE_OVERLOAD = 20  # queue depth that triggers Critical regardless of ρ
 SIM_HOURS_PER_SEGMENT = 24.0  # simulated hours per segment
 RANDOM_SEED = 42             # reproducible runs; override per call for stochastic analysis
+CURRENT_BREAK_POLICY = "scheduled_windows_nonpreemptive_v1"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -764,6 +765,53 @@ def _parallel_schedule(
     return output, {queue_id: {"queue_id": queue_id, "server_id": dedicated_server_id(queue_id)} for queue_id in queue_ids}
 
 
+def _current_break_windows(
+    queue_setup: Mapping[str, Any] | None, contexts: list[dict],
+) -> dict[str, list[tuple[float, float]]]:
+    """Current pauses new service in fixed windows; admissions keep their own lane.
+
+    The legacy core concatenates segments. Breaks need that clock to match actual
+    wall time, so a gapped or unordered schedule is refused rather than shifted.
+    Validate stored schedules too: input-time validation may predate these rules.
+    """
+    setup = dict(queue_setup or {})
+    if not setup.get("breaks"):
+        return {}
+    # The services package loads this simulation package through queue_lifecycle.
+    # Delay the shared conversion import until execution to avoid that import cycle.
+    from backend.queueing_engine.services.separate_optimization import resolve_des_breaks
+
+    schedule = list(setup.get("segments") or [])
+    for previous, current in zip(schedule, schedule[1:]):
+        if not math.isclose(_parallel_time_minutes(str(previous["end_time"])),
+                            _parallel_time_minutes(str(current["start_time"])), abs_tol=1e-9):
+            raise ValueError("Current breaks require chronological, contiguous operating segments.")
+    resolved = resolve_des_breaks(setup) or []
+    windows: dict[str, list[tuple[float, float]]] = {}
+    for raw, entry in zip(setup["breaks"], resolved, strict=True):
+        duration = raw.get("duration_minutes")
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not float(duration).is_integer():
+            raise ValueError("Current break duration must be a positive whole number of minutes.")
+        queue_id = entry["queue_id"]
+        low = entry["start_hours"]
+        high = low + entry["duration_hours"]
+        covered = sum(max(0.0, min(high, c["end"]) - max(low, c["start"]))
+                      for c in contexts if c["queue_id"] == queue_id and c["active"])
+        if not math.isclose(covered, high - low, rel_tol=1e-9, abs_tol=1e-9):
+            raise ValueError(f"Current break for {queue_id!r} must lie within its staffed operating hours.")
+        windows.setdefault(queue_id, []).append((low, high))
+    for queue_id, spans in windows.items():
+        spans.sort()
+        if any(current[0] < previous[1] for previous, current in zip(spans, spans[1:])):
+            raise ValueError(f"Current breaks for {queue_id!r} overlap.")
+    return windows
+
+
+def _current_break_metadata(queue_setup: Mapping[str, Any] | None) -> dict[str, Any]:
+    # Preserve the exact no-break result shape, including pinned legacy outputs.
+    return {"break_policy": CURRENT_BREAK_POLICY} if (queue_setup or {}).get("breaks") else {}
+
+
 def _simulate_parallel_segments_core(
     time_segments: Iterable[Mapping[str, Any]],
     queue_setup: Mapping[str, Any] | None,
@@ -779,6 +827,10 @@ def _simulate_parallel_segments_core(
     contexts, queue_metadata = schedule_result
     if not contexts:
         return _parallel_capability_error("No Parallel M/G/1 simulation contexts were supplied.", records)
+    try:
+        break_windows = _current_break_windows(queue_setup, contexts)
+    except (TypeError, ValueError, KeyError) as exc:
+        return _parallel_capability_error(str(exc), records)
     horizon = max(context["end"] for context in contexts)
     env = simpy.Environment()
     resources = {queue_id: simpy.Resource(env, capacity=1) for queue_id in queue_metadata}
@@ -803,6 +855,27 @@ def _simulate_parallel_segments_core(
     for context in contexts:
         intervals.append((context["segment_id"], context["queue_id"], context["start"], context["end"]))
     busy_intervals: list[tuple[str, str, float, float]] = []
+    break_phase: dict[str, str | None] = dict.fromkeys(queue_metadata)
+
+    def current_window(queue_id: str) -> tuple[float, float] | None:
+        return next(((low, high) for low, high in break_windows.get(queue_id, []) if low <= env.now < high), None)
+
+    def break_event(queue_id: str, kind: str) -> None:
+        if recorder:
+            context = next((c for c in contexts if c["queue_id"] == queue_id and c["start"] <= env.now < c["end"]),
+                           next(c for c in reversed(contexts) if c["queue_id"] == queue_id))
+            recorder.record(env.now, kind, context["segment_id"], 0, queue_metadata[queue_id]["server_id"],
+                            len(lifecycles[queue_id].waiting_customer_ids), queue_id=queue_id)
+
+    def break_process(queue_id: str):
+        for low, high in break_windows[queue_id]:
+            yield env.timeout(max(0.0, low - env.now))
+            finishing = lifecycles[queue_id].in_service_customer_id is not None
+            break_phase[queue_id] = "finishing" if finishing else "on_break"
+            break_event(queue_id, "draining_start" if finishing else "break_start")
+            yield env.timeout(high - env.now)
+            break_phase[queue_id] = None
+            break_event(queue_id, "break_end")
 
     def segment_at(moment: float) -> int:
         return next((index for index, (_, _, start, end) in enumerate(intervals) if start <= moment < end), 0)
@@ -828,6 +901,10 @@ def _simulate_parallel_segments_core(
             recorder.record(env.now, "arrival", segment_id, customer_id, None, len(lifecycle.waiting_customer_ids), queue_id=queue_id)
         with resource.request() as request:
             yield request
+            # Holding the single-server request preserves FIFO. The customer is
+            # still waiting (not in service) until all touching break windows end.
+            while (window := current_window(queue_id)) is not None:
+                yield env.timeout(window[1] - env.now)
             if lifecycle.waiting_customer_ids:
                 lifecycle.waiting_customer_ids.popleft()
             lifecycle.in_service_customer_id = str(customer_id)
@@ -853,6 +930,9 @@ def _simulate_parallel_segments_core(
                     queue_id=queue_id,
                     service_time_hours=service_time,
                 )
+            if current_window(queue_id) is not None and break_phase[queue_id] == "finishing":
+                break_phase[queue_id] = "on_break"
+                break_event(queue_id, "break_start")
             if lifecycle.state == DedicatedQueueState.DRAINING and not lifecycle.waiting_customer_ids:
                 lifecycle.state = DedicatedQueueState.INACTIVE
 
@@ -877,6 +957,8 @@ def _simulate_parallel_segments_core(
     }
     for queue_id in queue_metadata:
         lifecycles[queue_id].transition_for_segment(queue_id in first_active)
+    for queue_id in break_windows:
+        env.process(break_process(queue_id))
     for context in contexts:
         env.process(arrival_process(context))
     try:
@@ -1038,6 +1120,7 @@ def simulate_segments_with_trace(
             "truncated": recorder.truncated,
             "abandonment_supported": False,
             "segments": summaries,
+            **_current_break_metadata(queue_setup),
         }
     results, summaries = _simulate_segments_core(
         segments,
@@ -1195,6 +1278,7 @@ def simulate_parallel_days_with_trace(
         "execution": CURRENT_PER_DATE_DAYS_EXECUTION,
         "days": days_out,
         "zero_arrival_lane_periods": zero_periods,
+        **_current_break_metadata(queue_setup),
     }
 
 
@@ -1258,6 +1342,7 @@ def simulate_parallel_days_compact(
         "execution": CURRENT_PER_DATE_DAYS_COMPACT_EXECUTION,
         "days": days_out,
         "zero_arrival_lane_periods": zero_periods,
+        **_current_break_metadata(queue_setup),
     }
 
 

@@ -423,6 +423,8 @@ export interface CurrentCompactDay {
 }
 
 export interface SimulationTrace {
+  /** Current lane service pauses at baseline scheduled break windows. */
+  break_policy?: 'scheduled_windows_nonpreemptive_v1'
   results?: SimDesOut[]
   trace: SimulationTraceEvent[]
   trace_hours: number

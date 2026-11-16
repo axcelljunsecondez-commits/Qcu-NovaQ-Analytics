@@ -10,7 +10,7 @@ import { dayOrigin, dayPeriods, inactiveQueueIdsAt, mergeDayTrace, operatingHour
 import { DatePicker } from './DatePicker'
 import { LiveSimulationPlayback } from '../simulation/LiveSimulationPlayback'
 import { SeparateSimulationPlayback } from '../simulation/SeparateSimulationPlayback'
-import { currentRun, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
+import { currentRun, runSetup, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /**
  * A6 (C-PD-C): a compact per-date Current run stores no events. The chosen date's day is fetched once from the
@@ -39,7 +39,8 @@ function CurrentDayReplay({ context, result }: { context: SimulationContext; res
       {detail.isLoading && <p role="status" className="form-hint" data-testid="current-day-loading">{t('common.loading')}</p>}
       {detail.isError && <div role="alert" className="alert alert-error">{t(dayDetailErrorKey(detail.error))}</div>}
       {detail.data && date && (
-        <SeparateSimulationPlayback key={`${jobId}-${date}`} trace={detail.data} periodLabel={`${date} · ${hoursText ?? ''}`} />
+        <SeparateSimulationPlayback key={`${jobId}-${date}`} trace={detail.data} periodLabel={`${date} · ${hoursText ?? ''}`}
+          originMinutes={dayOrigin(context.analysis.queue_setup)} scheduled={scheduledBreaks(context.analysis.queue_setup)} />
       )}
     </div>
   )
@@ -51,7 +52,7 @@ export function ReplayView({ context, run }: { context: SimulationContext; run: 
   const [params, setParams] = useSearchParams()
   const [periodTime, setPeriodTime] = useState<string | null>(null)
   const origin = dayOrigin(context.analysis.queue_setup)
-  const breaks = context.separate ? scheduledBreaks(context.analysis.queue_setup) : []
+  const breaks = context.separate ? scheduledBreaks(runSetup(context, run)) : []
   const suggested = run === 'suggested' ? suggestedRun(context) : null
   const current = run === 'current' ? currentRun(context) : null
 
@@ -107,10 +108,12 @@ export function ReplayView({ context, run }: { context: SimulationContext; run: 
   const layout = segment ? selectPlaybackLayout(segment.queue_structure) : (context.separate ? 'separate' : 'shared')
   return (
     <div className="page-stack">
-      {/* The separate Current run is one continuous run without breaks (K-UC-3); other legacy runs go period by period. */}
+      {/* Separate Current keeps its baseline schedule; other legacy runs go period by period. */}
       <div className="alert alert-info" role="status">{t(current && context.separate ? 'simulation.one_run_notice_separate' : 'simulation.one_period_notice')}</div>
       <p className="form-hint"><span className="badge badge-neutral">{t(layout === 'separate' ? 'simulation.playback_view_separate' : 'simulation.playback_view_shared')}</span></p>
-      {layout === 'separate' ? <SeparateSimulationPlayback trace={trace} /> : <LiveSimulationPlayback trace={trace} />}
+      {layout === 'separate'
+        ? <SeparateSimulationPlayback trace={trace} originMinutes={origin} scheduled={breaks} />
+        : <LiveSimulationPlayback trace={trace} />}
     </div>
   )
 }

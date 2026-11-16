@@ -25,6 +25,7 @@ vi.mock('../api/auth', () => ({
 const setup = { queue_structure: 'separate_queues', queue_ids: ['a','b'],
   event_period_basis: 'representative_day', breaks: [{ queue_id: 'a', scheduled_start_time: '10:00:00', duration_minutes: 30 }] }
 const analysis = { id: 7, name: 'Synthetic screen fixture', queue_setup: setup }
+const english = JSON.parse(readFileSync(resolve(process.cwd(), 'public/locales/en/translation.json'), 'utf8')) as Record<string, string>
 const file = { id: 1, name: 'Planning fixture', row_count: 50, validation: { ok: true }, purpose: 'planning' }
 function preview(moves = false): SupervisorPreview {
   return {
@@ -74,9 +75,8 @@ beforeEach(() => {
   mocks.select.mockResolvedValue({})
   mocks.comparison.mockResolvedValue({ selected_scenario_id: null, plans: [] })
   mocks.apply.mockImplementation(async () => {
-    const updated = { ...analysis, queue_setup: { ...setup, breaks: [{ ...setup.breaks[0], scheduled_start_time: '11:00:00' }] } }
-    mocks.analysis.mockResolvedValue({ analysis: updated })
-    return { ...preview(true), can_apply: false, analysis: updated, moves_applied: 1 }
+    const plan_setup = { ...setup, breaks: [{ ...setup.breaks[0], scheduled_start_time: '11:00:00' }] }
+    return { ...preview(true), can_apply: false, analysis, plan_setup, destination: 'suggested_plan_draft', moves_applied: 1 }
   })
 })
 describe('supervisor schedule workflow', () => {
@@ -268,19 +268,21 @@ describe('supervisor schedule workflow', () => {
     await waitFor(() => expect(trigger).toHaveFocus())
     expect(mocks.apply).not.toHaveBeenCalled()
   })
-  it('rechecks before saving, refreshes evidence and permits verified snapshot save only after applying', async () => {
+  it('confirms a Suggested draft, preserves Current caches and saves server-derived break settings', async () => {
     const view = render(); const user = await run(true)
     view.queryClient.setQueryData(['workflow',7], { old: true })
     await confirm(user)
-    await user.click(screen.getByRole('button', { name: 'Save break changes' }))
-    expect(await screen.findByText(/Break times saved in Setup/)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: english['supervisor.apply'] }))
+    expect(await screen.findByText(english['supervisor.applied'])).toBeVisible()
     expect(mocks.apply).toHaveBeenCalledWith(7, expect.objectContaining({ preview_hash: 'a'.repeat(64), target_utilization: .7 }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeEnabled())
-    expect(view.queryClient.getQueryData(['workflow',7])).toBeUndefined()
+    expect(view.queryClient.getQueryData(['workflow',7])).toEqual({ old: true })
+    expect(view.queryClient.getQueryData(['analysis',7])).toEqual({ analysis })
     await user.click(screen.getByRole('button', { name: 'Use this Plan' }))
     expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({
       dataset_id: 1, settings: expect.objectContaining({ min_active_lanes: 2, calculation: expect.objectContaining({
         schema_version: 2, engine_version: 'fixture-engine', dataset_row_count: 50,
+        setup_hash: 'setup', break_optimization: { max_shift_minutes: 120 },
       }) }),
     }))
     expect(mocks.select).toHaveBeenCalledWith(7,9)
@@ -290,14 +292,14 @@ describe('supervisor schedule workflow', () => {
       const value = preview(true); value.can_apply = false; value.blockers = [blocker]
       mocks.preview.mockResolvedValue(value)
       render(); const user = await run(true); await confirm(user)
-      expect(screen.getByRole('button', { name: 'Save break changes' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: english['supervisor.apply'] })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeDisabled()
     })
   it('permits the unchanged checked plan when no break moves are found', async () => {
     const value = preview(true); value.can_apply = false; value.blockers = ['no_moves']; value.breaks!.moves = []
     mocks.preview.mockResolvedValue(value)
     render(); const user = await run(true); await confirm(user)
-    expect(screen.queryByRole('button', { name: 'Save break changes' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: english['supervisor.apply'] })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save without using' })).toBeEnabled()
   })
   it('makes input changes stale and blocks all persistence', async () => {
@@ -307,7 +309,7 @@ describe('supervisor schedule workflow', () => {
     await user.type(screen.getByRole('spinbutton', { name: 'Busy limit per cashier' }), '75')
     expect(screen.getByRole('alert')).toHaveTextContent(/Check the schedule again/)
     await user.click(screen.getByRole('tab', { name: 'Confirm' }))
-    expect(screen.getByRole('button', { name: 'Save break changes' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: english['supervisor.apply'] })).toBeDisabled()
   })
   it('does not show stale async results as applicable after a setup refresh', async () => {
     let finish!: (value: SupervisorPreview) => void
@@ -320,13 +322,13 @@ describe('supervisor schedule workflow', () => {
     finish(preview(true))
     await screen.findByRole('heading', { name: 'Review the Check' })
     await confirm(user)
-    expect(screen.getByRole('button', { name: 'Save break changes' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: english['supervisor.apply'] })).toBeDisabled()
   })
   it('discards a refused apply and preserves the server message', async () => {
     mocks.apply.mockRejectedValue({ response: { data: { detail: 'Setup changed; check again.' } } })
     render(); const user = await run(true)
     await confirm(user)
-    await user.click(screen.getByRole('button', { name: 'Save break changes' }))
+    await user.click(screen.getByRole('button', { name: english['supervisor.apply'] }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Setup changed; check again.')
     expect(screen.queryByRole('button', { name: 'Use this Plan' })).not.toBeInTheDocument()
   })

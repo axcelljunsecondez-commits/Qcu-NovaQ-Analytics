@@ -153,12 +153,8 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
     try {
       const out = await applySupervisorSchedule(analysis.id,
         { ...checked.request, preview_hash: checked.result.preview_hash })
-      qc.setQueryData(['analysis', analysis.id], { analysis: out.analysis })
-      setChecked({ ...checked, result: out, applied: true, setup: JSON.stringify(out.analysis.queue_setup) })
-      for (const key of ['current', 'separate-comparison', 'workflow', 'scenarios']) {
-        void qc.resetQueries({ queryKey: [key, analysis.id] })
-      }
-      void qc.invalidateQueries({ queryKey: ['analysis', analysis.id] })
+      // Confirmation belongs to this Suggested draft. Current's analysis and evidence stay intact.
+      setChecked({ ...checked, result: out, applied: true })
     } catch (err) {
       setError(messageOf(err, t('errors.server')))
       setChecked(null)
@@ -182,6 +178,10 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
           schema_version: 2, engine_version: checked.result.engine_version,
           analysis_id: analysis.id, dataset_id: checked.request.dataset_id,
           dataset_row_count: checked.rowCount, options, calculated_at: new Date().toISOString(),
+          ...(checked.request.allow_break_changes ? {
+            setup_hash: checked.result.setup_hash,
+            break_optimization: { max_shift_minutes: checked.request.max_shift_minutes },
+          } : {}),
         } }, results: { schedule },
       })
       setSaved(true)

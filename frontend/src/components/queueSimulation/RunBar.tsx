@@ -7,7 +7,7 @@ import { shownSeed, tooLargeDates } from '../../lib/currentPerDate'
 import { parseSeed, requestError } from '../../lib/simulationEvidence'
 import { operatingHours } from '../../lib/replay'
 import { HoursChip } from '../ui/HoursChip'
-import { breakNoticeKey, currentNoBreaksChip, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
+import { breakNoticeKey, currentModelsBreaks, currentNoBreaksChip, currentRun, runBasisKey, suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
 
 /** One-row run bar (D30): hours, closing rule, status, Run full operation, Advanced. */
 export function RunBar({ context, run, compact = false }: { context: SimulationContext; run: RunChoice; compact?: boolean }) {
@@ -99,6 +99,9 @@ export function RunBar({ context, run, compact = false }: { context: SimulationC
         {stored && typeof usedSeed === 'number' && ` · ${t('simulation.run_seed', { seed: usedSeed })}`}
         {run === 'current' && stored && <> · <span className="badge badge-ok">{t('simulation.current_badge')}</span></>}
       </p>
+      {run === 'current' && currentModelsBreaks(context) && (
+        <p role="note" className="form-hint">{t('simulation.current_breaks_help')}</p>
+      )}
       {breakNoticeKey(context, run) && (
         <p role="note" className="alert alert-warn" data-testid="break-notice">{t(breakNoticeKey(context, run) as string)}</p>
       )}

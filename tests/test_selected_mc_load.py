@@ -41,7 +41,7 @@ MIN_LANES = 5
 
 
 def _novamart_selected(db_engine, client, email):
-    """Upload NovaMart, optimize at 0.85 with full coverage, save and select (as the Optimize page does)."""
+    """Upload NovaMart, check Suggested-only breaks at 0.85/full coverage, save and select."""
     create_user(db_engine, email, "pw")
     login(client, email, "pw")
     headers = csrf_header(client)
@@ -49,37 +49,42 @@ def _novamart_selected(db_engine, client, email):
     uploaded = _upload(client, analysis_id, novamart_workbook(), apply=True)
     assert uploaded.status_code == 201, uploaded.text
     dataset = uploaded.json()["dataset"]
-    # The store's own breaks overload 11:00-12:00 on the continuous day (finding
-    # K), so apply the break optimizer's proposal first, as the app intends.
-    proposal = client.post(f"/analyses/{analysis_id}/workflow/optimize/separate/breaks", headers=headers,
-                           json={"dataset_id": dataset["id"], "target_rho": TARGET})
-    assert proposal.status_code == 200, proposal.text
-    body = proposal.json()
-    applied = client.post(f"/analyses/{analysis_id}/workflow/optimize/separate/breaks/apply", headers=headers,
-                          json={key: body[key] for key in ("target_rho", "max_shift_minutes", "setup_hash",
-                                                           "dataset_id")})
-    assert applied.status_code == 200, applied.text
+    baseline = client.get(f"/analyses/{analysis_id}").json()["analysis"]["queue_setup"]
+    # The uploaded breaks overload 11:00-12:00. The Supervisor flow checks a
+    # plan-specific draft; confirmation must leave those Current inputs intact.
     request = {"target_utilization": TARGET, "server_cost_per_hr": DEFAULT_SERVER_COST_HR,
                "customer_waiting_cost": DEFAULT_WAIT_COST_HR, "lambda_multiplier": 1.0,
                "min_active_lanes": MIN_LANES}
-    optimized = client.post(f"/analyses/{analysis_id}/workflow/optimize/separate",
-                            headers=headers, json={**request, "dataset_id": dataset["id"]})
+    check_request = {**request, "dataset_id": dataset["id"],
+                     "allow_break_changes": True, "max_shift_minutes": 120}
+    optimized = client.post(f"/analyses/{analysis_id}/workflow/optimize/separate/supervisor/preview",
+                            headers=headers, json=check_request)
     assert optimized.status_code == 200, optimized.text
-    schedule = optimized.json()["schedule"]
+    checked = optimized.json()
+    assert checked["can_apply"], checked["blockers"]
+    confirmed = client.post(f"/analyses/{analysis_id}/workflow/optimize/separate/supervisor/apply",
+                            headers=headers, json={**check_request, "preview_hash": checked["preview_hash"]})
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["analysis"]["queue_setup"] == baseline
+    schedule = checked["schedule"]
     options = {**request, "target_utilization": schedule["target_utilization"],
                "max_active_lanes": None, "des": dict(schedule["des"])}
     saved = client.post("/scenarios", headers=headers, json={
         "name": "Optimal @ 85%", "analysis_id": analysis_id, "dataset_id": dataset["id"],
         "settings": {**options, "calculation": {
-            "schema_version": 2, "engine_version": SEPARATE_DES_ENGINE_VERSION,
+            "schema_version": 2, "engine_version": checked["engine_version"],
             "analysis_id": analysis_id, "dataset_id": dataset["id"],
             "dataset_row_count": dataset["row_count"], "options": options,
+            "setup_hash": checked["setup_hash"], "break_optimization": {"max_shift_minutes": 120},
             "calculated_at": "2026-09-19T00:00:00+00:00"}},
         "results": {"schedule": schedule}})
     assert saved.status_code == 201, saved.text
+    assert saved.json()["scenario"]["settings"]["calculation"]["plan_breaks"] == confirmed.json()["plan_setup"]["breaks"]
+    assert client.get(f"/analyses/{analysis_id}").json()["analysis"]["queue_setup"] == baseline
     scenario_id = saved.json()["scenario"]["id"]
-    assert client.post(f"/analyses/{analysis_id}/workflow/selection", headers=headers,
-                       json={"scenario_id": scenario_id}).status_code == 200
+    selected = client.post(f"/analyses/{analysis_id}/workflow/selection", headers=headers,
+                           json={"scenario_id": scenario_id})
+    assert selected.status_code == 200, selected.text
     return analysis_id, headers
 
 

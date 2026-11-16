@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from backend.api.analyses import own_analysis
 from backend.api.deps import get_current_user, user_rate_limit
+from backend.api.plan_breaks import resolve_scenario_plan_setup
 from backend.api.workflow import (
     FULL_DAY_BASIS,
     _current_evidence,
@@ -66,8 +67,12 @@ def _plan_model(db: Session, user: User, analysis: AnalysisProject) -> dict[str,
     if setup.get("queue_structure") == "separate_queues":
         frame, _, _ = analyze_segments(dataset.normalized_json or [], setup, dataset.validation_report_json or {})
         current = frame.astype(object).where(pd.notna(frame), None).to_dict("records")
+        try:
+            plan_setup = resolve_scenario_plan_setup(setup, (scenario.settings_json or {}).get("calculation") or {})
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return build_separate_plan_model(analysis=analysis_view, scenario=scenario_view, dataset=dataset_view,
-                                         setup=setup, current_rows=current)
+                                         setup=plan_setup, current_rows=current)
     return build_shared_plan_model(analysis=analysis_view, scenario=scenario_view, dataset=dataset_view, setup=setup)
 
 

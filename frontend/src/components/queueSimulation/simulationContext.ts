@@ -1,6 +1,6 @@
 // What a Queue simulation page needs to know about the analysis and its stored runs
 // (spec 2026-10-09 §7.8, D28). Runs are read from the workflow evidence only.
-import type { AnalysisProjectOut, SelectedDesResult, SimulationTrace } from '../../api/types'
+import type { AnalysisProjectOut, QueueSetup, SelectedDesResult, SimulationTrace } from '../../api/types'
 import type { WorkflowEvidence, WorkflowScenario } from '../../api/workflow'
 import { evidenceStatusKey } from '../../lib/format'
 import { dayOrigin } from '../../lib/replay'
@@ -67,14 +67,24 @@ export function currentRun(context: SimulationContext): SimulationTrace | null {
   return (context.workflow.des_current?.result as SimulationTrace | undefined) ?? null
 }
 
-/**
- * Whether the chosen run models the setup's breaks. Only the continuous day of a selected
- * separate-lines plan places them in time. A plan whose data has one period per calendar date and no
- * operating segments simulates each period alone for many hours, so a break is a small share of the run and its effect is understated. The Current run
- * and the legacy shared run have no breaks at all (simulation.py).
- */
+/** Resolve the displayed plan's own breaks without replacing the Current baseline. */
+export function runSetup(context: SimulationContext, run: RunChoice): QueueSetup {
+  const setup = context.analysis.queue_setup
+  if (run !== 'suggested') return setup
+  const calculation = context.scenario?.settings?.calculation as { plan_breaks?: QueueSetup['breaks'] } | undefined
+  return Array.isArray(calculation?.plan_breaks) ? { ...setup, breaks: calculation.plan_breaks } : setup
+}
+
+/** Historical mocked/stored runs without the execution marker must not claim break support. */
+export function currentModelsBreaks(context: SimulationContext): boolean {
+  const stored = currentRun(context)
+  return context.separate && (context.analysis.queue_setup.breaks ?? []).length > 0 &&
+    (stored === null || stored.break_policy === 'scheduled_windows_nonpreemptive_v1')
+}
+
 export function breakNoticeKey(context: SimulationContext, run: RunChoice): string | null {
-  if ((context.analysis.queue_setup.breaks ?? []).length === 0) return null
+  if ((runSetup(context, run).breaks ?? []).length === 0) return null
+  if (run === 'current' && currentModelsBreaks(context)) return null
   if (run === 'suggested' && context.selectedSeparate) {
     return context.representativeDay || context.perDateDays ? null : 'simulation.breaks_understated_per_date'
   }
@@ -83,7 +93,7 @@ export function breakNoticeKey(context: SimulationContext, run: RunChoice): stri
 
 /**
  * Which kind of run backs the chosen view, said on screen (spec §7.8 engine coverage). The separate-lines
- * Current run is one continuous SimPy run over the Setup's periods without breaks (simulation.py
+ * Current run is one continuous SimPy run over the baseline Setup's periods (simulation.py
  * _simulate_parallel_segments_core, review K-UC-3), one per date on per-date data (C-PD); the shared Current run and the legacy shared run
  * simulate one period at a time (_simulate_segments_core).
  */
@@ -92,9 +102,10 @@ export function runBasisKey(context: SimulationContext, run: RunChoice): string 
     if (context.representativeDay) return 'simulation.run_basis_continuous'
     return context.perDateDays ? 'simulation.run_basis_continuous_per_date' : 'simulation.run_basis_per_period'
   }
-  // C-PD: a separate-lines Current run on per-date data with operating segments runs one continuous day per
-  // date, without breaks (the "No breaks" chip says so, currentNoBreaksChip).
   if (run === 'current' && context.separate) {
+    if (currentModelsBreaks(context)) {
+      return context.perDateDays ? 'simulation.run_basis_per_date_baseline_breaks' : 'simulation.run_basis_baseline_breaks'
+    }
     return context.perDateDays ? 'simulation.run_basis_continuous_per_date' : 'simulation.run_basis_continuous_no_breaks'
   }
   return 'simulation.run_basis_per_period'
@@ -102,7 +113,7 @@ export function runBasisKey(context: SimulationContext, run: RunChoice): string 
 
 /** Whether the Current basis needs the separate "No breaks" chip: its basis text does not already say it. */
 export function currentNoBreaksChip(context: SimulationContext, run: RunChoice): boolean {
-  return run === 'current' && context.separate && context.perDateDays
+  return run === 'current' && context.separate && context.perDateDays && !currentModelsBreaks(context)
 }
 
 /** The run the page shows: what the address asks for, falling back to what exists. */

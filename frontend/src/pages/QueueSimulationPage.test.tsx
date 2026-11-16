@@ -1351,10 +1351,11 @@ describe('a selected separate-lines plan', () => {
     expect(await screen.findByTestId('break-notice')).toHaveTextContent('Breaks are understated in runs with one period per calendar date')
   })
 
-  it('says the Current run leaves the breaks out', async () => {
+  it('explains that a new Current run uses baseline breaks without applying plan changes', async () => {
     selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }) })
     renderPage('/simulation/results?analysis=7&plan=current')
-    expect(await screen.findByTestId('break-notice')).toHaveTextContent('This run does not include the scheduled breaks in your setup')
+    expect(await screen.findByText(en['simulation.current_breaks_help'])).toBeInTheDocument()
+    expect(screen.queryByTestId('break-notice')).not.toBeInTheDocument()
     // K-UC-12: the Current run stops at closing; only the selected plan's run drains the lines.
     expect(screen.queryByText(en['simulation.closing_rule_separate'])).not.toBeInTheDocument()
   })
@@ -1375,7 +1376,7 @@ describe('a selected separate-lines plan', () => {
     expect(screen.getByTestId('replay-period')).toHaveTextContent(/^08:00 - 10:00$/)
     // lane-A is opened only for 09:00, so at 08:15 it is not staffed; never shown as a break.
     expect(screen.getByTestId('state-lane-A')).toHaveTextContent('Closed / not staffed')
-    expect(screen.getByRole('group', { name: 'Scheduled break (from your setup)' })).toHaveTextContent('east-07: 09:30–09:45')
+    expect(screen.getByRole('group', { name: 'Scheduled break' })).toHaveTextContent('east-07: 09:30–09:45')
     expect(screen.getByText('Break state unavailable for this run.')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Go to time'), { target: { value: '08:30' } })
     await user.click(screen.getByRole('button', { name: 'Go' }))
