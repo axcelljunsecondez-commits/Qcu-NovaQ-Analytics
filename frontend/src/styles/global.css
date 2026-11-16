@@ -317,18 +317,6 @@ button.btn-good:hover {
   line-height: 1.5;
 }
 
-[data-theme='dark'] .note {
-  color: #f0d9a0;
-}
-
-[data-theme='dark'] .info {
-  color: #a0d4f0;
-}
-
-[data-theme='dark'] .success {
-  color: #80e0b0;
-}
-
 .status-flow {
   align-items: center;
   display: flex;
@@ -1079,11 +1067,6 @@ button.btn-good:hover {
 .quick-action-link:hover {
   border-color: var(--accent);
   color: var(--accent);
-}
-
-.theme-toggle {
-  width: 100%;
-  font-size: 0.8rem;
 }
 
 .page-heading-row,
@@ -3264,8 +3247,7 @@ th {
   border: 1px solid rgba(255, 255, 255, 0.28);
 }
 
-.sidebar-menu-toggle svg,
-.theme-toggle svg {
+.sidebar-menu-toggle svg {
   width: 22px;
   height: 22px;
   fill: none;
@@ -3310,28 +3292,6 @@ th {
 .lang-btn span {
   font-size: 0.7rem;
   font-weight: 900;
-}
-
-.theme-toggle {
-  justify-content: flex-start;
-  gap: 8px;
-  transition:
-    opacity var(--motion-fast),
-    transform var(--motion-fast);
-}
-
-@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
-  .sidebar-footer .theme-toggle {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  .sidebar-footer:hover .theme-toggle,
-  .sidebar-footer:focus-within .theme-toggle,
-  .theme-toggle:focus-visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .sidebar-product-note {
@@ -4219,12 +4179,6 @@ th {
   font-weight: 700;
 }
 
-.app-header .theme-toggle,
-.settings-appearance .theme-toggle {
-  width: auto;
-  justify-self: start;
-}
-
 .sidebar-hide-toggle {
   display: none;
   width: 36px;
@@ -4579,15 +4533,10 @@ th {
   color: var(--text-on-hero);
 }
 
-.home-header .theme-toggle,
 .home-header a.home-header-link {
   width: auto;
   color: var(--text-on-hero);
   border-color: rgba(255, 255, 255, 0.4);
-}
-
-.home-header .theme-toggle:hover {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 .home-main {
@@ -5562,7 +5511,6 @@ button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
 .analyses-page .card-grid > .card { margin-bottom: 0; border-radius: 12px; padding: 20px; }
 .analyses-page .card-title { margin-bottom: 6px; }
 .analyses-page .card .form-row { margin-top: 16px; }
-.theme-mode { display: inline-block; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
 :is(.badge-ok, .alert-ok) { background: var(--color-success-bg); color: var(--color-success-fg); }
 :is(.badge-warn, .alert-warn) { background: var(--color-warning-bg); color: var(--color-warning-fg); }
 :is(.badge-bad, .alert-error) { background: var(--color-danger-bg); color: var(--color-danger-fg); }

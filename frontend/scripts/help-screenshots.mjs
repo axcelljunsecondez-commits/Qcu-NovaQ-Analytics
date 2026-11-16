@@ -202,7 +202,7 @@ async function main() {
       body: JSON.stringify({ email: ${JSON.stringify(EMAIL)}, password: ${JSON.stringify(PASSWORD)} }) }).then((r) => r.status)`)
     if (status !== 200) throw new Error(`Sign-in failed with HTTP ${status}`)
     for (const lang of ['en', 'tl']) {
-      await evaluate(cdp, `localStorage.setItem('novaq_lang', '${lang}'); localStorage.setItem('novaq_theme', 'light')`)
+      await evaluate(cdp, `localStorage.setItem('novaq_lang', '${lang}')`)
       mkdirSync(join(OUT, lang), { recursive: true })
       for (const shot of SHOTS) {
         await open(cdp, shot.path)

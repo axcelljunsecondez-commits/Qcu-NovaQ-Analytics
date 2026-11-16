@@ -15,8 +15,6 @@ function AppearanceSettings() {
     <div>
       <h1 lang="en" className="page-title">{headingText(t, 'settings.section_appearance')}</h1>
       <div className="card settings-appearance">
-        <h2 lang="en" className="card-title">{headingText(t, 'settings.theme')}</h2>
-        <p className="theme-mode">{t('theme.light')}</p>
         <h2 lang="en" className="card-title">{headingText(t, 'language.label')}</h2>
         <LanguageSelector />
         <p className="form-hint">{t('settings.saved_on_device')}</p>

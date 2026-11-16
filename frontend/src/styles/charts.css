@@ -1,6 +1,6 @@
 /* ===== Chart redesign (spec docs/superpowers/specs/2026-10-29-ulit-and-chart-redesign.md) =====
    Ported from output/chart-redesign/index.html and output/ulit-mockup/index.html.
-   Theme tokens only (light and dark come from theme.css). Single writer after plan step 2. */
+   Theme tokens only (from theme.css). Single writer after plan step 2. */
 
 /* Card parts: takeaway, legend, chips, view switch, details, readout */
 .cv-takeaway { margin: 4px 0 8px; font-size: 0.9rem; }
