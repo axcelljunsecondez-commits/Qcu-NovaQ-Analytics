@@ -205,6 +205,13 @@ describe('Reports page (B8, D33)', () => {
       .toBe('This saved run did not pass. Review the plan and estimated loads.')
     expect(await show(withDecision({ status: 'revise', facts: { failed_checks: 2, validation_checks: 60 } }, 'separate')))
       .toBe('This saved run did not pass 2 of 60 checks. Review the plan and estimated loads.')
+    // K1: a separate Decision without enough data lists its own inadequate periods, as on Checks and Decision.
+    const unsettled = withDecision({ status: 'insufficient_evidence', missing_evidence: [], inadequate_periods: ['08:00', '09:00'],
+      facts: { validation_checks: 4, failed_checks: 0, inadequate_checks: 2, insufficient_periods: ['10:00'] } }, 'separate')
+    expect(await show(unsettled)).toBe('Not enough checks yet. There is not enough data to tell in: 08:00, 09:00')
+    expect(await show(unsettled, 'tl')).toBe('Kulang pa ang mga check. Kulang ang data para masabi sa: 08:00, 09:00')
+    expect(await show(withDecision({ status: 'insufficient_evidence', missing_evidence: [], facts: {} }, 'separate')))
+      .toBe('Not enough checks yet.')
     expect(await show(withDecision({ status: 'conditional', facts: { today_overloaded_periods: ['09:00'] } }, 'separate')))
       .toBe('Saved checks passed for this run. Savings cannot be compared. Review the estimated loads and costs before using the plan.')
     expect(await show(withDecision({ status: 'something_new', facts: null }))).toBe('Do not adopt Scenario "Four at eight" yet.')

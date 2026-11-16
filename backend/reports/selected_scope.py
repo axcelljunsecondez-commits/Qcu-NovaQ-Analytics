@@ -33,6 +33,10 @@ def selected_load_fields(result: Mapping[str, Any]) -> dict[str, Any]:
     return {key: result[key] for key in ("selected_load_method", "load_uncertainty") if key in result}
 
 
+# Per lane-period provenance keys; reports keep these rows in Excel only.
+SELECTED_LOAD_ASSESSMENT_PREFIX = "selected_load_assessment:"
+
+
 def selected_load_provenance(validation: Mapping[str, Any]) -> dict[str, str]:
     """Existing provenance rows carry canonical technical data, not new labels."""
     if validation.get("selected_load_method") != SELECTED_LOAD_METHOD:
@@ -44,6 +48,6 @@ def selected_load_provenance(validation: Mapping[str, Any]) -> dict[str, str]:
         for row in period.get("queues") or []:
             assessment = row.get("load_assessment")
             if isinstance(assessment, Mapping):
-                result[f"selected_load_assessment:{period.get('time')}/{row.get('queue_id')}"] = encode({
+                result[f"{SELECTED_LOAD_ASSESSMENT_PREFIX}{period.get('time')}/{row.get('queue_id')}"] = encode({
                     **assessment, "raw_mc_verdict": row.get("raw_mc_verdict")})
     return result

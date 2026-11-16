@@ -192,7 +192,8 @@ def _full_pages(model: Mapping[str, Any], styles: Mapping[str, ParagraphStyle]) 
         story.append(KeepTogether([_chart(title, [p["label"] for p in points], [(chart["unit"], [p["value"] for p in points])]),
                                    _table(styles, ["Period", str(chart["unit"]).capitalize()], rows)]))
     story += [Paragraph("Checks", styles["h2"]),
-              _table(styles, ["Check", "Settings", "Outcome"], [[c["check"], c["settings"], c["outcome"]] for c in model["checks"]]),
+              _table(styles, ["Check", "Settings", "Outcome"], [[c["check"], c["settings"], c["outcome"]] for c in model["checks"]
+                                                                if not c.get("excel_only")]),
               Paragraph("What is not included", styles["h2"])]
     story += [Paragraph("• " + escape(line), styles["body"]) for line in model["not_included"] if line]
     return story

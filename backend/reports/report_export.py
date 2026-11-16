@@ -13,6 +13,7 @@ import pandas as pd
 
 from backend.queueing_engine.log import get_logger
 from backend.queueing_engine.utilization import utilization_band
+from backend.reports.selected_scope import SELECTED_LOAD_ASSESSMENT_PREFIX
 
 logger = get_logger(__name__)
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -329,6 +330,9 @@ def generate_separate_pdf_report(model: dict) -> io.BytesIO:
 
     elements.append(Paragraph(headings[6], h2))
     for key, value in (model.get("provenance") or {}).items():
+        # One entry per lane-period: kept in the Excel Provenance sheet only, so the PDF stays short.
+        if key.startswith(SELECTED_LOAD_ASSESSMENT_PREFIX):
+            continue
         elements.append(Paragraph(escape(f"• {key}: {value}"), bullet_style))
 
     doc.build(elements)

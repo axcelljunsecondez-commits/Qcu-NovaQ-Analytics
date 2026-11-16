@@ -251,6 +251,12 @@ describe('supervisor schedule workflow', () => {
     await waitFor(() => expect(mocks.select).toHaveBeenCalledWith(7, 9))
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Use for simulation' })).not.toBeInTheDocument())
   })
+  it('gives Continue to confirm the primary emphasis and keeps Back as a ghost action (Cobalt)', async () => {
+    render(); await run(true)
+    const review = screen.getByRole('button', { name: 'Continue to confirm' })
+    expect(review).toHaveClass('btn-primary')
+    expect(within(review.closest('.supervisor-actions') as HTMLElement).getByRole('button', { name: 'Back to settings' })).toHaveClass('btn-ghost')
+  })
   it('Back and Escape return to Review, restore focus and never apply', async () => {
     render(); const user = await run(true)
     const trigger = screen.getByRole('button', { name: 'Continue to confirm' })

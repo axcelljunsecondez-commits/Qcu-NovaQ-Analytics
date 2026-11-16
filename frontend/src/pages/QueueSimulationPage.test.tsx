@@ -1575,6 +1575,37 @@ describe('a selected separate-lines plan', () => {
     expect(await screen.findByText(en['simulation.sep_validation_missing_reason'])).toBeInTheDocument()
   })
 
+  // K3: the stored validation row says only 'inadequate' for an unsupported or errored Many variations row; the
+  // hint reads that row's own status from the exact MC job (id 11) the Results check recorded.
+  const checkedMc = (row: Record<string, unknown>, id = 11) => ({ ...job('workflow_mc', { ...mcResult, selected_load_method: v1,
+    results: [{ ...mcResult.results[0], ...row }] }, { scenario_id: 9 }), id })
+  it.each([
+    ['an unsupported v1 Many variations row', { simulation_supported: false, status: 'ERROR', error: 'Unsupported model.', failure_rate: null, failure_rate_adequate: false }],
+    ['an errored v1 Many variations row', { status: 'ERROR', error: 'Simulation failed.', failure_rate: null, failure_rate_adequate: false }],
+  ])('shows the missing-evidence hint for %s', async (_name, row) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: checkedMc(row),
+      validation: job('workflow_validation', v1Validation('inadequate', 'inadequate', 'insufficient'), { scenario_id: 9 }),
+      decision: job('workflow_decision', v1Inconclusive, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByText(en['simulation.sep_validation_missing_reason'])).toBeInTheDocument()
+  })
+
+  it('keeps the hint hidden for a completed but uncertain v1 row, and ignores an unsupported row of another MC run', async () => {
+    const show = async (mc: unknown) => {
+      selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc,
+        validation: job('workflow_validation', v1Validation('inadequate', 'inadequate', 'insufficient'), { scenario_id: 9 }),
+        decision: job('workflow_decision', v1Inconclusive, { scenario_id: 9 }) })
+      const view = renderPage('/simulation/checks?analysis=7')
+      expect(await screen.findByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 08:00')
+      const shown = screen.queryByText(en['simulation.sep_validation_missing_reason']) !== null
+      view.unmount()
+      return shown
+    }
+    // Completed, supported, but not precise enough: inconclusive, not missing.
+    expect(await show(checkedMc({ simulation_supported: true, status: 'PASS', error: null, failure_rate_adequate: false }))).toBe(false)
+    expect(await show(checkedMc({ simulation_supported: false, status: 'ERROR', error: 'Unsupported model.' }, 12))).toBe(false)
+  })
+
   it('keeps the legacy label and the MC column from validation_verdict for legacy evidence', async () => {
     selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', mcResult, { scenario_id: 9 }),
       validation: job('workflow_validation', validationResult, { scenario_id: 9 }), decision: job('workflow_decision', decision, { scenario_id: 9 }) })

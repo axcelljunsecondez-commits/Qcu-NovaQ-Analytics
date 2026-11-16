@@ -5516,7 +5516,7 @@ button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
 :is(.badge-bad, .alert-error) { background: var(--color-danger-bg); color: var(--color-danger-fg); }
 .spinner { border-top-color: var(--color-action-primary-bg); }
 @media (max-width: 767px) {
-  .run-switch button, .period-picker button, .icon-btn { min-height: 44px; min-width: 44px; }
+  .run-switch button, .period-picker button { min-height: 44px; min-width: 44px; }
 }
 
 /* Real pending feedback only; reserve the glyph space for controls with an actual busy flag. */

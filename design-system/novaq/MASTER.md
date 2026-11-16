@@ -11,6 +11,7 @@
 
 | Date | Section | Change | Source |
 |---|---|---|---|
+| 2026-11-16 | 7 | Note only: the 205 ms panel entrance now applies to the Quick Calculator situation tabs, because the Results chart tabs were removed; no rule changed | Cobalt review follow-up, owner request 2026-11-16 |
 | 2026-11-16 | 4.1, 11.1, 15.3 | Theme selection removed per the owner: no light/dark choice, no `novaq_theme` read/write, no dark CSS; light Cobalt and Brass tokens are the only styles | Owner request 2026-11-16 |
 | 2026-11-09 | 2,4,5,7,18 | Cobalt content actions, navy/brass navigation, light-only local theme, self-hosted Inter/Plex numeric fonts and scoped pathname/tab entrance; protected replay unchanged | `docs/superpowers/specs/2026-11-09-cobalt-brass-ui.md`, current owner execution request |
 | 2026-10-09 | 7 Motion | Replay speed and smooth customer-marker movement | `docs/superpowers/specs/2026-10-09-compact-workflow-ux-redesign.md` D29 |
@@ -195,7 +196,7 @@ Motion is restrained and never required to understand state:
 - Playback time remains controlled by its existing user controls and reducer.
 - Amended 2026-10-09 (D29): replay speeds are 0.25×, 0.5×, 1×, 2×, 5× and 10×, measured against simulated time rather than the length of the trace. Customer markers glide between arriving, their place in line, their counter and finished, using transform and opacity only, with each move lasting about 0.2–0.9 s so markers never teleport or streak. Counts, clock and states stay exact from the reducer; the glide only animates how a marker reaches its exact position. Under reduced motion, markers move without gliding. The base rate (proposed: 1× = 1 simulated minute per real second) awaits owner confirmation.
 - Under `prefers-reduced-motion: reduce`, nonessential animation and smooth scrolling are disabled; loading and playback status remain understandable without motion.
-- Do not add GSAP. The 2026-11-09 amendment permits 220 ms pathname-only content entrance and 205 ms explicit chart-tab-panel entrance, with reduced-motion cancellation. Never animate/rekey playback on ?t/query updates or change marker timing/geometry.
+- Do not add GSAP. The 2026-11-09 amendment permits 220 ms pathname-only content entrance and 205 ms explicit chart-tab-panel entrance, with reduced-motion cancellation. (Note 2026-11-16: the Results chart tabs were later removed; the 205 ms panel entrance is used only by the Quick Calculator situation tabs.) Never animate/rekey playback on ?t/query updates or change marker timing/geometry.
 
 ## 8. Responsive layout
 

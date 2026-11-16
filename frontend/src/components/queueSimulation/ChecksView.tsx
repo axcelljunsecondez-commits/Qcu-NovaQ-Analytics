@@ -243,8 +243,14 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   // SEED-001: v1 evidence records the selected-load method; legacy evidence keeps its original wording.
   const loadAssessed = decision?.selected_load_method === SELECTED_LOAD_METHOD_V1
   // The missing-DES/MC hint is for truly missing raw evidence, not a completed but inconclusive v1 assessment.
+  // A stored validation row records an unsupported or errored Many variations row only as 'inadequate', so read
+  // that row's own status from the exact MC job this Results check used (never from a later run).
+  const checkedMcRows = mcEvidence && mcResult && validationResult && mcEvidence.id === validationResult.mc_job_id ? mcResult.results : []
+  const mcRowUnavailable = (time: string, queueId: string | null) => checkedMcRows.some((row) => row.time === time
+    && (row.queue_id ?? null) === queueId && (row.simulation_supported === false || row.status === 'ERROR' || Boolean(row.error)))
   const validationEvidenceMissing = validationResult !== null && (validationResult.selected_load_method !== SELECTED_LOAD_METHOD_V1
-    || validationResult.periods.some((period) => period.des_ok === false || period.queues.some((queue) => queue.raw_mc_verdict === 'missing')))
+    || validationResult.periods.some((period) => period.des_ok === false || period.queues.some((queue) => queue.raw_mc_verdict === 'missing'
+      || mcRowUnavailable(period.time, queue.queue_id))))
   return (
     <div className="page-stack">
       <section className="card" aria-labelledby="decision-title">

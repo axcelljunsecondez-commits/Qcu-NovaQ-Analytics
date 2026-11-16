@@ -178,7 +178,7 @@ def separate_full_sections(*, des: Mapping[str, Any], mc: Mapping[str, Any], val
     total = int(verdict.get("total") or 0)
     failed, inadequate = len(verdict.get("failed") or []), len(verdict.get("inadequate") or [])
     basis = "the whole day as one continuous run" if summary.get("basis") == "continuous_day" else "each period on its own"
-    checks = [
+    checks: list[dict[str, Any]] = [
         {"check": "Simulation run", "outcome": "done",
          "settings": f"Selected-plan simulation of {basis}, seed {des_params.get('seed')}, {des_params.get('load_replications')} paired load runs"},
         {"check": "Many variations", "outcome": _within(mc_rows),
@@ -201,10 +201,14 @@ def separate_full_sections(*, des: Mapping[str, Any], mc: Mapping[str, Any], val
             for row in period.get("queues") or []:
                 key = f"selected_load_assessment:{period.get('time')}/{row.get('queue_id')}"
                 if key in details:
+                    # One row per lane-period: kept in the Excel export only, so the PDF stays short.
                     checks.append({"check": "Results check", "settings": details[key],
-                                   "outcome": str((row.get("load_assessment") or {}).get("status"))})
+                                   "outcome": str((row.get("load_assessment") or {}).get("status")),
+                                   "excel_only": True})
     return {
-        "decision": {**_decision(decision), "scope_notice": selected_scope_notice(decision)},
+        # The selected Decision's own inadequate period times (additive), as Checks and Decision show them.
+        "decision": {**_decision(decision), "scope_notice": selected_scope_notice(decision),
+                     "inadequate_periods": decision.get("inadequate_periods")},
         "simulation": {"source": f"Selected-plan simulation of {basis}.", "headlines": _headlines(summary),
                        "basis": summary.get("basis"),
                        "charts": [_wait_chart(summary), _failure_chart(mc_rows, mc_params.get("failure_rate_cap"))]},

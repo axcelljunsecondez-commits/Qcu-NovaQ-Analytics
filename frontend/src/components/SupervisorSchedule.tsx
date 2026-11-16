@@ -321,7 +321,7 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
           <p>{t('supervisor.blockers.break_changes_off')}</p>
         )}
         <div className="supervisor-actions">
-          <button ref={reviewContinueRef} type="button" onClick={() => goStep(2)}>{t('supervisor.continue_confirm')}</button>
+          <button ref={reviewContinueRef} type="button" className="btn-primary" onClick={() => goStep(2)}>{t('supervisor.continue_confirm')}</button>
           <button type="button" className="btn-ghost" onClick={() => goStep(0)}>{t('supervisor.back_settings')}</button>
         </div>
         </>}

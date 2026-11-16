@@ -40,6 +40,8 @@ def test_v1_chain_b8_full_report_quotes_the_assessment_in_preview_pdf_and_excel(
     assert model["decision"]["selected_load_method"] == SELECTED_LOAD_METHOD
     assert model["decision"]["load_uncertainty"] == stored["decision"]["result"]["load_uncertainty"]
     assert model["decision"]["scope_notice"] == SELECTED_LOAD_ASSESSMENT_NOTICE
+    # K1: the selected Decision's own inadequate period times travel with the report Decision.
+    assert model["decision"]["inadequate_periods"] == stored["decision"]["result"]["inadequate_periods"]
     checks = model["checks"]
     assert [item["check"] for item in checks] == [
         "Simulation run", "Many variations", "Results check", "Results check", *["Results check"] * len(pairs)]
@@ -50,8 +52,13 @@ def test_v1_chain_b8_full_report_quotes_the_assessment_in_preview_pdf_and_excel(
     for item, (_, row) in zip(checks[4:], pairs, strict=True):
         assert json.loads(item["settings"]) == {**row["load_assessment"], "raw_mc_verdict": row["raw_mc_verdict"]}
         assert item["outcome"] == row["load_assessment"]["status"]
+    # K2: only the per lane-period rows are marked Excel-only; the summary rows stay in the PDF.
+    assert [item.get("excel_only") is True for item in checks] == [False] * 4 + [True] * len(pairs)
     text = " ".join(pdf_text(client.get(f"/analyses/{a}/reports/full.pdf").content).split())
     assert text.count(SELECTED_LOAD_ASSESSMENT_NOTICE) == 1
+    # The PDF keeps the summary "Results check" row and the method row, not one row per lane-period.
+    assert text.count("Results check") == 2
+    assert "raw_mc_verdict" not in text
     assert LEGACY_NOTE not in text
     workbook = load_workbook(io.BytesIO(client.get(f"/analyses/{a}/reports/full.xlsx").content))
     sheet = workbook["Decision"]
@@ -60,6 +67,23 @@ def test_v1_chain_b8_full_report_quotes_the_assessment_in_preview_pdf_and_excel(
     rows = [[cell.value for cell in row] for row in workbook["Checks"].iter_rows()]
     assert [row for row in rows if row[0] == "Results check"] == [
         [item["check"], item["settings"], item["outcome"]] for item in checks[2:]]
+
+
+def test_separate_full_report_decision_carries_the_stored_inadequate_periods(db_engine, client):
+    """K1: an insufficient selected Decision's own inadequate period times reach the report model unchanged."""
+    from backend.reports.full_report import separate_full_sections
+
+    a = _separate_chain(client, db_engine)
+    stored = client.get(f"/analyses/{a}/workflow").json()
+    jobs = {key: {"params": stored[key]["params"], "result": stored[key]["result"]} for key in ("des", "mc", "validation")}
+    decision = {**stored["decision"]["result"], "status": "insufficient_evidence", "missing_evidence": [],
+                "inadequate_periods": ["08:00", "09:00"]}
+    sections = separate_full_sections(**jobs, decision=decision)
+    assert sections["decision"]["status"] == "insufficient_evidence"
+    assert sections["decision"]["inadequate_periods"] == ["08:00", "09:00"]
+    # A record without the field is passed on as absent (None), never as an invented empty list.
+    legacy = {key: value for key, value in decision.items() if key != "inadequate_periods"}
+    assert separate_full_sections(**jobs, decision=legacy)["decision"]["inadequate_periods"] is None
 
 
 def test_v1_chain_separate_report_quotes_the_assessment_in_preview_pdf_and_excel(db_engine, client):
@@ -90,6 +114,10 @@ def test_v1_chain_separate_report_quotes_the_assessment_in_preview_pdf_and_excel
     text = " ".join(pdf_text(client.get(f"/reports/analyses/{analysis_id}/selected/pdf", headers=headers).content).split())
     assert text.count(SELECTED_LOAD_ASSESSMENT_NOTICE) == 1
     assert LEGACY_NOTE not in text
+    # Owner 2026-11-16: the per lane-period entries are kept in Excel only; identity and method/family stay.
+    assert "selected_load_assessment:" not in text and "raw_mc_verdict" not in text
+    assert f"selected_load_method: {SELECTED_LOAD_METHOD}" in text and "selected_load_family:" in text
+    assert all(f"{key}: " in text for key in ("analysis_id", "scenario_id", "decision_job_id", "generated_at"))
     workbook = load_workbook(io.BytesIO(
         client.get(f"/reports/analyses/{analysis_id}/selected/excel", headers=headers).content))
     sheet = workbook["Decision"]
