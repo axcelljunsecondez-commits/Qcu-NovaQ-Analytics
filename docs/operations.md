@@ -2,8 +2,8 @@
 
 The default `docker-compose.yml` is for local development: web is localhost:80,
 API is localhost:8000, Postgres is localhost:5432, and seed defaults are demo-only.
-Python 3.10–3.13 is the declared support range; CI is configured to exercise these versions. A frozen historical
-`requirements-lock.txt` is not the deployment dependency source.
+Python 3.10–3.13 is the declared support range; CI is configured to exercise these versions. The API image installs
+`requirements-production.lock` (the old `requirements-lock.txt` was removed on 2026-11-16).
 
 ## Production
 

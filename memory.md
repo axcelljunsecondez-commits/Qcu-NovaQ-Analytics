@@ -330,7 +330,7 @@ The notes above are kept as history. Verified in source and tests at 9b1f95a4:
   Still UNKNOWN with no default at 5B-4.2: the P5, P6, and P7 selections, X1, X5, X6, P8, the P2 threshold, and P9 reporting. Phase 5B-4.3 supplied all of them except P9 reporting (below).
 - X7: the named DES requires staffing segments (`required_staffing`, no default), validated by `validate_timeline`. They are never empty and never optional.
 - Separate Queue break behavior (`PRE_BREAK_CUTOFF_MINUTES`, `queue_lifecycle`, the separate break controller, `break_optimization.py`) is protected and not reused. Named events use an `employee_` prefix.
-- The numpy pins conflict across environments (`requirements.txt` <2.3, `requirements-lock.txt` 2.4.6, `requirements-production.lock` 2.2.6). Cross-version RNG equality is UNKNOWN.
+- The numpy pins conflict across environments (`requirements.txt` <2.3, `requirements-lock.txt` 2.4.6 [file removed 2026-11-16], `requirements-production.lock` 2.2.6). Cross-version RNG equality is UNKNOWN.
   - The named engine adds no random process.
   - Test reference values come from prescribed arrivals, never from seeded golden values.
 - `simulation/shared_employee_states.py` (Phase 5B-4.2) is the pure employee timeline, specified in `docs/superpowers/specs/2026-09-28-shared-queue-employee-state-machine.md`.
