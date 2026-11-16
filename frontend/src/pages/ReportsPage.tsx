@@ -35,7 +35,7 @@ const DECISION_BADGE: Record<string, string> = { adopt: 'badge-ok', conditional:
 /**
  * The Decision in the reader's language, from the stored Decision's own fields (as on the Checks and Decision pages);
  * the server's English headline only when no plain answer applies. Separate-lane facts count line-periods, not
- * periods, so they are not passed as a period count.
+ * periods, so they are not passed as a period count; a separate Decision lists its own inadequate periods.
  */
 function decisionAnswer(model: ReportPreview['model'], t: TFunction): string {
   const decision = model.decision!
@@ -44,7 +44,8 @@ function decisionAnswer(model: ReportPreview['model'], t: TFunction): string {
     failedPeriods: model.line_type === 'shared' ? facts.failed_periods : undefined,
     failedCount: model.line_type === 'shared' ? facts.failed_intervals : facts.failed_checks,
     totalCount: model.line_type === 'shared' ? facts.validation_intervals : facts.validation_checks,
-    missing: decision.missing_evidence ?? undefined, inadequatePeriods: facts.insufficient_periods,
+    missing: decision.missing_evidence ?? undefined,
+    inadequatePeriods: model.line_type === 'shared' ? facts.insufficient_periods : decision.inadequate_periods ?? undefined,
     todayOverloaded: facts.today_overloaded_periods })
   return plain ? t(plain.key, plain.params) : decision.headline
 }

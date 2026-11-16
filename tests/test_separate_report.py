@@ -252,6 +252,7 @@ def test_v1_model_uses_the_approved_notice_and_appends_assessment_provenance():
     assert text.count(SELECTED_LOAD_ASSESSMENT_NOTICE) == 1
     assert "Load estimate uncertainty: Not checked." not in text
     assert f"selected_load_method: {SELECTED_LOAD_METHOD}" in text
+    assert "selected_load_assessment:" not in text  # per lane-period entries: Excel Provenance only
     workbook = openpyxl.load_workbook(generate_separate_excel_report(model))
     decision = workbook["Decision"]
     assert decision.cell(decision.max_row, 1).value == "Current scope note"
