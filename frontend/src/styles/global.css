@@ -2160,7 +2160,7 @@ button.btn-good:hover {
 /* ===== Store Floor View ===== */
 .store-floor {
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(78px, min-content) minmax(0, 1fr) minmax(96px, min-content);
   gap: 0.5rem;
   align-items: stretch;
 }
