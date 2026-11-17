@@ -654,11 +654,24 @@ CURRENT_PER_DATE_DAYS_COMPACT_EXECUTION = "current_per_date_days_compact"
 COMPACT_ROW_FIELDS = (
     "time", "date", "segment_id", "queue_id", "queue_structure", "simulation_supported",
     "arrivals", "served", "waiting", "in_service", "max_queue", "Wq_sim", "rho_sim",
+    # D2 (spec 2026-11-17): Wq_sim's population and the customers still waiting at the horizon.
+    "started", "censored_customers",
 )
 # K-CPD-2: marks the OD-C2 zero-arrival records the per-date runner generates. The value is a private object,
 # so no stored or posted record (JSON) can carry it; the core copies named fields only, so it never reaches output.
 _ZERO_ARRIVAL_KEY = "_cpd_zero_arrival"
 _ZERO_ARRIVAL_RECORD = object()
+
+
+def _window_busy_hours(
+    intervals: Iterable[tuple[float, float]], lo: float, hi: float, horizon: float
+) -> float:
+    """D2: busy hours of one server inside [lo, hi): sum of max(0, min(end, hi, horizon) - max(start, lo)).
+
+    Service is credited where it occurs, never after the horizon; a service still running at the
+    horizon is passed with ``end = horizon``.
+    """
+    return math.fsum(max(0.0, min(end, hi, horizon) - max(start, lo)) for start, end in intervals)
 
 
 def _parallel_time_minutes(value: str) -> float:
@@ -820,6 +833,18 @@ def _simulate_parallel_segments_core(
     recorder: _TraceRecorder | None = None,
     max_events: int | None = None,
 ) -> tuple[list[dict], list[dict]]:
+    """Run the Current separate-lanes DES once over the schedule (fixed horizon H, never extended).
+
+    D2 accounting (spec 2026-11-17), per (period, lane) row:
+
+    - ``busy_time`` / ``rho_sim``: the lane server's busy hours inside the period, whichever period the
+      customer arrived in, up to H (a service still running at H counts until H), over the period length.
+    - ``Wq_sim``: mean queue wait (break-window time included) of the customers who arrived in the period
+      and started service before H (``started``); None when none did. The period's customers still
+      waiting at H are ``censored_customers``, with partial waits ``censored_waiting_hours``.
+
+    Accounting only: no event, random draw or trace record depends on it.
+    """
     records = [segment for segment in time_segments if isinstance(segment, Mapping)]
     schedule_result = _parallel_schedule(records, queue_setup, sim_hours)
     if isinstance(schedule_result, str):
@@ -848,13 +873,18 @@ def _simulate_parallel_segments_core(
             "selected_model": "Parallel M/G/1", "simulation_supported": True, "error": None,
             "arrivals": 0, "served": 0, "wait_sum": 0.0, "max_queue": 0, "busy_time": 0.0,
             "waiting": 0, "in_service": 0, "duration_hours": context["end"] - context["start"],
+            "active": context["active"], "started": 0, "censored_customers": 0, "censored_waiting_hours": 0.0,
         }
         for context in contexts
     }
     intervals: list[tuple[str, str, float, float]] = []
     for context in contexts:
         intervals.append((context["segment_id"], context["queue_id"], context["start"], context["end"]))
-    busy_intervals: list[tuple[str, str, float, float]] = []
+    # D2 accounting only (no events, no random draws): each lane server's completed services, the service
+    # in progress on each server, and each not-yet-started customer's row and arrival time.
+    busy_intervals: dict[str, list[tuple[float, float]]] = {queue_id: [] for queue_id in queue_metadata}
+    in_service_since: dict[str, float] = {}
+    waiting_since: dict[int, tuple[tuple[str, str], float]] = {}
     break_phase: dict[str, str | None] = dict.fromkeys(queue_metadata)
 
     def current_window(queue_id: str) -> tuple[float, float] | None:
@@ -895,6 +925,7 @@ def _simulate_parallel_segments_core(
         key = (segment_id, queue_id)
         row = stats[key]
         lifecycle.waiting_customer_ids.append(str(customer_id))
+        waiting_since[customer_id] = (key, arrival)
         row["arrivals"] += 1
         row["max_queue"] = max(row["max_queue"], len(lifecycle.waiting_customer_ids))
         if recorder:
@@ -909,6 +940,9 @@ def _simulate_parallel_segments_core(
                 lifecycle.waiting_customer_ids.popleft()
             lifecycle.in_service_customer_id = str(customer_id)
             service_start = env.now
+            del waiting_since[customer_id]
+            in_service_since[queue_id] = service_start
+            row["started"] += 1
             row["wait_sum"] += service_start - arrival
             if recorder:
                 recorder.record(env.now, "service_start", segment_id, customer_id, queue_metadata[queue_id]["server_id"], len(lifecycle.waiting_customer_ids), queue_id=queue_id)
@@ -916,7 +950,8 @@ def _simulate_parallel_segments_core(
             service_time = rng.choice(context["samples"])
             yield env.timeout(service_time)
             service_end = env.now
-            busy_intervals.append((segment_id, queue_id, service_start, min(service_end, horizon)))
+            del in_service_since[queue_id]
+            busy_intervals[queue_id].append((service_start, min(service_end, horizon)))
             lifecycle.in_service_customer_id = None
             row["served"] += 1
             if recorder:
@@ -965,14 +1000,22 @@ def _simulate_parallel_segments_core(
         env.run(until=horizon)
     except QueueReactivationPolicyError as exc:
         return _parallel_capability_error(str(exc), records)
+    # D2: a service still running at H is busy until H; its remainder lies outside the run.
+    for queue_id, service_start in in_service_since.items():
+        busy_intervals[queue_id].append((service_start, horizon))
+    censored_hours: dict[tuple[str, str], list[float]] = {}
+    for key, arrival in waiting_since.values():
+        stats[key]["censored_customers"] += 1
+        censored_hours.setdefault(key, []).append(horizon - arrival)
     for key, row in stats.items():
         segment_id, queue_id = key
         context = next(item for item in contexts if item["segment_id"] == segment_id and item["queue_id"] == queue_id)
         row["waiting"] = len(lifecycles[queue_id].waiting_customer_ids) if context["end"] == horizon else 0
         row["in_service"] = int(lifecycles[queue_id].in_service_customer_id is not None) if context["end"] == horizon else 0
-        row["Wq_sim"] = row["wait_sum"] / row["served"] if row["served"] else 0.0
-        row["rho_sim"] = min(1.0, sum(max(0.0, min(end, context["end"]) - max(start, context["start"])) for sid, qid, start, end in busy_intervals if sid == segment_id and qid == queue_id) / max(context["end"] - context["start"], 1e-12))
-        row["busy_time"] = sum(max(0.0, min(end, context["end"]) - max(start, context["start"])) for sid, qid, start, end in busy_intervals if sid == segment_id and qid == queue_id)
+        row["censored_waiting_hours"] = math.fsum(censored_hours.get(key, []))
+        row["Wq_sim"] = row["wait_sum"] / row["started"] if row["started"] else None
+        row["busy_time"] = _window_busy_hours(busy_intervals[queue_id], context["start"], context["end"], horizon)
+        row["rho_sim"] = min(1.0, row["busy_time"] / max(context["end"] - context["start"], 1e-12))
         row["Lq_sim"] = None
         row["final_Lq"] = row["waiting"]
         row["metric_provenance"] = "simulated"
@@ -1382,7 +1425,23 @@ def summarize_simulation(sim_rows: list[dict[str, Any]]) -> dict[str, Any]:
         served = sum(int(row.get("served", 0)) for row in sim_rows)
         waiting = sum(int(row.get("waiting", 0)) for row in sim_rows if row.get("final_Lq") == row.get("waiting"))
         in_service = sum(int(row.get("in_service", 0)) for row in sim_rows if row.get("final_Lq") == row.get("waiting"))
-        wait_numerator = sum(float(row.get("Wq_sim", 0.0)) * int(row.get("served", 0)) for row in sim_rows)
+        # D2: the same population as each row's Wq_sim, customers whose service started before the horizon.
+        started = sum(int(row.get("started", 0)) for row in sim_rows)
+        # K-D2-1: compact rows keep no wait_sum; their Wq_sim * started is the same sum. A row that started
+        # customers but carries neither form leaves the average unknown (None), never zero-filled.
+        wait_parts: list[float] = []
+        wait_unknown = False
+        for row in sim_rows:
+            row_wait_sum = row.get("wait_sum")
+            row_started = int(row.get("started", 0))
+            row_wq = row.get("Wq_sim")
+            if isinstance(row_wait_sum, (int, float)) and not isinstance(row_wait_sum, bool):
+                wait_parts.append(float(row_wait_sum))
+            elif row_started > 0 and isinstance(row_wq, (int, float)) and not isinstance(row_wq, bool):
+                wait_parts.append(float(row_wq) * row_started)
+            elif row_started > 0:
+                wait_unknown = True
+        wait_numerator = None if wait_unknown else math.fsum(wait_parts)
         busy_time = sum(float(row.get("busy_time", 0.0)) for row in sim_rows)
         available_time = sum(float(row.get("duration_hours", 0.0)) for row in sim_rows)
         max_rho_row = max(
@@ -1396,8 +1455,9 @@ def summarize_simulation(sim_rows: list[dict[str, Any]]) -> dict[str, Any]:
             "max_rho": float(max_rho_value) if isinstance(max_rho_value, (int, float)) else None,
             "max_rho_time": max_rho_row["time"],
             "avg_Lq": None,
-            "avg_Wq": wait_numerator / served if served else None,
+            "avg_Wq": wait_numerator / started if started and wait_numerator is not None else None,
             "total_served": served,
+            "total_started": started,
             "total_dropped": 0,
             "total_arrivals": arrivals,
             "total_waiting": waiting,

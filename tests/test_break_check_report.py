@@ -383,10 +383,11 @@ def test_breaks_with_gapped_or_unordered_segments_are_refused_with_the_documente
     assert engine.CURRENT_BREAK_POLICY == "scheduled_windows_nonpreemptive_v1"
 
 
-# ── K-PR58-4: v3 Current results need a rerun only when the Setup has breaks ──
+# ── D2 (owner 2026-11-17): v3 and v4 Current results need a rerun whatever the Setup (K-PR58-4 removed) ──
 
 
-def test_v3_current_results_are_historical_when_the_setup_has_breaks(db_engine, client):
+@pytest.mark.parametrize("marker", ["per_date_days_v3", "current_break_windows_v4"])
+def test_v3_and_v4_current_results_are_historical_when_the_setup_has_breaks(db_engine, client, marker):
     from backend.api import workflow as workflow_api
     from backend.api.evidence_status import ReasonCode
     from backend.db.models import User
@@ -399,8 +400,8 @@ def test_v3_current_results_are_historical_when_the_setup_has_breaks(db_engine, 
     assert client.get(f"/analyses/{aid}/workflow").json()["des_current"]["id"] == job_id
     with make_sessionmaker(db_engine)() as db:
         job = db.get(Job, job_id)
-        assert job.params_json["current_des_basis"] == "current_break_windows_v4"
-        job.params_json = {**job.params_json, "current_des_basis": "per_date_days_v3"}
+        assert job.params_json["current_des_basis"] == "current_break_windows_v5"
+        job.params_json = {**job.params_json, "current_des_basis": marker}
         db.commit()
         analysis = db.get(AnalysisProject, aid)
         assert analysis.queue_setup_json["breaks"]
@@ -413,7 +414,7 @@ def test_v3_current_results_are_historical_when_the_setup_has_breaks(db_engine, 
     assert client.get(f"/analyses/{aid}/workflow").json()["des_current"] is None
 
 
-def test_v3_is_current_only_for_a_setup_without_breaks():
+def test_v3_and_v4_are_historical_and_v5_current_for_every_setup():
     from backend.api.workflow import CURRENT_DES_BASIS, _current_evidence_policy
 
     def family(setup):
@@ -421,10 +422,11 @@ def test_v3_is_current_only_for_a_setup_without_breaks():
         assert requirement is not None
         return requirement.family
 
-    assert family({"breaks": []}).classify("per_date_days_v3") == "current"
-    assert family({}).classify("per_date_days_v3") == "current"
-    assert family({"breaks": [BREAK]}).classify("per_date_days_v3") == "historical"
-    assert family(None).classify("per_date_days_v3") == "historical"  # unknown Setup fails closed
+    assert CURRENT_DES_BASIS == "current_break_windows_v5"
+    for setup in ({}, {"breaks": []}, {"breaks": [BREAK]}, None):
+        assert family(setup).classify("per_date_days_v3") == "historical"
+        assert family(setup).classify("current_break_windows_v4") == "historical"
+        assert family(setup).classify("current_break_windows_v5") == "current"
     for setup in ({}, {"breaks": [BREAK]}, None):
         assert family(setup).classify(CURRENT_DES_BASIS) == "current"
         assert family(setup).classify("per_date_days_v1") == "historical"

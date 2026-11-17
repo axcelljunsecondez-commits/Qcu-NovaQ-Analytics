@@ -365,7 +365,7 @@ def test_route_simulates_every_date_as_its_own_day(db_engine, client):
         assert {entry["date"] for entry in detail["segments"]} == {day["date"]}
         assert detail["trace"] and {event["date"] for event in detail["trace"]} == {day["date"]}
     assert result["summary"]["basis"] == "per_period"
-    assert evidence["params"]["current_des_basis"] == "current_break_windows_v4"
+    assert evidence["params"]["current_des_basis"] == "current_break_windows_v5"
     assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == evidence["id"]
 
 
@@ -519,7 +519,7 @@ def test_separate_current_des_jobs_without_the_basis_marker_are_not_current(db_e
                                      {**SNAP_RUN, "current_des_basis": "forged"})
     assert run.status_code == 200, run.text
     job_id = run.json()["evidence"]["id"]
-    assert run.json()["evidence"]["params"]["current_des_basis"] == "current_break_windows_v4"  # the payload value is ignored
+    assert run.json()["evidence"]["params"]["current_des_basis"] == "current_break_windows_v5"  # the payload value is ignored
     assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == job_id
     with make_sessionmaker(db_engine)() as db:  # the same job as stored before C-PD: no marker
         job = db.get(Job, job_id)
