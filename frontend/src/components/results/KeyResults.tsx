@@ -25,8 +25,8 @@ export interface RecordedWait {
   hasRecords: boolean
   loading: boolean
   dayWaitHours: number | null
-  /** True when the observed-wait summary flags a period as much longer than modeled (flagged_any). */
-  flagged: boolean
+  /** Decided by the caller: show the note that the estimate can be lower than recorded. */
+  showLongerNote: boolean
 }
 
 export function KeyResults({ kpis, separate, recorded }: {
@@ -47,7 +47,7 @@ export function KeyResults({ kpis, separate, recorded }: {
           : recorded.loading ? <p className="key-result-note">{t('common.loading')}</p>
           : <>
             <strong><NumericValue>{minutesText(recorded.dayWaitHours, unavailable, unit)}</NumericValue></strong>
-            {recorded.flagged && minutes(recorded.dayWaitHours) !== null && <p className="key-result-note">{t('results.recorded_longer_note')}</p>}
+            {recorded.showLongerNote && <p className="key-result-note">{t('results.recorded_longer_note')}</p>}
           </>}
       </KeyResult>
       <KeyResult id="kr-estimated" label={t('results.estimated_wait')} source={t('results.source_estimate')}

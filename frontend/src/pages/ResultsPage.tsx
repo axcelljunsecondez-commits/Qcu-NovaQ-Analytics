@@ -17,7 +17,7 @@ import { currentDatasetId } from '../lib/datasets'
 import { rememberLastAnalysis } from '../lib/lastAnalysis'
 import { AnalysisEntry } from '../components/analysis/AnalysisEntry'
 import { ALL } from '../lib/periodFilter'
-import { hasCustomerRecords, isProcessed, lineOf } from '../lib/results'
+import { finiteNumber, hasCustomerRecords, isProcessed, lineOf } from '../lib/results'
 import { HelpLink } from '../components/ui/HelpLink'
 import { AnalysisSelector } from '../components/analysis/AnalysisSelector'
 import { ResultsSummary } from '../components/results/ResultsSummary'
@@ -116,6 +116,14 @@ export function ResultsPage() {
   const rows = current.data?.rows ?? []
   const separateRows = rows.some((row) => lineOf(row) !== null)
   const observedPeriods = records && observed.data?.available && observed.data.dataset_id === selected.id && observed.data.periods.length > 0 ? observed.data.periods : null
+  const observedSummary = observed.data?.available && observed.data.dataset_id === selected.id ? observed.data : null
+  const recordedDayWait = observedSummary?.day_observed_wait ?? null
+  // Owner decisions 2026-11-17 (K-1, K-2): separate lines only, a flagged period, and the recorded
+  // day wait strictly above the estimate (both finite, compared in hours before display rounding).
+  const recordedHours = finiteNumber(recordedDayWait)
+  const estimatedHours = finiteNumber(current.data?.kpis.avg_waiting_time)
+  const showLongerNote = separate && observedSummary?.flagged_any === true
+    && recordedHours !== null && estimatedHours !== null && recordedHours > estimatedHours
   const noPlanPrompt = isPlanningFile && plan.kind === 'none' ? <NoPlanPrompt analysisId={id} plan={plan} /> : null
 
   return (
@@ -148,8 +156,8 @@ export function ResultsPage() {
               recorded={{
                 hasRecords: records,
                 loading: observed.isLoading,
-                dayWaitHours: observed.data?.available && observed.data.dataset_id === selected.id ? observed.data.day_observed_wait : null,
-                flagged: observed.data?.available === true && observed.data.dataset_id === selected.id && observed.data.flagged_any === true,
+                dayWaitHours: recordedDayWait,
+                showLongerNote,
               }}
             />
           </section>
