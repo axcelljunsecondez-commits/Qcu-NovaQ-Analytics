@@ -145,7 +145,12 @@ export function ResultsPage() {
             <KeyResults
               kpis={current.data.kpis}
               separate={separateRows}
-              recorded={{ hasRecords: records, loading: observed.isLoading, dayWaitHours: observed.data?.available && observed.data.dataset_id === selected.id ? observed.data.day_observed_wait : null }}
+              recorded={{
+                hasRecords: records,
+                loading: observed.isLoading,
+                dayWaitHours: observed.data?.available && observed.data.dataset_id === selected.id ? observed.data.day_observed_wait : null,
+                flagged: observed.data?.available === true && observed.data.dataset_id === selected.id && observed.data.flagged_any === true,
+              }}
             />
           </section>
           <ResultsSummary key={selected.id} rows={rows} arrivalsByPeriod={current.data.arrivals_by_period}

@@ -1600,6 +1600,7 @@
   "results.recorded_wait": "Recorded average wait",
   "results.recorded_unavailable": "Recorded waiting time is unavailable because this file does not contain customer arrival and service-start times.",
   "results.how_recorded": "The average time customers waited between arriving and starting service, based on all customer records in the file.",
+  "results.recorded_longer_note": "NovaQ's estimate leaves out customers switching lines, so it can be lower than recorded.",
   "results.estimated_wait": "Estimated average wait",
   "results.how_estimated_shared": "NovaQ's queue model estimates the average wait in each period from your uploaded inputs, then averages the periods where counters can keep up.",
   "results.how_estimated_separate": "NOVAQ’s queueing model estimates the average waiting time for each line using the uploaded data, then calculates the overall average by weighting each line and time period according to customer arrivals. If any counter cannot handle the incoming demand, the overall average is not displayed.",
