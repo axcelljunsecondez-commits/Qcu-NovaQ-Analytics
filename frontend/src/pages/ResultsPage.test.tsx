@@ -476,6 +476,116 @@ describe('Inputs and model reference', () => {
   })
 })
 
+describe('Recorded wait note when recorded waits are much longer than modeled', () => {
+  // Owner decisions 2026-11-17: separate lines only (K-2), and only when the recorded day wait is
+  // strictly above the estimate, both finite and compared in hours (K-1). Estimate here: 0.03 h = 1.8 min.
+  const note = "NovaQ's estimate leaves out customers switching lines, so it can be lower than recorded."
+  const flaggedSummary = {
+    analysis_id: 7, dataset_id: 11, available: true, flagged_any: true, day_modeled_wait: 0.03, day_observed_wait: 0.1, ratio: 2, min_gap_minutes: 5,
+    periods: [{ time: '08:00-09:00', modeled_wait: 0.05, observed_wait: 0.12, flagged: true }],
+  }
+
+  beforeEach(() => {
+    getAnalysisMock.mockResolvedValue(analysis('separate_queues'))
+    getSeparateMock.mockResolvedValue({
+      analysis_id: 7, queue_structure: 'separate_queues', selected_scenario_id: null, plans: [],
+      current: { dataset_id: 11, wait_mean: 0.03, wait_basis: 'analytical', util_max: 0.75, waiting_cost: null, waiting_cost_basis: null, total_cost: null,
+        total_cost_reason: 'Current staffing costs are not stored for separate lines.', periods: [] },
+    })
+  })
+
+  async function recordedValueShown(text: string) {
+    await screen.findByRole('heading', { name: 'Recorded average wait' })
+    await waitFor(() => expect(keyResult('Recorded average wait').querySelector('.key-result-value > strong')?.textContent).toBe(text))
+  }
+
+  it('shows the note inside the Recorded card for separate lines when a period is flagged and recorded is above the estimate', async () => {
+    getObservedMock.mockResolvedValue(flaggedSummary)
+    renderResults()
+    await recordedValueShown('6 min')
+    const recorded = keyResult('Recorded average wait')
+    const text = await within(recorded).findByText(note)
+    expect(text).toHaveClass('key-result-note')
+    expect(keyResult('Estimated average wait').querySelector('.key-result-value > strong')?.textContent).toBe('1.8 min')
+    expect(within(keyResult('Estimated average wait')).queryByText(note)).not.toBeInTheDocument()
+    expect(screen.getAllByText(note)).toHaveLength(1)
+  })
+
+  it('shows no note when no period is flagged', async () => {
+    getObservedMock.mockResolvedValue({ ...flaggedSummary, flagged_any: false })
+    renderResults()
+    await recordedValueShown('6 min')
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note when a period is flagged but recorded is below the estimate', async () => {
+    getObservedMock.mockResolvedValue({ ...flaggedSummary, day_observed_wait: 0.02 })
+    renderResults()
+    await recordedValueShown('1.2 min')
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note when recorded equals the estimate', async () => {
+    getObservedMock.mockResolvedValue({ ...flaggedSummary, day_observed_wait: 0.03 })
+    renderResults()
+    await recordedValueShown('1.8 min')
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note for a shared line even when flagged and recorded is above the estimate', async () => {
+    getAnalysisMock.mockResolvedValue(analysis('shared_queue'))
+    getObservedMock.mockResolvedValue(flaggedSummary)
+    renderResults()
+    await recordedValueShown('6 min')
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note when the estimate is missing', async () => {
+    getCurrentMock.mockResolvedValue({ ...currentFor(planningFile), kpis: { avg_waiting_time: null, unstable_count: 0, stable_count: 3 } })
+    getObservedMock.mockResolvedValue(flaggedSummary)
+    renderResults()
+    await recordedValueShown('6 min')
+    expect(within(keyResult('Estimated average wait')).getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note when the summary is unavailable or the recorded value is missing', async () => {
+    getObservedMock.mockResolvedValue({ ...flaggedSummary, available: false })
+    const first = renderResults()
+    await recordedValueShown('Unavailable')
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+    first.unmount()
+
+    getObservedMock.mockResolvedValue({ ...flaggedSummary, day_observed_wait: null })
+    renderResults()
+    await recordedValueShown('Unavailable')
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note for a file without customer records', async () => {
+    getObservedMock.mockResolvedValue({ ...flaggedSummary, dataset_id: 12 })
+    renderResults('/results?analysis=7&file=12')
+    await screen.findByRole('heading', { name: 'Recorded average wait' })
+    expect(within(keyResult('Recorded average wait')).getByText(/does not contain customer arrival and service-start times/)).toBeInTheDocument()
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note for a mismatched file response', async () => {
+    getObservedMock.mockResolvedValue({ ...flaggedSummary, dataset_id: 999 })
+    renderResults()
+    await recordedValueShown('Unavailable')
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it('shows no note while the recorded wait is loading', async () => {
+    getObservedMock.mockReturnValue(new Promise(() => {}))
+    renderResults()
+    await screen.findByRole('heading', { name: 'Recorded average wait' })
+    expect(within(keyResult('Recorded average wait')).getByText('Loading…')).toBeInTheDocument()
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+})
+
 describe('Analysis results: separate lines', () => {
   it('keeps the separate-queue calculation and its cost limitation', async () => {
     getAnalysisMock.mockResolvedValue(analysis('separate_queues'))
