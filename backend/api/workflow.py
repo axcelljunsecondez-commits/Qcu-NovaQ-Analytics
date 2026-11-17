@@ -115,12 +115,13 @@ router = APIRouter(prefix="/analyses", tags=["workflow"])
 
 ENGINE_VERSION = "novaq-2026-09-unified-des-v1"
 # C-PD (OD-C4 (i)): written on every separate-lines Current DES job since per-date files run one day per date.
-CURRENT_DES_BASIS = "current_break_windows_v4"
+CURRENT_DES_BASIS = "current_break_windows_v5"
 # OD-C15 (i): v1 jobs (C-PD before the compact result) are a known earlier basis. OD-K63-2 (i): v2 jobs (closed
 # lanes labelled with the bare segment id, K-A6-3) are too. v3 jobs predate Current's uploaded break windows (PR58).
-CURRENT_DES_BASIS_HISTORICAL = frozenset({"per_date_days_v1", "per_date_days_v2", "per_date_days_v3"})
-# K-PR58-4 (owner 2026-11-17): without Setup breaks, v4 changed nothing for v3 results, so they stay current.
-CURRENT_DES_BASIS_NO_BREAKS = "per_date_days_v3"
+# D2 (owner 2026-11-17): v4 jobs predate the fixed-horizon accounting (busy time where it occurs, Wq over the
+# customers who started service), and so does every v3 job: the K-PR58-4 no-break exemption is removed.
+CURRENT_DES_BASIS_HISTORICAL = frozenset(
+    {"per_date_days_v1", "per_date_days_v2", "per_date_days_v3", "current_break_windows_v4"})
 CURRENT_DES_BASIS_KEY = "current_des_basis"
 # C-PD-C day detail (spec 2026-11-02 §6.7). Final EN text of W3 and W2 (spec §9.1, owner delegation 2026-11-03).
 CURRENT_DAY_DETAIL_EXECUTION = "current_per_date_day_detail"
@@ -1010,15 +1011,15 @@ def _current_evidence_policy(*, selected_context: bool = False, setup: dict[str,
 
     ``current_des_accounting`` is set by C-PD (owner decision OD-C4 (i), 2026-11-02): a
     ``workflow_des_current`` job with separate-lines rows is current only when its params record
-    ``current_des_basis = CURRENT_DES_BASIS`` (``"current_break_windows_v4"``), which ``run_des_current``
+    ``current_des_basis = CURRENT_DES_BASIS`` (``"current_break_windows_v5"``), which ``run_des_current``
     writes on every separate-lines run: per-date files are simulated one day per date and stored compactly
-    for two or more dates (C-PD-C, OD-C15 (i)), closed lanes are dated (K-A6-3, OD-K63-2 (i)), and new
-    service pauses in the Setup's uploaded break windows (PR58). ``per_date_days_v1`` and
-    ``per_date_days_v2`` are historical. ``per_date_days_v3`` is historical when the Analysis Setup has
-    breaks, and current when it has none (K-PR58-4, owner 2026-11-17), so pass the analysis ``setup``;
-    without it v3 stays historical. Separate-lines Current DES jobs with no marker (main's guard era) are
-    not Current either. Historical jobs need one rerun. The hook applies to no other kind and to no
-    shared-lines result (``evidence_status.job_record``).
+    for two or more dates (C-PD-C, OD-C15 (i)), closed lanes are dated (K-A6-3, OD-K63-2 (i)), new
+    service pauses in the Setup's uploaded break windows (PR58), and busy time and Wq use the fixed-horizon
+    accounting (D2, owner 2026-11-17). ``per_date_days_v1``, ``per_date_days_v2``, ``per_date_days_v3`` and
+    ``current_break_windows_v4`` are historical whatever the Setup (D2 removed the K-PR58-4 no-break
+    exemption); ``setup`` is accepted for its callers and no longer consulted. Separate-lines Current DES
+    jobs with no marker (main's guard era) are not Current either. Historical jobs need one rerun. The hook
+    applies to no other kind and to no shared-lines result (``evidence_status.job_record``).
 
     ``job_engine`` and ``selected_des_basis`` name the values the backend actually records
     (``workflow.py`` writes exactly two ``params.engine`` values and two ``result.execution``
@@ -1036,8 +1037,7 @@ def _current_evidence_policy(*, selected_context: bool = False, setup: dict[str,
     ``GENERATION_ENFORCEMENT_ENABLED`` is on. Off, it stays empty and no token is consulted.
     """
     sentinel = VersionFamily.of(_NOT_CONSULTED, current={_NOT_CONSULTED})
-    no_breaks = setup is not None and not setup.get("breaks")
-    accounting_current = {CURRENT_DES_BASIS, CURRENT_DES_BASIS_NO_BREAKS} if no_breaks else {CURRENT_DES_BASIS}
+    accounting_current = {CURRENT_DES_BASIS}
     return EvidencePolicy(
         scenario_schema=sentinel,
         separate_plan_engine=sentinel,
@@ -2454,10 +2454,12 @@ def _json_number(value: Any) -> float | None:
 
 
 def _wait_and_line(rows: list[dict[str, Any]]) -> tuple[float | None, int | None]:
-    """Served-weighted mean wait (hours) and the longest line over simulation rows.
+    """Weighted mean wait (hours) and the longest line over simulation rows.
 
-    The wait is unknown (None) when any row that served customers has no finite wait; rows that
-    served nobody carry no wait and are left out. Never zero-filled.
+    A row's wait is weighted by its ``started`` customers when the row records them (separate-lines Current
+    rows, D2: Wq_sim covers the customers who started service), else by ``served``. The wait is unknown (None)
+    when any weighted row has no finite wait; rows with no weight carry no wait and are left out. Never
+    zero-filled.
     """
     weighted: list[float] = []
     served_total = 0.0
@@ -2467,15 +2469,16 @@ def _wait_and_line(rows: list[dict[str, Any]]) -> tuple[float | None, int | None
         line = row.get("max_queue")
         if isinstance(line, (int, float)) and not isinstance(line, bool) and math.isfinite(line):
             longest = int(line) if longest is None else max(longest, int(line))
-        served = row.get("served")
-        if not isinstance(served, (int, float)) or isinstance(served, bool) or served <= 0:
+        started = row.get("started")
+        weight = started if isinstance(started, (int, float)) and not isinstance(started, bool) else row.get("served")
+        if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0:
             continue
         wait = _json_number(row.get("Wq_sim"))
         if wait is None:
             unknown = True
             continue
-        weighted.append(wait * served)
-        served_total += served
+        weighted.append(wait * weight)
+        served_total += weight
     wait_hours = None if unknown or served_total == 0 else math.fsum(weighted) / served_total
     return wait_hours, longest
 

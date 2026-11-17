@@ -447,10 +447,10 @@ def test_one_date_per_date_run_keeps_the_full_shape(db_engine, client):
 
 
 def test_v1_and_unmarked_jobs_are_not_current_and_have_no_day_detail(db_engine, client):
-    """Break-aware Current supersedes v1-v2, and v3 when the Setup has breaks; unmarked jobs have no recorded basis.
+    """The D2 accounting basis (v5) supersedes v1-v4; unmarked jobs have no recorded basis.
 
-    K-PR58-4 (owner 2026-11-17): this Setup has no breaks, so a v3 job stays current (v4 changed nothing without
-    breaks); tests/test_break_check_report.py pins v3 with breaks as historical.
+    D2 (owner 2026-11-17): the K-PR58-4 exemption is removed, so v3 and v4 jobs are historical even though this
+    Setup has no breaks; tests/test_break_check_report.py pins them for Setups with breaks.
 
     K63-T1: the reason is pinned too, through the classification GET workflow uses (_evidence_is_current calls
     _assess_evidence): v1 and v2 are VERSION_HISTORICAL, a missing marker VERSION_UNRECORDED. Without this an
@@ -474,17 +474,13 @@ def test_v1_and_unmarked_jobs_are_not_current_and_have_no_day_detail(db_engine, 
 
     _, analysis_id, evidence = _compact_run(db_engine, client, "marker-v2@example.com")
     job_id, date = evidence["id"], evidence["result"]["days"][0]["date"]
-    assert evidence["params"]["current_des_basis"] == "current_break_windows_v4"
+    assert evidence["params"]["current_des_basis"] == "current_break_windows_v5"
     assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == job_id
     assert accounting_codes(job_id) == (True, [])
     params, _ = _job(db_engine, job_id)
     expected = {"per_date_days_v1": ReasonCode.VERSION_HISTORICAL, "per_date_days_v2": ReasonCode.VERSION_HISTORICAL,
-                None: ReasonCode.VERSION_UNRECORDED}
-    changed = {k: v for k, v in params.items() if k != "current_des_basis"}
-    _update_job(db_engine, job_id, params={**changed, "current_des_basis": "per_date_days_v3"})
-    assert accounting_codes(job_id) == (True, [])
-    assert client.get(f"/analyses/{analysis_id}/workflow").json()["des_current"]["id"] == job_id
-    assert _day(client, analysis_id, date).status_code == 200
+                "per_date_days_v3": ReasonCode.VERSION_HISTORICAL,
+                "current_break_windows_v4": ReasonCode.VERSION_HISTORICAL, None: ReasonCode.VERSION_UNRECORDED}
     for marker, code in expected.items():
         changed = {k: v for k, v in params.items() if k != "current_des_basis"}
         if marker is not None:
