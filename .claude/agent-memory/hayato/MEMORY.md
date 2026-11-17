@@ -17,4 +17,12 @@ The role is defined in `.claude/agents/novaq-backend.md`. Setup specification an
 
 ## Backend task index
 
+- [2026-11-17 D2 Current DES accounting (v5)](tasks/2026-11-17-d2-current-des-accounting.md): CLOSED; Kyoya PASS; merged via PR #60 (merge 5f4a884e), released 2026-11-17.
+- [2026-11-17 break check PDF/Excel + K-PR58-1..5](tasks/2026-11-17-break-check-pdf.md): CLOSED; Kyoya PASS; merged via PR #59 (merge c2316ed4), released 2026-11-17.
+- [2026-11-16 follow-ups K1/K2/K3 + Cobalt](tasks/2026-11-16-followups-reports-pdf-cobalt.md): CLOSED; Kyoya PASS; merged via PR #57 (merge 69613970), released 2026-11-16.
+- [2026-11-11 SEED-001 guard finish](tasks/2026-11-11-seed-001-guard-finish.md): CLOSED; Kyoya PASS; merged via PR #51 (merge 8b51e45e).
+- [2026-11-10 remove dead review leftovers](tasks/2026-11-10-remove-dead-review-leftovers.md): CLOSED; Kyoya PASS; merged via PR #50 (merge 6d46a01a).
+- [2026-11-10 simulation-actions integrate](tasks/2026-11-10-simulation-actions-integrate.md): CLOSED; Kyoya PASS; merged via PR #49 (merge 9baeee43).
 - [2026-10-30 shared upload simplification](tasks/2026-10-30-shared-upload-simplification.md): in_progress; additive shared aggregate preview/apply and isolated backend verification. Starting HEAD 2e0e3606; no completed tests claimed yet.
+- [2026-11-10 banner + workbook focus](tasks/2026-11-10-banner-and-workbook-focus.md): CLOSED; commit 2e104cfe merged to origin/main via PR #47 (merge 702a6aa1), VERIFIED 2026-11-10.
+- [2026-11-09 upload follow-ups D1-D4/T1 + K-UF-1/2](tasks/2026-11-09-upload-preview-rate-bucket.md): CLOSED; round 2 (A1, B1, N1) commit 05e4cfa8 merged to origin/main via PR #46 (merge d87cb514), VERIFIED 2026-11-10.
