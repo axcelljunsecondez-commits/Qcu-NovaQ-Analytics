@@ -479,7 +479,7 @@ describe('Inputs and model reference', () => {
 describe('Recorded wait note when recorded waits are much longer than modeled', () => {
   // Owner decisions 2026-11-17: separate lines only (K-2), and only when the recorded day wait is
   // strictly above the estimate, both finite and compared in hours (K-1). Estimate here: 0.03 h = 1.8 min.
-  const note = "NovaQ's estimate leaves out customers switching lines, so it can be lower than recorded."
+  const note = "NovaQ's estimate assumes each cashier starts the next customer as soon as they are free."
   const flaggedSummary = {
     analysis_id: 7, dataset_id: 11, available: true, flagged_any: true, day_modeled_wait: 0.03, day_observed_wait: 0.1, ratio: 2, min_gap_minutes: 5,
     periods: [{ time: '08:00-09:00', modeled_wait: 0.05, observed_wait: 0.12, flagged: true }],

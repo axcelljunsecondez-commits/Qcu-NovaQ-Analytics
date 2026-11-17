@@ -1600,7 +1600,7 @@
   "results.recorded_wait": "Naitalang karaniwang paghihintay",
   "results.recorded_unavailable": "Hindi available ang naitalang oras ng paghihintay dahil walang oras ng pagdating at pagsisimula ng serbisyo ng customer sa file na ito.",
   "results.how_recorded": "Ang average na oras na hinintay ng mga customer mula sa kanyang pagdating hanggang sa pagsisimula ng kanilang serbisyo, batay sa lahat ng lista ng mga customer sa file na ito.",
-  "results.recorded_longer_note": "Hindi isinasama sa tantiya ng NovaQ ang paglipat ng customer sa ibang pila, kaya maaari itong mas mababa kaysa sa naitala.",
+  "results.recorded_longer_note": "Ipinapalagay ng tantiya ng NovaQ na sinisimulan agad ng bawat cashier ang susunod na customer kapag bakante na ito.",
   "results.estimated_wait": "Tinatayang karaniwang paghihintay",
   "results.how_estimated_shared": "Tinatantiya ng queue model ng NovaQ ang karaniwang paghihintay sa bawat period mula sa iyong na-upload na input, saka kinukuha ang average ng mga period na nakakasabay ang mga counter.",
   "results.how_estimated_separate": "Ginagamit ng NOVAQ ang na-upload na data para malaman kung gaano katagal maghihintay ang mga customer sa bawat pila. Kinucompute rin nito ang kabuuang average na oras ng paghihintay, batay sa dami ng mga customer sa bawat pila at oras. Pero kung may counter na hindi na kayang pagsilbihan ang dami ng mga dumarating na customer, hindi ipapakita ang kabuuang average na oras ng paghihintay.",
