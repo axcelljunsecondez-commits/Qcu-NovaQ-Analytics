@@ -380,6 +380,68 @@ def test_generic_decision_never_decides_a_separate_analysis(db_engine, client):
     assert client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()["decision"] is None
 
 
+def _legacy_separate_des(db_engine, client) -> tuple[int, dict, int]:
+    analysis_id, scenario_id = _legacy_separate_workspace(db_engine)
+    login(client, "parallel-owner@example.com", "pw")
+    headers = csrf_header(client)
+    assert client.post(f"/analyses/{analysis_id}/workflow/selection", headers=headers,
+                       json={"scenario_id": scenario_id}).status_code == 200
+    response = client.post(f"/analyses/{analysis_id}/workflow/simulation/des", headers=headers,
+                           json={"sim_hours": 1, "max_events": 100, "seed": 7})
+    assert response.status_code == 200, response.text
+    return analysis_id, headers, response.json()["evidence"]["id"]
+
+
+def _assert_des_slot_withheld(client, analysis_id: int, headers: dict) -> None:
+    body = client.get(f"/analyses/{analysis_id}/workflow", headers=headers).json()
+    # The selection itself is current, so a missing DES slot is the job's own evidence policy.
+    assert body["selection"] is not None
+    assert body["selection_evidence"]["evidence_status"] == "CURRENT"
+    assert body["des"] is None
+
+
+def test_legacy_separate_plan_des_is_never_current_evidence(db_engine, client):
+    """OD-D2-2 / K-D2-3: the legacy selected-plan DES route is not current evidence.
+
+    ``POST /workflow/simulation/des`` stores a ``workflow_des`` job with no ``engine``, selected
+    DES basis or selected-load method. For a separate Setup with a selected plan, GET /workflow
+    assesses the slot under the selected-load policy, which requires all three, so even a fresh
+    (post-D2) run of this route never fills the ``des`` slot. OD-D2-2 left legacy separate
+    ``workflow_des`` rows as stored; this pins that they cannot resurface as current.
+    """
+    analysis_id, headers, _ = _legacy_separate_des(db_engine, client)
+    _assert_des_slot_withheld(client, analysis_id, headers)
+
+
+def test_legacy_separate_plan_des_with_pre_d2_rows_is_never_current_evidence(db_engine, client):
+    """OD-D2-2 / K-D2-3: a stored pre-D2 row shape (no ``started``/``censored_customers``) of the
+    legacy selected-plan DES is withheld the same way; the stored rows are not rewritten."""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from backend.db.models import Job
+
+    analysis_id, headers, job_id = _legacy_separate_des(db_engine, client)
+    with make_sessionmaker(db_engine)() as db:
+        job = db.get(Job, job_id)
+        assert job is not None and job.kind == "workflow_des"
+        result = dict(job.result_json or {})
+        rows = [dict(row) for row in result["results"]]
+        assert rows and all("started" in row and "censored_customers" in row for row in rows)
+        for row in rows:
+            row.pop("started")
+            row.pop("censored_customers")
+        result["results"] = rows
+        job.result_json = result
+        flag_modified(job, "result_json")
+        db.commit()
+    with make_sessionmaker(db_engine)() as db:
+        stored = db.get(Job, job_id)
+        assert stored is not None
+        assert all("started" not in row and "censored_customers" not in row
+                   for row in (stored.result_json or {})["results"])
+    _assert_des_slot_withheld(client, analysis_id, headers)
+
+
 def test_workflow_selection_is_owner_scoped(db_engine, client):
     alice_analysis, alice_scenario = _workspace(db_engine, "alice@example.com")
     login(client, "alice@example.com", "pw")
