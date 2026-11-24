@@ -50,7 +50,7 @@
 .queueing-lesson-cover > span { display: grid; place-items: center; width: 58px; height: 58px; background: var(--bg-card); color: var(--text-primary); border-radius: 50%; box-shadow: var(--shadow-md); }
 .queueing-lesson-cover svg { width: 24px; height: 24px; fill: currentColor; }
 .queueing-lesson-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px; background: var(--bg-card); color: var(--text-primary); }
-.queueing-lesson-controls button, .queueing-lesson-controls select { width: auto; min-height: 44px; margin: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 12px; }
+.queueing-lesson-controls button, .queueing-lesson-controls select { width: auto; min-height: 44px; margin: 0; padding: 7px 9px; border: 1px solid var(--color-border-control); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 12px; }
 .queueing-lesson-controls .queueing-play-button { background: var(--accent); border-color: var(--accent); color: var(--navy-900); min-width: 72px; font-weight: 700; }
 .queueing-lesson-controls .queueing-seek { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; margin: 0; }
 .queueing-seek input { width: 100%; min-width: 45px; margin: 0; padding: 0; accent-color: var(--primary); }
