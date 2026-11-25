@@ -561,12 +561,25 @@ button.btn-good:hover {
 }
 
 .sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--text-sidebar-heading);
   font-size: 19px;
   font-weight: 800;
   margin-bottom: 18px;
   padding: 4px 10px;
+  border-radius: 8px;
   letter-spacing: -0.6px;
+  text-decoration: none;
+}
+
+.sidebar-brand:hover {
+  background: rgba(255, 255, 255, 0.085);
+}
+
+.sidebar-brand-mark {
+  display: none;
 }
 
 .sidebar-brand b {
@@ -742,6 +755,7 @@ button.btn-good:hover {
 /* ===== Login Page (Split Layout) ===== */
 .login-page {
   min-height: 100vh;
+  background: var(--color-bg-canvas);
   display: grid;
   grid-template-columns: minmax(420px, 1.05fr) minmax(460px, 0.95fr);
 }
@@ -749,7 +763,9 @@ button.btn-good:hover {
 .login-brand {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(145deg, #061a33 0%, #0a2d53 58%, #0d3b69 100%);
+  isolation: isolate;
+  background: radial-gradient(ellipse at 45% 0%, var(--color-bg-hero) 0, transparent 70%), var(--color-bg-surface);
+  border-right: 1px solid var(--color-border-subtle);
   color: white;
   padding: 36px 54px 42px;
   display: flex;
@@ -761,9 +777,12 @@ button.btn-good:hover {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: -1;
   background:
-    radial-gradient(circle at 75% 15%, rgba(38, 145, 255, 0.22), transparent 35%),
-    linear-gradient(125deg, transparent 48%, rgba(255, 255, 255, 0.05) 48.5%, transparent 49%);
+    repeating-linear-gradient(90deg, transparent 0 27px, var(--color-border-subtle) 28px 29px),
+    repeating-linear-gradient(0deg, transparent 0 27px, var(--color-border-subtle) 28px 29px);
+  mask-image: linear-gradient(90deg, transparent 19%, black 100%);
+  opacity: 0.55;
   pointer-events: none;
 }
 
@@ -3834,7 +3853,7 @@ th {
 }
 
 .login-auth {
-  background: var(--bg-card);
+  background: var(--color-bg-canvas);
 }
 
 .login-auth-links {
@@ -4082,30 +4101,95 @@ th {
   font-size: 0.875rem;
 }
 
+/* Analysis workflow stepper (2026-11-24 HTML5 reference lines 141-148): when the footer is at least
+   920 px wide the six steps and the Back/Next actions share one compact row (as before the redesign);
+   narrower footers show a disclosure button and reveal the same list only when expanded. All six links
+   stay in the DOM. Flex wrapping lets the container query move the actions without restyling the
+   container itself. */
 .workflow-footer {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  container: workflow-footer / inline-size;
+  display: flex;
+  /* Overrides the older phone rule that stacked this footer as a column. */
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   scroll-margin-bottom: 6rem;
 }
 
-.workflow-stepper {
+.workflow-footer > .workflow-summary,
+.workflow-footer > .workflow-stepper,
+.workflow-footer > .workflow-footer-actions {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.workflow-summary {
   display: flex;
   align-items: center;
-  /* An overflowing stepper must stay scrollable to its first step: `safe` uses start alignment on overflow.
-     Browsers without `safe` ignore that declaration and also align to the start, so nothing is clipped. */
   justify-content: flex-start;
-  justify-content: safe center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-control);
+  border-radius: 8px;
+}
+
+.workflow-summary:hover {
+  background: var(--color-bg-raised);
+  border-color: var(--color-action-link);
+}
+
+.workflow-summary .workflow-position {
+  display: inline;
+  flex: none;
+}
+
+.workflow-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-summary::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.workflow-summary[aria-expanded='true']::after {
+  transform: rotate(-135deg);
+}
+
+.workflow-stepper {
+  display: none;
   gap: 4px;
   min-width: 0;
   padding: 0;
   margin: 0;
-  overflow-x: auto;
   list-style: none;
+}
+
+.workflow-stepper.is-expanded {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* K-HB-2: the open list scrolls inside the footer (about four steps visible) instead of covering
+     a phone screen; every step stays reachable by scrolling or keyboard focus. */
+  max-height: min(40vh, 11.5rem);
+  overflow-y: auto;
 }
 
 .workflow-stepper a {
   min-height: 44px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 9px;
@@ -4113,16 +4197,24 @@ th {
   color: var(--text-secondary);
   font-size: 0.875rem;
   font-weight: 700;
-  white-space: nowrap;
+  text-decoration: none;
 }
 
-.workflow-stepper a span {
-  width: 22px;
-  height: 22px;
+.workflow-stepper a:hover {
+  color: var(--text-primary);
+  background: var(--color-bg-raised);
+}
+
+.workflow-stepper .workflow-step-number {
+  flex: none;
+  width: 24px;
+  height: 24px;
   display: inline-grid;
   place-items: center;
-  border: 1px solid var(--border);
+  /* Control border (5.11:1 on the surface) so the circle meets the 3:1 non-text contrast minimum. */
+  border: 1px solid var(--color-border-control);
   border-radius: 50%;
+  font-variant-numeric: tabular-nums;
 }
 
 .workflow-stepper .active a {
@@ -4130,37 +4222,79 @@ th {
   background: var(--state-current-bg);
 }
 
-.workflow-stepper .active a span {
+.workflow-stepper .active .workflow-step-number {
   color: var(--primary-contrast);
   border-color: var(--state-current);
   background: var(--state-current);
 }
 
-@media (max-width: 1023px) {
-  .workflow-footer {
-    grid-template-columns: 1fr auto;
+.workflow-footer-actions {
+  justify-content: flex-end;
+}
+
+@container workflow-footer (min-width: 520px) {
+  /* K-HB-1: the step button and Back/Next share one row; an open list drops below them. */
+  .workflow-footer > .workflow-summary {
+    flex: 1 1 240px;
   }
 
-  .workflow-stepper {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    justify-content: flex-start;
+  .workflow-footer > .workflow-footer-actions {
+    flex: 0 0 auto;
   }
 
-  .workflow-summary,
-  .workflow-footer-actions {
-    grid-row: 2;
+  .workflow-footer > .workflow-stepper.is-expanded {
+    order: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 639px) {
-  .workflow-footer {
-    display: flex;
+/* K-HB-4 (2026-11-25): the widest measured case needs 878 px of footer content (Filipino, Plans step:
+   numbered steps 435 + gap 10 + Back/Next 434; English Plans needs 787). 920 px leaves a 42 px margin;
+   narrower footers use the single compact row (step button + Back/Next). Keep in sync with
+   WIDE_STEP_ROW_PX in WorkflowNavigator.tsx. */
+@container workflow-footer (min-width: 920px) {
+  .workflow-footer > .workflow-summary {
+    display: none;
   }
 
-  .workflow-stepper {
-    order: -1;
-    justify-content: flex-start;
+  /* Owner 2026-11-24 "Numbers + current label": one row with no sideways scroll. Other steps show
+     only their numbered circle (label = accessible name + tooltip); the current step shows its label. */
+  .workflow-footer > .workflow-stepper,
+  .workflow-footer > .workflow-stepper.is-expanded {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .workflow-stepper a {
+    white-space: nowrap;
+  }
+
+  .workflow-stepper li:not(.active) a {
+    justify-content: center;
+    min-width: 44px;
+    padding: 6px 10px;
+  }
+
+  .workflow-stepper li:not(.active) .workflow-step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .workflow-footer > .workflow-footer-actions {
+    flex: 0 0 auto;
   }
 }
 
@@ -4432,10 +4566,32 @@ th {
   }
 
   .sidebar.is-collapsed .sidebar-header {
+    flex-direction: column;
     justify-content: center;
+    gap: var(--space-sm);
   }
 
-  .sidebar.is-collapsed .sidebar-brand,
+  .sidebar.is-collapsed .sidebar-brand {
+    margin: 0;
+    padding: 0;
+  }
+
+  .sidebar.is-collapsed .sidebar-brand-full {
+    display: none;
+  }
+
+  .sidebar.is-collapsed .sidebar-brand-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-size: 18px;
+  }
+
   .sidebar.is-collapsed .nav-label,
   .sidebar.is-collapsed .sidebar-product-note,
   .sidebar.is-collapsed .account-email {
@@ -5469,7 +5625,11 @@ summary.setup-step-title::before {
 /* The sticky .workflow-footer (bottom: 12px, z-index: 20) overlays the bottom of the viewport.
    html only had scroll-padding-top, so focus and scroll-into-view put the break table's last row
    and the Review buttons under it. Reserve the footer's height (from its CSS: padding, 44px rows,
-   gaps, stacked buttons on phones) plus its 12px offset at the bottom of the scrollport. */
+   gaps, stacked buttons on phones) plus its 12px offset at the bottom of the scrollport.
+   Re-measured 2026-11-24 after the step-list redesign (CDP, synthetic fixture): the closed footer is
+   one row from 520px of footer width, 74-84px tall at 768-1440px, so 7rem (112px) covers 84 + 12;
+   the phone footer (stacked Back/Next) is about 180px, covered by 18rem (180 + 12 <= 288).
+   An opened step list is a transient, user-chosen state and is not reserved here. */
 html:has(.supervisor-page) { scroll-padding-bottom: 7rem; }
 @media (max-width: 1023px) { html:has(.supervisor-page) { scroll-padding-bottom: 11rem; } }
 @media (max-width: 639px) { html:has(.supervisor-page) { scroll-padding-bottom: 18rem; } }

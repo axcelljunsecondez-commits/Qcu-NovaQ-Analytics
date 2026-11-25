@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Route, Routes } from 'react-router-dom'
+import { logout } from '../../api/auth'
 import { renderWithProviders } from '../../test/test-utils'
 import { LAST_ANALYSIS_KEY, rememberLastAnalysis } from '../../lib/lastAnalysis'
 import { Sidebar } from './Sidebar'
+import { useAuth } from '../../auth/useAuth'
 
 vi.mock('../../api/auth', () => ({
   me: vi.fn(async () => ({
@@ -38,6 +42,11 @@ beforeEach(() => {
 })
 
 afterEach(() => vi.restoreAllMocks())
+
+function SignedInProbe() {
+  const { user } = useAuth()
+  return <p>{user ? `signed in as ${user.email}` : 'signed out'}</p>
+}
 
 async function navLinks() {
   const nav = await screen.findByRole('navigation', { name: 'Global navigation' })
@@ -147,5 +156,32 @@ describe('Sidebar global navigation (spec §7.3)', () => {
     const toggle = screen.getByRole('button', { name: 'Hide sidebar' })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(toggle).not.toHaveTextContent(/collapse/i)
+  })
+})
+
+describe('Sidebar brand home link (HTML5 redesign Phase B)', () => {
+  it('goes to the homepage and keeps the user signed in', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(
+      <Routes>
+        <Route path="/analyses" element={<Sidebar />} />
+        <Route path="/" element={<SignedInProbe />} />
+      </Routes>,
+      { route: '/analyses' },
+    )
+    await navLinks()
+    const brand = screen.getByRole('link', { name: 'NovaQ' })
+    expect(brand).toHaveAttribute('href', '/')
+    await user.click(brand)
+    expect(await screen.findByText('signed in as a@b.c')).toBeInTheDocument()
+    expect(logout).not.toHaveBeenCalled()
+  })
+
+  it('keeps the brand link with a rail tooltip when the sidebar is collapsed', async () => {
+    renderWithProviders(<Sidebar collapsed onToggleCollapsed={() => {}} />, { route: '/analyses' })
+    await navLinks()
+    const brand = screen.getByRole('link', { name: 'NovaQ' })
+    expect(brand).toHaveAttribute('href', '/')
+    expect(brand.closest('.tooltip-anchor')).not.toBeNull()
   })
 })

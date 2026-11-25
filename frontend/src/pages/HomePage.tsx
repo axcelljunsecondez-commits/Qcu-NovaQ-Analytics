@@ -38,17 +38,23 @@ export function HomePage() {
       </header>
 
       <main className="home-main home-spotlight" id="home-main" tabIndex={-1} ref={contentRef}>
-        <div className="home-spotlight-column">
-        <section className="home-hero" aria-labelledby="home-title">
-          <p className="home-tagline">{t('nav.motto')}</p>
-          <h1 lang="en" id="home-title">{headingText(t, 'home.hero_title')}<br /><span>{headingText(t, 'home.hero_accent')}</span></h1>
-          <p>{t('home.hero_desc')}</p>
-          <div className="home-hero-actions">
-            <Link className="btn-primary home-start" to={start}>{t('home.start')}</Link>
-            <Link className="btn-ghost" to="/calculator">{t('home.try_calculator')}</Link>
+        {/* Two-column hero: copy on the left, the original Queueing 101 lesson on the right. */}
+        <div className="home-landing">
+          <section className="home-hero home-landing-copy" aria-labelledby="home-title">
+            {/* Owner 2026-11-24: the whole hero header (motto and title) stays English in both languages. */}
+            <p lang="en" className="home-tagline">{headingText(t, 'home.hero_motto')}</p>
+            <h1 lang="en" id="home-title">{headingText(t, 'home.hero_title')}<br /><span>{headingText(t, 'home.hero_accent')}</span></h1>
+            <p>{t('home.hero_desc')}</p>
+            <div className="home-hero-actions">
+              <Link className="btn-primary home-start" to={start}>{t('home.start')}</Link>
+              <Link className="btn-ghost" to="/calculator">{t('home.try_calculator')}</Link>
+            </div>
+            <p className="home-note">{t('home.calculator_note')}</p>
+          </section>
+          <div className="home-landing-lesson">
+            <QueueingLessons />
           </div>
-          <p className="home-note">{t('home.calculator_note')}</p>
-        </section>
+        </div>
         <ExpandableSlides id="home-how-it-works" title={headingText(t, 'home.how_it_works')} description={t('queueing101.how_description')}
           open={howOpen} onOpenChange={setHowOpen} slides={(['records', 'plans', 'watch'] as const).map((step, index) => ({
             id: step, label: t('queueing101.step', { number: index + 1 }), content: <div className="home-workflow-slide">
@@ -56,10 +62,6 @@ export function HomePage() {
               <h3 lang="en">{headingText(t, `home.step_${step}_title`)}</h3><p>{t(`home.step_${step}_desc`)}</p>
             </div>,
           }))} />
-        </div>
-        <div className="home-spotlight-column">
-          <QueueingLessons />
-        </div>
         <QueueTypesComparison open={queuesOpen} onOpenChange={setQueuesOpen} />
       </main>
 

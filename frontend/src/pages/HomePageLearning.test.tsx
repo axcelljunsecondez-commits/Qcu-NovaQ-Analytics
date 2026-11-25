@@ -72,3 +72,20 @@ describe('Approved homepage learning behavior', () => {
     expect(screen.queryByText('No guide mentions all of these words.')).not.toBeInTheDocument()
   })
 })
+
+describe('Homepage hero (HTML5 redesign Phase B)', () => {
+  it('keeps the hero header English in Filipino and the Queueing 101 lesson beside it', () => {
+    renderWithProviders(<HomePage />, { lang: 'tl' })
+    const motto = screen.getByText('Measure the wait. Plan the shift.')
+    expect(motto).toHaveAttribute('lang', 'en')
+    const title = screen.getByRole('heading', { level: 1 })
+    expect(title).toHaveAttribute('lang', 'en')
+    expect(title).toHaveTextContent('Smarter Staffing,Shorter Queues.')
+    expect(screen.queryByText('Tunay na Data. Mas Mabuting Desisyon.')).not.toBeInTheDocument()
+    const landing = document.querySelector('.home-landing')!
+    expect(landing.querySelector('.home-hero')).toContainElement(motto)
+    expect(landing.querySelector('.home-landing-lesson .queueing-lessons')).not.toBeNull()
+    expect(landing.querySelector('.home-landing-lesson .queueing-lesson-card')).not.toBeNull()
+    expect(landing.querySelectorAll('.home-landing-lesson video')).toHaveLength(1)
+  })
+})
