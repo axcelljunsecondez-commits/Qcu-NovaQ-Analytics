@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ScenarioOut } from '../../api/scenarios'
-import type { ObservedWaitPeriod, SeparateComparison, SeparatePlanComparison } from '../../api/types'
+import type { ObservedWaitPeriod, PeriodArrivals, SeparateComparison, SeparatePlanComparison } from '../../api/types'
 import { renderWithProviders } from '../../test/test-utils'
 import type { SelectedPlan } from './useSelectedPlan'
 import { WaitByHourCard } from './WaitByHourCard'
@@ -68,13 +68,14 @@ describe('wait by hour', () => {
   it('Today view draws Recorded and Estimated only, with the takeaway on the highest estimate', () => {
     renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel="Parallel M/G/1" separate staffing={staffing} plan={{ kind: 'none' }} />)
     expect(screen.queryByRole('group', { name: 'Chart view' })).not.toBeInTheDocument()
-    expect(chart().querySelectorAll('.cv-m-rec')).toHaveLength(2)
-    expect(chart().querySelectorAll('.cv-m-est')).toHaveLength(2)
+    // Phase C (owner 2026-11-25): the Today view is a line chart: recorded nodes and estimated nodes.
+    expect(chart().querySelectorAll('.cv-node-rec')).toHaveLength(2)
+    expect(chart().querySelectorAll('.cv-node-est')).toHaveLength(2)
     expect(chart().querySelectorAll('.cv-m-plan, .cv-l-ci')).toHaveLength(0)
     expect(screen.getByText('09:00-10:00 has the highest calculated estimate today: 12 min per customer. Recorded: 6 min.')).toBeInTheDocument()
-    expect(screen.getAllByTestId('row-chart-row')[1]).toHaveClass('hl')
+    expect([...chart().querySelectorAll('.cv-node.is-highlight')].map((node) => node.getAttribute('class'))).toEqual(['cv-node cv-node-rec is-highlight', 'cv-node cv-node-est is-highlight'])
     expect(screen.getByText('Calculated estimate: queueing formula for each cashier line (Parallel M/G/1)')).toBeInTheDocument()
-    expect(screen.getByText('Each row is one hour; the axis starts at 0.')).toBeInTheDocument()
+    expect(screen.getByText('Each point is one hour; the axis starts at 0.')).toBeInTheDocument()
     expect(tableCells().slice(1)).toEqual([['2', '7.2 min', '3 min'], ['2', '6 min', '12 min']])
     expect(screen.getByRole('region', { name: 'Show as a table' })).toHaveTextContent('Much longer than modeled')
   })
@@ -97,18 +98,25 @@ describe('wait by hour', () => {
     // Staffing varies but the period names no known segment: "—", never the row count.
     renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={{ ...varying, records: null }} plan={{ kind: 'none' }} />)
     expect(tableCells().slice(1).map((cells) => cells[0])).toEqual(['—', '—'])
-    expect(screen.getAllByTestId('row-chart-row')[0]).toHaveTextContent('Counters: —')
+    act(() => chart().focus())
+    fireEvent.keyDown(chart(), { key: 'Home' })
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Counters: —')
   })
 
   it('reads out the same values as the table when moving by keyboard', async () => {
     const user = userEvent.setup()
     renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }} />)
     await user.tab()
+    await user.tab()
+    await user.tab()
     expect(screen.getByRole('group', { name: 'Wait by period. Use the arrow keys to read each period.' })).toHaveFocus()
-    expect(screen.getByTestId('row-chart-readout')).toHaveTextContent('Recorded (From your data): 6 min')
-    expect(screen.getByTestId('row-chart-readout')).toHaveTextContent('Estimated (Calculated estimate): 12 min')
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Recorded (From your data): 6 min')
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Estimated (Calculated estimate): 12 min')
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Gap: -6 min')
     await user.keyboard('{Home}')
     expect(screen.getByText('08:00-09:00: Recorded 7.2 min, Estimated 3 min, Much longer than modeled')).toBeInTheDocument()
+    // Readout values equal the table cells (7.2 and 3 min); the Gap is from unrounded minutes (7.2 - 3).
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Gap: 4.2 min')
   })
 
   it('Plan view (separate) draws Estimated vs the simulated plan, never Recorded, and cuts a negative range at 0', async () => {
@@ -154,7 +162,8 @@ describe('wait by hour', () => {
 
   it('shows a labelled gap for a period with no values and names no "highest" hour', () => {
     renderWithProviders(<WaitByHourCard observed={[{ time: '07:00-08:00', modeled_wait: null, observed_wait: null, flagged: false }]} rows={[]} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }} />)
-    expect(within(chart()).getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.queryByTestId('wait-chart')).not.toBeInTheDocument()
+    expect(screen.getByTestId('wait-unavailable')).toHaveTextContent('Unavailable')
     expect(screen.queryByText(/has the highest calculated estimate/)).not.toBeInTheDocument()
   })
 
@@ -194,5 +203,169 @@ describe('view switch styling', () => {
     const css = readFileSync(resolve(process.cwd(), 'src/styles/charts.css'), 'utf8')
     expect(css).toMatch(/\.cv-view-switch button\s*\{[^}]*background: var\(--color-bg-surface\);[^}]*color: var\(--color-text-primary\);/)
     expect(css).toMatch(/\.cv-view-switch button\[aria-pressed='true'\]\s*\{[^}]*background: var\(--color-action-primary-bg\);/)
+  })
+})
+
+// Phase C (owner decisions OD-C1..C6, 2026-11-25): measure switch, gaps, reveal triggers.
+const arrivals: PeriodArrivals[] = [
+  { time: '08:00-09:00', arrivals_per_hour: 30 }, { time: '09:00-10:00', arrivals_per_hour: null }, { time: '10:00-11:00', arrivals_per_hour: 12.5 },
+]
+
+describe('wait and arrivals measures', () => {
+  it('switches measures with aria-pressed, keeps focus on the pressed button and reads out the arrivals values', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }} arrivals={arrivals} />)
+    const group = screen.getByRole('group', { name: 'Chart measure' })
+    const [wait, arrive] = within(group).getAllByRole('button')
+    expect([wait.textContent, arrive.textContent]).toEqual(['Wait', 'Arrivals'])
+    expect(wait).toHaveAttribute('aria-pressed', 'true')
+    await user.click(arrive)
+    expect(arrive).toHaveAttribute('aria-pressed', 'true')
+    expect(wait).toHaveAttribute('aria-pressed', 'false')
+    expect(arrive).toHaveFocus()
+    expect(screen.getByRole('heading', { name: 'Arrivals by period' })).toHaveAttribute('lang', 'en')
+    expect(screen.getByText('Customer arrivals per hour (all cashiers combined)')).toBeInTheDocument()
+    const chartEl = screen.getByTestId('arrivals-chart')
+    expect(chartEl).toHaveAccessibleName('Arrivals by period. Use the arrow keys to read each period.')
+    // One blue series: a null period breaks the line and has no node.
+    expect(chartEl.querySelectorAll('.cv-node-arr')).toHaveLength(2)
+    expect(chartEl.querySelectorAll('[data-testid="line-trace-arr"]')).toHaveLength(2)
+    act(() => chartEl.focus())
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('08:00-09:0030 customers per hour')
+    fireEvent.keyDown(chartEl, { key: 'ArrowRight' })
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('09:00-10:00Unavailable')
+    expect(screen.getByText('09:00-10:00 · Unavailable')).toBeInTheDocument()
+    fireEvent.keyDown(chartEl, { key: 'End' })
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('10:00-11:0012.5 customers per hour')
+    // The table alternative holds the same values as arrivals_by_period.
+    const table = within(screen.getByRole('region', { name: 'Show as a table' })).getByRole('table', { name: 'Customers per hour by period' })
+    expect(within(table).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['30', 'Unavailable', '12.5'])
+    await user.click(wait)
+    expect(wait).toHaveFocus()
+    expect(screen.getByRole('heading', { name: 'Waiting time by period' })).toBeInTheDocument()
+  })
+
+  it('shows the card for arrivals alone and explains a missing wait by the file contents', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderWithProviders(<WaitByHourCard observed={null} rows={[]} selectedModel={null} separate={false} plan={{ kind: 'none' }} arrivals={arrivals} hasRecords={false} />)
+    expect(within(screen.getByRole('group', { name: 'Chart measure' })).getByRole('button', { name: 'Arrivals' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Wait' }))
+    expect(screen.getByTestId('wait-unavailable')).toHaveTextContent('Recorded waiting time is unavailable because this file does not contain customer arrival and service-start times.')
+    unmount()
+    renderWithProviders(<WaitByHourCard observed={null} rows={[]} selectedModel={null} separate={false} plan={{ kind: 'none' }} arrivals={arrivals} hasRecords />)
+    await user.click(screen.getByRole('button', { name: 'Wait' }))
+    expect(screen.getByTestId('wait-unavailable')).toHaveTextContent(/^Unavailable$/)
+  })
+
+  it('renders only the footer when no measure has data, and says Unavailable for all-missing arrivals', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderWithProviders(<WaitByHourCard observed={null} rows={[]} selectedModel={null} separate={false} plan={{ kind: 'none' }}
+      arrivals={[{ time: '08:00-09:00', arrivals_per_hour: null }]} footer={<p>prompt</p>} />)
+    expect(screen.queryByTestId('wait-by-hour')).not.toBeInTheDocument()
+    expect(screen.getAllByText('prompt')).toHaveLength(1)
+    unmount()
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }}
+      arrivals={[{ time: '08:00-09:00', arrivals_per_hour: null }]} footer={<p>prompt</p>} />)
+    await user.click(screen.getByRole('button', { name: 'Arrivals' }))
+    expect(screen.queryByTestId('arrivals-chart')).not.toBeInTheDocument()
+    expect(screen.getByTestId('arrivals-unavailable')).toHaveTextContent('Unavailable')
+    expect(screen.getAllByText('prompt')).toHaveLength(1)
+  })
+
+  it('breaks the line at a single missing period, keeps an isolated value as a node, and shows the Gap only with both values', () => {
+    const gappy: ObservedWaitPeriod[] = [
+      { time: '08:00-09:00', modeled_wait: 0.05, observed_wait: 0.1, flagged: false },
+      { time: '09:00-10:00', modeled_wait: 0.1, observed_wait: null, flagged: false },
+      { time: '10:00-11:00', modeled_wait: 0.08, observed_wait: 0.05, flagged: false },
+      { time: '11:00-12:00', modeled_wait: null, observed_wait: null, flagged: false },
+      { time: '12:00-13:00', modeled_wait: null, observed_wait: 0.2, flagged: false },
+      { time: '13:00-14:00', modeled_wait: null, observed_wait: null, flagged: false },
+    ]
+    renderWithProviders(<WaitByHourCard observed={gappy} rows={[]} selectedModel={null} separate={false} plan={{ kind: 'none' }} />)
+    const el = chart()
+    // Recorded: 08, gap, 10, gap, 12 (isolated), gap → three runs, three nodes; nothing is drawn at 0 for the gaps.
+    expect(el.querySelectorAll('[data-testid="line-trace-rec"]')).toHaveLength(3)
+    expect(el.querySelectorAll('.cv-node-rec')).toHaveLength(3)
+    expect(el.querySelectorAll('[data-testid="line-trace-est"]')).toHaveLength(1)
+    expect(el.querySelectorAll('.cv-node-est')).toHaveLength(3)
+    act(() => el.focus())
+    fireEvent.keyDown(el, { key: 'Home' })
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Gap: 3 min')
+    fireEvent.keyDown(el, { key: 'ArrowRight' })
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Recorded (From your data): Unavailable')
+    expect(screen.getByTestId('line-chart-readout')).not.toHaveTextContent('Gap')
+    fireEvent.keyDown(el, { key: 'ArrowRight' })
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Gap: -1.8 min')
+    fireEvent.keyDown(el, { key: 'End' })
+    expect(screen.getByTestId('line-chart-readout')).toHaveTextContent('Recorded (From your data): UnavailableEstimated (Calculated estimate): Unavailable')
+  })
+
+  it('keeps the measure names in Tagalog while the arrivals heading stays English', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }} arrivals={arrivals} />, { lang: 'tl' })
+    const group = screen.getByRole('group', { name: 'Sukatan ng chart' })
+    expect(within(group).getAllByRole('button').map((button) => button.textContent)).toEqual(['Wait', 'Mga pagdating'])
+    await user.click(within(group).getByRole('button', { name: 'Mga pagdating' }))
+    expect(screen.getByRole('heading', { name: 'Arrivals by period' })).toHaveAttribute('lang', 'en')
+    expect(screen.getByText('Isang oras ang bawat punto; nagsisimula sa 0 ang axis.')).toBeInTheDocument()
+  })
+})
+
+describe('chart reveal (1.8 s, data marks only)', () => {
+  let animate: ReturnType<typeof vi.fn>
+  beforeEach(() => {
+    animate = vi.fn(() => ({ cancel: vi.fn(), playState: 'finished' }))
+    Object.defineProperty(Element.prototype, 'animate', { configurable: true, writable: true, value: animate })
+  })
+  afterEach(() => {
+    delete (Element.prototype as { animate?: unknown }).animate
+    vi.unstubAllGlobals()
+  })
+
+  it('replays on first data, on every measure click and on a file change, and never on hover, keys, focus, plan switch or refetch', async () => {
+    const user = userEvent.setup()
+    const card = (key: number, periods: ObservedWaitPeriod[] = observed) => (
+      <WaitByHourCard observed={periods} rows={[]} selectedModel={null} separate={false} plan={sharedPlan()} arrivals={arrivals} fileKey={key} />
+    )
+    const { rerender } = renderWithProviders(card(11))
+    expect(animate).toHaveBeenCalledTimes(1)
+    expect(animate.mock.calls[0]).toEqual([
+      [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0)' }],
+      { duration: 1800, delay: 120, easing: 'ease-in-out', fill: 'backwards' },
+    ])
+    expect((animate.mock.contexts[0] as Element).getAttribute('class')).toBe('cv-curve-layer')
+    // Hover, focus and the arrow keys never replay.
+    const el = chart()
+    fireEvent.mouseEnter(el.querySelectorAll('[data-testid="line-chart-hit"]')[1])
+    act(() => el.focus())
+    fireEvent.keyDown(el, { key: 'ArrowLeft' })
+    expect(animate).toHaveBeenCalledTimes(1)
+    // The plan sub-switch (there and back) does not replay.
+    await user.click(screen.getByRole('button', { name: 'Estimate vs suggested plan' }))
+    await user.click(screen.getByRole('button', { name: 'Recorded vs Estimated Wait, by period' }))
+    expect(animate).toHaveBeenCalledTimes(1)
+    // Every measure click replays, including the measure already shown.
+    await user.click(screen.getByRole('button', { name: 'Wait' }))
+    expect(animate).toHaveBeenCalledTimes(2)
+    await user.click(screen.getByRole('button', { name: 'Arrivals' }))
+    expect(animate).toHaveBeenCalledTimes(3)
+    await user.click(screen.getByRole('button', { name: 'Wait' }))
+    expect(animate).toHaveBeenCalledTimes(4)
+    // A refetch of the same file (new arrays, same file) does not replay; a different file does.
+    rerender(card(11, observed.map((period) => ({ ...period }))))
+    expect(animate).toHaveBeenCalledTimes(4)
+    rerender(card(12))
+    expect(animate).toHaveBeenCalledTimes(5)
+  })
+
+  it('does not animate under reduced motion and leaves the marks fully visible', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    renderWithProviders(<WaitByHourCard observed={observed} rows={rows} selectedModel={null} separate staffing={staffing} plan={{ kind: 'none' }} arrivals={arrivals} fileKey={11} />)
+    await user.click(screen.getByRole('button', { name: 'Arrivals' }))
+    expect(animate).not.toHaveBeenCalled()
+    const layer = screen.getByTestId('line-chart-curves')
+    expect(layer.getAttribute('style')).toBeNull()
+    expect(layer.querySelectorAll('.cv-node-arr')).toHaveLength(2)
   })
 })

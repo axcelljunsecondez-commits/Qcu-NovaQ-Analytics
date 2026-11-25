@@ -1,8 +1,8 @@
 # NovaQ Design System — Master
 
 **Status:** Approved design-system source of truth
-**Version:** 1.3 (amended 2026-11-24)
-**Date:** 2026-09-13; amended 2026-11-09 and 2026-11-24
+**Version:** 1.4 (amended 2026-11-25)
+**Date:** 2026-09-13; amended 2026-11-09, 2026-11-24 and 2026-11-25
 **Platform:** Responsive web application
 **Stack:** React 19, React Router, global CSS, Plotly, i18next
 **Implementation state:** Contract defined; migration occurs through the approved refinement plan. The 2026-10-09 amendments (Section 0) describe the owner-approved redesign target; they are not implemented yet, and the current application still follows version 1.0 until each redesign phase ships.
@@ -11,6 +11,7 @@
 
 | Date | Section | Change | Source |
 |---|---|---|---|
+| 2026-11-25 | 4.1, 4.3, 7 | Results line chart (Phase C): 1.8 s left-to-right clip-path reveal of the data marks only, replayed on first data, on every Wait/Arrivals click and on a file change; reduced motion shows the chart at once. Chart-grid and estimated tokens are now in use (recorded blue, estimated gold dashed, plan aqua); a simulated Current run keeps a blue ring (`cv-m-cur`) | Owner decisions OD-C1..C6, 2026-11-25; `docs/superpowers/reference/NovaQ_Context_Engineering_and_Audit.md` (owner handoff) and `NovaQ_Final_HTML5_Reference.html` (reveal lines 436-437, reduced motion 465-467) |
 | 2026-11-24 | 2, 4.1, 4.2, 4.3, 10.1, 11.1, 15.3 | Dark Navy and Brass single fixed theme replaces the light Cobalt and Brass palette (no theme switcher; static `color-scheme: dark`). AA fixes O-A1: control borders `#7890B2`; primary hover keeps `#2664DB` and adds a `#99C0FF` ring/border (never `#3473E8` under white text); pressed `#0F367C`; dark status set. Chart data colors O-A2: current/recorded blue, estimated gold (dashed when drawn as a line), optimized/suggested aqua. Slim theme-matched scrollbars. Replay presentation unchanged | Owner decisions in chat 2026-11-24; palette from `docs/superpowers/reference/NovaQ_Final_HTML5_Reference.html` dark `:root` |
 | 2026-11-16 | 7 | Note only: the 205 ms panel entrance now applies to the Quick Calculator situation tabs, because the Results chart tabs were removed; no rule changed | Cobalt review follow-up, owner request 2026-11-16 |
 | 2026-11-16 | 4.1, 11.1, 15.3 | Theme selection removed per the owner: no light/dark choice, no `novaq_theme` read/write, no dark CSS; light Cobalt and Brass tokens are the only styles | Owner request 2026-11-16 |
@@ -100,7 +101,7 @@ Amended 2026-11-24 (owner): the UI has one fixed Dark Navy and Brass theme with 
 | `--color-disabled-bg` | `#1D2A40` | Disabled fill |
 | `--color-disabled-fg` | `#A8B9D1` | Disabled label; always paired with disabled semantics |
 | `--color-disabled-border` | `#425778` | Disabled control boundary |
-| `--color-chart-grid` | `#2B3D59` | Chart grid lines; defined; consumed from Phase C (Results chart) |
+| `--color-chart-grid` | `#2B3D59` | Chart grid lines; in use (Results line chart, 2026-11-25) |
 | `--color-scroll-thumb` / `--color-scroll-thumb-active` | `#566D8C` / `#7890B2` | Slim scrollbars, both axes |
 
 Brass `#EFC477` (`--brand-brass`, `--accent`) is the brand accent; text placed on a brass fill uses `--color-text-on-fill`. `#3473E8` must not be used under white text (4.41:1). Measured pairs (WCAG 2.x relative luminance, 2026-11-24): text on canvas 17.14:1, on surface 15.28:1, on raised 14.04:1; secondary text on surface 8.36:1, on raised 7.68:1; link on surface 7.64:1; white on primary 5.35:1, on pressed 11.42:1; control border on surface 5.11:1; focus ring on surface 9.00:1; on-fill text on brass 11.43:1.
@@ -130,8 +131,8 @@ Current, estimated and optimized are comparison identities, not success/failure.
 |---|---:|---|
 | `--color-data-current` | `#83B0FF` | In use |
 | `--color-data-current-bg` | `#14284A` | In use |
-| `--color-data-estimated` | `#EFC477` | Defined; consumed from Phase C (Results chart) |
-| `--color-data-estimated-bg` | `#2E2713` | Defined; consumed from Phase C (Results chart) |
+| `--color-data-estimated` | `#EFC477` | In use (estimated marks and dashed line, 2026-11-25) |
+| `--color-data-estimated-bg` | `#2E2713` | In use (Estimated legend chip, 2026-11-25) |
 | `--color-data-optimized` | `#7CE1D3` | In use |
 | `--color-data-optimized-bg` | `#0F2E33` | In use |
 
@@ -207,6 +208,7 @@ Motion is restrained and never required to understand state:
 - Amended 2026-10-09 (D29): replay speeds are 0.25×, 0.5×, 1×, 2×, 5× and 10×, measured against simulated time rather than the length of the trace. Customer markers glide between arriving, their place in line, their counter and finished, using transform and opacity only, with each move lasting about 0.2–0.9 s so markers never teleport or streak. Counts, clock and states stay exact from the reducer; the glide only animates how a marker reaches its exact position. Under reduced motion, markers move without gliding. The base rate (proposed: 1× = 1 simulated minute per real second) awaits owner confirmation.
 - Under `prefers-reduced-motion: reduce`, nonessential animation and smooth scrolling are disabled; loading and playback status remain understandable without motion.
 - Do not add GSAP. The 2026-11-09 amendment permits 220 ms pathname-only content entrance and 205 ms explicit chart-tab-panel entrance, with reduced-motion cancellation. (Note 2026-11-16: the Results chart tabs were later removed; the 205 ms panel entrance is used only by the Quick Calculator situation tabs.) Never animate/rekey playback on ?t/query updates or change marker timing/geometry.
+- Amended 2026-11-25 (owner, Phase C): the Results line chart reveals its data marks (the traces and nodes, never the grid, axes, labels or hit areas) left to right with `clip-path: inset(0 100% 0 0)` → `inset(0)` over 1800 ms after a 120 ms delay, `ease-in-out`. This is the one permitted exception to the transform/opacity rule. It replays on the first usable data, on every Wait/Arrivals click (including the measure already shown) and when the shown file changes; hover, focus, the arrow keys, filters, the Today/Plan sub-switch and a refetch of the same file never replay it. Under `prefers-reduced-motion: reduce` no animation runs and the marks are fully visible; a running reveal is cancelled when that setting turns on or the chart unmounts.
 
 ## 8. Responsive layout
 

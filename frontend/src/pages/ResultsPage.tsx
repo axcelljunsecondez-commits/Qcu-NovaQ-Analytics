@@ -164,10 +164,11 @@ export function ResultsPage() {
           <ResultsSummary key={selected.id} rows={rows} arrivalsByPeriod={current.data.arrivals_by_period}
             arrivalRecords={current.data.dataset.normalized} period={period} line={line} onPeriod={(value) => update({ period: value })} onLine={(value) => update({ line: value })}
             referenceLink={<Link to={`/results?${referenceParams}`}>{t('results.reference_title')}</Link>} />
+          {/* OD-C1 (2026-11-25): the card shows when either measure has data and renders the no-plan prompt once. */}
           <WaitByHourCard observed={observedPeriods} rows={rows} selectedModel={current.data.selected_model} separate={separate} plan={plan}
             staffing={{ setup: analysis.data.analysis.queue_setup, records: current.data.dataset.normalized }}
-            footer={observedPeriods !== null ? noPlanPrompt : null} />
-          {observedPeriods === null && noPlanPrompt}
+            arrivals={current.data.arrivals_by_period ?? []} hasRecords={records} fileKey={selected.id}
+            footer={noPlanPrompt} />
           {isPlanningFile && <PlanChanges analysisId={id} plan={plan} dataset={selected} periodBasis={analysis.data.analysis.queue_setup.event_period_basis} segments={analysis.data.analysis.queue_setup.segments} promptShown />}
         </>
       )}

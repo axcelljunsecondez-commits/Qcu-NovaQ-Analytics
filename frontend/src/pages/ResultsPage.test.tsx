@@ -686,3 +686,33 @@ describe('Analysis results: separate plan cost by day basis (spec 2026-10-29 §6
     expect(screen.queryByText(/per average day/)).not.toBeInTheDocument()
   })
 })
+
+describe('Results line chart measures (Phase C, OD-C1)', () => {
+  function tableValues() {
+    const table = within(screen.getByRole('region', { name: 'Show as a table' })).getByRole('table', { name: 'Customers per hour by period' })
+    return within(table).getAllByRole('cell').map((cell) => cell.textContent)
+  }
+
+  it('shows the arrivals of the shown file and changes them with the file', async () => {
+    const user = userEvent.setup()
+    renderResults()
+    await user.click(await within(await screen.findByTestId('wait-by-hour')).findByRole('button', { name: 'Arrivals' }))
+    expect(tableValues()).toEqual(['30', '40', '20'])
+    await user.selectOptions(screen.getByLabelText('View Results from'), '12')
+    // The review-only file has no customer records, so the card opens on its arrivals.
+    const card = await screen.findByTestId('wait-by-hour')
+    await waitFor(() => expect(within(card).getByRole('button', { name: 'Arrivals' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(tableValues()).toEqual(['99'])
+    await user.click(within(card).getByRole('button', { name: 'Wait' }))
+    expect(within(card).getByTestId('wait-unavailable')).toHaveTextContent('Recorded waiting time is unavailable because this file does not contain customer arrival and service-start times.')
+  })
+
+  it('renders the no-plan prompt once, inside the card, when the file has arrivals but no recorded waits', async () => {
+    getObservedMock.mockResolvedValue({ analysis_id: 7, dataset_id: 11, available: false, periods: [], flagged_any: false, day_modeled_wait: null, day_observed_wait: null, ratio: 2, min_gap_minutes: 1 })
+    renderResults()
+    const card = await screen.findByTestId('wait-by-hour')
+    await waitFor(() => expect(screen.getAllByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toHaveLength(1))
+    expect(within(card).getByText('No plan is selected yet. Choose one in Suggested plans to see what it changes.')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Arrivals' })).toHaveAttribute('aria-pressed', 'true')
+  })
+})

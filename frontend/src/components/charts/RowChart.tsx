@@ -7,7 +7,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
  * Enter or a click selects it. The active row's values are read out in a visible panel and a live region.
  */
 
-export type MarkKind = 'est' | 'rec' | 'plan' | 'mc'
+/** 'cur' = a simulated Current run (blue ring, OD-C3b); 'est' = analytical estimate (gold, O-A2). */
+export type MarkKind = 'est' | 'rec' | 'plan' | 'mc' | 'cur'
 
 export interface ChartMark {
   kind: MarkKind
@@ -82,6 +83,7 @@ function Mark({ mark, x, y }: { mark: ChartMark; x: number; y: number }) {
   if (mark.kind === 'rec') return <path className="cv-m-rec" d={`M${x} ${y - 7} L${x + 7} ${y} L${x} ${y + 7} L${x - 7} ${y}Z`} />
   if (mark.kind === 'est') return <circle className="cv-m-est" cx={x} cy={y} r={5.5} />
   if (mark.kind === 'plan') return <circle className="cv-m-plan" cx={x} cy={y} r={5} />
+  if (mark.kind === 'cur') return <circle className="cv-m-cur" cx={x} cy={y} r={5.5} />
   return <circle className="cv-m-mc" cx={x} cy={y} r={4.5} />
 }
 

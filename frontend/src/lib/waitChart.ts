@@ -93,6 +93,15 @@ export function todayWaitRows(periods: ObservedWaitPeriod[], counters: Map<strin
   }))
 }
 
+/**
+ * Recorded minus Estimated, in unrounded minutes (Phase C readout "Gap"); negative when the recorded
+ * wait is shorter. Null unless both values are known: a gap is never computed against a missing value.
+ */
+export function waitGap(recorded: number | null, estimated: number | null): number | null {
+  if (recorded === null || estimated === null || !Number.isFinite(recorded) || !Number.isFinite(estimated)) return null
+  return recorded - estimated
+}
+
 /** The plan's 95% range in minutes with the lower end shown as max(0, lower); null when a side is missing. */
 export function waitRange(ci: [number | null, number | null] | null | undefined): WaitRange | null {
   if (!ci) return null
