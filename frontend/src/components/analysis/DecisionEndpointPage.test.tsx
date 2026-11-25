@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../../test/test-utils'
 import { DecisionEndpointPage } from './DecisionEndpointPage'
@@ -263,5 +263,50 @@ describe('DecisionEndpointPage refusal detail (5d)', () => {
     await user.click(await screen.findByRole('button', { name: 'Generate Decision' }))
     expect(await screen.findByText(detail)).toHaveAttribute('role', 'alert')
     expect(screen.queryByText('The server encountered an error. Please try again.')).not.toBeInTheDocument()
+  })
+})
+
+describe('DecisionEndpointPage check strip (Phase E)', () => {
+  const family = { estimand: 'mean_load', confidence_level: 0.95, family_size: 60, replications: 20, assumptions: [], pass_count: 50, fail_count: 8, insufficient_count: 2 }
+  const separateDecision = { ...insufficient, provenance: 'SELECTED', status: 'revise', missing_evidence: [], failed_periods: [],
+    facts: { validation_checks: 60, failed_checks: 8 }, load_uncertainty: family, evidence_ids: { selection: 1, des: 10, mc: 11, validation: 12 } }
+  const mcRows = (trials: number[]) => trials.map((num_trials, index) => ({ time: '08:00', queue_id: index ? 'b' : 'a', num_trials, failure_threshold: 0.85, failure_rate_cap: 0.05 }))
+  const workflowWith = (decision: unknown, stale = false, mc: unknown = null) => ({ analysis_id: 7, selection: null, scenario: null, des: null, mc, validation: null,
+    decision: { id: 5, kind: 'workflow_decision', status: 'completed', params: {}, result: decision, created_at: '2026-09-13T00:00:00Z', finished_at: '2026-09-13T00:01:00Z' },
+    decision_stale: stale })
+  const strip = () => within(screen.getByTestId('check-count-strip')).getAllByRole('definition').map((node) => node.textContent)
+
+  it('shows the decision\'s recorded total and outcome counts, and the trials of its own run', async () => {
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    getWorkflowMock.mockResolvedValue(workflowWith(separateDecision, false, { id: 11, kind: 'workflow_mc', status: 'completed', params: {}, result: { results: mcRows([2000, 2000]) } }))
+    renderPage()
+    await screen.findByTestId('check-count-strip')
+    expect(strip()).toEqual(['60', '50', '8', '2'])
+    expect(screen.getByTestId('check-method-trials')).toHaveTextContent('2,000')
+    expect(screen.getByTestId('check-method-rule')).toHaveTextContent('A variation fails when a cashier’s Utilization Rate is above 85%.')
+  })
+
+  it('shows Unavailable trials for a run the decision did not use, and Unavailable counts for legacy evidence', async () => {
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    const legacy = { ...separateDecision, load_uncertainty: undefined }
+    getWorkflowMock.mockResolvedValue(workflowWith(legacy, false, { id: 99, kind: 'workflow_mc', status: 'completed', params: {}, result: { results: mcRows([2000, 2000]) } }))
+    renderPage()
+    await screen.findByTestId('check-count-strip')
+    expect(strip()).toEqual(['60', 'Unavailable', 'Unavailable', 'Unavailable'])
+    expect(screen.getByTestId('check-method-trials')).toHaveTextContent('Unavailable')
+  })
+
+  it('shows no strip for a shared-queue decision or a stale decision, and keeps the stale alert', async () => {
+    getWorkflowMock.mockResolvedValue(workflowWith(insufficient))
+    const view = renderPage()
+    expect(await screen.findByTestId('decision-plain')).toBeInTheDocument()
+    expect(document.querySelector('.check-stats')).toBeNull()
+    view.unmount()
+    getAnalysisMock.mockResolvedValue(analysisWith('separate_queues'))
+    getWorkflowMock.mockResolvedValue(workflowWith(separateDecision, true))
+    renderPage()
+    expect(await screen.findByText(/prior Decision is stale/)).toBeInTheDocument()
+    expect(document.querySelector('.check-stats')).toBeNull()
+    expect(screen.queryByTestId('check-method-details')).not.toBeInTheDocument()
   })
 })

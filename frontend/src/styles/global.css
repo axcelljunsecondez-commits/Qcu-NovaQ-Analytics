@@ -5738,3 +5738,17 @@ button[aria-busy='true']::before {
   .analyses-page .analysis-entry-details > p { margin-block: 4px; }
   .analyses-page .analysis-actions { margin-top: 0; justify-self: end; flex-wrap: wrap; }
 }
+
+/* Phase E (2026-11-25): recorded separate-lines check counts and the method disclosure. Existing tokens only. */
+.check-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-sm); margin: var(--space-sm) 0 var(--space-md); }
+.check-stats > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--color-border-subtle); border-radius: 8px; background: var(--color-bg-subtle); }
+.check-stats dt { margin: 0; color: var(--color-text-secondary); font-size: 0.8125rem; font-weight: 600; overflow-wrap: anywhere; }
+.check-stats dd { margin: 4px 0 0; color: var(--color-text-primary); font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .check-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.check-method-details { margin: 0 0 var(--space-md); }
+.check-method-details > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font-weight: 600; color: var(--color-action-link); }
+.check-method-details > summary:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; border-radius: 4px; }
+.check-method-list { margin: 0 0 var(--space-sm); }
+.check-method-list > div { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.check-method-list dt { color: var(--color-text-secondary); }
+.check-method-list dd { margin: 0; font-variant-numeric: tabular-nums; }

@@ -31,6 +31,8 @@ import {
 } from '../../lib/simulationEvidence'
 import { plainDecision, type PlainDecision } from '../../lib/decisionPlain'
 import { ManyVariationsChart, ManyVariationsInfo } from './ManyVariationsChart'
+import { CheckCountStrip } from './CheckCountStrip'
+import { CheckMethodDetails } from './CheckMethodDetails'
 import { mcRangeText } from '../../lib/manyVariations'
 import { DecisionDetailsDialog } from './DecisionDetailsDialog'
 import { suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
@@ -256,6 +258,12 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
       <section className="card" aria-labelledby="decision-title">
         <h2 lang="en" id="decision-title" className="section-title">{headingText(t, 'decision.plain.heading')}</h2>
         <p className="form-hint">{t('simulation.sep_selected_plan')}: {scenario.name}</p>
+        {/* Phase E (owner O-E1): the recorded counts of this plan's Results check, shown exactly as stored. */}
+        {validationResult && <>
+          <CheckCountStrip total={validationResult.verdict.total} passed={validationResult.load_uncertainty?.pass_count}
+            failed={validationResult.load_uncertainty?.fail_count} insufficient={validationResult.load_uncertainty?.insufficient_count} />
+          <CheckMethodDetails rows={checkedMcRows} planTarget={planTarget} />
+        </>}
         {decision ? (
           <div>
             <div role={decision.status === 'revise' || decision.status === 'insufficient_evidence' ? 'alert' : 'status'} className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`}>

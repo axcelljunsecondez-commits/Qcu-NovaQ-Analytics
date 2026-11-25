@@ -3,15 +3,11 @@ import { useTranslation } from 'react-i18next'
 import type { SimMcOut } from '../../api/types'
 import { axisTicks } from '../../lib/chartScale'
 import { fmtPctDecimal } from '../../lib/format'
-import { failureRate, highestRiskIndex, mcAxisMax, mcPeriods, mcRangeText, storedMcParameters } from '../../lib/manyVariations'
+import { failureRate, highestRiskIndex, mcAxisMax, mcPeriods, mcRangeText, storedMcParameters, trialsText } from '../../lib/manyVariations'
 import { RowChart, type ChartRow } from '../charts/RowChart'
 import { InfoTip } from '../ui/InfoTip'
 
 const SAME = 1e-9
-
-function trialsText(trials: number): string {
-  return trials.toLocaleString('en-US')
-}
 
 /**
  * "What is Many variations?" filled from the STORED run (spec 2026-10-29 §8.1, C5): trials, threshold
