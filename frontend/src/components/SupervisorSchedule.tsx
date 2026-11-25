@@ -9,6 +9,7 @@ import { DEFAULT_OPTIONS, previewSupervisorSchedule, applySupervisorSchedule,
 import { createScenario } from '../api/scenarios'
 import { selectWorkflowScenario } from '../api/workflow'
 import { currentDatasetId, isForPlanning } from '../lib/datasets'
+import { breakOrdinal, breakOrdinalText } from '../lib/breakOrdinal'
 import { fmt, fmtPctDecimal, messageOf } from '../lib/format'
 import { HelpLink } from './ui/HelpLink'
 import { SavedPlanPicker } from './SavedPlanPicker'
@@ -21,17 +22,38 @@ type Checked = {
 
 type BreakMove = NonNullable<SupervisorPreview['breaks']>['moves'][number]
 
+type BreakFilter = 'all' | number
+
+/**
+ * Break Changes to Review (Phase D, owner-authorized 2026-11-25): the server's moves in server order,
+ * filtered by break order and shown 5 per page. Filtering only hides rows; it never sorts, merges,
+ * deduplicates or recomputes a move. A label without a known order is shown, unchanged, under All only.
+ */
 function BreakMoves({ moves }: { moves: BreakMove[] }) {
   const { t } = useTranslation()
+  const regionId = useId()
+  const [filter, setFilter] = useState<BreakFilter>('all')
   const [pageIndex, setPageIndex] = useState(0)
-  const pageSize = 4
-  const pageCount = Math.ceil(moves.length / pageSize)
-  const page = Math.min(pageIndex, pageCount - 1)
-  const visibleMoves = moves.slice(page * pageSize, (page + 1) * pageSize)
+  const ordinals = [...new Set(moves.map((move) => breakOrdinal(move.label)).filter((n): n is number => n !== null))].sort((a, b) => a - b)
+  const filtered = filter === 'all' ? moves : moves.filter((move) => breakOrdinal(move.label) === filter)
+  const pageSize = 5
+  const pageCount = Math.ceil(filtered.length / pageSize)
+  const page = Math.max(0, Math.min(pageIndex, pageCount - 1))
+  const visibleMoves = filtered.slice(page * pageSize, (page + 1) * pageSize)
+  const choose = (next: BreakFilter) => {
+    setFilter(next)
+    setPageIndex(0)
+  }
 
   return (
     <>
-      <div className="table-scroll supervisor-break-table" role="region" tabIndex={0} aria-label={t('supervisor.break_changes')}>
+      <div className="supervisor-break-filters" role="group" aria-label={t('supervisor.break_filter_label')}>
+        <button type="button" aria-pressed={filter === 'all'} aria-controls={regionId} onClick={() => choose('all')}>{t('supervisor.break_filter_all')}</button>
+        {ordinals.map((n) => (
+          <button key={n} type="button" aria-pressed={filter === n} aria-controls={regionId} onClick={() => choose(n)}>{breakOrdinalText(t, n)}</button>
+        ))}
+      </div>
+      <div id={regionId} className="table-scroll supervisor-break-table" role="region" tabIndex={0} aria-label={t('supervisor.break_changes')}>
         <table>
           <caption>{t('supervisor.break_changes')}</caption>
           <thead><tr>
@@ -40,16 +62,21 @@ function BreakMoves({ moves }: { moves: BreakMove[] }) {
             <th scope="col">{t('supervisor.proposed_time')}</th>
             <th scope="col">{t('supervisor.length')}</th>
           </tr></thead>
-          <tbody>{visibleMoves.map((move) => (
-            <tr key={`${move.queue_id}-${move.from}-${move.to}`}>
-              <th scope="row">{move.queue_id}<br />{move.label.replace(/^Break (\d+)$/, (_, n) => t('optimize.breaks_label', { number: n }))}</th>
-              <td>{move.from.slice(0, 5)}</td>
-              <td>{move.to.slice(0, 5)}</td>
-              <td>{move.duration_minutes}</td>
-            </tr>
-          ))}</tbody>
+          <tbody>{visibleMoves.map((move) => {
+            const n = breakOrdinal(move.label)
+            return (
+              <tr key={`${move.queue_id}-${move.label}-${move.from}-${move.to}`}>
+                <th scope="row">{move.queue_id}<br />{n === null ? move.label : breakOrdinalText(t, n)}</th>
+                <td>{move.from.slice(0, 5)}</td>
+                <td>{move.to.slice(0, 5)}</td>
+                <td>{move.duration_minutes}</td>
+              </tr>
+            )
+          })}</tbody>
         </table>
       </div>
+      {/* Polite, so the range and Pagination's own page status are not announced over each other. */}
+      <p className="form-hint" role="status" aria-live="polite" data-testid="break-moves-range">{t('filters.showing', { shown: visibleMoves.length, total: filtered.length })}</p>
       <Pagination page={page} pageCount={pageCount} onPageChange={setPageIndex} />
     </>
   )
@@ -308,12 +335,13 @@ export function SupervisorSchedule({ analysis }: { analysis: AnalysisProjectOut 
         {result.schedule.overall !== 'COMPLETE' && result.schedule.reason && <p>{result.schedule.reason}</p>}
         {breaks && moves.length > 0 ? (
           <>
-            <BreakMoves key={result.preview_hash} moves={moves} />
             <dl className="supervisor-metrics">
               <div><dt>{t('supervisor.peak_slot')}</dt><dd>{fmtPctDecimal(breaks.peak_rho.before)} → {fmtPctDecimal(breaks.peak_rho.after)}</dd></div>
               <div><dt>{t('supervisor.wait')}</dt><dd>{fmt(breaks.des.current.summary.mean_wait_minutes)} → {fmt(breaks.des.proposed.summary.mean_wait_minutes)}</dd></div>
             </dl>
             <p>{t('supervisor.wait_verdict.' + (paired?.verdict ?? 'unavailable'))}</p>
+            {/* Phase D: the summary comes first; a new preview remounts the list (All, page 1). */}
+            <BreakMoves key={result.preview_hash} moves={moves} />
           </>
         ) : result.blockers.includes('no_moves') ? (
           <p>{t('supervisor.blockers.no_moves')}</p>
