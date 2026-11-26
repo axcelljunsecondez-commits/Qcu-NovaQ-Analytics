@@ -337,7 +337,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                   <tr key={period.time}>
                     <th scope="row">{period.time}</th><td>{period.active_queue_ids.length}</td><td>{period.des_ok ? '✓' : t('simulation.sep_des_incomplete')}</td>
                     <td>{period.queues.length === 0 ? '—' : period.queues.every((q) => rawMcVerdict(q) === 'pass') ? '✓' : period.queues.some((q) => rawMcVerdict(q) === 'fail') ? 'FAIL' : '—'}</td>
-                    <td>{period.status === 'pass' ? '✓' : period.status === 'fail' ? 'FAIL' : '—'}</td>
+                    <td>{period.status === 'pass' ? '✓' : period.status === 'fail' ? 'FAIL' : period.status === 'insufficient' ? t('simulation.verdict.insufficient') : '—'}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -351,7 +351,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                     <tbody>{period.queues.map((queue) => (
                       <tr key={String(queue.queue_id)}>
                         <th scope="row">{queue.queue_id ?? '—'}</th><td>{fmtDecimal(queue.rho_sim)}</td><td>{fmt(queue.Wq_sim === null || queue.Wq_sim === undefined ? null : queue.Wq_sim * 60)}</td>
-                        <td>{queue.mc_failure_rate === null || queue.mc_failure_rate === undefined ? '—' : fmt(queue.mc_failure_rate)}</td><td>{queue.validation_verdict === 'pass' ? '✓' : queue.validation_verdict === 'fail' ? 'FAIL' : '—'}</td>
+                        <td>{queue.mc_failure_rate === null || queue.mc_failure_rate === undefined ? '—' : fmt(queue.mc_failure_rate)}</td><td>{queue.validation_verdict === 'pass' ? '✓' : queue.validation_verdict === 'fail' ? 'FAIL' : queue.validation_verdict === 'inadequate' ? t('simulation.verdict.insufficient') : '—'}</td>
                       </tr>
                     ))}</tbody>
                   </table>

@@ -1595,8 +1595,31 @@ describe('a selected separate-lines plan', () => {
     expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('Run:')
     expect(screen.getByText(en['simulation.sep_validation_insufficient'])).toBeInTheDocument()
     expect(screen.queryByText(en['simulation.sep_validation_missing_reason'])).not.toBeInTheDocument()
-    // Lanes, DES, MC (raw Many variations: pass), Validation (assessed: not settled).
-    expect(mcCells('08:00')).toEqual(['1', '✓', '✓', '—'])
+    // Lanes, DES, MC (raw Many variations: pass), Validation (assessed: not settled; owner 2026-11-26 shows the words).
+    expect(mcCells('08:00')).toEqual(['1', '✓', '✓', 'Not enough to tell'])
+  })
+
+  // Owner 2026-11-26 ("Show the words"): an unsettled Results check reads "Not enough to tell" instead of "—".
+  // Stored values (backend/api/workflow.py): period status pass | fail | insufficient; lane validation_verdict
+  // pass | fail | inadequate. Any other or missing value keeps "—".
+  const validationCells = (lang: 'en' | 'tl' = 'en') => {
+    const dict = lang === 'tl' ? tl : en
+    const period = within(screen.getByRole('region', { name: dict['simulation.sep_validation_title'] })).getAllByRole('cell').map((cell) => cell.textContent)
+    const lane = within(screen.getByRole('region', { name: `${dict['compare.sep_candidate_detail']} · 08:00` })).getAllByRole('cell').map((cell) => cell.textContent)
+    return { period: period[period.length - 1], lane: lane[lane.length - 1] }
+  }
+  it.each([
+    ['an unsettled check', v1Validation('inadequate', 'pass', 'insufficient'), 'en', 'Not enough to tell', 'Not enough to tell'],
+    ['an unsettled check in Tagalog', v1Validation('inadequate', 'pass', 'insufficient'), 'tl', 'Kulang para masabi', 'Kulang para masabi'],
+    ['a passed check', v1Validation('pass', 'pass', 'pass'), 'en', '✓', '✓'],
+    ['a failed check', v1Validation('fail', 'fail', 'fail'), 'en', 'FAIL', 'FAIL'],
+    ['an unrecorded result', v1Validation(null as unknown as string, 'pass', null as unknown as string), 'en', '—', '—'],
+  ] as const)('shows the Results check cells for %s', async (_name, validation, lang, period, lane) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', { ...mcResult, selected_load_method: v1 }, { scenario_id: 9 }),
+      validation: job('workflow_validation', validation, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7', lang)
+    await screen.findByRole('region', { name: (lang === 'tl' ? tl : en)['simulation.sep_validation_title'] })
+    expect(validationCells(lang)).toEqual({ period, lane })
   })
 
   it.each([
