@@ -1622,6 +1622,39 @@ describe('a selected separate-lines plan', () => {
     expect(validationCells(lang)).toEqual({ period, lane })
   })
 
+  // Owner 2026-11-26: pilot guidance under an Insufficient evidence decision when the Many variations run the
+  // decision cites passed in every row and the recorded family has no failed and some unsettled checks.
+  const guidanceFamily = (fail: number, insufficient: number) => ({ estimand: 'mean_load', confidence_level: 0.95, family_size: 1, replications: 20,
+    assumptions: [], pass_count: 1 - fail - insufficient, fail_count: fail, insufficient_count: insufficient })
+  const guided = { ...v1Inconclusive, load_uncertainty: guidanceFamily(0, 1), evidence_ids: { selection: 1, des: 10, mc: 11, validation: 12 } }
+  const mcJob = (status: string, id = 11) => ({ ...job('workflow_mc', { ...mcResult, selected_load_method: v1, results: [{ ...mcResult.results[0], status }] }, { scenario_id: 9 }), id })
+  function guidanceCase(decisionResult: unknown, mc: unknown, stale = false) {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc,
+      validation: job('workflow_validation', v1Validation('inadequate', 'pass', 'insufficient'), { scenario_id: 9 }),
+      decision: job('workflow_decision', decisionResult, { scenario_id: 9 }), decision_stale: stale })
+  }
+
+  it.each([['en', en], ['tl', tl]] as const)('shows the pilot guidance in the %s Decision card, beside the unchanged answer', async (lang, dict) => {
+    guidanceCase(guided, mcJob('PASS'))
+    renderPage('/simulation/checks?analysis=7', lang)
+    expect(await screen.findByTestId('selected-raw-pass-guidance')).toHaveTextContent(dict['decision.plain.selected_insufficient_raw_pass'])
+    if (lang === 'en') expect(screen.getByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 08:00')
+  })
+
+  it.each([
+    ['a failed Many variations row', guided, mcJob('FAIL'), false],
+    ['a run the decision does not cite', guided, mcJob('PASS', 99), false],
+    ['a recorded failed check', { ...guided, status: 'revise', load_uncertainty: guidanceFamily(1, 0) }, mcJob('PASS'), false],
+    ['legacy evidence without the family', { ...guided, load_uncertainty: undefined }, mcJob('PASS'), false],
+    ['a stale decision', guided, mcJob('PASS'), true],
+  ] as const)('hides the pilot guidance for %s', async (_name, decisionResult, mc, stale) => {
+    guidanceCase(decisionResult, mc, stale)
+    renderPage('/simulation/checks?analysis=7')
+    await screen.findByRole('heading', { name: 'Should we use this plan?' })
+    await screen.findByRole('region', { name: en['simulation.sep_validation_title'] })
+    expect(screen.queryByTestId('selected-raw-pass-guidance')).not.toBeInTheDocument()
+  })
+
   it.each([
     ['a legacy result', { ...validationResult, periods: [{ ...validationResult.periods[0], status: 'insufficient',
       queues: [{ ...validationResult.periods[0].queues[0], validation_verdict: 'inadequate' }] }],

@@ -33,6 +33,7 @@ import { plainDecision, type PlainDecision } from '../../lib/decisionPlain'
 import { ManyVariationsChart, ManyVariationsInfo } from './ManyVariationsChart'
 import { CheckCountStrip } from './CheckCountStrip'
 import { CheckMethodDetails } from './CheckMethodDetails'
+import { showSelectedRawPassGuidance } from '../../lib/selectedRawPassGuidance'
 import { mcRangeText } from '../../lib/manyVariations'
 import { DecisionDetailsDialog } from './DecisionDetailsDialog'
 import { suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
@@ -248,6 +249,9 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   // A stored validation row records an unsupported or errored Many variations row only as 'inadequate', so read
   // that row's own status from the exact MC job this Results check used (never from a later run).
   const checkedMcRows = mcEvidence && mcResult && validationResult && mcEvidence.id === validationResult.mc_job_id ? mcResult.results : []
+  // Owner 2026-11-26: the guidance reads only the Many variations job this decision cites (evidence_ids.mc).
+  const decisionMcRows = decision && mcEvidence && mcResult && decision.evidence_ids?.mc === mcEvidence.id ? mcResult.results : []
+  const rawPassGuidance = decision !== null && showSelectedRawPassGuidance({ status: decision.status, mcRows: decisionMcRows, loadUncertainty: decision.load_uncertainty })
   const mcRowUnavailable = (time: string, queueId: string | null) => checkedMcRows.some((row) => row.time === time
     && (row.queue_id ?? null) === queueId && (row.simulation_supported === false || row.status === 'ERROR' || Boolean(row.error)))
   const validationEvidenceMissing = validationResult !== null && (validationResult.selected_load_method !== SELECTED_LOAD_METHOD_V1
@@ -272,6 +276,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                 missing: decision.missing_evidence, inadequatePeriods: decision.inadequate_periods })} />
               {knownDecisionStatus(decision.status) && <>{' '}<span className="badge badge-neutral">{decisionStatusLabel(decision.status, t)}</span></>}
             </div>
+            {rawPassGuidance && <p className="alert alert-info" data-testid="selected-raw-pass-guidance">{t('decision.plain.selected_insufficient_raw_pass')}</p>}
             <p className="alert alert-warn" data-testid="selected-decision-scope">
               {loadAssessed ? t('decision.plain.selected_load_assessment_notice') : <>
                 <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}

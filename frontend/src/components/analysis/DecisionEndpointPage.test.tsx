@@ -310,3 +310,53 @@ describe('DecisionEndpointPage check strip (Phase E)', () => {
     expect(screen.queryByTestId('check-method-details')).not.toBeInTheDocument()
   })
 })
+
+describe('DecisionEndpointPage pilot guidance (owner 2026-11-26)', () => {
+  const EN = "The plan held up in Many variations, but the Results check needs more evidence before it can confirm it. Use it as a pilot: record arrivals and waits, and open another cashier if any line's wait in a period goes over your limit."
+  const TL = 'Pumasa ang plano sa Many variations, pero kailangan pa ng Results check ng mas maraming ebidensiya bago ito makumpirma. Gamitin ito bilang pilot: itala ang pagdating at paghihintay, at magbukas ng isa pang cashier kapag lumampas sa limit ang hintay sa alinmang linya sa isang period.'
+  const family = (fail: number, insufficient: number) => ({ estimand: 'mean_load', confidence_level: 0.95, family_size: 60, replications: 20, assumptions: [], pass_count: 60 - fail - insufficient, fail_count: fail, insufficient_count: insufficient })
+  const base = { ...insufficient, provenance: 'SELECTED', missing_evidence: [], inadequate_periods: ['08:00'], selected_load_method: 'selected-load-truncated-hoeffding-v1',
+    facts: { validation_checks: 60, failed_checks: 0, inadequate_checks: 60 }, load_uncertainty: family(0, 60), evidence_ids: { selection: 2, des: 4, mc: 6, validation: 7 } }
+  const mc = (statuses: string[], id = 6) => ({ id, kind: 'workflow_mc', status: 'completed', params: {}, result: { results: statuses.map((status, index) => ({ time: '08:00', queue_id: String(index), status })) } })
+  const workflowWith = (decision: unknown, mcJob: unknown, stale = false) => ({ analysis_id: 7, selection: null, scenario: null, des: null, mc: mcJob, validation: null,
+    decision: { id: 8, kind: 'workflow_decision', status: 'completed', params: {}, result: decision, created_at: '', finished_at: '' }, decision_stale: stale })
+
+  async function render(decision: unknown, mcJob: unknown, { separate = true, stale = false, lang = 'en' as 'en' | 'tl' } = {}) {
+    getAnalysisMock.mockResolvedValue(analysisWith(separate ? 'separate_queues' : 'shared_queue'))
+    getWorkflowMock.mockResolvedValue(workflowWith(decision, mcJob, stale))
+    const view = renderWithProviders(<Routes><Route path="/analyses/:analysisId/decision" element={<DecisionEndpointPage />} /></Routes>, { route: '/analyses/7/decision', lang })
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(getWorkflowMock).toHaveBeenCalled())
+    return view
+  }
+
+  it('shows the owner guidance beside the unchanged answer when every cited run row passed', async () => {
+    await render(base, mc(['PASS', 'PASS']))
+    const guidance = await screen.findByTestId('selected-raw-pass-guidance')
+    expect(guidance).toHaveTextContent(EN)
+    // The existing answer and recommendation are unchanged.
+    expect(screen.getByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 08:00')
+    expect(screen.getByText(insufficient.recommendation)).toBeInTheDocument()
+  })
+
+  it('shows the Tagalog guidance', async () => {
+    await render(base, mc(['PASS']), { lang: 'tl' })
+    expect(await screen.findByTestId('selected-raw-pass-guidance')).toHaveTextContent(TL)
+  })
+
+  it.each([
+    ['a revise decision', { ...base, status: 'revise' }, mc(['PASS']), {}],
+    ['a conditional decision', { ...base, status: 'conditional' }, mc(['PASS']), {}],
+    ['a failed Many variations row', base, mc(['PASS', 'FAIL']), {}],
+    ['a run the decision does not cite', base, mc(['PASS'], 99), {}],
+    ['missing Many variations rows', base, null, {}],
+    ['legacy evidence without the family', { ...base, load_uncertainty: undefined }, mc(['PASS']), {}],
+    ['a recorded failed check', { ...base, load_uncertainty: family(1, 59) }, mc(['PASS']), {}],
+    ['a shared-queue decision', base, mc(['PASS']), { separate: false }],
+    ['a stale decision', base, mc(['PASS']), { stale: true }],
+  ] as const)('hides the guidance for %s', async (_name, decision, mcJob, options) => {
+    await render(decision, mcJob, options)
+    await screen.findByText('stale' in options && options.stale ? /prior Decision is stale/ : insufficient.provenance_warning)
+    expect(screen.queryByTestId('selected-raw-pass-guidance')).not.toBeInTheDocument()
+  })
+})

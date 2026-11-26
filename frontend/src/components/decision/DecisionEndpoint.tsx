@@ -5,6 +5,7 @@ import { SELECTED_LOAD_METHOD_V1, type SimMcOut } from '../../api/types'
 import { CheckCountStrip } from '../queueSimulation/CheckCountStrip'
 import { CheckMethodDetails } from '../queueSimulation/CheckMethodDetails'
 import { plainDecision } from '../../lib/decisionPlain'
+import { showSelectedRawPassGuidance } from '../../lib/selectedRawPassGuidance'
 
 interface DecisionEndpointProps {
   decision: WorkflowDecision | null
@@ -84,6 +85,10 @@ export function DecisionEndpoint({
           </p>}
           <p className="decision-headline">{decision.headline}</p>
           <p className="decision-recommendation">{decision.recommendation}</p>
+          {/* Owner 2026-11-26: pilot guidance when the cited Many variations run passed everywhere but the check was unsettled. */}
+          {separate && showSelectedRawPassGuidance({ status: decision.status, mcRows, loadUncertainty: decision.load_uncertainty }) && (
+            <p className="alert alert-info" data-testid="selected-raw-pass-guidance">{t('decision.plain.selected_insufficient_raw_pass')}</p>
+          )}
 
           <h3 lang="en" className="section-title">{headingText(t, 'decision.evidence')}</h3>
           <ul className="decision-evidence">
