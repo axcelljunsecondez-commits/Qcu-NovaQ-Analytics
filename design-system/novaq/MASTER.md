@@ -1,8 +1,8 @@
 # NovaQ Design System — Master
 
 **Status:** Approved design-system source of truth
-**Version:** 1.2 (amended 2026-11-09)
-**Date:** 2026-09-13; amended 2026-11-09
+**Version:** 1.4 (amended 2026-11-25)
+**Date:** 2026-09-13; amended 2026-11-09, 2026-11-24 and 2026-11-25
 **Platform:** Responsive web application
 **Stack:** React 19, React Router, global CSS, Plotly, i18next
 **Implementation state:** Contract defined; migration occurs through the approved refinement plan. The 2026-10-09 amendments (Section 0) describe the owner-approved redesign target; they are not implemented yet, and the current application still follows version 1.0 until each redesign phase ships.
@@ -11,6 +11,8 @@
 
 | Date | Section | Change | Source |
 |---|---|---|---|
+| 2026-11-25 | 4.1, 4.3, 7 | Results line chart (Phase C): 1.8 s left-to-right clip-path reveal of the data marks only, replayed on first data, on every Wait/Arrivals click and on a file change; reduced motion shows the chart at once. Chart-grid and estimated tokens are now in use (recorded blue, estimated gold dashed, plan aqua); a simulated Current run keeps a blue ring (`cv-m-cur`) | Owner decisions OD-C1..C6, 2026-11-25; `docs/superpowers/reference/NovaQ_Context_Engineering_and_Audit.md` (owner handoff) and `NovaQ_Final_HTML5_Reference.html` (reveal lines 436-437, reduced motion 465-467) |
+| 2026-11-24 | 2, 4.1, 4.2, 4.3, 10.1, 11.1, 15.3 | Dark Navy and Brass single fixed theme replaces the light Cobalt and Brass palette (no theme switcher; static `color-scheme: dark`). AA fixes O-A1: control borders `#7890B2`; primary hover keeps `#2664DB` and adds a `#99C0FF` ring/border (never `#3473E8` under white text); pressed `#0F367C`; dark status set. Chart data colors O-A2: current/recorded blue, estimated gold (dashed when drawn as a line), optimized/suggested aqua. Slim theme-matched scrollbars. Replay presentation unchanged | Owner decisions in chat 2026-11-24; palette from `docs/superpowers/reference/NovaQ_Final_HTML5_Reference.html` dark `:root` |
 | 2026-11-16 | 7 | Note only: the 205 ms panel entrance now applies to the Quick Calculator situation tabs, because the Results chart tabs were removed; no rule changed | Cobalt review follow-up, owner request 2026-11-16 |
 | 2026-11-16 | 4.1, 11.1, 15.3 | Theme selection removed per the owner: no light/dark choice, no `novaq_theme` read/write, no dark CSS; light Cobalt and Brass tokens are the only styles | Owner request 2026-11-16 |
 | 2026-11-09 | 2,4,5,7,18 | Cobalt content actions, navy/brass navigation, light-only local theme, self-hosted Inter/Plex numeric fonts and scoped pathname/tab entrance; protected replay unchanged | `docs/superpowers/specs/2026-11-09-cobalt-brass-ui.md`, current owner execution request |
@@ -46,9 +48,9 @@ NovaQ is a pilot-deployable queueing analytics and operations-decision tool. Its
 - compact enough for operational data but readable at normal zoom;
 - minimal, grid-based, high-contrast, and low-motion;
 - recognizably NovaQ through the existing navy/gold identity; and
-- equally usable in English and Filipino, the approved light interface, keyboard and touch input.
+- equally usable in English and Filipino, the approved dark interface (since 2026-11-24), keyboard and touch input.
 
-Do not adopt the local design search’s Fira fonts, marketing gateway layout, or GSAP. The 2026-11-09 approved amendment uses Cobalt and Brass, locally hosted Inter text and IBM Plex Mono numeric values, while retaining the existing application architecture and chart renderers.
+Do not adopt the local design search’s Fira fonts, marketing gateway layout, or GSAP. The 2026-11-09 approved amendment introduced locally hosted Inter text and IBM Plex Mono numeric values, while retaining the existing application architecture and chart renderers. The 2026-11-24 amendment replaces the light Cobalt and Brass palette with the single Dark Navy and Brass theme.
 
 ## 3. Non-negotiable design principles
 
@@ -70,62 +72,71 @@ Tokens use three layers:
 
 `frontend/src/styles/theme.css` remains the runtime source. Existing variables such as `--bg-page`, `--text-primary`, `--accent`, and `--border` remain as compatibility aliases during migration; new code uses the canonical names below.
 
-### 4.1 Active light tokens and historical dark mappings
+### 4.1 Active dark tokens
 
-The 2026-11-09 UI is light-only. Theme selection was removed on 2026-11-16 per the owner, and the dark CSS mappings were deleted from `theme.css`; Dark column values below are a historical record only. The dated Cobalt and Brass specification governs the active light palette; Current/Optimized and status meanings remain intact.
+Amended 2026-11-24 (owner): the UI has one fixed Dark Navy and Brass theme with a static `color-scheme: dark`. There is no theme selection. The light Cobalt and Brass values (2026-11-09) and the older dark mappings are superseded and kept only in Git history. The palette comes from the dark `:root` of `docs/superpowers/reference/NovaQ_Final_HTML5_Reference.html`, with the owner-approved AA fixes (O-A1).
 
-| Canonical token | Light | Dark | Required use |
-|---|---:|---:|---|
-| `--color-bg-canvas` | `#F5F7FA` | `#0B1120` | Application background |
-| `--color-bg-surface` | `#FFFFFF` | `#162032` | Cards, panels, menus |
-| `--color-bg-subtle` | `#EEF3F8` | `#1E293B` | Grouped rows and secondary surfaces |
-| `--color-bg-sidebar` | `#0F2D5C` | `#070D18` | Global navigation |
-| `--color-bg-input` | `#FFFFFF` | `#1B2A4A` | Editable control background |
-| `--color-text-primary` | `#101F36` | `#E2E8F0` | Body and headings |
-| `--color-text-secondary` | `#53647B` | `#B0BDCC` | Supporting text; not disabled text |
-| `--color-text-inverse` | `#FFFFFF` | `#071729` | Text on dark navy or bright gold as appropriate |
-| `--color-border-subtle` | `#DBE3EE` | `#2B3B52` | Decorative separation |
-| `--color-border-control` | `#6B7C90` | `#7890A8` | Input/control boundary where 3:1 is required |
-| `--color-action-primary-bg` | `#0055DA` | `#F0B84C` | Primary action fill |
-| `--color-action-primary-fg` | `#FFFFFF` | `#071729` | Primary action label/icon |
-| `--color-action-primary-hover` | `#034BBE` | `#E8A838` | Hover/pressed layer |
-| `--color-action-link` | `#185E86` | `#7CCCF0` | Inline links |
-| `--color-focus-ring` | `#1D63A8` | `#F0B84C` | Keyboard focus indicator |
-| `--color-disabled-bg` | `#E2E8F0` | `#334155` | Disabled fill |
-| `--color-disabled-fg` | `#52647A` | `#94A3B8` | Disabled label; always paired with disabled semantics |
-| `--color-disabled-border` | `#94A3B8` | `#475569` | Disabled control boundary |
+| Canonical token | Dark value | Required use |
+|---|---:|---|
+| `--color-bg-canvas` | `#0B1221` | Application background |
+| `--color-bg-surface` | `#121E33` | Cards, panels, menus |
+| `--color-bg-subtle` / `--color-bg-raised` | `#17253E` | Grouped rows, hover layers, tooltips |
+| `--color-bg-sidebar` | `#0E192D` | Global navigation |
+| `--color-bg-input` | `#0E192D` | Editable control background |
+| `--color-bg-hero` | `#172944` | Hero and cover panels |
+| `--color-text-primary` | `#F1F5FF` | Body and headings |
+| `--color-text-secondary` | `#A8B9D1` | Supporting text; not disabled text |
+| `--color-text-inverse` | `#FFFFFF` | Text on the dark navy sidebar/hero |
+| `--color-text-on-fill` | `#0B1221` | Text on light fills (brass, status and data colors) |
+| `--color-border-subtle` | `#263753` | Decorative separation |
+| `--color-border-control` | `#7890B2` | Input/control boundary where 3:1 is required (O-A1; not `#425778`) |
+| `--color-action-primary-bg` | `#2664DB` | Primary action fill, white label |
+| `--color-action-primary-fg` | `#FFFFFF` | Primary action label/icon |
+| `--color-action-primary-hover` | `#2664DB` | Hover keeps the fill (O-A1) |
+| `--color-action-primary-hover-ring` | `#99C0FF` | Hover border plus 1 px outer ring |
+| `--color-action-primary-pressed` | `#0F367C` | Pressed fill |
+| `--color-action-link` | `#83B0FF` | Inline links, secondary-button text, active tab |
+| `--color-action-danger` | `#FFA89D` | Destructive action text/border; its hover fill uses on-fill text |
+| `--color-focus-ring` | `#99C0FF` | Keyboard focus indicator |
+| `--color-disabled-bg` | `#1D2A40` | Disabled fill |
+| `--color-disabled-fg` | `#A8B9D1` | Disabled label; always paired with disabled semantics |
+| `--color-disabled-border` | `#425778` | Disabled control boundary |
+| `--color-chart-grid` | `#2B3D59` | Chart grid lines; in use (Results line chart, 2026-11-25) |
+| `--color-scroll-thumb` / `--color-scroll-thumb-active` | `#566D8C` / `#7890B2` | Slim scrollbars, both axes |
 
-The active cobalt primary pair uses white text. Selected-pair contrast is approximately 6.34:1 at rest, 7.63:1 on hover and 11.42:1 pressed (#0F367C). Brass #D4A017 is a sidebar/brand accent, not a replacement for normal text. Primary/secondary text and action-link pairs must meet WCAG AA at implementation time.
+Brass `#EFC477` (`--brand-brass`, `--accent`) is the brand accent; text placed on a brass fill uses `--color-text-on-fill`. `#3473E8` must not be used under white text (4.41:1). Measured pairs (WCAG 2.x relative luminance, 2026-11-24): text on canvas 17.14:1, on surface 15.28:1, on raised 14.04:1; secondary text on surface 8.36:1, on raised 7.68:1; link on surface 7.64:1; white on primary 5.35:1, on pressed 11.42:1; control border on surface 5.11:1; focus ring on surface 9.00:1; on-fill text on brass 11.43:1.
 
 ### 4.2 Semantic status tokens
 
 Each status has background, border, and text/icon tokens. Border and text may share the listed foreground value, but component code must reference semantic aliases.
 
-| State | Light background / foreground | Dark background / foreground | Meaning |
-|---|---|---|---|
-| Success | `#EAF8F1` / `#087A4E` | `#0E2F25` / `#66E3A4` | Operation completed or explicit pass |
-| Warning | `#FFF4D6` / `#8A4B00` | `#33270F` / `#F3C76B` | Attention required, not failure |
-| Danger | `#FFF0F3` / `#B4233A` | `#3A1620` / `#FF8A9C` | Error, invalid, failed, destructive |
-| Info | `#EEF7FF` / `#185E86` | `#102C3B` / `#7CCCF0` | Neutral provenance or guidance |
-| Stale | warning pair | warning pair | Saved evidence no longer current; must include “Stale” text |
-| Unavailable | subtle background / secondary text | subtle background / secondary text | Missing, unsupported, or not calculated |
+| State | Background / foreground (dark, 2026-11-24) | Meaning |
+|---|---|---|
+| Success | `#0E2F25` / `#81DEB3` | Operation completed or explicit pass |
+| Warning | `#33270F` / `#EFC477` | Attention required, not failure |
+| Danger | `#3A1620` / `#FFA89D` | Error, invalid, failed, destructive |
+| Info | `#102C3B` / `#83B0FF` | Neutral provenance or guidance |
+| Stale | warning pair | Saved evidence no longer current; must include “Stale” text |
+| Unavailable | subtle background / secondary text | Missing, unsupported, or not calculated |
 
 Canonical names are `--color-success-{bg,border,fg}`, `--color-warning-{bg,border,fg}`, `--color-danger-{bg,border,fg}`, `--color-info-{bg,border,fg}`, `--color-stale-{bg,border,fg}`, and `--color-unavailable-{bg,border,fg}`.
 
-Measured foreground/background contrast for the approved status pairs is at least 4.92:1 in light and 7.12:1 in dark. Status text must still name the state; color alone is insufficient.
+Measured foreground/background contrast for the approved status pairs (2026-11-24) is success 8.98:1, warning 8.92:1, danger 8.62:1 and info 6.65:1; primary text on each status background is at least 13.25:1. Status text must still name the state; color alone is insufficient.
 
 ### 4.3 Current and optimized data tokens
 
-Current and optimized are comparison identities, not success/failure:
+Current, estimated and optimized are comparison identities, not success/failure. Amended 2026-11-24 (owner O-A2): recorded/current is blue, estimated is gold (dashed where an estimate is drawn as a line), and the optimized/suggested plan is aqua.
 
-| Token | Light | Dark |
-|---|---:|---:|
-| `--color-data-current` | `#2563EB` | `#60A5FA` |
-| `--color-data-current-bg` | `#EFF6FF` | `#102A43` |
-| `--color-data-optimized` | `#7C3AED` | `#C084FC` |
-| `--color-data-optimized-bg` | `#F5F3FF` | `#2B1B3D` |
+| Token | Dark value | Status |
+|---|---:|---|
+| `--color-data-current` | `#83B0FF` | In use |
+| `--color-data-current-bg` | `#14284A` | In use |
+| `--color-data-estimated` | `#EFC477` | In use (estimated marks and dashed line, 2026-11-25) |
+| `--color-data-estimated-bg` | `#2E2713` | In use (Estimated legend chip, 2026-11-25) |
+| `--color-data-optimized` | `#7CE1D3` | In use |
+| `--color-data-optimized-bg` | `#0F2E33` | In use |
 
-The primary data colors exceed 5:1 against their main surfaces. Charts also differentiate them with direct labels and solid-versus-dashed lines, distinct marker shapes, or patterns. Red/green is reserved for failure/success and must not be the sole Current/Optimized distinction.
+The primary data colors exceed 7:1 against the surface (current 7.64:1, estimated 10.19:1, optimized 10.77:1). Charts also differentiate them with direct labels and solid-versus-dashed lines, distinct marker shapes, or patterns. Red/green is reserved for failure/success and must not be the sole Current/Optimized distinction.
 
 ## 5. Typography
 
@@ -197,6 +208,7 @@ Motion is restrained and never required to understand state:
 - Amended 2026-10-09 (D29): replay speeds are 0.25×, 0.5×, 1×, 2×, 5× and 10×, measured against simulated time rather than the length of the trace. Customer markers glide between arriving, their place in line, their counter and finished, using transform and opacity only, with each move lasting about 0.2–0.9 s so markers never teleport or streak. Counts, clock and states stay exact from the reducer; the glide only animates how a marker reaches its exact position. Under reduced motion, markers move without gliding. The base rate (proposed: 1× = 1 simulated minute per real second) awaits owner confirmation.
 - Under `prefers-reduced-motion: reduce`, nonessential animation and smooth scrolling are disabled; loading and playback status remain understandable without motion.
 - Do not add GSAP. The 2026-11-09 amendment permits 220 ms pathname-only content entrance and 205 ms explicit chart-tab-panel entrance, with reduced-motion cancellation. (Note 2026-11-16: the Results chart tabs were later removed; the 205 ms panel entrance is used only by the Quick Calculator situation tabs.) Never animate/rekey playback on ?t/query updates or change marker timing/geometry.
+- Amended 2026-11-25 (owner, Phase C): the Results line chart reveals its data marks (the traces and nodes, never the grid, axes, labels or hit areas) left to right with `clip-path: inset(0 100% 0 0)` → `inset(0)` over 1800 ms after a 120 ms delay, `ease-in-out`. This is the one permitted exception to the transform/opacity rule. It replays on the first usable data, on every Wait/Arrivals click (including the measure already shown) and when the shown file changes; hover, focus, the arrow keys, filters, the Today/Plan sub-switch and a refetch of the same file never replay it. Under `prefers-reduced-motion: reduce` no animation runs and the marks are fully visible; a running reveal is cancelled when that setting turns on or the chart unmounts.
 
 ## 8. Responsive layout
 
@@ -321,7 +333,7 @@ An extraction is created only when at least two current consumers need the same 
 - Icon-only controls require an accessible name; icons next to visible text are `aria-hidden="true"`.
 - Pending actions are disabled, retain their width, expose busy state, and show a localized progress label.
 - Disabled actions use native `disabled` where possible. An unavailable navigation link uses `aria-disabled`, prevents activation, and is accompanied by the reason.
-- Hover, focus, pressed, disabled, and busy states are defined in the light interface.
+- Hover, focus, pressed, disabled, and busy states are defined in the dark interface (2026-11-24). Primary hover keeps its fill and adds the hover ring; secondary actions use link-blue text on the surface with a control border.
 
 ### 10.2 Fields and numeric inputs with units
 
@@ -446,7 +458,7 @@ Rules:
 
 ### 11.1 Theme
 
-- Theme selection was removed on 2026-11-16 per the owner. There is no light/dark mode, ThemeToggle or Settings theme option; the light Cobalt and Brass tokens in `theme.css` are the only styles, with a static `color-scheme: light`.
+- Dark only. Theme selection was removed on 2026-11-16 per the owner; on 2026-11-24 the owner replaced the light Cobalt and Brass palette with the single Dark Navy and Brass theme. There is no light/dark mode, ThemeToggle or Settings theme option; the dark tokens in `theme.css` are the only styles, with a static `color-scheme: dark`. No print stylesheet is defined.
 - The old `novaq_theme` device key is no longer read or written; stored values are left untouched.
 - A component may not read a raw theme color from a page-specific constant.
 
@@ -576,7 +588,7 @@ Verify representative populated, loading, empty, error, unavailable, stale, bloc
 - at 200% text zoom;
 - with keyboard only;
 - with reduced motion;
-- in the light interface (the only interface since 2026-11-16);
+- in the dark interface (the only interface since 2026-11-24);
 - in English and Filipino; and
 - with generated PDF/Excel preview fidelity where Reports is involved.
 

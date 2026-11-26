@@ -2,6 +2,30 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scroll-thumb) transparent;
+}
+
+/* Slim theme-matched scrollbars (both axes), after the 2026-11-24 HTML5 reference. */
+:is(.sidebar, .table-wrap, .table-scroll, .tabs, dialog):is(:hover, :focus-within) {
+  scrollbar-color: var(--color-scroll-thumb-active) transparent;
+}
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--color-scroll-thumb); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-scroll-thumb-active); }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-button { display: none; }
+}
+
+@media (forced-colors: active) {
+  *,
+  :is(.sidebar, .table-wrap, .table-scroll, .tabs, dialog):is(:hover, :focus-within) {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
 }
 
 html {
@@ -87,7 +111,7 @@ select {
   font-family: var(--font-family);
   background: var(--bg-input);
   color: var(--text-primary);
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-control);
   border-radius: 7px;
   padding: 10px 13px;
   font-size: 14px;
@@ -98,6 +122,12 @@ input:focus,
 select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
 }
 
 button {
@@ -134,7 +164,7 @@ button.btn-ghost:hover {
 button.btn-good {
   background: var(--success);
   border-color: var(--success);
-  color: #fff;
+  color: var(--color-text-on-fill);
 }
 
 button.btn-good:hover {
@@ -151,17 +181,17 @@ button.btn-good:hover {
 
 .badge-ok {
   background: var(--success);
-  color: #fff;
+  color: var(--color-text-on-fill);
 }
 
 .badge-warn {
   background: var(--warning);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
 }
 
 .badge-bad {
   background: var(--danger);
-  color: #fff;
+  color: var(--color-text-on-fill);
 }
 
 .badge-neutral {
@@ -242,7 +272,7 @@ button.btn-good:hover {
   height: 30px;
   border-radius: 50%;
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
   display: grid;
   place-items: center;
   font-weight: 700;
@@ -292,7 +322,7 @@ button.btn-good:hover {
   border: 1px solid var(--warning);
   border-radius: 8px;
   padding: 13px;
-  color: #6e4c1d;
+  color: var(--color-warning-fg);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -302,7 +332,7 @@ button.btn-good:hover {
   border: 1px solid var(--info);
   border-radius: 8px;
   padding: 13px;
-  color: #315575;
+  color: var(--color-info-fg);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -312,7 +342,7 @@ button.btn-good:hover {
   border: 1px solid var(--success);
   border-radius: 8px;
   padding: 13px;
-  color: #1a5c3a;
+  color: var(--color-success-fg);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -522,7 +552,7 @@ button.btn-good:hover {
   left: 0;
   bottom: 0;
   width: 200px;
-  background: linear-gradient(180deg, #08213f, #0a2d52);
+  background: var(--color-bg-sidebar);
   padding: 15px 10px;
   overflow-y: auto;
   display: flex;
@@ -531,12 +561,25 @@ button.btn-good:hover {
 }
 
 .sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--text-sidebar-heading);
   font-size: 19px;
   font-weight: 800;
   margin-bottom: 18px;
   padding: 4px 10px;
+  border-radius: 8px;
   letter-spacing: -0.6px;
+  text-decoration: none;
+}
+
+.sidebar-brand:hover {
+  background: rgba(255, 255, 255, 0.085);
+}
+
+.sidebar-brand-mark {
+  display: none;
 }
 
 .sidebar-brand b {
@@ -559,7 +602,7 @@ button.btn-good:hover {
 
 .sidebar-nav a.active {
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
   font-weight: 700;
 }
 
@@ -596,7 +639,7 @@ button.btn-good:hover {
 
 .lang-btn.active {
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
   border-color: var(--accent);
 }
 
@@ -712,6 +755,7 @@ button.btn-good:hover {
 /* ===== Login Page (Split Layout) ===== */
 .login-page {
   min-height: 100vh;
+  background: var(--color-bg-canvas);
   display: grid;
   grid-template-columns: minmax(420px, 1.05fr) minmax(460px, 0.95fr);
 }
@@ -719,7 +763,9 @@ button.btn-good:hover {
 .login-brand {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(145deg, #061a33 0%, #0a2d53 58%, #0d3b69 100%);
+  isolation: isolate;
+  background: radial-gradient(ellipse at 45% 0%, var(--color-bg-hero) 0, transparent 70%), var(--color-bg-surface);
+  border-right: 1px solid var(--color-border-subtle);
   color: white;
   padding: 36px 54px 42px;
   display: flex;
@@ -731,9 +777,12 @@ button.btn-good:hover {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: -1;
   background:
-    radial-gradient(circle at 75% 15%, rgba(38, 145, 255, 0.22), transparent 35%),
-    linear-gradient(125deg, transparent 48%, rgba(255, 255, 255, 0.05) 48.5%, transparent 49%);
+    repeating-linear-gradient(90deg, transparent 0 27px, var(--color-border-subtle) 28px 29px),
+    repeating-linear-gradient(0deg, transparent 0 27px, var(--color-border-subtle) 28px 29px);
+  mask-image: linear-gradient(90deg, transparent 19%, black 100%);
+  opacity: 0.55;
   pointer-events: none;
 }
 
@@ -813,7 +862,7 @@ button.btn-good:hover {
   place-items: center;
   font-size: 14px;
   font-weight: 900;
-  color: #fff;
+  color: var(--color-text-on-fill);
   flex-shrink: 0;
 }
 
@@ -884,7 +933,7 @@ button.btn-good:hover {
   align-items: center;
   justify-content: center;
   padding: 42px;
-  background: #fff;
+  background: var(--color-bg-surface);
 }
 
 .login-card {
@@ -1095,7 +1144,7 @@ button.btn-good:hover {
   border-radius: 0.5rem;
   padding: 0.65rem 1rem;
   background: var(--accent);
-  color: white;
+  color: var(--color-text-on-fill);
   text-decoration: none;
   font-weight: 600;
 }
@@ -1310,7 +1359,7 @@ button.btn-good:hover {
 
 .step.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--color-text-on-fill);
   border-color: var(--accent);
 }
 
@@ -1439,18 +1488,18 @@ button.btn-good:hover {
 }
 
 .insight-card.insight-warning {
-  background: var(--warning-bg, #fff8e1);
-  border-color: var(--warning, #f59e0b);
+  background: var(--warning-bg);
+  border-color: var(--warning);
 }
 
 .insight-card.insight-success {
-  background: var(--success-bg, #e8f5e9);
-  border-color: var(--success, #22c55e);
+  background: var(--success-bg);
+  border-color: var(--success);
 }
 
 .insight-card.insight-recommendation {
-  background: var(--info-bg, #e3f2fd);
-  border-color: var(--info, #3b82f6);
+  background: var(--info-bg);
+  border-color: var(--info);
 }
 
 .insight-card.insight-info {
@@ -1531,8 +1580,8 @@ button.btn-good:hover {
 }
 
 .decision-step.complete {
-  background: var(--success-bg, #e8f5e9);
-  color: var(--success, #22c55e);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .decision-step.pending {
@@ -1593,7 +1642,7 @@ button.btn-good:hover {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #7893b1;
+  color: var(--color-text-secondary);
   padding: 15px 10px 5px;
   margin-bottom: 0;
 }
@@ -1672,23 +1721,23 @@ button.btn-good:hover {
 }
 
 .status-badge.status-ok {
-  background: var(--success-bg, #e8f5e9);
-  color: var(--success, #22c55e);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .status-badge.status-peak {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
 }
 
 .status-badge.status-normal {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
 }
 
 .status-badge.status-lean {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
 }
 
 .status-legend {
@@ -1718,17 +1767,17 @@ button.btn-good:hover {
   display: inline-block;
 }
 
-.status-dot-peak { background: #dc2626; }
-.status-dot-normal { background: #f59e0b; }
-.status-dot-lean { background: #22c55e; }
+.status-dot-peak { background: var(--color-danger-fg); }
+.status-dot-normal { background: var(--color-warning-fg); }
+.status-dot-lean { background: var(--color-success-fg); }
 
 .status-badge.status-warning {
-  background: var(--warning-bg, #fff8e1);
-  color: var(--warning, #f59e0b);
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .row-warning {
-  background: var(--warning-bg, rgba(245, 158, 11, 0.05));
+  background: var(--warning-bg);
 }
 
 /* ===== Explanation Blocks ===== */
@@ -1799,7 +1848,7 @@ button.btn-good:hover {
 
 .goal-preset-btn.active {
   border-color: var(--accent);
-  background: var(--accent-bg, rgba(59, 130, 246, 0.05));
+  background: var(--accent-bg);
 }
 
 .goal-preset-label {
@@ -1851,15 +1900,15 @@ button.btn-good:hover {
 }
 
 .playback-bar-fill.ok {
-  background: var(--success, #22c55e);
+  background: var(--success);
 }
 
 .playback-bar-fill.warn {
-  background: var(--warning, #f59e0b);
+  background: var(--warning);
 }
 
 .playback-bar-fill.bad {
-  background: var(--error, #ef4444);
+  background: var(--color-danger-fg);
 }
 
 .playback-rho {
@@ -1904,7 +1953,7 @@ button.btn-good:hover {
 
 .playback-speed select {
   padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-control);
   border-radius: 4px;
   background: var(--bg-card);
   color: var(--text-primary);
@@ -1913,7 +1962,7 @@ button.btn-good:hover {
 .btn-primary {
   padding: 0.5rem 1rem;
   background: var(--accent);
-  color: #fff;
+  color: var(--color-text-on-fill);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -2422,7 +2471,7 @@ button.btn-good:hover {
   align-items: center;
   justify-content: center;
   background: var(--accent);
-  color: #fff;
+  color: var(--color-text-on-fill);
   border-radius: 50%;
   font-size: 0.85rem;
   font-weight: 600;
@@ -2470,9 +2519,9 @@ button.btn-good:hover {
 .sim-field select {
   width: 100%;
   padding: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-control);
   border-radius: 7px;
-  background: white;
+  background: var(--bg-input);
   color: var(--text-primary);
   font-size: 14px;
 }
@@ -2542,7 +2591,7 @@ button.btn-good:hover {
 
 .sim-tab.active {
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
 }
 
 .sim-label {
@@ -2710,7 +2759,7 @@ button.btn-good:hover {
 
 .speed button.active {
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
   border-color: var(--accent);
 }
 
@@ -2817,7 +2866,7 @@ button.btn-good:hover {
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 14px;
-  background: linear-gradient(180deg, #fff, #fbfdff);
+  background: var(--color-bg-surface);
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -2889,7 +2938,7 @@ button.btn-good:hover {
 /* ===== Report Cover ===== */
 .report-cover {
   min-height: 290px;
-  background: linear-gradient(145deg, #fff, #eef6ff);
+  background: linear-gradient(145deg, var(--color-bg-surface), var(--color-bg-hero));
   display: grid;
   place-items: center;
   text-align: center;
@@ -3075,7 +3124,7 @@ a.btn-ghost {
 
 a.btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--color-text-on-fill);
 }
 
 a.btn-ghost {
@@ -3413,7 +3462,7 @@ th {
 
 .onboarding-progress-dot.is-current > span:first-child {
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
 }
 
 .onboarding-progress-label {
@@ -3616,7 +3665,7 @@ th {
   height: 24px;
   border-radius: 50%;
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
   font-size: 0.8rem;
   font-weight: 800;
 }
@@ -3804,7 +3853,7 @@ th {
 }
 
 .login-auth {
-  background: var(--bg-card);
+  background: var(--color-bg-canvas);
 }
 
 .login-auth-links {
@@ -4052,30 +4101,95 @@ th {
   font-size: 0.875rem;
 }
 
+/* Analysis workflow stepper (2026-11-24 HTML5 reference lines 141-148): when the footer is at least
+   920 px wide the six steps and the Back/Next actions share one compact row (as before the redesign);
+   narrower footers show a disclosure button and reveal the same list only when expanded. All six links
+   stay in the DOM. Flex wrapping lets the container query move the actions without restyling the
+   container itself. */
 .workflow-footer {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  container: workflow-footer / inline-size;
+  display: flex;
+  /* Overrides the older phone rule that stacked this footer as a column. */
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   scroll-margin-bottom: 6rem;
 }
 
-.workflow-stepper {
+.workflow-footer > .workflow-summary,
+.workflow-footer > .workflow-stepper,
+.workflow-footer > .workflow-footer-actions {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.workflow-summary {
   display: flex;
   align-items: center;
-  /* An overflowing stepper must stay scrollable to its first step: `safe` uses start alignment on overflow.
-     Browsers without `safe` ignore that declaration and also align to the start, so nothing is clipped. */
   justify-content: flex-start;
-  justify-content: safe center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-control);
+  border-radius: 8px;
+}
+
+.workflow-summary:hover {
+  background: var(--color-bg-raised);
+  border-color: var(--color-action-link);
+}
+
+.workflow-summary .workflow-position {
+  display: inline;
+  flex: none;
+}
+
+.workflow-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-summary::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.workflow-summary[aria-expanded='true']::after {
+  transform: rotate(-135deg);
+}
+
+.workflow-stepper {
+  display: none;
   gap: 4px;
   min-width: 0;
   padding: 0;
   margin: 0;
-  overflow-x: auto;
   list-style: none;
+}
+
+.workflow-stepper.is-expanded {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* K-HB-2: the open list scrolls inside the footer (about four steps visible) instead of covering
+     a phone screen; every step stays reachable by scrolling or keyboard focus. */
+  max-height: min(40vh, 11.5rem);
+  overflow-y: auto;
 }
 
 .workflow-stepper a {
   min-height: 44px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 9px;
@@ -4083,16 +4197,24 @@ th {
   color: var(--text-secondary);
   font-size: 0.875rem;
   font-weight: 700;
-  white-space: nowrap;
+  text-decoration: none;
 }
 
-.workflow-stepper a span {
-  width: 22px;
-  height: 22px;
+.workflow-stepper a:hover {
+  color: var(--text-primary);
+  background: var(--color-bg-raised);
+}
+
+.workflow-stepper .workflow-step-number {
+  flex: none;
+  width: 24px;
+  height: 24px;
   display: inline-grid;
   place-items: center;
-  border: 1px solid var(--border);
+  /* Control border (5.11:1 on the surface) so the circle meets the 3:1 non-text contrast minimum. */
+  border: 1px solid var(--color-border-control);
   border-radius: 50%;
+  font-variant-numeric: tabular-nums;
 }
 
 .workflow-stepper .active a {
@@ -4100,37 +4222,79 @@ th {
   background: var(--state-current-bg);
 }
 
-.workflow-stepper .active a span {
+.workflow-stepper .active .workflow-step-number {
   color: var(--primary-contrast);
   border-color: var(--state-current);
   background: var(--state-current);
 }
 
-@media (max-width: 1023px) {
-  .workflow-footer {
-    grid-template-columns: 1fr auto;
+.workflow-footer-actions {
+  justify-content: flex-end;
+}
+
+@container workflow-footer (min-width: 520px) {
+  /* K-HB-1: the step button and Back/Next share one row; an open list drops below them. */
+  .workflow-footer > .workflow-summary {
+    flex: 1 1 240px;
   }
 
-  .workflow-stepper {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    justify-content: flex-start;
+  .workflow-footer > .workflow-footer-actions {
+    flex: 0 0 auto;
   }
 
-  .workflow-summary,
-  .workflow-footer-actions {
-    grid-row: 2;
+  .workflow-footer > .workflow-stepper.is-expanded {
+    order: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 639px) {
-  .workflow-footer {
-    display: flex;
+/* K-HB-4 (2026-11-25): the widest measured case needs 878 px of footer content (Filipino, Plans step:
+   numbered steps 435 + gap 10 + Back/Next 434; English Plans needs 787). 920 px leaves a 42 px margin;
+   narrower footers use the single compact row (step button + Back/Next). Keep in sync with
+   WIDE_STEP_ROW_PX in WorkflowNavigator.tsx. */
+@container workflow-footer (min-width: 920px) {
+  .workflow-footer > .workflow-summary {
+    display: none;
   }
 
-  .workflow-stepper {
-    order: -1;
-    justify-content: flex-start;
+  /* Owner 2026-11-24 "Numbers + current label": one row with no sideways scroll. Other steps show
+     only their numbered circle (label = accessible name + tooltip); the current step shows its label. */
+  .workflow-footer > .workflow-stepper,
+  .workflow-footer > .workflow-stepper.is-expanded {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .workflow-stepper a {
+    white-space: nowrap;
+  }
+
+  .workflow-stepper li:not(.active) a {
+    justify-content: center;
+    min-width: 44px;
+    padding: 6px 10px;
+  }
+
+  .workflow-stepper li:not(.active) .workflow-step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .workflow-footer > .workflow-footer-actions {
+    flex: 0 0 auto;
   }
 }
 
@@ -4212,7 +4376,7 @@ th {
   display: inline-block;
 }
 
-.tooltip { padding: 5px 9px; border-radius: 6px; background: var(--navy-950); color: #ffffff; font-size: 0.8125rem; font-weight: 600; box-shadow: var(--shadow-md); }
+.tooltip { padding: 5px 9px; border-radius: 6px; background: var(--color-bg-raised); color: var(--color-text-primary); border: 1px solid var(--color-border-control); font-size: 0.8125rem; font-weight: 600; box-shadow: var(--shadow-md); }
 
 .sidebar-footer {
   grid-template-columns: minmax(0, 1fr);
@@ -4247,7 +4411,7 @@ th {
   height: 28px;
   border-radius: 50%;
   background: var(--accent);
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
   font-size: 0.75rem;
   font-weight: 800;
 }
@@ -4381,7 +4545,7 @@ th {
 }
 
 .settings-appearance .lang-btn.active {
-  color: #1b2a4a;
+  color: var(--color-text-on-fill);
 }
 
 @media (min-width: 1024px) {
@@ -4402,10 +4566,32 @@ th {
   }
 
   .sidebar.is-collapsed .sidebar-header {
+    flex-direction: column;
     justify-content: center;
+    gap: var(--space-sm);
   }
 
-  .sidebar.is-collapsed .sidebar-brand,
+  .sidebar.is-collapsed .sidebar-brand {
+    margin: 0;
+    padding: 0;
+  }
+
+  .sidebar.is-collapsed .sidebar-brand-full {
+    display: none;
+  }
+
+  .sidebar.is-collapsed .sidebar-brand-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-size: 18px;
+  }
+
   .sidebar.is-collapsed .nav-label,
   .sidebar.is-collapsed .sidebar-product-note,
   .sidebar.is-collapsed .account-email {
@@ -4575,7 +4761,7 @@ th {
 
 a.btn-primary.home-start {
   padding: 0 22px;
-  color: #1b2a4a;
+  color: var(--color-action-primary-fg);
   font-size: 1rem;
   font-weight: 700;
 }
@@ -5416,6 +5602,14 @@ summary.setup-step-title::before {
 .supervisor-advanced { margin-top: var(--space-md); border-top: 1px solid var(--border); padding-top: var(--space-sm); }
 .supervisor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); margin-top: var(--space-md); }
 .supervisor-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: var(--space-md); margin: var(--space-lg) 0; }
+/* Phase D (2026-11-25): break-order filters above Break Changes to Review. Neutral buttons; only the chosen
+   filter takes the primary fill. Existing tokens only. */
+.supervisor-break-filters { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin: 0 0 var(--space-sm); }
+.supervisor-page .supervisor-break-filters button { min-height: 44px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--color-border-control); background: var(--color-bg-surface); color: var(--color-text-primary); font-weight: 600; }
+.supervisor-page .supervisor-break-filters button:hover { background: var(--color-bg-raised); border-color: var(--color-action-link); }
+.supervisor-page .supervisor-break-filters button[aria-pressed='true'] { background: var(--color-action-primary-bg); color: var(--color-action-primary-fg); border-color: var(--color-action-primary-bg); }
+.supervisor-page .supervisor-break-filters button[aria-pressed='true']:hover { border-color: var(--color-action-primary-hover-ring); box-shadow: 0 0 0 1px var(--color-action-primary-hover-ring); }
+.supervisor-page .supervisor-break-filters button:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
 .supervisor-metrics > div { padding: var(--space-md); border: 1px solid var(--border); border-radius: 10px; }
 .supervisor-metrics dt { color: var(--text-secondary); }
 .supervisor-metrics dd { margin: var(--space-sm) 0 0; font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -5439,7 +5633,11 @@ summary.setup-step-title::before {
 /* The sticky .workflow-footer (bottom: 12px, z-index: 20) overlays the bottom of the viewport.
    html only had scroll-padding-top, so focus and scroll-into-view put the break table's last row
    and the Review buttons under it. Reserve the footer's height (from its CSS: padding, 44px rows,
-   gaps, stacked buttons on phones) plus its 12px offset at the bottom of the scrollport. */
+   gaps, stacked buttons on phones) plus its 12px offset at the bottom of the scrollport.
+   Re-measured 2026-11-24 after the step-list redesign (CDP, synthetic fixture): the closed footer is
+   one row from 520px of footer width, 74-84px tall at 768-1440px, so 7rem (112px) covers 84 + 12;
+   the phone footer (stacked Back/Next) is about 180px, covered by 18rem (180 + 12 <= 288).
+   An opened step list is a transient, user-chosen state and is not reserved here. */
 html:has(.supervisor-page) { scroll-padding-bottom: 7rem; }
 @media (max-width: 1023px) { html:has(.supervisor-page) { scroll-padding-bottom: 11rem; } }
 @media (max-width: 639px) { html:has(.supervisor-page) { scroll-padding-bottom: 18rem; } }
@@ -5458,7 +5656,7 @@ input[type='number'] { font-family: var(--font-number); font-variant-numeric: ta
 input, select, textarea { font-size: 1rem; }
 button, label, th, td, .tab, .sidebar-nav a { font-size: 0.875rem; }
 th { text-transform: none; letter-spacing: normal; }
-input:focus, select:focus, textarea:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 3px rgba(0, 85, 218, 0.15); }
+input:focus, select:focus, textarea:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 3px rgba(153, 192, 255, 0.28); }
 button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
@@ -5467,12 +5665,12 @@ button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
 .app-shell .button-link,
 .app-shell .btn-secondary {
   background: var(--bg-card);
-  color: var(--color-action-primary-bg);
-  border: 1px solid var(--color-action-primary-bg);
+  color: var(--color-action-link);
+  border: 1px solid var(--color-border-control);
   border-radius: 8px;
 }
 .button-link:hover, .btn-secondary:hover,
-.app-shell .button-link:hover, .app-shell .btn-secondary:hover { background: #edf4ff; color: var(--color-action-primary-hover); }
+.app-shell .button-link:hover, .app-shell .btn-secondary:hover { background: var(--color-bg-raised); color: var(--color-action-link); border-color: var(--color-action-link); }
 .btn-primary, .button-primary,
 .app-shell :is(.btn-primary, .button-primary),
 .home-page a.btn-primary,
@@ -5488,14 +5686,15 @@ button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
 .home-page a.btn-primary:hover, .login-page .btn-primary:hover {
   background: var(--color-action-primary-hover);
   color: var(--color-action-primary-fg);
-  border-color: var(--color-action-primary-hover);
+  border-color: var(--color-action-primary-hover-ring);
+  box-shadow: 0 0 0 1px var(--color-action-primary-hover-ring);
   opacity: 1;
 }
 .btn-primary:active, .button-primary:active,
 .app-shell :is(.btn-primary, .button-primary):active,
 .home-page a.btn-primary:active, .login-page .btn-primary:active { background: var(--color-action-primary-pressed); border-color: var(--color-action-primary-pressed); }
-.btn-danger, .app-shell .btn-danger { background: #fff6f6; border: 1px solid var(--color-action-danger); color: var(--color-action-danger); }
-.btn-danger:hover, .app-shell .btn-danger:hover { background: var(--color-action-danger); color: white; }
+.btn-danger, .app-shell .btn-danger { background: var(--color-danger-bg); border: 1px solid var(--color-action-danger); color: var(--color-action-danger); }
+.btn-danger:hover, .app-shell .btn-danger:hover { background: var(--color-action-danger); color: var(--color-text-on-fill); }
 :is(button, .btn-primary, .button-primary):disabled,
 .app-shell :is(button, .btn-primary, .button-primary):disabled {
   background: var(--disabled-bg); color: var(--disabled-text); border-color: var(--color-disabled-border); opacity: 1;
@@ -5506,7 +5705,7 @@ button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
 .app-shell .sidebar-nav a.active { background: rgba(255, 255, 255, 0.115); color: white; border-color: transparent; box-shadow: none; }
 .app-shell .sidebar-nav a.active::before { content: ''; position: absolute; inset: 6px auto 6px 0; width: 3px; border-radius: 0 3px 3px 0; background: var(--brand-brass); }
 .app-shell .sidebar .logo b, .home-logo b, .login-page .logo b { color: var(--brand-brass); }
-.tab.active { color: var(--color-action-primary-bg); border-color: var(--color-action-primary-bg); }
+.tab.active { color: var(--color-action-link); border-color: var(--color-action-link); }
 .analyses-page .card-grid { grid-template-columns: minmax(0, 1fr); }
 .analyses-page .card-grid > .card { margin-bottom: 0; border-radius: 12px; padding: 20px; }
 .analyses-page .card-title { margin-bottom: 6px; }
@@ -5514,7 +5713,7 @@ button, .button-link, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
 :is(.badge-ok, .alert-ok) { background: var(--color-success-bg); color: var(--color-success-fg); }
 :is(.badge-warn, .alert-warn) { background: var(--color-warning-bg); color: var(--color-warning-fg); }
 :is(.badge-bad, .alert-error) { background: var(--color-danger-bg); color: var(--color-danger-fg); }
-.spinner { border-top-color: var(--color-action-primary-bg); }
+.spinner { border-top-color: var(--color-action-link); }
 @media (max-width: 767px) {
   .run-switch button, .period-picker button { min-height: 44px; min-width: 44px; }
 }
@@ -5539,3 +5738,17 @@ button[aria-busy='true']::before {
   .analyses-page .analysis-entry-details > p { margin-block: 4px; }
   .analyses-page .analysis-actions { margin-top: 0; justify-self: end; flex-wrap: wrap; }
 }
+
+/* Phase E (2026-11-25): recorded separate-lines check counts and the method disclosure. Existing tokens only. */
+.check-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-sm); margin: var(--space-sm) 0 var(--space-md); }
+.check-stats > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--color-border-subtle); border-radius: 8px; background: var(--color-bg-subtle); }
+.check-stats dt { margin: 0; color: var(--color-text-secondary); font-size: 0.8125rem; font-weight: 600; overflow-wrap: anywhere; }
+.check-stats dd { margin: 4px 0 0; color: var(--color-text-primary); font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .check-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.check-method-details { margin: 0 0 var(--space-md); }
+.check-method-details > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font-weight: 600; color: var(--color-action-link); }
+.check-method-details > summary:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; border-radius: 4px; }
+.check-method-list { margin: 0 0 var(--space-sm); }
+.check-method-list > div { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.check-method-list dt { color: var(--color-text-secondary); }
+.check-method-list dd { margin: 0; font-variant-numeric: tabular-nums; }

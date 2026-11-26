@@ -1,11 +1,14 @@
 /* Presentation-only learning surfaces. Existing application tokens remain authoritative. */
 .home-learning-page { overflow-anchor: none; }
-.home-main.home-spotlight { max-width: 1160px; display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 28px; padding: 28px; }
-.home-spotlight-column { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.home-main.home-spotlight { max-width: 1210px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px; }
+/* Two-column hero after the 2026-11-24 HTML5 reference (.landing-hero): copy left, Queueing 101 right. */
+.home-landing { position: relative; isolation: isolate; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: center; gap: 28px; padding: clamp(19px, 3.5vw, 40px); background: radial-gradient(ellipse at 65% 0%, var(--color-bg-hero) 0, transparent 61%), var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: 15px; }
+.home-landing::before { content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, transparent 0 27px, var(--color-border-subtle) 28px 29px), repeating-linear-gradient(0deg, transparent 0 27px, var(--color-border-subtle) 28px 29px); mask-image: linear-gradient(90deg, transparent 19%, black 100%); opacity: .55; }
+.home-landing-copy, .home-landing-lesson { min-width: 0; }
 .home-queue-comparison { grid-column: 1 / -1; }
 .home-queue-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .home-spotlight .home-hero h1 { font-size: clamp(28px, 3.4vw, 39px); line-height: 1.18; }
-.home-spotlight .home-hero .home-tagline { color: var(--primary); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin: 0 0 12px; }
+.home-spotlight .home-hero .home-tagline { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin: 0 0 12px; }
 .home-header-actions .home-how-link { color: var(--text-on-hero); background: transparent; border: 0; padding: 0; width: auto; min-height: 44px; font: inherit; font-weight: 600; }
 .home-guide { min-width: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); overflow-anchor: none; }
 .home-guide-heading { margin: 0; font: inherit; }
@@ -50,7 +53,7 @@
 .queueing-lesson-cover > span { display: grid; place-items: center; width: 58px; height: 58px; background: var(--bg-card); color: var(--text-primary); border-radius: 50%; box-shadow: var(--shadow-md); }
 .queueing-lesson-cover svg { width: 24px; height: 24px; fill: currentColor; }
 .queueing-lesson-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px; background: var(--bg-card); color: var(--text-primary); }
-.queueing-lesson-controls button, .queueing-lesson-controls select { width: auto; min-height: 44px; margin: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 12px; }
+.queueing-lesson-controls button, .queueing-lesson-controls select { width: auto; min-height: 44px; margin: 0; padding: 7px 9px; border: 1px solid var(--color-border-control); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 12px; }
 .queueing-lesson-controls .queueing-play-button { background: var(--accent); border-color: var(--accent); color: var(--navy-900); min-width: 72px; font-weight: 700; }
 .queueing-lesson-controls .queueing-seek { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; margin: 0; }
 .queueing-seek input { width: 100%; min-width: 45px; margin: 0; padding: 0; accent-color: var(--primary); }
@@ -96,9 +99,11 @@
 .queueing-field-downloads { display: flex; flex-wrap: wrap; gap: 18px; }
 .queueing-lesson-media > .form-hint, .queueing-lesson-media > .alert { margin: 10px 14px; }
 .help-page .queueing-lessons { max-width: 960px; }
+@media (max-width: 900px) {
+  .home-landing { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+}
 @media (max-width: 760px) {
-  .home-main.home-spotlight { grid-template-columns: minmax(0, 1fr); padding: 24px 20px; gap: 30px; }
-  .home-spotlight-column { gap: 24px; }
+  .home-main.home-spotlight { padding: 24px 16px; gap: 24px; }
   .home-queue-grid { grid-template-columns: minmax(0, 1fr); }
   .queueing-lesson-choices { grid-template-columns: minmax(0, 1fr); }
   .queueing-lesson-choice strong { font-size: 15px; }

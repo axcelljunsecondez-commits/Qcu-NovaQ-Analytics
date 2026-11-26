@@ -54,7 +54,13 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
   return (
     <aside className={`sidebar${open ? ' is-open' : ''}${collapsed ? ' is-collapsed' : ''}`}>
       <div className="sidebar-header">
-        <div className="sidebar-brand">Nova<b>Q</b></div>
+        {/* The brand is the home link; "NovaQ" is the product name, not translatable copy. */}
+        <Tooltip label="NovaQ" enabled={collapsed} placement="right">
+          <Link to="/" className="sidebar-brand" aria-label="NovaQ">
+            <span className="sidebar-brand-full" aria-hidden="true">Nova<b>Q</b></span>
+            <span className="sidebar-brand-mark" aria-hidden="true">Q</span>
+          </Link>
+        </Tooltip>
         {onToggleCollapsed && (
           <Tooltip label={hideLabel} placement={collapsed ? 'right' : 'bottom'}>
             <button

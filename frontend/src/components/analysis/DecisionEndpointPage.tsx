@@ -42,6 +42,9 @@ export function DecisionEndpointPage() {
   if (workflow.isError || !workflow.data || analysis.isError) return <ApiState.ErrorState />
 
   const decision = derive.data ?? workflow.data.decision?.result ?? null
+  // Phase E: the method details read only the Many variations run this decision recorded as its evidence.
+  const mc = workflow.data.mc
+  const mcRows = decision?.evidence_ids?.mc != null && mc && decision.evidence_ids.mc === mc.id ? mc.result?.results ?? [] : []
   return (
     <DecisionEndpoint
       decision={decision}
@@ -50,6 +53,7 @@ export function DecisionEndpointPage() {
       isPending={derive.isPending}
       error={derive.isError ? messageOf(derive.error, t('errors.server')) : null}
       onDerive={() => derive.mutate()}
+      mcRows={mcRows}
     />
   )
 }

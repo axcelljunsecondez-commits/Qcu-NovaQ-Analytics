@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { OptimizationOut, SeparateComparison, SeparatePlanComparison } from '../api/types'
 import {
   allHourPeriods, anyCut, countersByPeriod, highestEstimate, setupCountersByPeriod, largestShown, separatePlanWaitRows, sharedPlanWaitRows,
-  takeawayRow, todayWaitRows, waitRange,
+  takeawayRow, todayWaitRows, waitGap, waitRange,
 } from './waitChart'
 
 const comparison = {
@@ -105,5 +105,20 @@ describe('wait chart rows', () => {
     expect(allHourPeriods(['2026-03-01 08:00 UTC'])).toBe(false)
     expect(allHourPeriods(['morning'])).toBe(false)
     expect(allHourPeriods([])).toBe(false)
+  })
+})
+
+describe('waitGap (Phase C readout)', () => {
+  it('is recorded minus estimated in unrounded minutes and may be negative', () => {
+    expect(waitGap(7.2, 3)).toBeCloseTo(4.2, 12)
+    expect(waitGap(6, 12)).toBe(-6)
+    expect(waitGap(0, 0)).toBe(0)
+  })
+
+  it('is null unless both values are known', () => {
+    expect(waitGap(null, 3)).toBeNull()
+    expect(waitGap(3, null)).toBeNull()
+    expect(waitGap(null, null)).toBeNull()
+    expect(waitGap(Number.NaN, 3)).toBeNull()
   })
 })

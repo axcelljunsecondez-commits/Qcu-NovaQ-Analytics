@@ -144,7 +144,9 @@ describe('full-day charts (C6)', () => {
     renderSection('current')
     const chart = await screen.findByTestId('fullday-period-chart')
     expect(chart.closest('section')).toHaveTextContent('Current')
-    expect(chart.querySelector('.cv-m-est')).not.toBeNull()
+    // OD-C3(b), approved 2026-11-25: the Current run is reclassified from 'est' to its own 'cur' mark (blue ring).
+    expect(chart.querySelector('.cv-m-cur')).not.toBeNull()
+    expect(chart.querySelector('.cv-m-est')).toBeNull()
     expect(chart.querySelector('.cv-m-plan')).toBeNull()
   })
 })

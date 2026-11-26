@@ -97,6 +97,19 @@ describe('Help center (plan U8)', () => {
       .toEqual(['Queue Simulation: Service times'])
   })
 
+  // Phase F (owner-approved Help text, 2026-11-25): the new sentences are searchable.
+  it.each([
+    ['sidebar', 'Starting an Analysis: Create an analysis', '/help/start#create'],
+    ['Arrivals', 'Reading Results: Estimated and recorded waits', '/help/results#estimated'],
+    ['Required checks', 'Checks and Decision: The checks', '/help/checks#checks'],
+    ['break order', 'Comparing Plans: Using a plan', '/help/plans#use'],
+  ])('finds the new Help text for "%s"', async (query, name, href) => {
+    const user = userEvent.setup()
+    renderHelp('/help')
+    await user.type(await screen.findByLabelText('Find Help'), query)
+    expect(within(screen.getByRole('list', { name: 'Search results' })).getByRole('link', { name })).toHaveAttribute('href', href)
+  })
+
   it('opens a guide with what to do, why, the next step and its sections, at the linked section', async () => {
     renderHelp('/help/simulation#closing')
     expect(await screen.findByRole('heading', { level: 1, name: "Queue Simulation" })).toBeInTheDocument()

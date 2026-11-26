@@ -31,6 +31,9 @@ import {
 } from '../../lib/simulationEvidence'
 import { plainDecision, type PlainDecision } from '../../lib/decisionPlain'
 import { ManyVariationsChart, ManyVariationsInfo } from './ManyVariationsChart'
+import { CheckCountStrip } from './CheckCountStrip'
+import { CheckMethodDetails } from './CheckMethodDetails'
+import { showSelectedRawPassGuidance } from '../../lib/selectedRawPassGuidance'
 import { mcRangeText } from '../../lib/manyVariations'
 import { DecisionDetailsDialog } from './DecisionDetailsDialog'
 import { suggestedRun, type RunChoice, type SimulationContext } from './simulationContext'
@@ -246,6 +249,9 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
   // A stored validation row records an unsupported or errored Many variations row only as 'inadequate', so read
   // that row's own status from the exact MC job this Results check used (never from a later run).
   const checkedMcRows = mcEvidence && mcResult && validationResult && mcEvidence.id === validationResult.mc_job_id ? mcResult.results : []
+  // Owner 2026-11-26: the guidance reads only the Many variations job this decision cites (evidence_ids.mc).
+  const decisionMcRows = decision && mcEvidence && mcResult && decision.evidence_ids?.mc === mcEvidence.id ? mcResult.results : []
+  const rawPassGuidance = decision !== null && showSelectedRawPassGuidance({ status: decision.status, mcRows: decisionMcRows, loadUncertainty: decision.load_uncertainty })
   const mcRowUnavailable = (time: string, queueId: string | null) => checkedMcRows.some((row) => row.time === time
     && (row.queue_id ?? null) === queueId && (row.simulation_supported === false || row.status === 'ERROR' || Boolean(row.error)))
   const validationEvidenceMissing = validationResult !== null && (validationResult.selected_load_method !== SELECTED_LOAD_METHOD_V1
@@ -256,6 +262,12 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
       <section className="card" aria-labelledby="decision-title">
         <h2 lang="en" id="decision-title" className="section-title">{headingText(t, 'decision.plain.heading')}</h2>
         <p className="form-hint">{t('simulation.sep_selected_plan')}: {scenario.name}</p>
+        {/* Phase E (owner O-E1): the recorded counts of this plan's Results check, shown exactly as stored. */}
+        {validationResult && <>
+          <CheckCountStrip total={validationResult.verdict.total} passed={validationResult.load_uncertainty?.pass_count}
+            failed={validationResult.load_uncertainty?.fail_count} insufficient={validationResult.load_uncertainty?.insufficient_count} />
+          <CheckMethodDetails rows={checkedMcRows} planTarget={planTarget} />
+        </>}
         {decision ? (
           <div>
             <div role={decision.status === 'revise' || decision.status === 'insufficient_evidence' ? 'alert' : 'status'} className={`alert ${decision.status === 'revise' ? 'alert-error' : decision.status === 'adopt' ? 'alert-ok' : 'alert-warn'}`}>
@@ -264,6 +276,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                 missing: decision.missing_evidence, inadequatePeriods: decision.inadequate_periods })} />
               {knownDecisionStatus(decision.status) && <>{' '}<span className="badge badge-neutral">{decisionStatusLabel(decision.status, t)}</span></>}
             </div>
+            {rawPassGuidance && <p className="alert alert-info" data-testid="selected-raw-pass-guidance">{t('decision.plain.selected_insufficient_raw_pass')}</p>}
             <p className="alert alert-warn" data-testid="selected-decision-scope">
               {loadAssessed ? t('decision.plain.selected_load_assessment_notice') : <>
                 <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
@@ -329,7 +342,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                   <tr key={period.time}>
                     <th scope="row">{period.time}</th><td>{period.active_queue_ids.length}</td><td>{period.des_ok ? '✓' : t('simulation.sep_des_incomplete')}</td>
                     <td>{period.queues.length === 0 ? '—' : period.queues.every((q) => rawMcVerdict(q) === 'pass') ? '✓' : period.queues.some((q) => rawMcVerdict(q) === 'fail') ? 'FAIL' : '—'}</td>
-                    <td>{period.status === 'pass' ? '✓' : period.status === 'fail' ? 'FAIL' : '—'}</td>
+                    <td>{period.status === 'pass' ? '✓' : period.status === 'fail' ? 'FAIL' : period.status === 'insufficient' ? t('simulation.verdict.insufficient') : '—'}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -343,7 +356,7 @@ function SeparatePlanChecks({ context }: { context: SimulationContext }) {
                     <tbody>{period.queues.map((queue) => (
                       <tr key={String(queue.queue_id)}>
                         <th scope="row">{queue.queue_id ?? '—'}</th><td>{fmtDecimal(queue.rho_sim)}</td><td>{fmt(queue.Wq_sim === null || queue.Wq_sim === undefined ? null : queue.Wq_sim * 60)}</td>
-                        <td>{queue.mc_failure_rate === null || queue.mc_failure_rate === undefined ? '—' : fmt(queue.mc_failure_rate)}</td><td>{queue.validation_verdict === 'pass' ? '✓' : queue.validation_verdict === 'fail' ? 'FAIL' : '—'}</td>
+                        <td>{queue.mc_failure_rate === null || queue.mc_failure_rate === undefined ? '—' : fmt(queue.mc_failure_rate)}</td><td>{queue.validation_verdict === 'pass' ? '✓' : queue.validation_verdict === 'fail' ? 'FAIL' : queue.validation_verdict === 'inadequate' ? t('simulation.verdict.insufficient') : '—'}</td>
                       </tr>
                     ))}</tbody>
                   </table>

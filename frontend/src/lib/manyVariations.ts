@@ -23,6 +23,11 @@ export function agreedValue(rows: readonly SimMcOut[], pick: (row: SimMcOut) => 
   return values.every((value) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value - first) <= SAME) ? first : null
 }
 
+/** A stored trial count as shown everywhere ("2,000"); display only. */
+export function trialsText(trials: number): string {
+  return trials.toLocaleString('en-US')
+}
+
 export interface StoredMcParameters {
   trials: number | null
   threshold: number | null

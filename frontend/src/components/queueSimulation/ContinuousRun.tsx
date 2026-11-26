@@ -388,7 +388,8 @@ function WaitByPeriodDay({ playback, day, plan }: { playback: ContinuousPlayback
   periods.forEach((period, index) => {
     if (period.mean_wait_hours !== null && (longest < 0 || period.mean_wait_hours > (periods[longest].mean_wait_hours as number))) longest = index
   })
-  const kind = plan === 'suggested' ? 'plan' : 'est'
+  // OD-C3(b): a simulated Current run keeps the blue ring ('cur'); gold 'est' is reserved for analytical estimates.
+  const kind = plan === 'suggested' ? 'plan' : 'cur'
   const rows: ChartRow[] = periods.map((period, index) => ({
     key: period.period_id,
     label: period.period_id,
@@ -410,7 +411,7 @@ function WaitByPeriodDay({ playback, day, plan }: { playback: ContinuousPlayback
       <ul className="cv-legend">
         <li className="cv-legend-item">
           <svg className="cv-swatch" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
-            {kind === 'plan' ? <circle className="cv-m-plan" cx={7} cy={7} r={5} /> : <circle className="cv-m-est" cx={7} cy={7} r={4.5} />}
+            {kind === 'plan' ? <circle className="cv-m-plan" cx={7} cy={7} r={5} /> : <circle className="cv-m-cur" cx={7} cy={7} r={4.5} />}
           </svg>
           {t(plan === 'suggested' ? 'simulation.run_suggested' : 'simulation.run_current')}
         </li>

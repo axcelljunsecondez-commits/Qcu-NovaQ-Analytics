@@ -1,8 +1,11 @@
 import { headingText } from '../../lib/headingText'
 import { useTranslation } from 'react-i18next'
 import type { WorkflowDecision } from '../../api/workflow'
-import { SELECTED_LOAD_METHOD_V1 } from '../../api/types'
+import { SELECTED_LOAD_METHOD_V1, type SimMcOut } from '../../api/types'
+import { CheckCountStrip } from '../queueSimulation/CheckCountStrip'
+import { CheckMethodDetails } from '../queueSimulation/CheckMethodDetails'
 import { plainDecision } from '../../lib/decisionPlain'
+import { showSelectedRawPassGuidance } from '../../lib/selectedRawPassGuidance'
 
 interface DecisionEndpointProps {
   decision: WorkflowDecision | null
@@ -11,6 +14,8 @@ interface DecisionEndpointProps {
   isPending: boolean
   error: string | null
   onDerive: () => void
+  /** Rows of the Many variations run this decision used (evidence_ids.mc); empty when it is not the current run. */
+  mcRows?: SimMcOut[]
 }
 
 const statusClasses: Record<WorkflowDecision['status'], string> = {
@@ -27,6 +32,7 @@ export function DecisionEndpoint({
   isPending,
   error,
   onDerive,
+  mcRows = [],
 }: DecisionEndpointProps) {
   const { t } = useTranslation()
   return (
@@ -66,6 +72,12 @@ export function DecisionEndpoint({
               todayOverloaded: decision.facts?.today_overloaded_periods })
             return plain ? headingText(t, plain.key, plain.params) : decision.headline
           })()}</h2>
+          {/* Phase E (owner O-E1, O-E2): separate lines only; the recorded decision counts, never derived. */}
+          {separate && <>
+            <CheckCountStrip total={decision.facts?.validation_checks} passed={decision.load_uncertainty?.pass_count}
+              failed={decision.load_uncertainty?.fail_count} insufficient={decision.load_uncertainty?.insufficient_count} />
+            <CheckMethodDetails rows={mcRows} />
+          </>}
           {separate && <p className="alert alert-warn" data-testid="selected-decision-scope">
             {decision.selected_load_method === SELECTED_LOAD_METHOD_V1 ? t('decision.plain.selected_load_assessment_notice') : <>
               <strong>{t('decision.plain.selected_scope_label')}</strong>{' '}{t('decision.plain.selected_scope_body')}
@@ -73,6 +85,10 @@ export function DecisionEndpoint({
           </p>}
           <p className="decision-headline">{decision.headline}</p>
           <p className="decision-recommendation">{decision.recommendation}</p>
+          {/* Owner 2026-11-26: pilot guidance when the cited Many variations run passed everywhere but the check was unsettled. */}
+          {separate && showSelectedRawPassGuidance({ status: decision.status, mcRows, loadUncertainty: decision.load_uncertainty }) && (
+            <p className="alert alert-info" data-testid="selected-raw-pass-guidance">{t('decision.plain.selected_insufficient_raw_pass')}</p>
+          )}
 
           <h3 lang="en" className="section-title">{headingText(t, 'decision.evidence')}</h3>
           <ul className="decision-evidence">

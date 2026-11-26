@@ -1595,8 +1595,64 @@ describe('a selected separate-lines plan', () => {
     expect(screen.getByTestId('decision-plain')).not.toHaveTextContent('Run:')
     expect(screen.getByText(en['simulation.sep_validation_insufficient'])).toBeInTheDocument()
     expect(screen.queryByText(en['simulation.sep_validation_missing_reason'])).not.toBeInTheDocument()
-    // Lanes, DES, MC (raw Many variations: pass), Validation (assessed: not settled).
-    expect(mcCells('08:00')).toEqual(['1', '✓', '✓', '—'])
+    // Lanes, DES, MC (raw Many variations: pass), Validation (assessed: not settled; owner 2026-11-26 shows the words).
+    expect(mcCells('08:00')).toEqual(['1', '✓', '✓', 'Not enough to tell'])
+  })
+
+  // Owner 2026-11-26 ("Show the words"): an unsettled Results check reads "Not enough to tell" instead of "—".
+  // Stored values (backend/api/workflow.py): period status pass | fail | insufficient; lane validation_verdict
+  // pass | fail | inadequate. Any other or missing value keeps "—".
+  const validationCells = (lang: 'en' | 'tl' = 'en') => {
+    const dict = lang === 'tl' ? tl : en
+    const period = within(screen.getByRole('region', { name: dict['simulation.sep_validation_title'] })).getAllByRole('cell').map((cell) => cell.textContent)
+    const lane = within(screen.getByRole('region', { name: `${dict['compare.sep_candidate_detail']} · 08:00` })).getAllByRole('cell').map((cell) => cell.textContent)
+    return { period: period[period.length - 1], lane: lane[lane.length - 1] }
+  }
+  it.each([
+    ['an unsettled check', v1Validation('inadequate', 'pass', 'insufficient'), 'en', 'Not enough to tell', 'Not enough to tell'],
+    ['an unsettled check in Tagalog', v1Validation('inadequate', 'pass', 'insufficient'), 'tl', 'Kulang para masabi', 'Kulang para masabi'],
+    ['a passed check', v1Validation('pass', 'pass', 'pass'), 'en', '✓', '✓'],
+    ['a failed check', v1Validation('fail', 'fail', 'fail'), 'en', 'FAIL', 'FAIL'],
+    ['an unrecorded result', v1Validation(null as unknown as string, 'pass', null as unknown as string), 'en', '—', '—'],
+  ] as const)('shows the Results check cells for %s', async (_name, validation, lang, period, lane) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: job('workflow_mc', { ...mcResult, selected_load_method: v1 }, { scenario_id: 9 }),
+      validation: job('workflow_validation', validation, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7', lang)
+    await screen.findByRole('region', { name: (lang === 'tl' ? tl : en)['simulation.sep_validation_title'] })
+    expect(validationCells(lang)).toEqual({ period, lane })
+  })
+
+  // Owner 2026-11-26: pilot guidance under an Insufficient evidence decision when the Many variations run the
+  // decision cites passed in every row and the recorded family has no failed and some unsettled checks.
+  const guidanceFamily = (fail: number, insufficient: number) => ({ estimand: 'mean_load', confidence_level: 0.95, family_size: 1, replications: 20,
+    assumptions: [], pass_count: 1 - fail - insufficient, fail_count: fail, insufficient_count: insufficient })
+  const guided = { ...v1Inconclusive, load_uncertainty: guidanceFamily(0, 1), evidence_ids: { selection: 1, des: 10, mc: 11, validation: 12 } }
+  const mcJob = (status: string, id = 11) => ({ ...job('workflow_mc', { ...mcResult, selected_load_method: v1, results: [{ ...mcResult.results[0], status }] }, { scenario_id: 9 }), id })
+  function guidanceCase(decisionResult: unknown, mc: unknown, stale = false) {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc,
+      validation: job('workflow_validation', v1Validation('inadequate', 'pass', 'insufficient'), { scenario_id: 9 }),
+      decision: job('workflow_decision', decisionResult, { scenario_id: 9 }), decision_stale: stale })
+  }
+
+  it.each([['en', en], ['tl', tl]] as const)('shows the pilot guidance in the %s Decision card, beside the unchanged answer', async (lang, dict) => {
+    guidanceCase(guided, mcJob('PASS'))
+    renderPage('/simulation/checks?analysis=7', lang)
+    expect(await screen.findByTestId('selected-raw-pass-guidance')).toHaveTextContent(dict['decision.plain.selected_insufficient_raw_pass'])
+    if (lang === 'en') expect(screen.getByTestId('decision-plain')).toHaveTextContent('Not enough checks yet. There is not enough data to tell in: 08:00')
+  })
+
+  it.each([
+    ['a failed Many variations row', guided, mcJob('FAIL'), false],
+    ['a run the decision does not cite', guided, mcJob('PASS', 99), false],
+    ['a recorded failed check', { ...guided, status: 'revise', load_uncertainty: guidanceFamily(1, 0) }, mcJob('PASS'), false],
+    ['legacy evidence without the family', { ...guided, load_uncertainty: undefined }, mcJob('PASS'), false],
+    ['a stale decision', guided, mcJob('PASS'), true],
+  ] as const)('hides the pilot guidance for %s', async (_name, decisionResult, mc, stale) => {
+    guidanceCase(decisionResult, mc, stale)
+    renderPage('/simulation/checks?analysis=7')
+    await screen.findByRole('heading', { name: 'Should we use this plan?' })
+    await screen.findByRole('region', { name: en['simulation.sep_validation_title'] })
+    expect(screen.queryByTestId('selected-raw-pass-guidance')).not.toBeInTheDocument()
   })
 
   it.each([
@@ -1802,6 +1858,61 @@ describe('a selected separate-lines plan', () => {
     renderPage()
     expect(await screen.findByTestId('run-status')).toHaveTextContent('Not run')
     expect(screen.getByRole('region', { name: 'Average wait' })).toHaveTextContent('Suggested plan: Not run')
+  })
+
+  // Phase E (owner O-E1, OD-E3): the strip shows this plan's recorded counts exactly; nothing is derived.
+  const counted = (family: Record<string, unknown> | undefined, total: number | null = 60) => ({
+    ...validationResult, verdict: { ...validationResult.verdict, total }, ...(family ? { load_uncertainty: { estimand: 'mean_load', confidence_level: 0.95,
+      family_size: 60, replications: 20, assumptions: [], ...family } } : {}),
+  })
+  const strip = () => within(screen.getByTestId('check-count-strip')).getAllByRole('definition').map((node) => node.textContent)
+
+  it.each([
+    ['exact recorded counts', counted({ pass_count: 50, fail_count: 8, insufficient_count: 2 }), 'en', ['60', '50', '8', '2']],
+    ['a recorded zero', counted({ pass_count: 0, fail_count: 58, insufficient_count: 2 }), 'en', ['60', '0', '58', '2']],
+    ['an unknown total', counted({ pass_count: 1, fail_count: 0, insufficient_count: 0 }, null), 'en', ['Unavailable', '1', '0', '0']],
+    ['legacy evidence without the family', counted(undefined, 1), 'en', ['1', 'Unavailable', 'Unavailable', 'Unavailable']],
+    ['legacy evidence without the family (Tagalog)', counted(undefined, 1), 'tl', ['1', 'Hindi available', 'Hindi available', 'Hindi available']],
+  ] as const)('shows the Results check counts as recorded: %s', async (_name, validation, lang, expected) => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: { ...job('workflow_mc', mcResult, { scenario_id: 9 }), id: 11 },
+      validation: job('workflow_validation', validation, { scenario_id: 9 }), decision: job('workflow_decision', decision, { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7', lang)
+    await screen.findByTestId('check-count-strip')
+    expect(strip()).toEqual(expected)
+    // The strip sits at the top of the Decision card, and the existing failed-of-total row is unchanged.
+    expectBefore(screen.getByText(`${lang === 'tl' ? tl['simulation.sep_selected_plan'] : en['simulation.sep_selected_plan']}: Optimal @ 70%`), screen.getByTestId('check-count-strip'))
+    expect(screen.getByTestId('check-method-details')).not.toHaveAttribute('open')
+  })
+
+  it('shows no strip for another plan\'s Results check', async () => {
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }),
+      validation: job('workflow_validation', { ...counted({ pass_count: 50, fail_count: 8, insufficient_count: 2 }), scenario_id: 8 }, { scenario_id: 8 }) })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByRole('heading', { name: 'Should we use this plan?' })).toBeInTheDocument()
+    expect(screen.queryByTestId('check-count-strip')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('check-method-details')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['the run the check used, with agreeing rows', 11, [2000, 2000], '2,000'],
+    ['another run than the check used', 12, [2000, 2000], 'Unavailable'],
+    ['rows that disagree', 11, [2000, 1000], 'Unavailable'],
+  ] as const)('reads the method trials from %s', async (_name, mcId, trials, expected) => {
+    const rows = trials.map((num_trials, index) => ({ ...mcResult.results[0], queue_id: index ? 'lane-A' : 'east-07', num_trials, failure_threshold: 0.85, failure_rate_cap: 0.05 }))
+    selected({ des: job('workflow_des', dayResult, { scenario_id: 9 }), mc: { ...job('workflow_mc', { ...mcResult, results: rows }, { scenario_id: 9 }), id: mcId },
+      validation: job('workflow_validation', counted({ pass_count: 1, fail_count: 0, insufficient_count: 0 }, 1), { scenario_id: 9 }) })
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByTestId('check-method-trials')).toHaveTextContent(expected)
+  })
+
+})
+
+describe('Phase E strip scope', () => {
+  it('shows no check strip for a shared-queue plan', async () => {
+    renderPage('/simulation/checks?analysis=7')
+    expect(await screen.findByRole('heading', { name: 'Should we use this plan?' })).toBeInTheDocument()
+    expect(document.querySelector('.check-stats')).toBeNull()
+    expect(screen.queryByTestId('check-method-details')).not.toBeInTheDocument()
   })
 })
 

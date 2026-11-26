@@ -213,7 +213,8 @@ describe('supervisor schedule workflow', () => {
     expect(screen.getByRole('button', { name: 'Use this Plan' })).toBeDisabled()
     expect(mocks.apply).not.toHaveBeenCalled()
   })
-  it.each([4, 5])('shows at most four break moves per page with %s moves', async (count) => {
+  // Phase D (owner-authorized 2026-11-25): five break moves per page (was four).
+  it.each([5, 6])('shows at most five break moves per page with %s moves', async (count) => {
     const value = preview(true)
     const move = value.breaks!.moves[0]
     value.breaks!.moves = Array.from({ length: count }, (_, index) => ({ ...move, queue_id: `lane-${index + 1}` }))
@@ -221,17 +222,17 @@ describe('supervisor schedule workflow', () => {
     render()
     const user = await run(true)
     const table = screen.getByRole('table', { name: 'Break Changes to Review' })
-    expect(within(table).getAllByRole('rowheader')).toHaveLength(4)
-    if (count === 4) {
+    expect(within(table).getAllByRole('rowheader')).toHaveLength(5)
+    if (count === 5) {
       expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument()
     } else {
       expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Next' }))
       expect(within(table).getAllByRole('rowheader')).toHaveLength(1)
-      expect(within(table).getByRole('rowheader', { name: /lane-5/ })).toBeVisible()
+      expect(within(table).getByRole('rowheader', { name: /lane-6/ })).toBeVisible()
       expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Previous' }))
-      expect(within(table).getAllByRole('rowheader')).toHaveLength(4)
+      expect(within(table).getAllByRole('rowheader')).toHaveLength(5)
     }
   })
   it('offers a plan saved without selection in Confirm and uses it for simulation on request', async () => {
@@ -415,5 +416,152 @@ describe('supervisor schedule workflow', () => {
     expect(confirmation).toHaveTextContent('Target utilization · 70%')
     expect(confirmation).not.toHaveTextContent(/₱0|within simulation noise/)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+})
+
+// Phase D (owner-authorized 2026-11-25): break-order filters and paging on Review the Check.
+type Move = NonNullable<SupervisorPreview['breaks']>['moves'][number]
+function withMoves(moves: Move[], hash = 'b'): SupervisorPreview {
+  const value = preview(true)
+  value.preview_hash = hash.repeat(64)
+  value.breaks!.moves = moves
+  if (moves.length === 0) {
+    value.can_apply = false
+    value.blockers = ['no_moves']
+    value.breaks = null
+  }
+  return value
+}
+function move(queue: string, label: string, from: string, to: string): Move {
+  return { queue_id: queue, label, from, to, duration_minutes: 15 }
+}
+/** Ordinals 1..n spread over lanes, in a server order that is not sorted by ordinal. */
+function ordinalMoves(n: number): Move[] {
+  return Array.from({ length: n }, (_, index) => move(`lane-${index % 2 ? 'b' : 'a'}`, `Break ${n - index}`, `${String(9 + index).padStart(2, '0')}:00`, `${String(9 + index).padStart(2, '0')}:30`))
+}
+function filterButtons() {
+  return within(screen.getByRole('group', { name: 'Filter by break order' })).getAllByRole('button')
+}
+function shownRows() {
+  const table = screen.getByRole('table', { name: 'Break Changes to Review' })
+  return within(table).getAllByRole('row').slice(1).map((row) => row.textContent)
+}
+function rowText(item: Move, word: string) {
+  return `${item.queue_id}${word}${item.from}${item.to}${item.duration_minutes}`
+}
+
+describe('break order filters and paging (Phase D)', () => {
+  it('shows no filter or list when there are no moves', async () => {
+    mocks.preview.mockResolvedValue(withMoves([]))
+    render()
+    await run(true)
+    expect(screen.queryByRole('group', { name: 'Filter by break order' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Break Changes to Review' })).not.toBeInTheDocument()
+    expect(screen.getByText('No break move reduced the peak load within your settings.')).toBeVisible()
+  })
+
+  it.each([
+    [1, ['All', '1st break']],
+    [3, ['All', '1st break', '2nd break', '3rd break']],
+    [6, ['All', '1st break', '2nd break', '3rd break', '4th break', '5th break', '6th break']],
+  ] as const)('offers All plus one button per break order present (%s orders)', async (count, labels) => {
+    mocks.preview.mockResolvedValue(withMoves(count === 1 ? [move('a', 'Break 1', '10:00', '11:00'), move('b', 'Break 1', '12:00', '12:30')] : ordinalMoves(count)))
+    render()
+    await run(true)
+    expect(filterButtons().map((button) => button.textContent)).toEqual(labels)
+    expect(filterButtons().map((button) => button.getAttribute('aria-pressed'))).toEqual(labels.map((_, index) => String(index === 0)))
+    const regionId = screen.getByRole('region', { name: 'Break Changes to Review' }).id
+    expect(filterButtons().every((button) => button.getAttribute('aria-controls') === regionId)).toBe(true)
+  })
+
+  it('names break orders in Tagalog', async () => {
+    mocks.preview.mockResolvedValue(withMoves(ordinalMoves(6)))
+    renderWithProviders(<Routes><Route path="/analyses/:analysisId/plans" element={<OptimizePage />} /></Routes>, { route: '/analyses/7/plans', lang: 'tl' })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('checkbox', { name: 'Payagang ilipat ang oras ng break' }))
+    await user.click(screen.getByRole('button', { name: 'Suriin ang iskedyul' }))
+    const group = await screen.findByRole('group', { name: 'I-filter ayon sa pagkakasunod ng break' })
+    expect(within(group).getAllByRole('button').map((button) => button.textContent))
+      .toEqual(['Lahat', 'Unang break', 'Ikalawang break', 'Ikatlong break', 'Ikaapat na break', 'Ikalimang break', 'Ika-6 na break'])
+  })
+
+  it('pages five at a time, filters in server order, and keeps unknown labels under All only', async () => {
+    const moves = [
+      move('a', 'Break 2', '09:00', '09:15'), move('b', 'Break 1', '09:30', '10:00'), move('a', 'Extra', '10:00', '10:30'),
+      move('c', 'Break 1', '10:30', '11:00'), move('b', 'Break 2', '11:00', '11:30'), move('c', 'Break 0', '12:00', '12:30'),
+      move('a', 'Break 1', '13:00', '13:30'),
+    ]
+    const word = (item: Move) => ({ 'Break 1': '1st break', 'Break 2': '2nd break' } as Record<string, string>)[item.label] ?? item.label
+    mocks.preview.mockResolvedValue(withMoves(moves))
+    render()
+    const user = await run(true)
+    expect(filterButtons().map((button) => button.textContent)).toEqual(['All', '1st break', '2nd break'])
+    // All: 5 + 2, in server order; together they are exactly the server's moves.
+    expect(screen.getByTestId('break-moves-range')).toHaveTextContent('Showing 5 of 7')
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    const first = shownRows()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+    expect(screen.getByTestId('break-moves-range')).toHaveTextContent('Showing 2 of 7')
+    expect([...first, ...shownRows()]).toEqual(moves.map((item) => rowText(item, word(item))))
+    // A filter resets to page 1 and keeps the server order of its subset.
+    await user.click(screen.getByRole('button', { name: '1st break' }))
+    expect(screen.getByRole('button', { name: '1st break' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '1st break' })).toHaveFocus()
+    const ones = moves.filter((item) => item.label === 'Break 1')
+    expect(shownRows()).toEqual(ones.map((item) => rowText(item, '1st break')))
+    expect(screen.getByTestId('break-moves-range')).toHaveTextContent('Showing 3 of 3')
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '2nd break' }))
+    const twos = moves.filter((item) => item.label === 'Break 2')
+    expect(shownRows()).toEqual(twos.map((item) => rowText(item, '2nd break')))
+    // Unknown labels are never hidden: they are what All adds beyond the filters.
+    expect(ones.length + twos.length + 2).toBe(moves.length)
+    expect(screen.queryByText('Extra')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'All' }))
+    expect(screen.getByRole('table', { name: 'Break Changes to Review' })).toHaveTextContent('Extra')
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('table', { name: 'Break Changes to Review' })).toHaveTextContent('Break 0')
+    // The Confirm list stays complete and unfiltered.
+    await user.click(screen.getByRole('button', { name: '2nd break' }))
+    await confirm(user)
+    for (const item of moves) expect(screen.getByText(`${item.queue_id} · ${item.from} → ${item.to} · 15 min`)).toBeVisible()
+  })
+
+  it('moves focus to Previous when Next reaches the last page by keyboard (K-SAI-4) and operates filters by keyboard', async () => {
+    mocks.preview.mockResolvedValue(withMoves(ordinalMoves(7)))
+    render()
+    const user = await run(true)
+    screen.getByRole('button', { name: 'Next' }).focus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Previous' })).toHaveFocus()
+    screen.getByRole('button', { name: '3rd break' }).focus()
+    await user.keyboard(' ')
+    expect(screen.getByRole('button', { name: '3rd break' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '3rd break' })).toHaveFocus()
+    expect(shownRows()).toHaveLength(1)
+  })
+
+  it('returns to All and page 1 for a new check, and lists the moves below the summary', async () => {
+    mocks.preview.mockResolvedValueOnce(withMoves(ordinalMoves(7), 'c')).mockResolvedValueOnce(withMoves(ordinalMoves(7), 'd'))
+    render()
+    const user = await run(true)
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: '2nd break' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('button', { name: 'Check schedule' }))
+    await waitFor(() => expect(mocks.preview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByTestId('break-moves-range')).toHaveTextContent('Showing 5 of 7')
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    const panel = screen.getByRole('tabpanel', { name: 'Review' })
+    const metrics = panel.querySelector('.supervisor-metrics') as Element
+    const verdict = screen.getByText(/No clear change in wait/)
+    const filters = screen.getByRole('group', { name: 'Filter by break order' })
+    const table = screen.getByRole('region', { name: 'Break Changes to Review' })
+    expect(metrics.compareDocumentPosition(verdict) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(verdict.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(filters.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
