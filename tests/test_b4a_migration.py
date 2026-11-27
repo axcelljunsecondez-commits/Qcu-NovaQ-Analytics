@@ -53,6 +53,23 @@ def _rows(engine) -> list[tuple]:
         return connection.execute(text("SELECT id, name, queue_setup_json FROM analysis_projects ORDER BY id")).all()
 
 
+def test_arrival_allowance_migrates_to_zero_and_preserves_existing_data(at_0006):
+    cfg, engine = at_0006
+    command.upgrade(cfg, "0007")
+    before = _rows(engine)
+    command.upgrade(cfg, "0008")
+    with engine.connect() as connection:
+        assert connection.execute(text(
+            "SELECT shared_arrival_allowance_minutes FROM analysis_projects ORDER BY id"
+        )).scalars().all() == [0, 0]
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        connection.execute(text("UPDATE analysis_projects SET shared_arrival_allowance_minutes = 20 WHERE id = 21"))
+    assert _rows(engine) == before
+    command.downgrade(cfg, "0007")
+    assert "shared_arrival_allowance_minutes" not in _columns(engine)
+    assert _rows(engine) == before
+
+
 def test_upgrade_leaves_every_analysis_without_a_chosen_rule(at_0006):
     cfg, engine = at_0006
     before = _rows(engine)

@@ -42,6 +42,7 @@ export function hoursAt(startMinute: number, value: string): number | null {
 export function latestRunIds(runs: ContinuousRunListItem[]): Partial<Record<ContinuousPlan, number>> {
   const latest: Partial<Record<ContinuousPlan, number>> = {}
   for (const run of runs) {
+    if (run.arrival_settings_match === false) continue
     if (latest[run.plan] === undefined) latest[run.plan] = run.id
   }
   return latest

@@ -7,6 +7,7 @@ import math
 import re
 import secrets
 import statistics
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -64,6 +65,7 @@ from backend.queueing_engine.services.break_optimization import (
 )
 from backend.queueing_engine.services.data_processing import _weighted_wait, compute_kpis
 from backend.queueing_engine.services.model_explanations import analyze_segments
+from backend.queueing_engine.services.operating_minutes import active_arrival_minutes, format_clock
 from backend.queueing_engine.services.separate_optimization import (
     SELECTED_DES_CONTINUOUS_DAY_EXECUTION,
     SELECTED_DES_PER_PERIOD_EXECUTION,
@@ -1333,6 +1335,13 @@ def _current_evidence(
     des_current = current(_latest_job(db, user, "workflow_des_current", analysis.id))
     mc_current = current(_latest_job(db, user, "workflow_mc_current", analysis.id))
     mc = current(_latest_job(db, user, "workflow_mc", analysis.id, scenario_id)) if scenario_id else None
+    allowance = _shared_arrival_allowance(analysis)
+    if mc is not None:
+        if allowance:
+            if full_day is None or not _arrival_cutoff_check_matches(mc.params_json or {}, full_day):
+                mc = None
+        elif (mc.params_json or {}).get("arrival_allowance_minutes"):
+            mc = None
     validation = (
         current(_latest_job(db, user, "workflow_validation", analysis.id, scenario_id))
         if scenario_id
@@ -1368,6 +1377,8 @@ def _current_evidence(
                 or full_day is None
                 or references.get("continuous") != full_day.id
                 or full_day.created_at > decision.created_at
+                or (bool(allowance) and stored.get("arrival_run_token")
+                    != (full_day.params_json or {}).get("arrival_run_token"))
             )
         else:
             decision_stale = (
@@ -1376,6 +1387,7 @@ def _current_evidence(
                 or references.get("validation") != (validation.id if validation else None)
                 # "Full-day run first": with an eligible full-day run a new Decision would use it.
                 or full_day is not None
+                or bool(allowance)
             )
         if decision_stale:
             decision = None
@@ -1400,8 +1412,9 @@ def _current_evidence(
         "decision": _job_out(decision),
         "decision_stale": decision_stale,
         # OD-UX-13: which checks a new Decision uses, so the page runs the right ones.
-        "decision_basis": FULL_DAY_BASIS if full_day is not None else PERIOD_BASIS,
+        "decision_basis": FULL_DAY_BASIS if full_day is not None or allowance else PERIOD_BASIS,
         "full_day_run_id": full_day.id if full_day is not None else None,
+        **({"arrival_allowance_minutes": allowance} if allowance else {}),
     }
 
 
@@ -1754,9 +1767,16 @@ def run_mc(
     scenario, dataset = _require_selection(db, user, analysis)
     # Spec 2026-10-29: an omitted threshold means the shared plan's target, as for separate plans.
     failure_threshold, threshold_source = _resolve_mc_failure_threshold(payload, _shared_plan_target(scenario))
+    segments = _segments_for(scenario, service_dataset=dataset)
+    cutoff_evidence: dict[str, Any] = {}
+    if _shared_arrival_allowance(analysis):
+        run = _eligible_full_day_run(db, user, analysis, scenario, dataset)
+        if run is None:
+            raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+        segments, cutoff_evidence = _arrival_cutoff_mc_segments(segments, run)
     result = {
         "results": mc_simulate_segments(
-            _segments_for(scenario, service_dataset=dataset),
+            segments,
             num_trials=payload.num_trials,
             failure_threshold=failure_threshold,
             failure_rate_cap=payload.failure_rate_cap,
@@ -1766,7 +1786,7 @@ def run_mc(
     job = _save_job(
         db, user, "workflow_mc", analysis, scenario,
         {**payload.model_dump(), "failure_threshold": failure_threshold,
-         "failure_threshold_source": threshold_source},
+         "failure_threshold_source": threshold_source, **cutoff_evidence},
         result, settings, dataset,
     )
     return {"evidence": _job_out(job)}
@@ -1953,6 +1973,12 @@ def _today_overloaded_periods(rows: list[dict[str, Any]]) -> list[str]:
 # OD-UX-13 (spec 2026-10-13-od-ux-13-full-day-decision.md): a shared Decision from the full-day run.
 # The kind is backend.api.shared_continuous.JOB_KIND; that module imports this one, so it is named here.
 FULL_DAY_RUN_KIND = "shared_continuous_preview"
+
+
+def _shared_arrival_allowance(analysis: AnalysisProject) -> int:
+    if (analysis.queue_setup_json or {}).get("queue_structure") != "shared_queue":
+        return 0
+    return analysis.shared_arrival_allowance_minutes or 0
 FULL_DAY_BASIS = "full_day_run"
 PERIOD_BASIS = "period_by_period"
 
@@ -1968,6 +1994,7 @@ def _eligible_full_day_run(
     if scenario is None or dataset is None:
         return None
     setup_hash = _setup_fingerprint(analysis.queue_setup_json)
+    allowance = _shared_arrival_allowance(analysis)
     jobs = db.execute(
         select(Job)
         .where(Job.user_id == user.id, Job.kind == FULL_DAY_RUN_KIND, Job.status == "completed")
@@ -1975,6 +2002,11 @@ def _eligible_full_day_run(
     ).scalars()
     for job in jobs:
         params = job.params_json or {}
+        if params.get("arrival_allowance_minutes", 0) != allowance:
+            continue
+        if allowance and (params.get("closing_policy") != analysis.shared_closing_policy
+                          or not params.get("arrival_run_token")):
+            continue
         if (params.get("analysis_id") == analysis.id and params.get("plan") == "suggested"
                 and params.get("scenario_id") == scenario.id
                 and params.get("scenario_generation") == scenario.generation
@@ -1983,6 +2015,56 @@ def _eligible_full_day_run(
                 and params.get("setup_hash") == setup_hash):
             return job
     return None
+
+
+def _arrival_cutoff_check_matches(params: Mapping[str, Any], run: Job) -> bool:
+    run_params = run.params_json or {}
+    return (
+        params.get("arrival_continuous_run_id") == run.id
+        and params.get("arrival_run_token") == run_params.get("arrival_run_token")
+        and params.get("arrival_allowance_minutes") == run_params.get("arrival_allowance_minutes")
+        and params.get("arrival_cutoff_minute") == run_params.get("arrival_cutoff_minute")
+        and params.get("arrival_rate_basis") == "full_period_average"
+    )
+
+
+def _arrival_cutoff_mc_segments(segments: list[dict[str, Any]], run: Job
+                                ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Convert admitted volume to a full-period average rate for the existing sensitivity model."""
+    params = run.params_json or {}
+    inputs = ((run.result_json or {}).get("provenance") or {}).get("inputs") or {}
+    cutoff = inputs.get("arrival_cutoff_minute")
+    labels = params.get("period_labels") or {}
+    if type(cutoff) is not int or cutoff != params.get("arrival_cutoff_minute"):
+        raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+    periods: dict[str, tuple[int, int, Any]] = {}
+    for period in inputs.get("demand_periods") or []:
+        if not isinstance(period, dict):
+            raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+        label = labels.get(period.get("period_id"))
+        start, end = period.get("start_minute"), period.get("end_minute")
+        if not isinstance(label, str) or label in periods or type(start) is not int or type(end) is not int:
+            raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+        if end - start != 60:
+            raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+        periods[label] = start, end, period.get("arrival_rate_per_hour")
+    if len(periods) != len(segments):
+        raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+    adjusted: list[dict[str, Any]] = []
+    for segment in segments:
+        span = periods.get(segment["time"])
+        if span is None or segment["lambda"] != span[2]:
+            raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+        start, end, arrival_rate = span
+        active = active_arrival_minutes(start, end, cutoff)
+        adjusted.append({**segment, "lambda": float(arrival_rate) * active / (end - start)})
+    return adjusted, {
+        "arrival_continuous_run_id": run.id,
+        "arrival_run_token": params["arrival_run_token"],
+        "arrival_allowance_minutes": params["arrival_allowance_minutes"],
+        "arrival_cutoff_minute": cutoff,
+        "arrival_rate_basis": "full_period_average",
+    }
 
 
 def _full_day_periods(rows: list[dict[str, Any]], run: Job, mc: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -2046,6 +2128,8 @@ def _derive_full_day_decision(
     if mc is None:
         missing.append("a completed Many variations run for the selected plan")
     run_params = run.params_json or {}
+    cutoff = run_params.get("arrival_cutoff_minute")
+    cost_basis = "Modeled plan costs use the saved plan’s arrival rates over complete periods."
     evidence_ids = {
         "selection": evidence["selection"]["id"] if evidence.get("selection") else None,
         "des": None, "mc": mc["id"] if mc else None, "validation": None, "continuous": run.id,
@@ -2055,6 +2139,10 @@ def _derive_full_day_decision(
         "dataset_id": scenario.dataset_id, "evidence_ids": evidence_ids,
         "provenance_warning": (
             "Analytical estimates and simulated results are decision support, not observed future outcomes."),
+        **({"arrival_allowance_minutes": run_params["arrival_allowance_minutes"],
+            "arrival_cutoff_minute": cutoff, "modeled_cost_basis": cost_basis,
+            "arrival_run_token": run_params["arrival_run_token"]}
+           if cutoff is not None else {}),
     }
     if missing:
         return {
@@ -2081,6 +2169,8 @@ def _derive_full_day_decision(
         "periods": periods, "full_day_run": {
             "id": run.id, "replications": run_params.get("replications"),
             "closing_policy": run_params.get("closing_policy"), "service_model": run_params.get("service_model"),
+            **({"arrival_allowance_minutes": run_params["arrival_allowance_minutes"],
+                "arrival_cutoff_minute": cutoff} if cutoff is not None else {}),
         },
     }
     if overloaded:
@@ -2107,6 +2197,8 @@ def _derive_full_day_decision(
         status, headline = "conditional", f'Consider Scenario "{scenario.name}" conditionally.'
         recommendation = (f"All {total} periods passed {checks}, but modeled cost increases by "
                           f"PHP {abs(savings):,.2f} per modeled cycle.")
+    if cutoff is not None:
+        recommendation += " " + cost_basis
     return {
         "status": status, "headline": headline, "recommendation": recommendation,
         "rationale": [
@@ -2115,6 +2207,8 @@ def _derive_full_day_decision(
             (f"Full-day run {run.id}: {run_params.get('replications')} repeats, closing rule "
              f"{run_params.get('closing_policy')}, {run_params.get('service_model')} service times."),
             f"Periods: {total - len(failed) - len(unsettled)} of {total} passed.",
+            *([f"Arrivals stop at {format_clock(cutoff)}. Many variations uses the average admitted demand "
+               "over each complete period."] if cutoff is not None else []),
             *([f"Today's staffing cannot keep up (ρ ≥ 1) in: {', '.join(overloaded)}."] if overloaded else []),
         ],
         "missing_evidence": [], "facts": facts, **common,
@@ -4066,11 +4160,16 @@ def create_decision(
         return {"decision": result, "persisted": False}
     # OD-UX-13 "Full-day run first": an eligible full-day run of the selected plan decides the basis.
     full_day = _eligible_full_day_run(db, user, analysis, scenario, dataset)
+    if _shared_arrival_allowance(analysis):
+        if full_day is None:
+            raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_run_required"})
+        if evidence["mc"] is None or not _arrival_cutoff_check_matches(evidence["mc"]["params"], full_day):
+            raise HTTPException(status_code=422, detail={"code": "arrival_cutoff_check_required"})
     if scenario is not None and full_day is not None:
         result = _derive_full_day_decision(analysis, scenario, evidence, full_day)
     else:
         result = {**_derive_decision(analysis, scenario, evidence), "basis": PERIOD_BASIS}
-    if scenario is None or dataset is None:
+    if scenario is None or dataset is None or (_shared_arrival_allowance(analysis) and result["missing_evidence"]):
         return {"decision": result, "persisted": False}
     _require_selection_dataset_generation(selection, dataset)
     job = _save_job(

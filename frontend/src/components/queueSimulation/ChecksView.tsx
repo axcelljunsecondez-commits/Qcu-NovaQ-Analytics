@@ -394,7 +394,12 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   const [validationTrials, setValidationTrials] = useState('10000')
   const [validationSeed, setValidationSeed] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
+  const refresh = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] }),
+    workflow.arrival_allowance_minutes
+      ? queryClient.resetQueries({ queryKey: ['report-preview', analysisId, 'full'] })
+      : undefined,
+  ])
   const onError = (err: unknown) => setError(requestError(err, t('errors.server')))
   const mcRun = useMutation({
     mutationFn: () => runWorkflowMc(analysisId, {
@@ -467,6 +472,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   const running = mcRun.isPending || validationRun.isPending || decisionRun.isPending
   // OD-UX-13 "Full-day run first": the server names the basis a new Decision will use.
   const fullDay = workflow.decision_basis === 'full_day_run'
+  const needsSuggestedRun = fullDay && workflow.full_day_run_id === null
   const usedRun = decision?.basis === 'full_day_run' ? decision.facts?.full_day_run ?? null : null
   const checkedPeriods = fullDay && savedDecision && decision.basis === 'full_day_run' && decision.scenario_id === context.scenario?.id
     ? decision.facts?.periods ?? [] : []
@@ -497,6 +503,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
   }
 
   async function checkPlan() {
+    if (needsSuggestedRun) return
     const problem = fullDay ? mcError(settings, t) : validationProblem()
     if (problem) return setError(problem)
     setError(null)
@@ -532,7 +539,9 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
               <ul>{decision.rationale.map((line, index) => <li key={index}>{line}</li>)}</ul>
             </>}
           </DecisionExplanation>}
-          <button type="button" className={savedDecision ? 'btn-secondary' : 'btn-primary'} onClick={() => void checkPlan()} disabled={running}>{running ? t('common.loading') : t('simulation.check_the_plan')}</button>
+          {needsSuggestedRun && <p className="form-hint">{t('continuous.arrival_checks_run_first')}</p>}
+          {!!workflow.arrival_allowance_minutes && !needsSuggestedRun && <p className="form-hint">{t('continuous.arrival_checks_basis')}</p>}
+          <button type="button" className={savedDecision ? 'btn-secondary' : 'btn-primary'} onClick={() => void checkPlan()} disabled={running || needsSuggestedRun}>{running ? t('common.loading') : t('simulation.check_the_plan')}</button>
         </div>
         {error && <div role="alert" className="alert alert-error">{error}</div>}
       </section>
@@ -575,7 +584,7 @@ function LegacyPlanChecks({ context }: { context: SimulationContext }) {
         info={mcRows.length > 0 ? <ManyVariationsInfo rows={mcRows} /> : undefined}>
         <p className="form-hint">{t('simulation.variations_label')}</p>
         <McFields settings={settings} planTarget={planTarget} idPrefix="mc" />
-        <button type="button" className="btn-secondary" disabled={running} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
+        <button type="button" className="btn-secondary" disabled={running || needsSuggestedRun} onClick={() => { const problem = mcError(settings, t); if (problem) { setError(problem); return } setError(null); mcRun.mutate() }}>{t('simulation.run_mc')}</button>
         {mcRows.length > 0 && (
           <ManyVariationsChart rows={mcRows} separate={false} run="plan" planTarget={planTarget} seed={mcSeed}><McTable rows={mcRows} /></ManyVariationsChart>
         )}

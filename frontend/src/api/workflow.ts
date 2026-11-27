@@ -131,6 +131,7 @@ export interface WorkflowEvidence {
   /** OD-UX-13: which checks a new shared Decision uses, and the full-day run it would use. */
   decision_basis?: DecisionBasis
   full_day_run_id?: number | null
+  arrival_allowance_minutes?: number
 }
 
 export async function getWorkflow(analysisId: number): Promise<WorkflowEvidence> {

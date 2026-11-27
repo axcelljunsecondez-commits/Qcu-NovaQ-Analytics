@@ -15,6 +15,7 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from backend.queueing_engine.services.operating_minutes import format_clock
 from backend.reports.selected_scope import selected_load_fields, selected_load_provenance, selected_scope_notice
 
 FULL_LABEL = "Plan checked by simulation, with the Decision"
@@ -115,6 +116,11 @@ def _shared_full_day_sections(run: Mapping[str, Any], mc: Mapping[str, Any] | No
          "settings": "Full-day busy shares against plan targets and Many variations; no period-by-period validation is used."},
     ]
     not_included = ["Period-by-period simulation and its validation are not used for this full-day Decision."]
+    cutoff = params.get("arrival_cutoff_minute")
+    if cutoff is not None:
+        checks[0]["settings"] += f"; new arrivals stop at {format_clock(cutoff)}"
+        checks[1]["settings"] += "; admitted demand averaged over each complete period"
+        not_included.append(str(decision["modeled_cost_basis"]))
     if counter_breaks:
         not_included.append("Suggested counters do not account for the counter breaks in the Setup.")
     return {

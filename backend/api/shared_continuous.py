@@ -22,9 +22,10 @@ import logging
 import math
 from datetime import datetime, timezone
 from typing import Any, Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -38,6 +39,7 @@ from backend.api.workflow import _job_out, _segments_for, _selected_scenario_and
 from backend.data.analysis_ingestion import DES_EMPIRICAL_SOURCE
 from backend.db.models import AnalysisProject, Dataset, Job, Scenario, User
 from backend.db.session import get_db
+from backend.queueing_engine.services.operating_minutes import active_arrival_minutes
 from backend.queueing_engine.services.shared_segments import (
     DemandPeriod,
     OperatingHorizon,
@@ -81,6 +83,17 @@ class _Strict(BaseModel):
 
 class ClosingPolicyIn(_Strict):
     closing_policy: Literal["DRAIN", "HARD_CUTOFF"]
+
+
+class ArrivalCutoffIn(_Strict):
+    allowance_minutes: Literal[0, 15, 30, 45, 60]
+
+    @field_validator("allowance_minutes", mode="before")
+    @classmethod
+    def _whole_minutes(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("Use a whole number of minutes.")
+        return value
 
 
 class RunIn(_Strict):
@@ -249,9 +262,19 @@ def _counter_breaks(setup: dict[str, Any], horizon: OperatingHorizon, staffing: 
     return breaks, reasons
 
 
-def _expected_customers_per_day(periods: list[DemandPeriod]) -> float:
+def _expected_customers_per_day(periods: list[DemandPeriod], cutoff: int | None = None) -> float:
     """Sum of arrival rate x period hours (the named run's run-time measure, spec section 22.8)."""
-    return math.fsum(p.arrival_rate_per_hour * (p.end_minute - p.start_minute) / 60 for p in periods)
+    return math.fsum(p.arrival_rate_per_hour * active_arrival_minutes(p.start_minute, p.end_minute, cutoff) / 60
+                     for p in periods)
+
+
+def _arrival_cutoff_reason(horizon: OperatingHorizon, periods: list[DemandPeriod], allowance: int,
+                           recorded: bool) -> dict[str, Any] | None:
+    if recorded or any(period.end_minute - period.start_minute != 60 for period in periods):
+        return _reason("arrival_cutoff_requires_hourly_aggregate")
+    if horizon.end_minute - allowance <= horizon.start_minute:
+        return _reason("arrival_cutoff_before_opening")
+    return None
 
 
 def _period_labels(segments: list[StaffingSegment], rows: list[Any], recorded: bool) -> dict[str, str]:
@@ -321,11 +344,20 @@ def _read_plan_data(db: Session, user: User, analysis: AnalysisProject, plan: Pl
                 else:
                     out["timeline"] = _timeline(rows)
                 if out["timeline"] is not None:
-                    out["period_labels"] = _period_labels(out["timeline"][2], rows, recorded)
-                    out["expected_customers_per_day"] = _expected_customers_per_day(out["timeline"][1])
-                    horizon = out["timeline"][0]
+                    horizon, periods, staffing = out["timeline"]
+                    allowance = analysis.shared_arrival_allowance_minutes
+                    cutoff = None
+                    if allowance:
+                        cutoff_reason = _arrival_cutoff_reason(horizon, periods, allowance, recorded)
+                        if cutoff_reason is not None:
+                            reasons.append(cutoff_reason)
+                        else:
+                            cutoff = horizon.end_minute - allowance
+                            out["arrival_cutoff_minute"] = cutoff
+                    out["period_labels"] = _period_labels(staffing, rows, recorded)
+                    out["expected_customers_per_day"] = _expected_customers_per_day(periods, cutoff)
                     out["horizon"] = {"start_minute": horizon.start_minute, "end_minute": horizon.end_minute}
-                    out["counter_breaks"], break_reasons = _counter_breaks(setup, horizon, out["timeline"][2])
+                    out["counter_breaks"], break_reasons = _counter_breaks(setup, horizon, staffing)
                     reasons += break_reasons
             except SharedSegmentError as error:
                 reasons.append(_reason("timeline_invalid", problems=error.problems))
@@ -347,6 +379,8 @@ def _assess(db: Session, user: User, analysis: AnalysisProject, plan: Plan) -> d
         _read_plan_data(db, user, analysis, plan, setup, probe)
         if probe["horizon"] is not None:
             out.update(dataset=probe["dataset"], scenario=probe["scenario"], horizon=probe["horizon"])
+            if "arrival_cutoff_minute" in probe:
+                out["arrival_cutoff_minute"] = probe["arrival_cutoff_minute"]
     if analysis.shared_closing_policy not in CLOSING_POLICIES:
         reasons.append(_reason("no_closing_policy"))
     out["reasons"] = reasons
@@ -367,6 +401,8 @@ def _plan_view(assessment: dict[str, Any]) -> dict[str, Any]:
         "service_model": assessment["service_model"],
         "service_fallbacks": assessment["service_fallbacks"],
         "counter_breaks": len(assessment["counter_breaks"]),
+        **({"arrival_cutoff_minute": assessment["arrival_cutoff_minute"]}
+           if "arrival_cutoff_minute" in assessment else {}),
     }
 
 
@@ -392,11 +428,16 @@ def _currentness(db: Session, user: User, analysis: AnalysisProject, job: Job) -
         scenario, _, _ = _selected_scenario_and_dataset(db, user, analysis)
         plan_selected = (scenario is not None and scenario.id == params.get("scenario_id")
                          and scenario.generation == params.get("scenario_generation"))
+    allowance = analysis.shared_arrival_allowance_minutes
+    run_allowance = params.get("arrival_allowance_minutes", 0)
     return {
         "setup_matches_current": params.get("setup_hash") == setup_fingerprint(analysis.queue_setup_json),
         "dataset_is_current": (current is not None and current.id == params.get("dataset_id")
                                and current.generation == params.get("dataset_generation")),
         "plan_is_selected": plan_selected,
+        **({"arrival_settings_match": (
+            allowance == run_allowance and analysis.shared_closing_policy == params.get("closing_policy")
+        )} if allowance or run_allowance else {}),
     }
 
 
@@ -456,6 +497,47 @@ def put_closing_policy(
     return {"closing_policy": analysis.shared_closing_policy}
 
 
+@router.get("/{analysis_id}/arrival-cutoff")
+def get_arrival_cutoff(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    analysis = own_analysis(db, user, analysis_id)
+    return {"allowance_minutes": analysis.shared_arrival_allowance_minutes}
+
+
+@router.put("/{analysis_id}/arrival-cutoff")
+def put_arrival_cutoff(
+    analysis_id: int,
+    body: ArrivalCutoffIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    """Keep the admission setting apart from the staffing plan and the closing rule."""
+    analysis = own_analysis(db, user, analysis_id)
+    if analysis.archived_at is not None:
+        raise HTTPException(status_code=409, detail={"code": "analysis_archived"})
+    allowance = body.allowance_minutes
+    if allowance:
+        resolution = resolve_current_dataset(db, owner_id=user.id, analysis_id=analysis.id)
+        dataset = resolution.dataset
+        rows = list(dataset.normalized_json or []) if dataset is not None else []
+        if ((analysis.queue_setup_json or {}).get("queue_structure") != "shared_queue"
+                or resolution.status is not CurrentDatasetStatus.CURRENT or _is_recorded(rows)):
+            raise HTTPException(status_code=422, detail=_reason("arrival_cutoff_requires_hourly_aggregate"))
+        try:
+            horizon, periods, _ = _timeline(rows)
+        except SharedSegmentError:
+            raise HTTPException(status_code=422, detail=_reason("arrival_cutoff_requires_hourly_aggregate")) from None
+        reason = _arrival_cutoff_reason(horizon, periods, allowance, False)
+        if reason is not None:
+            raise HTTPException(status_code=422, detail=reason)
+    analysis.shared_arrival_allowance_minutes = allowance
+    db.commit()
+    return {"allowance_minutes": allowance}
+
+
 @router.post("/{analysis_id}/continuous/compatibility")
 def continuous_compatibility(
     analysis_id: int,
@@ -477,6 +559,8 @@ def continuous_compatibility(
         "model_scope": PREVIEW_SCOPE,
         "verdict": None,
         "verdict_reason": NO_VERDICT_REASON,
+        **({"arrival_allowance_minutes": analysis.shared_arrival_allowance_minutes}
+           if analysis.shared_arrival_allowance_minutes else {}),
     }
 
 
@@ -511,10 +595,12 @@ def create_continuous_run(
         if size > settings.result_jsonb_max_bytes:
             raise HTTPException(status_code=413, detail={
                 "code": "evidence_too_large", "bytes": size, "max_bytes": settings.result_jsonb_max_bytes})
+    cutoff = assessment.get("arrival_cutoff_minute")
     try:
         result = run_shared_replications(horizon, periods, segments, replications=body.replications,
                                          seed=body.seed, closing_policy=closing_policy, service_samples=samples,
-                                         counter_breaks=assessment["counter_breaks"] or None)
+                                         counter_breaks=assessment["counter_breaks"] or None,
+                                         arrival_cutoff_minute=cutoff)
     except SharedSegmentError as error:
         raise HTTPException(status_code=422, detail={
             "code": "not_compatible", "plan": body.plan,
@@ -560,6 +646,9 @@ def create_continuous_run(
             "setup_hash": setup_fingerprint(analysis.queue_setup_json),
             "limits_status": LIMITS_STATUS,
             "preview": True,
+            **({"arrival_allowance_minutes": analysis.shared_arrival_allowance_minutes,
+                "arrival_cutoff_minute": cutoff,
+                "arrival_run_token": uuid4().hex} if cutoff is not None else {}),
         },
         result_json=result,
         tenant_id=user.tenant_id,
@@ -595,6 +684,8 @@ def list_continuous_runs(
             "closing_policy": params.get("closing_policy"), "engine_version": params.get("engine_version"),
             # Runs stored before B4b had no recorded mode, so they are exponential.
             "service_model": params.get("service_model") or EXPONENTIAL,
+            **({key: params[key] for key in ("arrival_allowance_minutes", "arrival_cutoff_minute")}
+               if params.get("arrival_allowance_minutes") else {}),
             **_currentness(db, user, analysis, job),
         })
     return {"runs": runs}
@@ -630,6 +721,12 @@ def continuous_playback(
     if not isinstance(total, int) or not 0 <= replication_index < total:
         raise HTTPException(status_code=404, detail={"code": "replication_not_found"})
     try:
+        params = job.params_json or {}
+        if params.get("arrival_allowance_minutes") and (
+            params.get("inputs_sha256") != _inputs_sha256(provenance.get("inputs"))
+            or params.get("arrival_cutoff_minute") != provenance.get("inputs", {}).get("arrival_cutoff_minute")
+        ):
+            raise PlaybackConsistencyError("The saved arrival inputs do not match the stored run.")
         playback = playback_from_replications(stored, replication_index)
     except PlaybackConsistencyError as error:
         logger.warning("event=shared_continuous_regeneration_mismatch run_id=%s", job.id)

@@ -46,7 +46,11 @@ function useContinuous(analysisId: number) {
     queryKey: ['continuous-run', analysisId, latest.suggested], queryFn: () => getContinuousRun(analysisId, latest.suggested as number),
     enabled: latest.suggested !== undefined,
   })
-  return { closing, compatibility, runs, current: current.data ?? null, suggested: suggested.data ?? null }
+  return {
+    closing, compatibility, runs,
+    current: current.data?.arrival_settings_match === false ? null : current.data ?? null,
+    suggested: suggested.data?.arrival_settings_match === false ? null : suggested.data ?? null,
+  }
 }
 
 function ReasonList({ reasons }: { reasons: ContinuousReason[] }) {
@@ -67,7 +71,7 @@ function ReasonList({ reasons }: { reasons: ContinuousReason[] }) {
   )
 }
 
-function ClosingRule({ analysisId, rule }: { analysisId: number; rule: ClosingPolicy | null }) {
+function ClosingRule({ analysisId, rule, hasEarlierCutoff }: { analysisId: number; rule: ClosingPolicy | null; hasEarlierCutoff: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(rule === null)
@@ -78,6 +82,12 @@ function ClosingRule({ analysisId, rule }: { analysisId: number; rule: ClosingPo
       setEditing(false)
       void queryClient.invalidateQueries({ queryKey: ['closing-policy', analysisId] })
       void queryClient.invalidateQueries({ queryKey: ['continuous-compat', analysisId] })
+      if (hasEarlierCutoff) {
+        void queryClient.resetQueries({ queryKey: ['continuous-runs', analysisId] })
+        void queryClient.resetQueries({ queryKey: ['continuous-run', analysisId] })
+        void queryClient.resetQueries({ queryKey: ['workflow', analysisId] })
+        void queryClient.resetQueries({ queryKey: ['report-preview', analysisId, 'full'] })
+      }
     },
   })
   if (!editing && rule !== null) {
@@ -145,6 +155,9 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored, compa
       void queryClient.invalidateQueries({ queryKey: ['continuous-runs', analysisId] })
       // OD-UX-13: a new run of the plan changes which run a Decision uses and makes the stored one stale.
       void queryClient.invalidateQueries({ queryKey: ['workflow', analysisId] })
+      if (plan === 'suggested' && compatibility.arrival_allowance_minutes) {
+        void queryClient.resetQueries({ queryKey: ['report-preview', analysisId, 'full'] })
+      }
     },
     onError: (failure) => setError(requestError(failure, t('errors.server'))),
   })
@@ -176,8 +189,12 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored, compa
       <div className="title-row"><h2 className="section-title"><span lang="en">{headingText(t, 'continuous.title')}</span> <span className="badge badge-neutral">{t('continuous.preview_label')}</span></h2><HelpLink topic="simulation" section="methods" /></div>
       <div className="run-bar-row">
         {hours ? <HoursChip text={t('simulation.operating_hours', { hours })} /> : <span>{t('simulation.operating_hours_unknown')}</span>}
-        <ClosingRule analysisId={analysisId} rule={rule} />
+        <ClosingRule analysisId={analysisId} rule={rule} hasEarlierCutoff={Boolean(compatibility.arrival_allowance_minutes)} />
       </div>
+      {view.arrival_cutoff_minute !== undefined && <p className="form-hint">
+        {t('continuous.arrival_cutoff_time', { time: clockOfMinutes(view.arrival_cutoff_minute) })}{' '}
+        <Link to={`/analyses/${analysisId}/data`}>{t('continuous.arrival_change_cutoff')}</Link>
+      </p>}
       <div className="run-bar-row">
         {!compact && status}
         <button type="button" className="btn-primary" onClick={start} disabled={!view.compatible || run.isPending || settingsPending}>
@@ -202,7 +219,8 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored, compa
       </details>
       </div>
       {stored && (
-        <p className="form-hint">{t('continuous.stored', { repeats: stored.evidence.params.replications, seed: stored.evidence.params.seed })} · {t(`continuous.closing_short_${stored.evidence.params.closing_policy}`)}{stored.evidence.params.service_model === 'recorded' && ` · ${t('continuous.service_recorded_short')}`}</p>
+        <p className="form-hint">{t('continuous.stored', { repeats: stored.evidence.params.replications, seed: stored.evidence.params.seed })} · {t(`continuous.closing_short_${stored.evidence.params.closing_policy}`)}{stored.evidence.params.service_model === 'recorded' && ` · ${t('continuous.service_recorded_short')}`}
+          {compact && stored.evidence.params.arrival_cutoff_minute !== undefined && ` · ${t('continuous.arrival_cutoff_time', { time: clockOfMinutes(stored.evidence.params.arrival_cutoff_minute) })}`}</p>
       )}
       {stored && staleNotes(stored, t).map((note) => <p key={note} role="status" className="alert alert-warn">{note}</p>)}
       {blocking.length > 0 && (
@@ -210,6 +228,9 @@ function ContinuousRunBar({ analysisId, plan, compatibility, rule, stored, compa
           <strong>{t('continuous.cannot_run')}</strong>
           <ReasonList reasons={blocking} />
           {blocking.some((reason) => reason.code === 'no_selected_plan') && <Link to={`/analyses/${analysisId}/plans`}>{t('nav.suggested_plans')}</Link>}
+          {blocking.some((reason) => reason.code === 'arrival_cutoff_before_opening' || reason.code === 'arrival_cutoff_requires_hourly_aggregate') && (
+            <Link to={`/analyses/${analysisId}/data`}>{t('continuous.arrival_change_cutoff')}</Link>
+          )}
           {blocking.some((reason) => reason.code === 'capacity_or_abandonment' || reason.code === 'capacity_or_abandonment_unknown') && (
             <span hidden={compact}><button type="button" className="btn-ghost" onClick={() => {
               setAdvancedOpen(true); setFocusModelOptions((value) => value + 1)
