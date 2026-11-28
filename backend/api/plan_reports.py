@@ -124,6 +124,12 @@ def _full_model(db: Session, user: User, analysis: AnalysisProject) -> dict[str,
             run = _eligible_full_day_run(db, user, analysis, scenario, dataset)
             if run is None or run.id != (decision.get("evidence_ids") or {}).get("continuous"):
                 raise HTTPException(status_code=422, detail={"code": "no_current_decision", "detail": NO_DECISION})
+            run_params = run.params_json or {}
+            if decision.get("arrival_allowance_minutes") and (
+                run_params.get("arrival_run_token") != decision.get("arrival_run_token")
+                or run_params.get("arrival_cutoff_minute") != decision.get("arrival_cutoff_minute")
+            ):
+                raise HTTPException(status_code=422, detail={"code": "no_current_decision", "detail": NO_DECISION})
             full_day = _job_out(run)
         sections = shared_full_sections(des=evidence["des"], mc=evidence["mc"], validation=evidence["validation"],
                                         decision=decision, counter_breaks=bool(setup.get("counter_breaks")), full_day=full_day)

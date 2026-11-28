@@ -20,7 +20,7 @@ export function MissingChoices({ closing, onClosingChange, savedClosing, closing
     <legend>{t('continuous.closing_title')}</legend>
     {(['DRAIN', 'HARD_CUTOFF', 'later'] as const).map((value) => (
       <label key={value} className="radio-row"><input type="radio" name="file-closing" checked={closing === value} onChange={() => onClosingChange(value)} />
-        {t(value === 'later' ? 'setup.read_decide_later' : `continuous.closing_option_${value}`)}
+        {t(value === 'later' ? 'setup.read_decide_later' : value === 'HARD_CUTOFF' ? 'setup.arrival_finish_started' : 'continuous.closing_option_DRAIN')}
       </label>
     ))}
   </fieldset>) : null

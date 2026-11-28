@@ -44,6 +44,7 @@ RECORDED = "recorded"
 
 # B4c (spec 2026-10-09-b4c-shared-line-breaks.md and its 2026-10-12 addendum): breaks taken by any counter.
 BREAKS_SUFFIX = "+breaks-v1"
+ARRIVAL_CUTOFF_SUFFIX = "+arrival-cutoff-v1"
 
 # Same-time order: a completion frees its server before a capacity change is applied, and an
 # arrival at a boundary sees the new capacity. Ties among arrivals follow customer id. Break ends
@@ -841,7 +842,7 @@ def _streams(recorded: bool) -> int:
 
 def _draw_arrivals(
     horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], seed_sequence: np.random.SeedSequence,
-    *, recorded: bool = False,
+    *, recorded: bool = False, arrival_cutoff_minute: int | None = None,
 ) -> list[tuple[float, float]]:
     """(arrival hour, unit work) pairs from the two streams ``seed_sequence.spawn(2)``.
 
@@ -851,22 +852,26 @@ def _draw_arrivals(
     """
     if recorded:
         arrival_child, _, quantile_child = seed_sequence.spawn(3)
-        times = _arrival_times(horizon, demand_periods, np.random.default_rng(arrival_child))
+        times = _arrival_times(horizon, demand_periods, np.random.default_rng(arrival_child), arrival_cutoff_minute)
         quantiles = np.random.default_rng(quantile_child).random(size=len(times))
         return list(zip(times, (float(value) for value in quantiles)))
     arrival_stream, work_stream = (np.random.default_rng(child) for child in seed_sequence.spawn(2))
-    times = _arrival_times(horizon, demand_periods, arrival_stream)
+    times = _arrival_times(horizon, demand_periods, arrival_stream, arrival_cutoff_minute)
     works = [float(work) for work in work_stream.exponential(1.0, size=len(times))]
     return list(zip(times, works))
 
 
 def _arrival_times(
-    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], arrival_stream: np.random.Generator
+    horizon: OperatingHorizon, demand_periods: Sequence[DemandPeriod], arrival_stream: np.random.Generator,
+    arrival_cutoff_minute: int | None = None,
 ) -> list[float]:
     times: list[float] = []
+    cutoff = horizon.end_minute if arrival_cutoff_minute is None else arrival_cutoff_minute
     for period in demand_periods:
+        if period.start_minute >= cutoff:
+            break
         rate = float(period.arrival_rate_per_hour)
-        start, stop = _hours(period.start_minute, horizon), _hours(period.end_minute, horizon)
+        start, stop = _hours(period.start_minute, horizon), _hours(min(period.end_minute, cutoff), horizon)
         at = start
         while rate > 0:
             at += float(arrival_stream.exponential(1.0 / rate))
@@ -907,6 +912,7 @@ def simulate_shared_replication(
     max_trace_events: int | None = None,
     service_samples: Mapping[str, Sequence[float]] | None = None,
     counter_breaks: Sequence[CounterBreak] | None = None,
+    arrival_cutoff_minute: int | None = None,
 ) -> dict[str, Any]:
     """Run one replication from a numpy ``SeedSequence`` (Phase 4 replications and playback).
 
@@ -916,6 +922,12 @@ def simulate_shared_replication(
     children would draw different streams.
     """
     validate_timeline(horizon, demand_periods, staffing_segments)
+    if arrival_cutoff_minute is not None and (
+        isinstance(arrival_cutoff_minute, bool)
+        or not isinstance(arrival_cutoff_minute, Integral)
+        or not horizon.start_minute < arrival_cutoff_minute < horizon.end_minute
+    ):
+        raise SharedSegmentError(["Arrival cutoff must be a whole minute strictly inside the operating horizon."])
     if not isinstance(seed_sequence, np.random.SeedSequence) or seed_sequence.n_children_spawned != 0:
         raise SharedSegmentError(["seed_sequence must be an unused numpy SeedSequence."])
     recorded = service_samples is not None
@@ -923,7 +935,8 @@ def simulate_shared_replication(
         resolve_service_samples(demand_periods, service_samples)  # refuse bad durations before drawing
     result = simulate_prescribed(
         horizon, demand_periods, staffing_segments,
-        _draw_arrivals(horizon, demand_periods, seed_sequence, recorded=recorded),
+        _draw_arrivals(horizon, demand_periods, seed_sequence, recorded=recorded,
+                       arrival_cutoff_minute=arrival_cutoff_minute),
         closing_policy=closing_policy, max_trace_events=max_trace_events, service_samples=service_samples,
         counter_breaks=counter_breaks,
     )

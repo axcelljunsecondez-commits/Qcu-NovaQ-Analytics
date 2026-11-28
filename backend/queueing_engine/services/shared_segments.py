@@ -28,6 +28,7 @@ from numbers import Integral, Real
 from typing import Any
 
 from backend.queueing_engine.services.model_selection import select_model
+from backend.queueing_engine.services.operating_minutes import format_clock as format_clock
 from backend.queueing_engine.utilization import is_saturated, utilization_band
 
 MINUTES_PER_DAY = 1440
@@ -100,10 +101,6 @@ def parse_clock(value: object) -> int:
     if minutes > 59 or hours > 24 or (hours == 24 and minutes != 0):
         raise SharedSegmentError([f"Time {value!r} is not a clock time between 00:00 and 24:00."])
     return hours * 60 + minutes
-
-
-def format_clock(minute: int) -> str:
-    return f"{minute // 60:02d}:{minute % 60:02d}"
 
 
 def _is_whole_number(value: object) -> bool:

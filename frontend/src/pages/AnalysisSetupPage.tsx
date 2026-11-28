@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { applySharedAggregateDataset, getAnalysis, getAnalysisCurrent, listAnalysisDatasets, patchAnalysis, previewAnalysisDataset, previewSharedAggregateDataset, uploadAnalysisDataset } from '../api/analyses'
-import { getClosingPolicy, putClosingPolicy } from '../api/continuous'
+import { getArrivalCutoff, getClosingPolicy, putArrivalCutoff, putClosingPolicy, type ArrivalAllowance } from '../api/continuous'
 import type { DatasetPreviewOut, DatasetPurpose, EventPeriodBasis, QueueSetup, SharedAggregatePreviewOut } from '../api/types'
 import { ApiState } from '../components/ui/ApiState'
 import { BreakEditor } from '../components/analysis/BreakEditor'
@@ -19,7 +19,9 @@ import { MakePeriodsHelper } from '../components/setup/MakePeriodsHelper'
 import { ManualEntry } from '../components/setup/ManualEntry'
 import { HelpLink } from '../components/ui/HelpLink'
 import { MissingChoices, type ClosingChoice } from '../components/setup/MissingChoices'
+import { ArrivalCutoffChoices, type OperatingWindow } from '../components/setup/ArrivalCutoffChoices'
 import { deferredSharedChoices, sharedChoicesComplete } from '../lib/sharedAggregateSetup'
+import { clockOfMinutes, hoursAt } from '../lib/continuous'
 import { focusAfterCancel } from '../lib/focusAfterCancel'
 import '../styles/sharedFileSetup.css'
 
@@ -71,6 +73,28 @@ function nextSegmentId(segments: QueueSetup['segments']): string {
   let index = segments.length + 1
   while (used.has(`segment_${index}`)) index += 1
   return `segment_${index}`
+}
+
+function operatingWindow(start: string, end: string): OperatingWindow | null {
+  const first = hoursAt(0, start)
+  const last = hoursAt(0, end)
+  return first !== null && last !== null && last > first
+    ? { start: Math.round(first * 60), end: Math.round(last * 60) }
+    : null
+}
+
+function savedHourlyWindow(rows: Record<string, unknown>[] | null | undefined): OperatingWindow | null {
+  if (!rows?.length) return null
+  const periods = rows.flatMap((row) => {
+    if (typeof row.time !== 'string') return []
+    const match = /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(row.time)
+    const period = match && operatingWindow(match[1], match[2])
+    return period ? [period] : []
+  }).sort((a, b) => a.start - b.start)
+  if (periods.length !== rows.length || periods.some((period, index) => (
+    period.end - period.start !== 60 || (index > 0 && periods[index - 1].end !== period.start)
+  ))) return null
+  return { start: periods[0].start, end: periods[periods.length - 1].end }
 }
 
 export function AnalysisSetupPage() {
@@ -130,6 +154,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
   const [readAgain, setReadAgain] = useState(0)
   const [recoveryError, setRecoveryError] = useState<{ file: File; message: string } | null>(null)
   const [closing, setClosing] = useState<ClosingChoice>(null)
+  const [arrivalDraft, setArrivalDraft] = useState<ArrivalAllowance | null>(null)
   const [confirmShared, setConfirmShared] = useState(false)
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState(false)
@@ -145,6 +170,25 @@ function AnalysisSetupForId({ id }: { id: number }) {
   const aggregate = sharedRead?.file === file && purpose === 'planning' ? sharedRead.result : null
   const choices = aggregate?.mode === 'shared_aggregate' ? deferredSharedChoices(aggregate) : {}
   const savedClosing = useQuery({ queryKey: ['closing-policy', id], queryFn: () => getClosingPolicy(id), enabled: aggregate?.mode === 'shared_aggregate' })
+  const cutoffKey = ['arrival-cutoff', id]
+  const savedCutoff = useQuery({ queryKey: cutoffKey, queryFn: () => getArrivalCutoff(id), enabled: Boolean(savedShared && (aggregate?.mode === 'shared_aggregate' || currentId !== null)) })
+  const savedAllowance = savedCutoff.data?.allowance_minutes
+  const allowance = arrivalDraft ?? savedAllowance ?? 0
+  const previewWindow = aggregate?.facts ? operatingWindow(aggregate.facts.start_time, aggregate.facts.end_time) : null
+  const arrivalSave = useMutation({
+    mutationFn: (value: ArrivalAllowance) => putArrivalCutoff(id, value),
+    onSuccess: (result) => {
+      client.setQueryData(cutoffKey, result)
+      setArrivalDraft(null)
+      void client.resetQueries({ queryKey: ['continuous-compat', id] })
+      void client.resetQueries({ queryKey: ['continuous-runs', id] })
+      void client.resetQueries({ queryKey: ['continuous-run', id] })
+      void client.resetQueries({ queryKey: ['workflow', id] })
+      void client.resetQueries({ queryKey: ['report-preview', id, 'full'] })
+    },
+  })
+  const allowanceFits = !previewWindow || allowance < previewWindow.end - previewWindow.start
+  const unsavedAllowance = arrivalDraft !== null && arrivalDraft !== savedAllowance
   const closingState = useRef({ ready: savedClosing.isSuccess, policy: savedClosing.data?.closing_policy })
   closingState.current = { ready: savedClosing.isSuccess, policy: savedClosing.data?.closing_policy }
   useEffect(() => {
@@ -154,7 +198,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
     if (file !== null && appliedFile.current === file && purpose === 'planning') { appliedFile.current = null; return }
     appliedFile.current = null
     setRecoveryError((previous) => previous?.file === file && purpose === 'planning' ? previous : null)
-    setSharedRead(null); setSharedError(null); setClosing(null); setConfirmShared(false); setApplied(false); setClosingError(null)
+    setSharedRead(null); setSharedError(null); setClosing(null); setArrivalDraft(null); setConfirmShared(false); setApplied(false); setClosingError(null)
     if (!savedShared || purpose !== 'planning' || !file) { setSharedChecking(false); return }
     setSharedChecking(true)
     void previewSharedAggregateDataset(id, file).then((result) => {
@@ -322,7 +366,8 @@ function AnalysisSetupForId({ id }: { id: number }) {
   }
   async function applyFile(confirmReplace = false) {
     if (applyLock.current || applied || !file || !aggregate || aggregate.mode !== 'shared_aggregate'
-      || !aggregate.derived_setup || aggregate.conflicts.length > 0 || !sharedChoicesComplete(aggregate, choices)) return
+      || !aggregate.derived_setup || aggregate.conflicts.length > 0 || !sharedChoicesComplete(aggregate, choices)
+      || !allowanceFits || arrivalSave.isPending) return
     if (aggregate.needs_confirmation && !confirmReplace) { setConfirmShared(true); return }
     applyLock.current = true
     setApplying(true); setSharedError(null); setRecoveryError(null)
@@ -339,12 +384,16 @@ function AnalysisSetupForId({ id }: { id: number }) {
       void client.invalidateQueries({ queryKey: ['current', id] })
       void client.resetQueries({ queryKey: ['workflow', id] })
       void client.resetQueries({ queryKey: ['scenarios', id] })
+      void client.resetQueries({ queryKey: ['report-preview', id] })
       if (currentInput.current.file === selected && currentInput.current.purpose === 'planning') {
         focusApplied.current = confirmReplace
         setApplied(true); setConfirmShared(false); setSetup(normalizeSetup(result.analysis.queue_setup))
       }
       // Closing is a separately persisted, explicit operational choice, never part of the Setup fingerprint.
       await saveFileClosing()
+      if (unsavedAllowance && arrivalDraft !== null && currentInput.current.file === selected && currentInput.current.purpose === 'planning') {
+        arrivalSave.mutate(arrivalDraft)
+      }
     } catch (error) {
       if (currentInput.current.file === selected && currentInput.current.purpose === 'planning') {
         const detail = (error as { response?: { data?: { detail?: { code?: string; reasons?: Array<{ detail?: string }> } } } }).response?.data?.detail
@@ -370,6 +419,7 @@ function AnalysisSetupForId({ id }: { id: number }) {
   }
   const savedIsShared = analysis.data.analysis.queue_setup.queue_structure === 'shared_queue'
   const modelEvidence = current.data?.dataset?.id === modelDatasetId ? current.data : undefined
+  const previousWindow = aggregatePlanning ? savedHourlyWindow(modelEvidence?.dataset?.normalized) : null
   const selectedModel = modelEvidence?.selected_model
   const modelReasons = new Map<string, { model: string; reason: string }>()
   for (const item of modelEvidence?.explanations ?? []) {
@@ -459,12 +509,12 @@ function AnalysisSetupForId({ id }: { id: number }) {
               <legend>{t('setup.purpose_question')}</legend><HelpLink topic="data" section="purpose" />
               {(['planning', 'review'] as const).map((value) => (
                 <label key={value} className="setup-purpose-option">
-                  <input type="radio" name="dataset-purpose" value={value} checked={purpose === value} disabled={applying || upload.isPending} onChange={() => setPurpose(value)} />
+                  <input type="radio" name="dataset-purpose" value={value} checked={purpose === value} disabled={applying || upload.isPending || arrivalSave.isPending} onChange={() => setPurpose(value)} />
                   <span><strong>{t(`setup.purpose_${value}`)}</strong><span className="page-caption">{t(`setup.purpose_${value}_help`)}</span></span>
                 </label>
               ))}
             </fieldset>
-            <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" disabled={applying || upload.isPending} onChange={pick} />
+            <input aria-label={t('analyses.upload')} type="file" accept=".csv,.xlsx" disabled={applying || upload.isPending || arrivalSave.isPending} onChange={pick} />
             {(!savedIsShared || purpose === 'review' || aggregate?.mode === 'declined') && (
               <button ref={workbookProcess} type="button" className="btn-primary" disabled={!file || purpose === null || upload.isPending || checking || applying} onClick={() => file && void processFile(file)}>{t('analyses.process')}</button>
             )}
@@ -495,6 +545,51 @@ function AnalysisSetupForId({ id }: { id: number }) {
                 <button type="button" className="btn-ghost" onClick={() => { workbookReturnFocus.current = true; setPendingConfirm(false); setPreview(null) }}>{t('common.cancel')}</button>
               </div>
             )}
+            {aggregate?.mode === 'shared_aggregate' && aggregate.derived_setup &&
+              <section ref={applyCard} tabIndex={-1} className="shared-file-apply" aria-label={t('setup.purpose_planning')}>
+                {aggregate.facts && <p className="form-hint">{aggregate.facts.filename} · {aggregate.facts.row_count} {t('datasets.rows')}</p>}
+                {previewWindow && <p className="form-hint">{t('simulation.operating_hours', { hours: `${clockOfMinutes(previewWindow.start)} - ${clockOfMinutes(previewWindow.end)}` })}{' '}{t('setup.arrival_window_duration', { hours: (previewWindow.end - previewWindow.start) / 60 })}</p>}
+                {previewWindow && savedCutoff.isSuccess && <ArrivalCutoffChoices window={previewWindow} value={allowance}
+                  onChange={(minutes) => { arrivalSave.reset(); setArrivalDraft(minutes) }} showFileHint={!applied}
+                  disabled={applying || arrivalSave.isPending} />}
+                {savedCutoff.isError && <p role="alert" className="alert alert-error">{messageOf(savedCutoff.error, t('errors.server'))}</p>}
+                {!allowanceFits && <p role="alert" className="alert alert-warn">{t('continuous.reason.arrival_cutoff_before_opening')}</p>}
+                <MissingChoices closing={closing} onClosingChange={setClosing}
+                  savedClosing={savedClosing.data?.closing_policy} closingReady={savedClosing.isSuccess} analysisId={id} disabled={applying || applied} />
+                {!applied && !sharedChoicesComplete(aggregate, choices) && <Link to={`/simulation/results?analysis=${id}&plan=current&advanced=model`}>{t('setup.incomplete_open')}</Link>}
+                {savedClosing.isPending && <p role="status">{t('continuous.closing_title')}: {t('common.loading')}</p>}
+                {savedClosing.isError && <p role="alert">{t('continuous.closing_title')}: {messageOf(savedClosing.error, t('errors.server'))}{' '}<Link to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.change')}</Link></p>}
+                {aggregate.conflicts.length > 0 && <div role="alert" className="alert alert-error"><ul>{aggregate.conflicts.map((conflict) => <li key={conflict.code}>{conflict.detail}{conflict.problems && <ul>{conflict.problems.filter((problem) => !conflict.detail.includes(problem)).map((problem) => <li key={problem}>{problem}</li>)}</ul>}</li>)}</ul></div>}
+                {!applied && !confirmShared && <button ref={primaryApply} type="button" className="btn-primary" disabled={applying || aggregate.conflicts.length > 0 || !sharedChoicesComplete(aggregate, choices) || !allowanceFits} onClick={() => void applyFile()}>{applying ? t('common.saving') : t('analyses.process')}</button>}
+                {confirmShared && !applied && <div className="alert alert-warn" role="status">
+                  <strong id="shared-confirm-title" ref={confirmTitle} tabIndex={-1}>{t(aggregate.diff.length ? 'analyses.upload_confirm_title' : 'analyses.upload')}</strong><p>{t(aggregate.diff.length ? 'analyses.upload_confirm_help' : 'setup.purpose_planning_help')}</p>
+                  <ul>{aggregate.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}: {setupDiffValue(change.field, change.saved, aggregate.saved_setup)} → {setupDiffValue(change.field, change.derived, aggregate.derived_setup!)}</li>)}</ul>
+                  <button type="button" className="btn-primary" disabled={applying || !allowanceFits} onClick={() => void applyFile(true)}>{applying ? t('common.saving') : t(aggregate.diff.length ? 'analyses.upload_confirm' : 'analyses.process')}</button>
+                  <button type="button" className="btn-ghost" disabled={applying} onClick={() => { returnFocus.current = true; setConfirmShared(false) }}>{t('common.cancel')}</button>
+                </div>}
+                {applied && <div ref={appliedAlert} tabIndex={-1} role="status" className="alert alert-ok"><p>{t('analyses.setup_saved')} · {t('datasets.purpose_planning_current')}</p>{!applying && !unsavedAllowance && <div className="button-row">
+                  <Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link>
+                  <Link className="button-link" to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.title')}</Link>
+                </div>}</div>}
+                {applied && unsavedAllowance && arrivalDraft !== null && <button type="button" className="btn-primary"
+                  disabled={applying || arrivalSave.isPending || !allowanceFits} onClick={() => arrivalSave.mutate(arrivalDraft)}>{t(arrivalSave.isPending ? 'common.saving' : 'common.save')}</button>}
+                {arrivalSave.isError && <p role="alert" className="alert alert-error">{t('setup.arrival_save_failed')}</p>}
+                {applied && closingError && <div role="alert" className="alert alert-error"><p>{t('continuous.closing_title')}: {closingError}</p><button type="button" className="btn-primary" disabled={closingSaving} onClick={() => void saveFileClosing()}>{closingSaving ? t('common.saving') : t('common.save')}</button></div>}
+              </section>
+            }
+            {savedIsShared && !file && savedCutoff.isSuccess && Boolean(previousWindow || savedAllowance) && <section className="shared-file-apply">
+              {previousWindow ? <>
+                <p className="form-hint">{t('simulation.operating_hours', { hours: `${clockOfMinutes(previousWindow.start)} - ${clockOfMinutes(previousWindow.end)}` })}{' '}{t('setup.arrival_window_duration', { hours: (previousWindow.end - previousWindow.start) / 60 })}</p>
+                <ArrivalCutoffChoices window={previousWindow} value={allowance}
+                  onChange={(minutes) => { arrivalSave.reset(); setArrivalDraft(minutes) }} disabled={arrivalSave.isPending} />
+                {arrivalDraft !== null && unsavedAllowance && <button type="button" className="btn-primary"
+                  disabled={arrivalSave.isPending} onClick={() => arrivalSave.mutate(arrivalDraft)}>{t(arrivalSave.isPending ? 'common.saving' : 'common.save')}</button>}
+              </> : !current.isPending && <>
+                <p className="alert alert-warn">{t('setup.arrival_reset_for_file')}</p>
+                <button type="button" className="btn-secondary" disabled={arrivalSave.isPending} onClick={() => arrivalSave.mutate(0)}>{t('setup.arrival_at_closing')}</button>
+              </>}
+              {arrivalSave.isError && <p role="alert" className="alert alert-error">{t('setup.arrival_save_failed')}</p>}
+            </section>}
           </div>
         </li>
         {(modelDatasetId !== null || (datasets.data?.datasets.length ?? 0) > 0) && (!aggregate || applied) && (
@@ -515,32 +610,9 @@ function AnalysisSetupForId({ id }: { id: number }) {
             </div>
           </li>
         )}
-        {aggregate?.mode === 'shared_aggregate' && aggregate.derived_setup && <li className="setup-step">
-          <section ref={applyCard} tabIndex={-1} className="card shared-file-apply" aria-label={t('setup.purpose_planning')}>
-            {aggregate.facts && <p className="form-hint">{aggregate.facts.filename} · {aggregate.facts.row_count} {t('datasets.rows')}</p>}
-            <MissingChoices closing={closing} onClosingChange={setClosing}
-              savedClosing={savedClosing.data?.closing_policy} closingReady={savedClosing.isSuccess} analysisId={id} disabled={applying || applied} />
-            {!applied && !sharedChoicesComplete(aggregate, choices) && <Link to={`/simulation/results?analysis=${id}&plan=current&advanced=model`}>{t('setup.incomplete_open')}</Link>}
-            {savedClosing.isPending && <p role="status">{t('continuous.closing_title')}: {t('common.loading')}</p>}
-            {savedClosing.isError && <p role="alert">{t('continuous.closing_title')}: {messageOf(savedClosing.error, t('errors.server'))}{' '}<Link to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.change')}</Link></p>}
-            {aggregate.conflicts.length > 0 && <div role="alert" className="alert alert-error"><ul>{aggregate.conflicts.map((conflict) => <li key={conflict.code}>{conflict.detail}{conflict.problems && <ul>{conflict.problems.filter((problem) => !conflict.detail.includes(problem)).map((problem) => <li key={problem}>{problem}</li>)}</ul>}</li>)}</ul></div>}
-            {!applied && !confirmShared && <button ref={primaryApply} type="button" className="btn-primary" disabled={applying || aggregate.conflicts.length > 0 || !sharedChoicesComplete(aggregate, choices)} onClick={() => void applyFile()}>{applying ? t('common.saving') : t('analyses.process')}</button>}
-            {confirmShared && !applied && <div className="alert alert-warn" role="status">
-              <strong id="shared-confirm-title" ref={confirmTitle} tabIndex={-1}>{t(aggregate.diff.length ? 'analyses.upload_confirm_title' : 'analyses.upload')}</strong><p>{t(aggregate.diff.length ? 'analyses.upload_confirm_help' : 'setup.purpose_planning_help')}</p>
-              <ul>{aggregate.diff.map((change) => <li key={change.field}>{t(SETUP_FIELD_LABELS[change.field] ?? change.field)}: {setupDiffValue(change.field, change.saved, aggregate.saved_setup)} → {setupDiffValue(change.field, change.derived, aggregate.derived_setup!)}</li>)}</ul>
-              <button type="button" className="btn-primary" disabled={applying} onClick={() => void applyFile(true)}>{applying ? t('common.saving') : t(aggregate.diff.length ? 'analyses.upload_confirm' : 'analyses.process')}</button>
-              <button type="button" className="btn-ghost" disabled={applying} onClick={() => { returnFocus.current = true; setConfirmShared(false) }}>{t('common.cancel')}</button>
-            </div>}
-            {applied && <div ref={appliedAlert} tabIndex={-1} role="status" className="alert alert-ok"><p>{t('analyses.setup_saved')} · {t('datasets.purpose_planning_current')}</p><div className="button-row">
-              <Link className="button-link" to={`/results?analysis=${id}`}>{t('analyses.view_current')}</Link>
-              <Link className="button-link" to={`/simulation/results?analysis=${id}&plan=current`}>{t('continuous.title')}</Link>
-            </div></div>}
-            {applied && closingError && <div role="alert" className="alert alert-error"><p>{t('continuous.closing_title')}: {closingError}</p><button type="button" className="btn-primary" disabled={closingSaving} onClick={() => void saveFileClosing()}>{closingSaving ? t('common.saving') : t('common.save')}</button></div>}
-          </section>
-        </li>}
         {savedIsShared && <li className="setup-optional">
           <details className="setup-manual"><summary>{t('setup.step_template')}</summary><SetupDataTemplates queueStructure="shared_queue" /></details>
-          <ManualEntry disabled={purpose === null || upload.isPending || checking || applying} onUpload={(selected) => { setFile(selected); if (purpose !== 'planning') void processFile(selected) }} />
+          <ManualEntry disabled={purpose === null || upload.isPending || checking || applying || arrivalSave.isPending} onUpload={(selected) => { setFile(selected); if (purpose !== 'planning') void processFile(selected) }} />
         </li>}
         <li className={savedIsShared ? 'setup-optional' : 'setup-step'}>
           <details className="setup-advanced" open={setup.queue_structure === 'unknown' || advancedOpen || undefined} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>

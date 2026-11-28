@@ -27,6 +27,7 @@ from backend.queueing_engine.services.shared_segments import (
     StaffingSegment,
 )
 from backend.queueing_engine.simulation.shared_continuous_des import (
+    ARRIVAL_CUTOFF_SUFFIX,
     BREAK_COMPLETED,
     BREAKS_SUFFIX,
     ENGINE_VERSION,
@@ -350,6 +351,7 @@ def prepare_shared_playback(
     closing_policy: str,
     service_samples: Mapping[str, Sequence[float]] | None = None,
     counter_breaks: Sequence[CounterBreak] | None = None,
+    arrival_cutoff_minute: int | None = None,
 ) -> dict[str, Any]:
     """Regenerate replication ``replication_index`` of the run with ``root_entropy`` and prepare its playback."""
     problems = []
@@ -364,6 +366,7 @@ def prepare_shared_playback(
         horizon, demand_periods, staffing_segments,
         seed_sequence=child, closing_policy=closing_policy, max_trace_events=None,
         service_samples=service_samples, counter_breaks=counter_breaks,
+        arrival_cutoff_minute=arrival_cutoff_minute,
     )
     return build_playback(result, staffing_segments, replication_index=replication_index, root_entropy=root_entropy)
 
@@ -378,6 +381,12 @@ def playback_from_replications(replication_result: dict[str, Any], replication_i
     if with_breaks != bool(stored_breaks):
         raise PlaybackConsistencyError(
             "The run's counter breaks do not match its engine version; it cannot be regenerated exactly.")
+    with_cutoff = base_version.endswith(ARRIVAL_CUTOFF_SUFFIX)
+    base_version = base_version.removesuffix(ARRIVAL_CUTOFF_SUFFIX)
+    cutoff = provenance["inputs"].get("arrival_cutoff_minute")
+    if with_cutoff != (cutoff is not None):
+        raise PlaybackConsistencyError(
+            "The run's arrival cutoff does not match its engine version; it cannot be regenerated exactly.")
     if base_version not in (ENGINE_VERSION, RECORDED_ENGINE_VERSION):
         raise PlaybackConsistencyError(
             f"The run used engine {provenance['engine_version']}, not {ENGINE_VERSION} or {RECORDED_ENGINE_VERSION}; "
@@ -391,9 +400,12 @@ def playback_from_replications(replication_result: dict[str, Any], replication_i
     if not _whole(replication_index) or replication_index >= provenance["replications"]:
         raise SharedSegmentError([f"replication_index must be from 0 to {provenance['replications'] - 1}."])
     inputs = provenance["inputs"]
+    horizon = OperatingHorizon(**inputs["horizon"])
+    if cutoff is not None and (not _whole(cutoff) or not horizon.start_minute < cutoff < horizon.end_minute):
+        raise PlaybackConsistencyError("The stored arrival cutoff lies outside the operating horizon.")
     segments = [StaffingSegment(**item) for item in inputs["staffing_segments"]]
     playback = prepare_shared_playback(
-        OperatingHorizon(**inputs["horizon"]),
+        horizon,
         [DemandPeriod(**item) for item in inputs["demand_periods"]],
         segments,
         root_entropy=provenance["root_entropy"],
@@ -401,6 +413,7 @@ def playback_from_replications(replication_result: dict[str, Any], replication_i
         closing_policy=provenance["closing_policy"],
         service_samples=service_samples,
         counter_breaks=[CounterBreak(**item) for item in stored_breaks] if stored_breaks else None,
+        arrival_cutoff_minute=cutoff,
     )
     stored = replication_result["replications"][replication_index]
     regenerated = playback["summary"]

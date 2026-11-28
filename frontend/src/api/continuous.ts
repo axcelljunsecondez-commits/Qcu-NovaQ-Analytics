@@ -6,6 +6,12 @@ import { http } from '../lib/http'
 
 export type ClosingPolicy = 'DRAIN' | 'HARD_CUTOFF'
 export type ContinuousPlan = 'current' | 'suggested'
+export const arrivalAllowances = [0, 15, 30, 45, 60] as const
+export type ArrivalAllowance = typeof arrivalAllowances[number]
+
+interface ArrivalCutoffOut {
+  allowance_minutes: ArrivalAllowance
+}
 
 export interface ClosingPolicyOut {
   closing_policy: ClosingPolicy | null
@@ -36,10 +42,12 @@ export interface ContinuousPlanView {
   service_fallbacks?: Array<{ period_id: string; uses_period_id: string }>
   /** Counter breaks this run will include (B4c). */
   counter_breaks?: number
+  arrival_cutoff_minute?: number
 }
 
 export interface ContinuousCompatibility {
   closing_policy: ClosingPolicy | null
+  arrival_allowance_minutes?: ArrivalAllowance
   plans: Record<ContinuousPlan, ContinuousPlanView>
   default_replications: number
   default_seed: number
@@ -106,6 +114,8 @@ export interface ContinuousRunEvidence {
     closing_policy: ClosingPolicy
     service_model?: ServiceModel
     counter_breaks?: number
+    arrival_allowance_minutes?: ArrivalAllowance
+    arrival_cutoff_minute?: number
   }
   result: ContinuousResult
   created_at: string
@@ -115,6 +125,7 @@ export interface ContinuousCurrentness {
   setup_matches_current: boolean
   dataset_is_current: boolean
   plan_is_selected: boolean | null
+  arrival_settings_match?: boolean
 }
 
 export interface ContinuousRunOut extends ContinuousCurrentness {
@@ -189,6 +200,16 @@ const base = (analysisId: number) => `/analyses/${analysisId}`
 
 export async function getClosingPolicy(analysisId: number): Promise<ClosingPolicyOut> {
   const { data } = await http.get<ClosingPolicyOut>(`${base(analysisId)}/closing-policy`)
+  return data
+}
+
+export async function getArrivalCutoff(analysisId: number): Promise<ArrivalCutoffOut> {
+  const { data } = await http.get<ArrivalCutoffOut>(`/analyses/${analysisId}/arrival-cutoff`)
+  return data
+}
+
+export async function putArrivalCutoff(analysisId: number, allowance: ArrivalAllowance): Promise<ArrivalCutoffOut> {
+  const { data } = await http.put<ArrivalCutoffOut>(`/analyses/${analysisId}/arrival-cutoff`, { allowance_minutes: allowance })
   return data
 }
 

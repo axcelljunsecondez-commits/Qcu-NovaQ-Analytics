@@ -118,6 +118,10 @@ class AnalysisProject(Base):
             "shared_closing_policy IS NULL OR shared_closing_policy IN ('DRAIN', 'HARD_CUTOFF')",
             name="ck_analysis_projects_shared_closing_policy",
         ),
+        CheckConstraint(
+            "shared_arrival_allowance_minutes IN (0, 15, 30, 45, 60)",
+            name="ck_analysis_projects_shared_arrival_allowance",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -132,6 +136,7 @@ class AnalysisProject(Base):
     # B4a (migration 0007): the closing rule for the continuous shared-line run, outside the Setup
     # fingerprint. Null until the owner chooses; the engine has no default.
     shared_closing_policy: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    shared_arrival_allowance_minutes: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

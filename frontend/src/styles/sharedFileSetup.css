@@ -1,4 +1,8 @@
 /* Shared aggregate upload only; preserve the existing public and other Setup surfaces. */
 .setup-page .setup-option-title { margin: 0 0 var(--space-sm); font-size: 1.25rem; }
+.setup-page .shared-file-apply { margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border); }
 .setup-page .shared-file-apply > .alert { margin-top: var(--space-md); }
 .setup-page .shared-file-apply li { overflow-wrap: anywhere; }
+.setup-page .shared-arrival-choices { max-width: 35rem; }
+.setup-page .shared-arrival-option { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-sm); align-items: center; }
+.setup-page .shared-arrival-option time { font-family: var(--font-number); color: var(--color-action-link); }

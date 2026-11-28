@@ -38,6 +38,7 @@ from backend.queueing_engine.services.shared_segments import (
     validate_timeline,
 )
 from backend.queueing_engine.simulation.shared_continuous_des import (
+    ARRIVAL_CUTOFF_SUFFIX,
     BREAK_RULES,
     BREAKS_SUFFIX,
     CLOSING_POLICIES,
@@ -473,6 +474,7 @@ def run_shared_replications(
     failure_criteria: FailureCriteria | None = None,
     service_samples: Mapping[str, Sequence[float]] | None = None,
     counter_breaks: Sequence[CounterBreak] | None = None,
+    arrival_cutoff_minute: int | None = None,
 ) -> dict[str, Any]:
     """Run ``replications`` independent continuous-DES replications and aggregate them.
 
@@ -510,6 +512,7 @@ def run_shared_replications(
             horizon, demand_periods, staffing_segments,
             seed_sequence=child, closing_policy=closing_policy, max_trace_events=0,
             service_samples=service_samples, counter_breaks=counter_breaks,
+            arrival_cutoff_minute=arrival_cutoff_minute,
         )
         if cost_rates is not None and not cost_reference:
             cost_reference = cost_shared_day(result, cost_rates)
@@ -557,6 +560,10 @@ def run_shared_replications(
                            "service_fallbacks": fallbacks, "seed_scheme": RECORDED_SEED_SCHEME})
         provenance["inputs"]["service_samples_hours"] = {
             key: [float(value) for value in values] for key, values in service_samples.items()}
+    if arrival_cutoff_minute is not None:
+        provenance = result["provenance"]
+        provenance["engine_version"] += ARRIVAL_CUTOFF_SUFFIX
+        provenance["inputs"]["arrival_cutoff_minute"] = int(arrival_cutoff_minute)
     if counter_breaks:
         provenance = result["provenance"]
         provenance["engine_version"] += BREAKS_SUFFIX

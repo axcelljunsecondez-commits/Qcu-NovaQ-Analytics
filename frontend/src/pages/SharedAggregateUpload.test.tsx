@@ -8,7 +8,7 @@ import { AnalysisSetupPage } from './AnalysisSetupPage'
 
 // Synthetic API fixtures: the real owner's CSV is exercised by the isolated integration check.
 const mocks = vi.hoisted(() => ({ analysis: vi.fn(), datasets: vi.fn(), current: vi.fn(), patch: vi.fn(),
-  upload: vi.fn(), workbook: vi.fn(), preview: vi.fn(), apply: vi.fn(), closing: vi.fn(), saveClosing: vi.fn() }))
+  upload: vi.fn(), workbook: vi.fn(), preview: vi.fn(), apply: vi.fn(), closing: vi.fn(), saveClosing: vi.fn(), cutoff: vi.fn(), saveCutoff: vi.fn() }))
 vi.mock('../api/analyses', () => ({
   getAnalysis: (...args: unknown[]) => mocks.analysis(...args),
   listAnalysisDatasets: (...args: unknown[]) => mocks.datasets(...args),
@@ -20,7 +20,13 @@ vi.mock('../api/analyses', () => ({
   applySharedAggregateDataset: (...args: unknown[]) => mocks.apply(...args),
   downloadSetupWorkbook: vi.fn(),
 }))
-vi.mock('../api/continuous', () => ({ getClosingPolicy: (...args: unknown[]) => mocks.closing(...args), putClosingPolicy: (...args: unknown[]) => mocks.saveClosing(...args) }))
+vi.mock('../api/continuous', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../api/continuous')>(),
+  getClosingPolicy: (...args: unknown[]) => mocks.closing(...args),
+  putClosingPolicy: (...args: unknown[]) => mocks.saveClosing(...args),
+  getArrivalCutoff: (...args: unknown[]) => mocks.cutoff(...args),
+  putArrivalCutoff: (...args: unknown[]) => mocks.saveCutoff(...args),
+}))
 vi.mock('../api/templates', () => ({ getTemplateGuide: vi.fn(), downloadTemplate: vi.fn() }))
 vi.mock('../api/auth', () => ({ me: vi.fn(async () => ({ user: null })), login: vi.fn(), logout: vi.fn() }))
 
@@ -73,6 +79,8 @@ beforeEach(() => {
   mocks.apply.mockResolvedValue(applyResult)
   mocks.closing.mockResolvedValue({ closing_policy: null })
   mocks.saveClosing.mockResolvedValue({ closing_policy: 'DRAIN' })
+  mocks.cutoff.mockResolvedValue({ allowance_minutes: 0 })
+  mocks.saveCutoff.mockResolvedValue({ allowance_minutes: 30 })
   mocks.workbook.mockResolvedValue({ mode: 'legacy' })
   mocks.upload.mockResolvedValue({ dataset })
 })
@@ -84,10 +92,28 @@ describe('shared planning file read and apply', () => {
     await waitFor(() => expect(mocks.preview).toHaveBeenCalledWith(7, selected))
     const applyRegion = await screen.findByRole('region', { name: 'Use for planning' })
     expect(applyRegion).toHaveTextContent('rates.csv · 2 rows')
+    expect(applyRegion).toHaveTextContent('Operating hours: 08:00 - 10:00.')
+    expect(screen.getByLabelText('Upload Data').closest('.card')).toContainElement(applyRegion)
     expect(screen.queryByRole('region', { name: "Here's what NovaQ read from your file" })).not.toBeInTheDocument()
     expect(mocks.apply).not.toHaveBeenCalled()
     expect(mocks.upload).not.toHaveBeenCalled()
     expect(screen.queryByTestId('setup-incomplete')).not.toBeInTheDocument()
+  })
+
+  it('uses the hours in the file for the five cutoff presets and saves a chosen cutoff after applying', async () => {
+    renderPage()
+    const { user } = await chooseFile()
+    const choice = await screen.findByRole('radio', { name: '30 minutes before closing 09:30' })
+    expect(screen.getByRole('radio', { name: 'At closing 10:00' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: '15 minutes before closing 09:45' })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: '45 minutes before closing 09:15' })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: '1 hour before closing 09:00' })).toBeEnabled()
+    await user.click(choice)
+    expect(mocks.saveCutoff).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Upload and process' }))
+    await waitFor(() => expect(mocks.saveCutoff).toHaveBeenCalledWith(7, 30))
+    expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.saveCutoff.mock.invocationCallOrder[0])
+    expect(await screen.findByRole('link', { name: 'View Analysis results' })).toBeInTheDocument()
   })
 
   it('defers missing model choices as unknown, applies once, and saves optional closing afterward', async () => {
